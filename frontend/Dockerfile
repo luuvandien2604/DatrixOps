@@ -13,7 +13,6 @@ COPY public ./public
 COPY next.config.ts .
 COPY tsconfig.json .
 COPY postcss.config.mjs .
-COPY tailwind.config.ts .
 COPY eslint.config.mjs .
 
 # Environment variables must be present at build time
