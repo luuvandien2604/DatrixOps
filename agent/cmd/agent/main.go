@@ -1,12 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"log/slog"
+	"context"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/luuvandien2604/DatrixOps/agent/internal/client"
+	"github.com/luuvandien2604/DatrixOps/agent/internal/collector"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/config"
 )
 
@@ -17,29 +20,48 @@ var (
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	log.Println("Starting DatrixOps Agent...")
 
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("failed to load config", "error", err)
-		os.Exit(1)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	logger.Info("datrixops agent starting",
-		"version", Version,
-		"server_url", cfg.ServerURL,
-		"interval_seconds", cfg.IntervalSeconds,
-	)
+	apiClient := client.New(cfg)
 
-	// TODO (Sprint 2): Initialize collectors and sender
-	// TODO (Sprint 2): Start collection loop
+	// Graceful shutdown context
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	fmt.Println("DatrixOps Agent is running. Press Ctrl+C to stop.")
+	// Initial heartbeat immediately on startup
+	sendHeartbeat(ctx, apiClient)
 
-	// Wait for shutdown signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	// Ticker for periodic heartbeats
+	ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
+	defer ticker.Stop()
 
-	logger.Info("agent stopped")
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Agent shutting down gracefully...")
+			return
+		case <-ticker.C:
+			sendHeartbeat(ctx, apiClient)
+		}
+	}
+}
+
+func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient) {
+	metrics, err := collector.Collect()
+	if err != nil {
+		log.Printf("Error collecting metrics: %v", err)
+		return
+	}
+
+	if err := apiClient.SendHeartbeat(ctx, metrics); err != nil {
+		log.Printf("Failed to send heartbeat: %v", err)
+		return
+	}
+
+	log.Printf("Heartbeat sent successfully. CPU: %.2f%%, RAM: %d/%d", metrics.CPUUsage, metrics.MemoryUsed, metrics.MemoryTotal)
 }

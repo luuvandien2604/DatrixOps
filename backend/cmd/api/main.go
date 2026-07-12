@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/agent_api"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
@@ -70,6 +71,7 @@ func main() {
 	// --- Register Modules ---
 	auth.RegisterRoutes(mux, c.DB, c.Config)
 	server.RegisterRoutes(mux, c.DB, c.Config)
+	agent_api.RegisterRoutes(mux, c.DB, c.Config)
 
 	// --- Middleware ---
 	var handler http.Handler = mux
