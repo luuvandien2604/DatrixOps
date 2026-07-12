@@ -1,0 +1,38 @@
+package server
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+)
+
+type Service struct {
+	repo *Repository
+}
+
+func NewService(repo *Repository) *Service {
+	return &Service{repo: repo}
+}
+
+// CreateServer generates an agent_token and creates the server.
+func (s *Service) CreateServer(ctx context.Context, userID, name, ipAddress string) (*Server, error) {
+	// Generate a secure random 32-byte (64 hex characters) token
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("generate agent_token: %w", err)
+	}
+	agentToken := hex.EncodeToString(b)
+
+	return s.repo.Create(ctx, userID, name, ipAddress, agentToken)
+}
+
+// ListServers returns all servers for the user.
+func (s *Service) ListServers(ctx context.Context, userID string) ([]*Server, error) {
+	return s.repo.ListByUser(ctx, userID)
+}
+
+// DeleteServer deletes a server.
+func (s *Service) DeleteServer(ctx context.Context, id, userID string) error {
+	return s.repo.Delete(ctx, id, userID)
+}
