@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/logger"
@@ -65,9 +66,9 @@ func main() {
 	mux.HandleFunc("GET /ready", handleReady(c))
 	mux.HandleFunc("GET /api/v1/version", handleVersion)
 
-	// TODO: Register module routes here
-	// auth.RegisterRoutes(mux, c)
-	// server.RegisterRoutes(mux, c)
+	// --- Register Modules ---
+	auth.RegisterRoutes(mux, c.DB, c.Config)
+	// server.RegisterRoutes(mux, c.DB, c.Config)
 
 	// --- Middleware ---
 	var handler http.Handler = mux
