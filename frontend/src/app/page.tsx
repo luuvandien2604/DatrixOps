@@ -225,18 +225,46 @@ export default function DashboardPage() {
             
             {newToken ? (
               <div>
-                <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl mb-6">
-                  <p className="font-semibold mb-2">Server created successfully!</p>
-                  <p className="text-sm mb-3">Copy this agent token to your server. It will only be shown once.</p>
-                  <div className="bg-gray-900 p-3 rounded font-mono text-xs break-all text-gray-300 select-all border border-gray-700">
-                    {newToken}
+                <div className="bg-emerald-500/10 border border-emerald-500/30 p-5 rounded-xl mb-6">
+                  <h4 className="text-emerald-400 font-bold mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Server added successfully!
+                  </h4>
+                  
+                  <div className="mb-4">
+                    <p className="text-gray-300 text-sm mb-2 font-medium">Option 1: 1-Click Install (Recommended)</p>
+                    <p className="text-gray-500 text-xs mb-2">Run this command on your VPS to automatically download, install, and start the DatrixOps Agent as a background service.</p>
+                    <div className="relative group">
+                      <pre className="bg-gray-900 p-4 rounded-lg font-mono text-sm text-gray-300 overflow-x-auto border border-gray-700 select-all whitespace-pre-wrap break-all">
+                        {`curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${newToken}`}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-700/50 pt-4">
+                    <p className="text-gray-300 text-sm mb-2 font-medium">Option 2: Manual Installation</p>
+                    <div className="flex gap-3">
+                      <a 
+                        href={`https://datrixops.vandien.space/datrixops-agent`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 bg-gray-700 hover:bg-gray-600 text-center text-white text-sm py-2 rounded-lg transition-colors"
+                      >
+                        Download Linux Binary
+                      </a>
+                      <div className="flex-1 text-center bg-gray-900 border border-gray-700 p-2 rounded-lg text-gray-400 font-mono text-xs overflow-hidden text-ellipsis whitespace-nowrap" title={newToken}>
+                        Token: {newToken}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <button 
                   onClick={() => { setShowAddModal(false); setNewToken(''); }}
-                  className="w-full bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg transition-colors font-medium"
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg transition-colors font-medium"
                 >
-                  Close
+                  Done
                 </button>
               </div>
             ) : (
