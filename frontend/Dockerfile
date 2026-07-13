@@ -17,7 +17,7 @@ COPY eslint.config.mjs .
 
 # Environment variables must be present at build time
 ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
 
 RUN npm run build
 
