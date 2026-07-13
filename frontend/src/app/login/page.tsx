@@ -80,6 +80,15 @@ export default function LoginPage() {
           >
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
+          
+          <div className="text-center mt-4">
+            <p className="text-gray-400 text-sm">
+              Don't have an account?{' '}
+              <a href="/register" className="text-blue-500 hover:text-blue-400 transition-colors">
+                Register here
+              </a>
+            </p>
+          </div>
         </form>
       </div>
     </div>
