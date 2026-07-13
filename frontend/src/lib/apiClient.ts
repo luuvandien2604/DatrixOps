@@ -27,7 +27,9 @@ export async function apiClient(endpoint: string, options: ApiOptions = {}) {
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.error?.message || 'API request failed');
+    const errorMsg = result.error?.message || 'API request failed';
+    const errorCode = result.error?.code || 'UNKNOWN';
+    throw new Error(`[${errorCode}] ${errorMsg}`);
   }
 
   return result.data;
