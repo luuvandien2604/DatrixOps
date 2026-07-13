@@ -26,7 +26,7 @@ export default function LoginPage() {
       localStorage.setItem('refresh_token', data.refresh_token);
       
       // Redirect to dashboard
-      router.push('/');
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
     } finally {
