@@ -10,6 +10,7 @@ interface Server {
   ip_address: string;
   status: string;
   agent_token?: string; // Only available immediately after creation
+  os_info?: string;
   created_at: string;
 }
 
@@ -129,32 +130,89 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {servers.map((server) => (
-              <div key={server.id} className="bg-gray-800 rounded-2xl p-6 border border-gray-700 shadow-xl relative overflow-hidden group">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-white mb-1">{server.name}</h3>
-                    <p className="text-gray-400 text-sm font-mono">{server.ip_address || 'No IP'}</p>
+            {servers.map((server) => {
+              let osInfo = null;
+              if (server.os_info) {
+                try {
+                  osInfo = JSON.parse(server.os_info);
+                } catch (e) {}
+              }
+
+              return (
+                <div key={server.id} className="bg-gray-800 rounded-2xl p-6 border border-gray-700 shadow-xl relative overflow-hidden group flex flex-col h-full">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-white mb-1">{server.name}</h3>
+                      <p className="text-gray-400 text-sm font-mono">{server.ip_address || 'No IP'}</p>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                      server.status === 'online' 
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                        : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    }`}>
+                      {server.status.toUpperCase()}
+                    </div>
                   </div>
-                  <div className={`px-3 py-1 rounded-full text-xs font-medium border ${
-                    server.status === 'online' 
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                  }`}>
-                    {server.status.toUpperCase()}
+                  
+                  {server.status === 'online' && osInfo ? (
+                    <div className="mt-4 flex-1 space-y-4">
+                      {/* CPU Usage */}
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">CPU Usage</span>
+                          <span className="text-white font-mono">{osInfo.cpu_usage?.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-1000 ${
+                              osInfo.cpu_usage > 90 ? 'bg-red-500' : osInfo.cpu_usage > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`} 
+                            style={{ width: `${Math.min(osInfo.cpu_usage, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* RAM Usage */}
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">RAM Usage</span>
+                          <span className="text-white font-mono">
+                            {((osInfo.memory_used || 0) / 1024 / 1024 / 1024).toFixed(1)} / {((osInfo.memory_total || 0) / 1024 / 1024 / 1024).toFixed(1)} GB
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-1000 ${
+                              (osInfo.memory_used / osInfo.memory_total) > 0.9 ? 'bg-red-500' : (osInfo.memory_used / osInfo.memory_total) > 0.7 ? 'bg-amber-500' : 'bg-blue-500'
+                            }`} 
+                            style={{ width: `${Math.min((osInfo.memory_used / osInfo.memory_total) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      {/* System Info */}
+                      <div className="pt-2 text-xs text-gray-500 flex justify-between border-t border-gray-700/50 mt-4">
+                        <span>OS: {osInfo.os_name || 'Unknown'}</span>
+                        <span>Cores: {osInfo.cpu_cores || '-'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex-1 flex items-center justify-center border-t border-gray-700/50 pt-4">
+                      <span className="text-gray-500 text-sm">No metrics available</span>
+                    </div>
+                  )}
+                  
+                  <div className="mt-4 pt-4 border-t border-gray-700/50 flex justify-end">
+                    <button 
+                      onClick={() => handleDelete(server.id)}
+                      className="text-gray-500 hover:text-red-400 text-sm transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      Delete Server
+                    </button>
                   </div>
                 </div>
-                
-                <div className="mt-8 flex justify-end">
-                  <button 
-                    onClick={() => handleDelete(server.id)}
-                    className="text-gray-500 hover:text-red-400 text-sm transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>

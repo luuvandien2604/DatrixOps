@@ -53,7 +53,7 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 // ListByUser returns all servers for a specific user.
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, error) {
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, user_id, name, ip_address, status, created_at, updated_at 
+		`SELECT id, user_id, name, ip_address, status, os_info, created_at, updated_at 
 		 FROM servers WHERE user_id = $1 ORDER BY created_at DESC`,
 		userID,
 	)
@@ -65,7 +65,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	var servers []*Server
 	for rows.Next() {
 		var s Server
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("list servers scan: %w", err)
 		}
 		servers = append(servers, &s)
