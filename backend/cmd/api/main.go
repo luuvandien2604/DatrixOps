@@ -53,6 +53,11 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := db.AutoMigrate(context.Background(), log); err != nil {
+		log.Error("failed to auto-migrate database", "error", err)
+		os.Exit(1)
+	}
+
 	// --- Container ---
 	c := &Container{
 		DB:     db,
