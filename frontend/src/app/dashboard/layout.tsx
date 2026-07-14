@@ -24,6 +24,12 @@ const navGroups = [
     ]
   },
   {
+    title: 'TÀI LIỆU',
+    items: [
+      { name: 'Hướng dẫn sử dụng', path: '/dashboard/docs', icon: FileText },
+    ]
+  },
+  {
     title: 'QUẢN LÝ',
     items: [
       { name: 'Quản lý Server', path: '/dashboard/manage/servers', icon: Server },
