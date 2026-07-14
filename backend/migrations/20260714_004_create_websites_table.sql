@@ -13,4 +13,4 @@ CREATE TABLE IF NOT EXISTS websites (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_websites_user_id ON websites(user_id);
+CREATE INDEX IF NOT EXISTS idx_websites_user_id ON websites(user_id);
