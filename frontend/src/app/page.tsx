@@ -6,7 +6,7 @@ import {
   ArrowRight, Shield, Zap, Server, Activity, TerminalSquare, CheckCircle2, ChevronRight 
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area
+  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area, Tooltip
 } from 'recharts';
 
 // --- LIVE HERO CHART DATA GENERATOR ---
