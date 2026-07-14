@@ -8,6 +8,7 @@ import Link from 'next/link';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -23,8 +24,13 @@ export default function LoginPage() {
       });
       
       // Store tokens
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
+      if (rememberMe) {
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+      } else {
+        sessionStorage.setItem('access_token', data.access_token);
+        sessionStorage.setItem('refresh_token', data.refresh_token);
+      }
       
       // Redirect to dashboard
       router.push('/dashboard');
@@ -82,6 +88,19 @@ export default function LoginPage() {
               className="w-full px-4 py-3 bg-white/[0.02] border border-white/10 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[var(--foreground)] outline-none transition-all text-sm placeholder-[var(--color-muted)]"
               placeholder="••••••••"
             />
+          </div>
+
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="checkbox"
+              id="remember"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded border-white/10 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+            />
+            <label htmlFor="remember" className="text-sm text-[var(--color-muted)] cursor-pointer select-none">
+              Remember me for 30 days
+            </label>
           </div>
 
           <button

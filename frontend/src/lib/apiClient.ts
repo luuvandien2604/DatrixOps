@@ -7,7 +7,7 @@ interface ApiOptions extends RequestInit {
 export async function apiClient(endpoint: string, options: ApiOptions = {}) {
   const { data, headers: customHeaders, ...customConfig } = options;
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const token = typeof window !== 'undefined' ? (localStorage.getItem('access_token') || sessionStorage.getItem('access_token')) : null;
 
   const config: RequestInit = {
     method: data ? 'POST' : 'GET',
