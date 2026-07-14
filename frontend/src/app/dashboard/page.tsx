@@ -30,6 +30,7 @@ export default function MonitoringDashboard() {
   const [isAddServerModalOpen, setIsAddServerModalOpen] = useState(false);
   const [newServerName, setNewServerName] = useState('');
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
+  const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
   
   const [serverToRestart, setServerToRestart] = useState<string | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
@@ -56,6 +57,19 @@ export default function MonitoringDashboard() {
   const totalServers = servers.length;
   const onlineServers = servers.filter(s => s.status === 'online').length;
   const offlineServers = totalServers - onlineServers;
+
+  const getInstallCommand = () => {
+    switch (selectedOs) {
+      case 'linux':
+        return `curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}`;
+      case 'macos':
+        return `curl -sL https://datrixops.vandien.space/install-mac.sh | sudo bash -s -- ${generatedAgentToken}`;
+      case 'windows':
+        return `Invoke-WebRequest -Uri "https://datrixops.vandien.space/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}"`;
+      default:
+        return '';
+    }
+  };
 
   // KPI Card Component
   const KPICard = ({ title, value, icon: Icon, colorClass, subtitle }: any) => (
@@ -366,15 +380,35 @@ export default function MonitoringDashboard() {
                 </>
               ) : (
                 <>
-                  <p className="text-[var(--color-muted)] mb-6">
-                    Đã tạo thành công. Hãy chạy câu lệnh (Run as root) dưới đây trên server của bạn để cài đặt Agent.
+                  <p className="text-[var(--color-muted)] mb-4">
+                    Đã tạo thành công. Vui lòng chọn hệ điều hành và chạy lệnh (với quyền Admin/Root) để cài đặt Agent.
                   </p>
+                  
+                  {/* OS Tabs */}
+                  <div className="flex gap-2 mb-4 border-b border-white/10 pb-2">
+                    <button 
+                      onClick={() => setSelectedOs('linux')} 
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'linux' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
+                      Linux
+                    </button>
+                    <button 
+                      onClick={() => setSelectedOs('macos')} 
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'macos' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
+                      macOS
+                    </button>
+                    <button 
+                      onClick={() => setSelectedOs('windows')} 
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'windows' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
+                      Windows
+                    </button>
+                  </div>
+
                   <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
                     <div className="text-emerald-400 whitespace-nowrap">
-                      curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- {generatedAgentToken}
+                      {getInstallCommand()}
                     </div>
                     <button 
-                      onClick={() => navigator.clipboard.writeText(`curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}`)}
+                      onClick={() => navigator.clipboard.writeText(getInstallCommand())}
                       className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
                       Copy
                     </button>
