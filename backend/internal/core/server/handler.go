@@ -84,3 +84,25 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	response.Success(w, http.StatusOK, map[string]string{"id": id, "status": "deleted"})
 }
+
+func (h *Handler) ListMetrics(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Server ID is required")
+		return
+	}
+
+	metrics, err := h.svc.ListMetrics(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or no metrics available")
+		return
+	}
+
+	response.Success(w, http.StatusOK, metrics)
+}

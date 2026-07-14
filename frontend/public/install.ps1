@@ -19,6 +19,7 @@ $ApiUrl = "$ServerUrl/api/v1"
 $BinaryUrl = "$ServerUrl/datrixops-agent-windows-amd64.exe"
 $InstallDir = "C:\Program Files\DatrixOps"
 $ExePath = "$InstallDir\datrixops-agent.exe"
+$BatPath = "$InstallDir\run_agent.bat"
 
 # Create directory
 if (-not (Test-Path $InstallDir)) {
@@ -28,10 +29,19 @@ if (-not (Test-Path $InstallDir)) {
 Write-Host "📥 Downloading DatrixOps Agent..."
 Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
 
+Write-Host "⚙️ Creating wrapper script..."
+$BatContent = @"
+@echo off
+set DATRIXOPS_SERVER_URL=$ApiUrl
+set DATRIXOPS_AGENT_TOKEN=$Token
+"$ExePath"
+"@
+Set-Content -Path $BatPath -Value $BatContent
+
 Write-Host "⚙️ Creating Scheduled Task to run agent on startup..."
 
-# Action: run agent
-$Action = New-ScheduledTaskAction -Execute $ExePath
+# Action: run agent via bat script so env vars are loaded properly
+$Action = New-ScheduledTaskAction -Execute $BatPath
 
 # Trigger: at startup
 $Trigger = New-ScheduledTaskTrigger -AtStartup
@@ -41,11 +51,6 @@ $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 
 # System account
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-# Environment Variables (Note: Windows Scheduled Tasks don't natively inject custom env vars easily without a wrapper script. 
-# So we will set Machine-level environment variables for the SYSTEM user to pick up).
-[Environment]::SetEnvironmentVariable("DATRIXOPS_SERVER_URL", $ApiUrl, "Machine")
-[Environment]::SetEnvironmentVariable("DATRIXOPS_AGENT_TOKEN", $Token, "Machine")
 
 # Register task
 $TaskName = "DatrixOpsAgent"

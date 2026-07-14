@@ -25,5 +25,6 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 
 	mux.HandleFunc("GET /api/v1/servers", withAuth(h.List))
 	mux.HandleFunc("POST /api/v1/servers", withAuth(h.Create))
+	mux.HandleFunc("GET /api/v1/servers/{id}/metrics", withAuth(h.ListMetrics))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", withAuth(h.Delete))
 }

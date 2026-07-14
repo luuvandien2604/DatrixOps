@@ -153,10 +153,10 @@ export default function ServersPage() {
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors" title="SSH">
+                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
                             <TerminalSquare className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors" title="View Logs">
+                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="View Logs (Sắp ra mắt)">
                             <FileText className="w-4 h-4" />
                           </button>
                           <button 
