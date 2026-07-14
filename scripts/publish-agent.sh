@@ -211,7 +211,7 @@ param (
 )
 
 Write-Host "=================================================" -ForegroundColor Cyan
-Write-Host "🚀 DatrixOps Agent Installer (Windows)" -ForegroundColor Cyan
+Write-Host "[*] DatrixOps Agent Installer (Windows)" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 
 # Ensure admin rights
@@ -233,19 +233,19 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
 
-Write-Host "📥 Downloading DatrixOps Agent..."
+Write-Host "[*] Downloading DatrixOps Agent..."
 Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
 
-Write-Host "⚙️ Creating wrapper script..."
-$BatContent = @"
-@echo off
-set DATRIXOPS_SERVER_URL=$ApiUrl
-set DATRIXOPS_AGENT_TOKEN=$Token
-"$ExePath"
-"@
-Set-Content -Path $BatPath -Value $BatContent
+Write-Host "[*] Creating wrapper script..."
+$BatContent = @(
+    "@echo off",
+    "set DATRIXOPS_SERVER_URL=$ApiUrl",
+    "set DATRIXOPS_AGENT_TOKEN=$Token",
+    "`"$ExePath`""
+)
+$BatContent | Set-Content -Path $BatPath -Encoding ASCII
 
-Write-Host "⚙️ Creating Scheduled Task to run agent on startup..."
+Write-Host "[*] Creating Scheduled Task to run agent on startup..."
 
 # Action: run agent via bat script so env vars are loaded properly
 $Action = New-ScheduledTaskAction -Execute $BatPath
@@ -264,11 +264,11 @@ $TaskName = "DatrixOpsAgent"
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal | Out-Null
 
-Write-Host "🔄 Starting DatrixOps Agent..."
+Write-Host "[*] Starting DatrixOps Agent..."
 Start-ScheduledTask -TaskName $TaskName
 
-Write-Host "✅ DatrixOps Agent installed successfully!" -ForegroundColor Green
-Write-Host "📡 The agent is now running in the background and will auto-start on boot."
+Write-Host "[OK] DatrixOps Agent installed successfully!" -ForegroundColor Green
+Write-Host "[*] The agent is now running in the background and will auto-start on boot."
 Write-Host "=================================================" -ForegroundColor Cyan
 EOF
 
