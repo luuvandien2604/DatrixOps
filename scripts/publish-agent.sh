@@ -20,23 +20,23 @@ cd "$AGENT_DIR"
 
 # 1. Compile for Linux AMD64
 echo " - Linux (amd64)"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o "$PUBLIC_DIR/datrixops-agent-linux-amd64" ./cmd/agent
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=1.1.0" -o "$PUBLIC_DIR/datrixops-agent-linux-amd64" ./cmd/agent
 
 # 2. Compile for Linux ARM64
 echo " - Linux (arm64)"
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o "$PUBLIC_DIR/datrixops-agent-linux-arm64" ./cmd/agent
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=1.1.0" -o "$PUBLIC_DIR/datrixops-agent-linux-arm64" ./cmd/agent
 
 # 3. Compile for macOS AMD64
 echo " - macOS (amd64)"
-CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o "$PUBLIC_DIR/datrixops-agent-darwin-amd64" ./cmd/agent
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=1.1.0" -o "$PUBLIC_DIR/datrixops-agent-darwin-amd64" ./cmd/agent
 
 # 4. Compile for macOS ARM64
 echo " - macOS (arm64)"
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o "$PUBLIC_DIR/datrixops-agent-darwin-arm64" ./cmd/agent
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=1.1.0" -o "$PUBLIC_DIR/datrixops-agent-darwin-arm64" ./cmd/agent
 
 # 5. Compile for Windows AMD64
 echo " - Windows (amd64)"
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o "$PUBLIC_DIR/datrixops-agent-windows-amd64.exe" ./cmd/agent
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X main.Version=1.1.0" -o "$PUBLIC_DIR/datrixops-agent-windows-amd64.exe" ./cmd/agent
 
 
 echo "📜 Generating install scripts..."
@@ -78,6 +78,10 @@ else
     echo "❌ Error: Unsupported architecture: $ARCH"
     exit 1
 fi
+
+echo "🛑 Stopping existing service (if any)..."
+systemctl stop datrixops-agent 2>/dev/null || true
+pkill -f datrixops-agent 2>/dev/null || true
 
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
 curl -sL -o "$INSTALL_DIR/datrixops-agent" "$BINARY_URL"
@@ -152,6 +156,10 @@ else
     echo "❌ Error: Unsupported architecture: $ARCH"
     exit 1
 fi
+
+echo "🛑 Stopping existing service (if any)..."
+launchctl unload $PLIST_FILE 2>/dev/null || true
+pkill -f datrixops-agent 2>/dev/null || true
 
 mkdir -p "$INSTALL_DIR"
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
@@ -232,6 +240,12 @@ $BatPath = "$InstallDir\run_agent.bat"
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
+
+# Stop existing task and process if running
+$TaskName = "DatrixOpsAgent"
+Write-Host "[*] Stopping existing agent (if running)..."
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null
+Stop-Process -Name "datrixops-agent" -Force -ErrorAction SilentlyContinue | Out-Null
 
 Write-Host "[*] Downloading DatrixOps Agent..."
 Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath

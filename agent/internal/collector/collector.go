@@ -22,6 +22,7 @@ type Metrics struct {
 	DiskRead    uint64    `json:"disk_read"`   // bytes per sec
 	DiskWrite   uint64    `json:"disk_write"`  // bytes per sec
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
+	Version     string    `json:"version"`
 }
 
 var (

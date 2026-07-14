@@ -32,6 +32,10 @@ else
     exit 1
 fi
 
+echo "🛑 Stopping existing service (if any)..."
+systemctl stop datrixops-agent 2>/dev/null || true
+pkill -f datrixops-agent 2>/dev/null || true
+
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
 curl -sL -o "$INSTALL_DIR/datrixops-agent" "$BINARY_URL"
 chmod +x "$INSTALL_DIR/datrixops-agent"

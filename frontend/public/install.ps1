@@ -26,6 +26,12 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
 
+# Stop existing task and process if running
+$TaskName = "DatrixOpsAgent"
+Write-Host "[*] Stopping existing agent (if running)..."
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null
+Stop-Process -Name "datrixops-agent" -Force -ErrorAction SilentlyContinue | Out-Null
+
 Write-Host "[*] Downloading DatrixOps Agent..."
 Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
 

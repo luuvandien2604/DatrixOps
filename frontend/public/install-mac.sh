@@ -32,6 +32,10 @@ else
     exit 1
 fi
 
+echo "🛑 Stopping existing service (if any)..."
+launchctl unload $PLIST_FILE 2>/dev/null || true
+pkill -f datrixops-agent 2>/dev/null || true
+
 mkdir -p "$INSTALL_DIR"
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
 curl -sL -o "$INSTALL_DIR/datrixops-agent" "$BINARY_URL"

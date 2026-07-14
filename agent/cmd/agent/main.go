@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -66,14 +68,42 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 		return
 	}
 
+	metrics.Version = Version
+
 	if includeSnapshot {
 		metrics.Snapshot = collector.CollectSnapshot()
 	}
 
-	if err := apiClient.SendHeartbeat(ctx, metrics); err != nil {
+	updateRequired, err := apiClient.SendHeartbeat(ctx, metrics)
+	if err != nil {
 		log.Printf("Failed to send heartbeat: %v", err)
 		return
 	}
 
 	log.Printf("Heartbeat sent successfully. CPU: %.2f%%, RAM: %d/%d", metrics.CPUUsage, metrics.MemoryUsed, metrics.MemoryTotal)
+
+	if updateRequired {
+		log.Println("🔄 Update required! Initiating auto-update...")
+		triggerAutoUpdate()
+	}
+}
+
+func triggerAutoUpdate() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-Command", "Invoke-WebRequest -Uri https://datrixops.vandien.space/install.ps1 -OutFile install.ps1; .\\install.ps1 -Token $env:DATRIXOPS_AGENT_TOKEN")
+	} else if runtime.GOOS == "darwin" {
+		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install-mac.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
+	} else {
+		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
+	}
+
+	// Detach process
+	if err := cmd.Start(); err != nil {
+		log.Printf("❌ Failed to start auto-update: %v", err)
+		return
+	}
+
+	log.Println("🚀 Auto-update script launched. Exiting agent to allow replacement...")
+	os.Exit(0)
 }

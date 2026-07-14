@@ -47,6 +47,7 @@ type Snapshot struct {
 }
 
 type HeartbeatRequest struct {
+	Version     string  `json:"version"`
 	OSName      string  `json:"os_name"`
 	CPUCores    int     `json:"cpu_cores"`
 	CPUUsage    float64 `json:"cpu_usage"`
@@ -130,5 +131,13 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		println("Error inserting metric:", err.Error())
 	}
 
-	response.Success(w, http.StatusOK, map[string]string{"status": "recorded"})
+	updateRequired := false
+	if req.Version != "" && req.Version != "1.1.0" {
+		updateRequired = true
+	}
+
+	response.Success(w, http.StatusOK, map[string]interface{}{
+		"status":          "recorded",
+		"update_required": updateRequired,
+	})
 }

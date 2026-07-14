@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os/exec"
