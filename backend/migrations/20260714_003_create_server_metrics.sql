@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS server_metrics (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
     cpu_usage DOUBLE PRECISION NOT NULL DEFAULT 0,
     memory_used BIGINT NOT NULL DEFAULT 0,
