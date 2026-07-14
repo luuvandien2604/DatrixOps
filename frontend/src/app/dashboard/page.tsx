@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { 
   Server, CheckCircle2, XCircle, Cpu, HardDrive, Wifi, AlertTriangle, 
-  RefreshCw, TerminalSquare, FileText, UploadCloud, DatabaseBackup, ArrowUpRight, Play
+  RefreshCw, TerminalSquare, FileText, UploadCloud, DatabaseBackup, ArrowUpRight, Play, Trash2
 } from 'lucide-react';
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
@@ -34,6 +34,9 @@ export default function MonitoringDashboard() {
   
   const [serverToRestart, setServerToRestart] = useState<string | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
+  
+  const [serverToDelete, setServerToDelete] = useState<{id: string, name: string} | null>(null);
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
   
   const router = useRouter();
 
@@ -320,6 +323,11 @@ export default function MonitoringDashboard() {
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
                             <Play className="w-4 h-4 rotate-180" />
                           </button>
+                          <button 
+                            onClick={() => setServerToDelete({id: server.id, name: server.name})}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -467,6 +475,60 @@ export default function MonitoringDashboard() {
                   }} 
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Restart Server
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Dialog */}
+      {serverToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
+              <Trash2 className="w-6 h-6 text-rose-500" />
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Delete Server?</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-[var(--color-muted)] mb-4">
+                You are about to permanently delete the server <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong>. All associated metrics and data will be lost.
+              </p>
+              <div className="mb-6">
+                <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
+                  Type "{serverToDelete.name}" to confirm
+                </label>
+                <input 
+                  type="text" 
+                  value={confirmDeleteText}
+                  onChange={(e) => setConfirmDeleteText(e.target.value)}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
+                  placeholder={serverToDelete.name}
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => {
+                    setServerToDelete(null);
+                    setConfirmDeleteText('');
+                  }} 
+                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  Cancel
+                </button>
+                <button 
+                  disabled={confirmDeleteText !== serverToDelete.name}
+                  onClick={async () => {
+                    try {
+                      await apiClient(`/servers/${serverToDelete.id}`, { method: 'DELETE' });
+                      fetchServers();
+                      setServerToDelete(null);
+                      setConfirmDeleteText('');
+                    } catch (err: any) {
+                      alert(err.message || 'Error deleting server');
+                    }
+                  }} 
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
+                  Delete Server
                 </button>
               </div>
             </div>
