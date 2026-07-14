@@ -12,11 +12,13 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/agent_api"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/logger"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/scheduler"
 )
 
 // Build-time variables (injected via -ldflags)
@@ -77,6 +79,13 @@ func main() {
 	auth.RegisterRoutes(mux, c.DB, c.Config)
 	server.RegisterRoutes(mux, c.DB, c.Config)
 	agent_api.RegisterRoutes(mux, c.DB, c.Config)
+	website.RegisterRoutes(mux, c.DB, c.Config.JWTSecret)
+
+	// --- Scheduler ---
+	websiteRepo := website.NewRepository(c.DB.DB)
+	websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
+	websiteJob.Start()
+	defer websiteJob.Stop()
 
 	// --- Middleware ---
 	var handler http.Handler = mux

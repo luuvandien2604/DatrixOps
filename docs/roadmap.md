@@ -26,21 +26,21 @@
 
 ## 🔵 Sprint 1 — Bootstrap
 
-- [ ] Monorepo: backend/, agent/, frontend/
-- [ ] Docker Compose + PostgreSQL
-- [ ] Backend: main.go, Container, HTTP server
-- [ ] Backend: platform/ (config, database, logger, middleware, response)
-- [ ] Health / Ready / Version endpoints
-- [ ] Agent: main.go + config skeleton
-- [ ] Frontend: Next.js init
-- [ ] README.md, .gitignore
+- [x] Monorepo: backend/, agent/, frontend/
+- [x] Docker Compose + PostgreSQL
+- [x] Backend: main.go, Container, HTTP server
+- [x] Backend: platform/ (config, database, logger, middleware, response)
+- [x] Health / Ready / Version endpoints
+- [x] Agent: main.go + config skeleton
+- [x] Frontend: Next.js init
+- [x] README.md, .gitignore
 
 ## 🔵 Sprint 2 — Core
 
-- [ ] Module `auth` (login, register, JWT, refresh token)
-- [ ] Module `server` (CRUD, agent_token)
-- [ ] Agent v1 (heartbeat, OS info)
-- [ ] Dashboard v1 (server list, online/offline)
+- [x] Module `auth` (login, register, JWT, refresh token)
+- [x] Module `server` (CRUD, agent_token)
+- [x] Agent v1 (heartbeat, OS info)
+- [x] Dashboard v1 (server list, online/offline)
 
 **Cột mốc:** Thêm server → cài agent → nhìn thấy 🟢 online.
 
@@ -48,9 +48,9 @@
 
 ## 🟢 Sprint 3 — Monitoring
 
-- [ ] Module `metric` (CPU, RAM, Disk, Load Average)
-- [ ] Agent v2 (metric collectors)
-- [ ] Dashboard: biểu đồ Recharts
+- [x] Module `metric` (CPU, RAM, Disk, Load Average)
+- [x] Agent v2 (metric collectors)
+- [x] Dashboard: biểu đồ Recharts
 
 **Cột mốc:** Mở dashboard → thấy CPU 15%, RAM 42%.
 

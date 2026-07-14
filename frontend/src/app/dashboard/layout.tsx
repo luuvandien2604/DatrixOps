@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { 
   LayoutDashboard, Server, Activity, Bell, Zap, FileText, Network, Shield,
-  Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, Sun, User
+  Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, Sun, User, Globe
 } from 'lucide-react';
 
 const navGroups = [
@@ -15,6 +15,7 @@ const navGroups = [
     items: [
       { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
       { name: 'Servers', path: '/dashboard/servers', icon: Server },
+      { name: 'Website & SSL', path: '/dashboard/websites', icon: Globe },
       { name: 'Monitoring', path: '/dashboard/monitoring', icon: Activity },
       { name: 'Alerts', path: '/dashboard/alerts', icon: Bell },
       { name: 'Performance', path: '/dashboard/performance', icon: Zap },
