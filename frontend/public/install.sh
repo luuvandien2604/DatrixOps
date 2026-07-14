@@ -2,14 +2,12 @@
 set -e
 
 echo "================================================="
-echo "🚀 DatrixOps Agent Installer"
+echo "🚀 DatrixOps Agent Installer (Linux)"
 echo "================================================="
 
-# Variables
 TOKEN=$1
 SERVER_URL="https://datrixops.vandien.space"
 API_URL="${SERVER_URL}/api/v1"
-BINARY_URL="${SERVER_URL}/datrixops-agent"
 INSTALL_DIR="/usr/local/bin"
 SERVICE_FILE="/etc/systemd/system/datrixops-agent.service"
 
@@ -21,6 +19,16 @@ fi
 
 if [ "$EUID" -ne 0 ]; then
     echo "❌ Error: Please run as root (use sudo)."
+    exit 1
+fi
+
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    BINARY_URL="${SERVER_URL}/datrixops-agent-linux-amd64"
+elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    BINARY_URL="${SERVER_URL}/datrixops-agent-linux-arm64"
+else
+    echo "❌ Error: Unsupported architecture: $ARCH"
     exit 1
 fi
 
@@ -52,7 +60,6 @@ systemctl daemon-reload
 systemctl enable datrixops-agent
 systemctl restart datrixops-agent
 
-echo ""
 echo "✅ DatrixOps Agent installed successfully!"
 echo "📡 The agent is now running in the background and sending metrics to your dashboard."
 echo "   To check logs, run: sudo journalctl -u datrixops-agent -f"
