@@ -14,22 +14,12 @@ const docsNavigation = [
     items: [
       { name: 'Giới thiệu', path: '/docs' },
       { name: 'Cài đặt Agent', path: '/docs/installation' },
-      { name: 'Yêu cầu hệ thống', path: '/docs/requirements' },
-    ]
-  },
-  {
-    title: 'Tính năng',
-    items: [
-      { name: 'Giám sát tài nguyên', path: '/docs/monitoring' },
-      { name: 'Cảnh báo (Alerts)', path: '/docs/alerts' },
-      { name: 'Phân quyền', path: '/docs/permissions' },
     ]
   },
   {
     title: 'Khắc phục sự cố',
     items: [
-      { name: 'Server báo "Chưa có dữ liệu"', path: '/docs/troubleshooting/no-data' },
-      { name: 'Lỗi cài đặt Windows', path: '/docs/troubleshooting/windows' },
+      { name: 'Lỗi thường gặp', path: '/docs/troubleshooting' },
     ]
   }
 ];

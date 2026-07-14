@@ -65,6 +65,7 @@ export default function LandingPage() {
             <a href="#features" className="hover:text-white transition-colors">Tính năng</a>
             <a href="#how-it-works" className="hover:text-white transition-colors">Cách hoạt động</a>
             <a href="#pricing" className="hover:text-white transition-colors">Bảng giá</a>
+            <Link href="/docs" className="hover:text-white transition-colors text-blue-400">Tài liệu (Docs)</Link>
           </nav>
 
           <div className="flex items-center gap-4">
