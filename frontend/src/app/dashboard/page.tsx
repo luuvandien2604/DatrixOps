@@ -28,6 +28,9 @@ export default function MonitoringDashboard() {
   
   // Modals state
   const [isAddServerModalOpen, setIsAddServerModalOpen] = useState(false);
+  const [newServerName, setNewServerName] = useState('');
+  const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
+  
   const [serverToRestart, setServerToRestart] = useState<string | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
   
@@ -320,29 +323,69 @@ export default function MonitoringDashboard() {
           <div className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
             <div className="flex justify-between items-center p-6 border-b border-white/5">
               <h2 className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
-              <button onClick={() => setIsAddServerModalOpen(false)} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+              <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
             <div className="p-6">
-              <p className="text-[var(--color-muted)] mb-6">
-                Run the following command on your server (Ubuntu/Debian/CentOS) as root to install the DatrixOps Agent. It will automatically connect to this dashboard.
-              </p>
-              <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
-                <div className="text-emerald-400 whitespace-nowrap">
-                  curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- YOUR_API_TOKEN
-                </div>
-                <button 
-                  onClick={() => navigator.clipboard.writeText('curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- YOUR_API_TOKEN')}
-                  className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-[var(--foreground)] rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
-                  Copy
-                </button>
-              </div>
-              <div className="flex justify-end">
-                <button onClick={() => setIsAddServerModalOpen(false)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-[var(--foreground)] rounded-lg font-medium transition-colors">
-                  Done
-                </button>
-              </div>
+              {!generatedAgentToken ? (
+                <>
+                  <p className="text-[var(--color-muted)] mb-6">
+                    Mỗi server sẽ được cấp một <strong>Agent Token</strong> riêng biệt để định danh. Vui lòng nhập tên gợi nhớ cho server này:
+                  </p>
+                  <div className="mb-6">
+                    <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Server Name</label>
+                    <input
+                      type="text"
+                      value={newServerName}
+                      onChange={(e) => setNewServerName(e.target.value)}
+                      className="w-full px-4 py-3 bg-white/[0.02] border border-white/10 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-[var(--foreground)] outline-none transition-all text-sm"
+                      placeholder="production-db-01"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button onClick={() => setIsAddServerModalOpen(false)} className="px-6 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!newServerName.trim()) return;
+                        try {
+                          const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
+                          setGeneratedAgentToken(res.agent_token);
+                        } catch (err: any) {
+                          alert(err.message || 'Error generating token');
+                        }
+                      }}
+                      disabled={!newServerName.trim()}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 rounded-lg font-medium transition-colors">
+                      Generate Install Command
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-[var(--color-muted)] mb-6">
+                    Đã tạo thành công. Hãy chạy câu lệnh (Run as root) dưới đây trên server của bạn để cài đặt Agent.
+                  </p>
+                  <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
+                    <div className="text-emerald-400 whitespace-nowrap">
+                      curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- {generatedAgentToken}
+                    </div>
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(`curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}`)}
+                      className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
+                      Copy
+                    </button>
+                  </div>
+                  <div className="flex justify-end">
+                    <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); fetchServers(); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors">
+                      Done
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
