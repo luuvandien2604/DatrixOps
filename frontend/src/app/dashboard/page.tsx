@@ -25,6 +25,12 @@ const mockChartData = Array.from({ length: 24 }, (_, i) => ({
 export default function MonitoringDashboard() {
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modals state
+  const [isAddServerModalOpen, setIsAddServerModalOpen] = useState(false);
+  const [serverToRestart, setServerToRestart] = useState<string | null>(null);
+  const [confirmRestartText, setConfirmRestartText] = useState('');
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -52,7 +58,7 @@ export default function MonitoringDashboard() {
   const KPICard = ({ title, value, icon: Icon, colorClass, subtitle }: any) => (
     <div className="glass-card p-5 group hover:-translate-y-1 transition-all duration-300">
       <div className="flex justify-between items-start mb-2">
-        <h3 className="text-sm font-medium text-[var(--color-muted)] group-hover:text-white transition-colors">{title}</h3>
+        <h3 className="text-sm font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">{title}</h3>
         <div className={`p-2 rounded-lg ${colorClass} bg-opacity-10`}>
           <Icon className={`w-5 h-5 ${colorClass.replace('bg-', 'text-')}`} />
         </div>
@@ -68,12 +74,12 @@ export default function MonitoringDashboard() {
     <div className="space-y-6 pb-20">
       <div className="flex justify-between items-end mb-2">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Overview</h1>
+          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Overview</h1>
           <p className="text-sm text-[var(--color-muted)]">Real-time infrastructure monitoring</p>
         </div>
         <div className="flex gap-2">
           <button onClick={fetchServers} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-gray-400'}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Refresh
           </button>
         </div>
@@ -96,7 +102,7 @@ export default function MonitoringDashboard() {
         {/* CPU Line Chart (Chiếm 2 cột) */}
         <div className="glass-card p-6 lg:col-span-2">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-semibold text-white flex items-center gap-2">
+            <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
               <Cpu className="w-5 h-5 text-blue-400" />
               CPU Usage Trend (24h)
             </h3>
@@ -120,7 +126,7 @@ export default function MonitoringDashboard() {
         {/* Memory Area Chart */}
         <div className="glass-card p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-semibold text-white flex items-center gap-2">
+            <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
               <DatabaseBackup className="w-5 h-5 text-emerald-400" />
               Memory Usage
             </h3>
@@ -147,7 +153,7 @@ export default function MonitoringDashboard() {
         {/* Network Throughput */}
         <div className="glass-card p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-semibold text-white flex items-center gap-2">
+            <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
               <Wifi className="w-5 h-5 text-purple-400" />
               Network Throughput
             </h3>
@@ -168,7 +174,7 @@ export default function MonitoringDashboard() {
         {/* Disk I/O */}
         <div className="glass-card p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-semibold text-white flex items-center gap-2">
+            <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
               <HardDrive className="w-5 h-5 text-amber-400" />
               Disk I/O
             </h3>
@@ -189,7 +195,7 @@ export default function MonitoringDashboard() {
         {/* Recent Alerts Feed */}
         <div className="glass-card p-6 flex flex-col">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-semibold text-white flex items-center gap-2">
+            <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-rose-400" />
               Recent Alerts
             </h3>
@@ -204,8 +210,10 @@ export default function MonitoringDashboard() {
       {/* 3. Server Status Table */}
       <div className="glass-card overflow-hidden">
         <div className="p-6 border-b border-white/5 flex justify-between items-center">
-          <h3 className="font-semibold text-white text-lg">Server Status</h3>
-          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">
+          <h3 className="font-semibold text-[var(--foreground)] text-lg">Server Status</h3>
+          <button 
+            onClick={() => setIsAddServerModalOpen(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20">
             + Add Server
           </button>
         </div>
@@ -240,14 +248,14 @@ export default function MonitoringDashboard() {
                   return (
                     <tr key={server.id} className="hover:bg-white/[0.02] transition-colors group">
                       <td className="py-4 px-6">
-                        <div className="font-medium text-white">{server.name}</div>
+                        <div className="font-medium text-[var(--foreground)]">{server.name}</div>
                         <div className="text-xs text-[var(--color-muted)] font-mono mt-1">ID: {server.id.substring(0,8)}...</div>
                       </td>
-                      <td className="py-4 px-6 font-mono text-sm text-gray-300">
+                      <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
                         {server.ip_address || '—'}
                       </td>
                       <td className="py-4 px-6 text-sm">
-                        <div className="text-gray-300">{osInfo ? osInfo.os_name : 'Unknown'}</div>
+                        <div className="text-[var(--foreground)]">{osInfo ? osInfo.os_name : 'Unknown'}</div>
                         <div className="text-xs text-[var(--color-muted)] mt-1">{osInfo ? `${osInfo.cpu_cores} Cores` : '—'}</div>
                       </td>
                       <td className="py-4 px-6">
@@ -274,7 +282,7 @@ export default function MonitoringDashboard() {
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${
                           server.status === 'online' 
                             ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                            : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
                         }`}>
                           <div className={`w-1.5 h-1.5 rounded-full ${
                             server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
@@ -284,13 +292,15 @@ export default function MonitoringDashboard() {
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-gray-400 hover:text-white transition-colors" title="SSH">
+                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors" title="SSH">
                             <TerminalSquare className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-gray-400 hover:text-white transition-colors" title="View Logs">
+                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors" title="View Logs">
                             <FileText className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
+                          <button 
+                            onClick={() => setServerToRestart(server.name)}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
                             <Play className="w-4 h-4 rotate-180" />
                           </button>
                         </div>
@@ -303,6 +313,89 @@ export default function MonitoringDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Add Server Modal */}
+      {isAddServerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-white/5">
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
+              <button onClick={() => setIsAddServerModalOpen(false)} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-[var(--color-muted)] mb-6">
+                Run the following command on your server (Ubuntu/Debian/CentOS) as root to install the DatrixOps Agent. It will automatically connect to this dashboard.
+              </p>
+              <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
+                <div className="text-emerald-400 whitespace-nowrap">
+                  curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- YOUR_API_TOKEN
+                </div>
+                <button 
+                  onClick={() => navigator.clipboard.writeText('curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- YOUR_API_TOKEN')}
+                  className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-[var(--foreground)] rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
+                  Copy
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={() => setIsAddServerModalOpen(false)} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restart Confirm Dialog */}
+      {serverToRestart && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
+              <AlertTriangle className="w-6 h-6 text-rose-500" />
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Restart Server?</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-[var(--color-muted)] mb-4">
+                You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart}</strong>. This action may cause downtime.
+              </p>
+              <div className="mb-6">
+                <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
+                  Type "{serverToRestart}" to confirm
+                </label>
+                <input 
+                  type="text" 
+                  value={confirmRestartText}
+                  onChange={(e) => setConfirmRestartText(e.target.value)}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
+                  placeholder={serverToRestart}
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => {
+                    setServerToRestart(null);
+                    setConfirmRestartText('');
+                  }} 
+                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  Cancel
+                </button>
+                <button 
+                  disabled={confirmRestartText !== serverToRestart}
+                  onClick={() => {
+                    alert(`Restart command sent to ${serverToRestart}`);
+                    setServerToRestart(null);
+                    setConfirmRestartText('');
+                  }} 
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  Restart Server
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

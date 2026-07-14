@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { 
   LayoutDashboard, Server, Activity, Bell, Zap, FileText, Network, Shield,
-  Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, User
+  Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, Sun, User
 } from 'lucide-react';
 
 const navGroups = [
@@ -39,6 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { theme, setTheme } = useTheme();
 
   // Mock health percentage for the signature gradient (95% healthy)
   const healthPercentage = 95;
@@ -52,17 +54,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login');
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans overflow-hidden flex flex-col transition-colors duration-300">
       {/* Signature Element - Health Bar */}
       <div className={`h-[3px] w-full bg-gradient-to-r ${signatureColor} z-50`} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className={`bg-[var(--background)] border-r border-white/5 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[240px]' : 'w-[80px]'}`}>
-          <div className="p-4 flex items-center justify-between border-b border-white/5 h-16 shrink-0">
+        <aside className={`bg-[var(--background)] border-r border-[var(--color-muted)]/10 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[240px]' : 'w-[80px]'}`}>
+          <div className="p-4 flex items-center justify-between border-b border-[var(--color-muted)]/10 h-16 shrink-0">
             {isSidebarOpen ? (
-              <h1 className="text-xl font-bold text-white tracking-wide truncate">DatrixOps</h1>
+              <h1 className="text-xl font-bold text-[var(--foreground)] tracking-wide truncate">DatrixOps</h1>
             ) : (
               <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center mx-auto text-white font-bold">D</div>
             )}
@@ -85,8 +91,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <Link href={item.path}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 ${
                             isActive 
-                              ? 'bg-blue-500/10 text-blue-400 relative' 
-                              : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                              ? 'bg-blue-500/10 text-blue-500 relative' 
+                              : 'text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)]'
                           }`}
                         >
                           {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-blue-500 rounded-r-full" />}
@@ -101,10 +107,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ))}
           </div>
 
-          <div className="p-4 border-t border-white/5">
+          <div className="p-4 border-t border-[var(--color-muted)]/10">
             <Link href="/dashboard/settings"
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-white/5 hover:text-gray-200 transition-all ${
-                pathname === '/dashboard/settings' ? 'bg-blue-500/10 text-blue-400' : ''
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)] transition-all ${
+                pathname === '/dashboard/settings' ? 'bg-blue-500/10 text-blue-500' : ''
               }`}
             >
               <Settings className={`w-5 h-5 shrink-0 ${!isSidebarOpen && 'mx-auto'}`} />
@@ -116,33 +122,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Top Nav */}
-          <header className="h-16 shrink-0 border-b border-white/5 flex items-center justify-between px-6 bg-[var(--background)]/80 backdrop-blur-md z-10">
+          <header className="h-16 shrink-0 border-b border-[var(--color-muted)]/10 flex items-center justify-between px-6 bg-[var(--background)]/80 backdrop-blur-md z-10 transition-colors duration-300">
             <div className="flex items-center gap-4 flex-1">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-400 hover:text-white lg:hidden">
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[var(--color-muted)] hover:text-[var(--foreground)] lg:hidden">
                 <List className="w-5 h-5" />
               </button>
               
               {/* Search */}
               <div className="relative max-w-md w-full hidden md:block">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
                 <input 
                   type="text" 
                   placeholder="Search (⌘K)" 
-                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-gray-500"
+                  className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-[var(--color-muted)]"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-5">
-              <button className="text-gray-400 hover:text-white transition-colors relative">
+              <button className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors relative">
                 <Bell className="w-5 h-5" />
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[10px] font-bold flex items-center justify-center rounded-full text-white border border-[var(--background)]">
                   3
                 </span>
               </button>
               
-              <button className="text-gray-400 hover:text-white transition-colors">
-                <Moon className="w-5 h-5" />
+              <button onClick={toggleTheme} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+                {theme === 'light' ? <Moon className="w-5 h-5 animate-in spin-in-180" /> : <Sun className="w-5 h-5 animate-in spin-in-180" />}
               </button>
               
               <div className="flex items-center gap-3 pl-5 border-l border-white/10 cursor-pointer group" onClick={handleLogout} title="Click to logout">

@@ -7,6 +7,12 @@
   --foreground-muted: #8B96A5;
 }
 
+.light {
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --foreground-muted: #64748B;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -28,6 +34,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 @layer utilities {
@@ -38,6 +45,12 @@ body {
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
     border-radius: var(--radius-lg);
   }
+  
+  .light .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+  }
 
   .glass-card-sm {
     background: rgba(255, 255, 255, 0.04);
@@ -45,5 +58,11 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
     border-radius: var(--radius-md);
+  }
+  
+  .light .glass-card-sm {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
   }
 }
