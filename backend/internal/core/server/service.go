@@ -37,6 +37,6 @@ func (s *Service) DeleteServer(ctx context.Context, id, userID string) error {
 	return s.repo.Delete(ctx, id, userID)
 }
 
-func (s *Service) ListMetrics(ctx context.Context, id, userID string) ([]*ServerMetric, error) {
-	return s.repo.ListMetrics(ctx, id, userID)
+func (s *Service) ListMetrics(ctx context.Context, serverID, userID, timeRange string) ([]*ServerMetric, error) {
+	return s.repo.ListMetrics(ctx, serverID, userID, timeRange)
 }

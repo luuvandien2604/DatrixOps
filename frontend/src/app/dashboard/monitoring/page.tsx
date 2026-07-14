@@ -11,6 +11,7 @@ import {
 export default function MonitoringPage() {
   const [servers, setServers] = useState<any[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string>('');
+  const [timeRange, setTimeRange] = useState<string>('15m');
   const [metrics, setMetrics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -34,25 +35,32 @@ export default function MonitoringPage() {
     }
   };
 
-  // 2. Fetch metrics when selectedServerId changes or periodically
+  // 2. Fetch metrics when selectedServerId or timeRange changes or periodically
   useEffect(() => {
     if (!selectedServerId) return;
 
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 10000); // refresh every 10s
     return () => clearInterval(interval);
-  }, [selectedServerId]);
+  }, [selectedServerId, timeRange]);
 
   const fetchMetrics = async () => {
     try {
       setLoading(true);
-      const data = await apiClient(`/servers/${selectedServerId}/metrics`);
+      const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
       
       // Format data for charts
       const formatted = data.map((m: any) => {
-        const time = new Date(m.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const date = new Date(m.created_at);
+        let timeLabel = '';
+        if (timeRange === '7d' || timeRange === '24h') {
+            timeLabel = date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        } else {
+            timeLabel = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        
         return {
-          time,
+          time: timeLabel,
           cpu: Number(m.cpu_usage.toFixed(1)),
           ram: m.memory_total > 0 ? Number(((m.memory_used / m.memory_total) * 100).toFixed(1)) : 0,
           netIn: m.net_in / 1024, // KB/s
@@ -70,6 +78,18 @@ export default function MonitoringPage() {
   };
 
   const selectedServerName = servers.find(s => s.id === selectedServerId)?.name || 'Unknown Server';
+
+  const timeRangeOptions = [
+    { value: '15m', label: 'Last 15 minutes' },
+    { value: '1h', label: 'Last 1 hour' },
+    { value: '3h', label: 'Last 3 hours' },
+    { value: '6h', label: 'Last 6 hours' },
+    { value: '12h', label: 'Last 12 hours' },
+    { value: '24h', label: 'Last 24 hours' },
+    { value: '7d', label: 'Last 7 days' },
+  ];
+  
+  const selectedTimeRangeLabel = timeRangeOptions.find(o => o.value === timeRange)?.label || 'Last 15 minutes';
 
   return (
     <div className="space-y-6 pb-20">
@@ -90,6 +110,17 @@ export default function MonitoringPage() {
               <option value="" disabled>Select a server</option>
               {servers.map(s => (
                 <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+              ))}
+            </select>
+          </div>
+          <div className="relative">
+            <select 
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="pl-4 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+            >
+              {timeRangeOptions.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -117,7 +148,7 @@ export default function MonitoringPage() {
                 <Cpu className="w-5 h-5 text-blue-400" />
                 CPU Usage (%)
               </h3>
-              <span className="text-xs text-[var(--color-muted)]">Last 100 ticks</span>
+              <span className="text-xs text-[var(--color-muted)]">{selectedTimeRangeLabel}</span>
             </div>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">

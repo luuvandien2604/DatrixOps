@@ -106,8 +106,8 @@ func (r *Repository) Delete(ctx context.Context, id, userID string) error {
 	return nil
 }
 
-// ListMetrics returns historical metrics for a specific server (last 1 hour max 60 points)
-func (r *Repository) ListMetrics(ctx context.Context, serverID, userID string) ([]*ServerMetric, error) {
+// ListMetrics returns historical metrics for a specific server downsampled based on the requested time range.
+func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRange string) ([]*ServerMetric, error) {
 	// Verify ownership first
 	var count int
 	err := r.db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM servers WHERE id = $1 AND user_id = $2", serverID, userID).Scan(&count)
@@ -115,43 +115,60 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID string) (
 		return nil, fmt.Errorf("server not found or no permission")
 	}
 
-	// Downsample to 1 minute resolution for the last 1 hour
-	// To keep it simple for now, just order by created_at DESC limit 60, but since agent sends every 10s, 60 points = 10 mins.
-	// Let's just limit to 100 points for the chart.
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, server_id, cpu_usage, memory_used, memory_total, net_in, net_out, disk_read, disk_write, created_at
-		 FROM server_metrics WHERE server_id = $1 ORDER BY created_at ASC LIMIT 100`, // We want ASC for charts, but we need the latest 100.
-		serverID,
-	)
-	
-	if err != nil {
-		// Try using a subquery to get latest 100 then sort ASC
-		rows, err = r.db.Pool.Query(ctx,
-			`SELECT * FROM (
-				SELECT id, server_id, cpu_usage, memory_used, memory_total, net_in, net_out, disk_read, disk_write, created_at
-		 		FROM server_metrics WHERE server_id = $1 ORDER BY created_at DESC LIMIT 100
-			) as sub ORDER BY created_at ASC`,
-			serverID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("list metrics query: %w", err)
-		}
-	} else {
-		// Wait, if the first query succeeds, it gives the oldest 100. We want the newest 100 sorted ASC.
-		// So we always should use the subquery.
-		rows.Close()
-		rows, err = r.db.Pool.Query(ctx,
-			`SELECT * FROM (
-				SELECT id, server_id, cpu_usage, memory_used, memory_total, net_in, net_out, disk_read, disk_write, created_at
-		 		FROM server_metrics WHERE server_id = $1 ORDER BY created_at DESC LIMIT 100
-			) as sub ORDER BY created_at ASC`,
-			serverID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("list metrics subquery: %w", err)
-		}
+	var interval string
+	var bucketSeconds int
+
+	// Define time range and downsampling resolution
+	switch timeRange {
+	case "15m":
+		interval = "15 minutes"
+		bucketSeconds = 10 // Raw 10s points
+	case "1h":
+		interval = "1 hour"
+		bucketSeconds = 60 // 1 minute buckets
+	case "3h":
+		interval = "3 hours"
+		bucketSeconds = 120 // 2 minute buckets
+	case "6h":
+		interval = "6 hours"
+		bucketSeconds = 300 // 5 minute buckets
+	case "12h":
+		interval = "12 hours"
+		bucketSeconds = 600 // 10 minute buckets
+	case "24h":
+		interval = "24 hours"
+		bucketSeconds = 900 // 15 minute buckets
+	case "7d":
+		interval = "7 days"
+		bucketSeconds = 3600 // 1 hour buckets
+	default:
+		interval = "15 minutes" // Default to 15m
+		bucketSeconds = 10
 	}
 
+	query := fmt.Sprintf(`
+		SELECT 
+			COALESCE(MAX(id::text), gen_random_uuid()::text) as id,
+			server_id,
+			COALESCE(AVG(cpu_usage), 0) as cpu_usage,
+			COALESCE(AVG(memory_used)::bigint, 0) as memory_used,
+			COALESCE(AVG(memory_total)::bigint, 0) as memory_total,
+			COALESCE(AVG(net_in)::bigint, 0) as net_in,
+			COALESCE(AVG(net_out)::bigint, 0) as net_out,
+			COALESCE(AVG(disk_read)::bigint, 0) as disk_read,
+			COALESCE(AVG(disk_write)::bigint, 0) as disk_write,
+			to_timestamp(floor(extract(epoch from created_at) / %d) * %d) AS bucket_time
+		FROM server_metrics 
+		WHERE server_id = $1 
+		  AND created_at >= NOW() - INTERVAL '%s'
+		GROUP BY server_id, bucket_time
+		ORDER BY bucket_time ASC
+	`, bucketSeconds, bucketSeconds, interval)
+
+	rows, err := r.db.Pool.Query(ctx, query, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("list metrics downsampled query: %w", err)
+	}
 	defer rows.Close()
 
 	var metrics []*ServerMetric
@@ -161,6 +178,10 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID string) (
 			return nil, fmt.Errorf("list metrics scan: %w", err)
 		}
 		metrics = append(metrics, &m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list metrics rows err: %w", err)
 	}
 
 	if metrics == nil {

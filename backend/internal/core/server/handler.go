@@ -98,7 +98,7 @@ func (h *Handler) ListMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics, err := h.svc.ListMetrics(r.Context(), id, userID)
+	metrics, err := h.svc.ListMetrics(r.Context(), id, userID, r.URL.Query().Get("range"))
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or no metrics available")
 		return
