@@ -19,6 +19,33 @@ func NewHandler(db *database.DB) *Handler {
 	return &Handler{db: db}
 }
 
+type TopProcess struct {
+	PID  int32   `json:"pid"`
+	Name string  `json:"name"`
+	CPU  float64 `json:"cpu"`
+	RAM  float32 `json:"ram"`
+	User string  `json:"user"`
+}
+
+type ServiceStatus struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+type SystemInfo struct {
+	Kernel         string `json:"kernel"`
+	Uptime         uint64 `json:"uptime"`
+	PublicIP       string `json:"public_ip"`
+	Virtualization string `json:"virtualization"`
+}
+
+type Snapshot struct {
+	SystemInfo    *SystemInfo     `json:"system_info,omitempty"`
+	TopProcesses  []TopProcess    `json:"top_processes,omitempty"`
+	Services      []ServiceStatus `json:"services,omitempty"`
+	PackageUpdate int             `json:"package_update"`
+}
+
 type HeartbeatRequest struct {
 	OSName      string  `json:"os_name"`
 	CPUCores    int     `json:"cpu_cores"`
@@ -29,6 +56,7 @@ type HeartbeatRequest struct {
 	NetOut      uint64  `json:"net_out"`
 	DiskRead    uint64  `json:"disk_read"`
 	DiskWrite   uint64  `json:"disk_write"`
+	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +87,14 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	osInfoBytes, _ := json.Marshal(req)
 	osInfoStr := string(osInfoBytes)
 
+	var snapshotStr string
+	if req.Snapshot != nil {
+		snapshotBytes, _ := json.Marshal(req.Snapshot)
+		snapshotStr = string(snapshotBytes)
+	} else {
+		snapshotStr = "{}"
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -67,10 +103,11 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		`UPDATE servers 
 		 SET status = 'online', 
 		     os_info = $1, 
+		     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
 		     updated_at = NOW() 
 		 WHERE agent_token = $2
 		 RETURNING id`,
-		osInfoStr, agentToken,
+		osInfoStr, agentToken, snapshotStr,
 	).Scan(&serverID)
 
 	if err != nil {

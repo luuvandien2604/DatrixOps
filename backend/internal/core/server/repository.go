@@ -24,6 +24,7 @@ type Server struct {
 	AgentToken string    `json:"agent_token,omitempty"` // only shown on creation
 	Status     string    `json:"status"`
 	OSInfo     *string   `json:"os_info,omitempty"`     // JSON raw message or string
+	Snapshot   *string   `json:"snapshot,omitempty"`    // JSONB raw message
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -66,7 +67,7 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 // ListByUser returns all servers for a specific user.
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, error) {
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, user_id, name, ip_address, status, os_info, created_at, updated_at 
+		`SELECT id, user_id, name, ip_address, status, os_info, snapshot, created_at, updated_at 
 		 FROM servers WHERE user_id = $1 ORDER BY created_at DESC`,
 		userID,
 	)
@@ -78,7 +79,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	var servers []*Server
 	for rows.Next() {
 		var s Server
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("list servers scan: %w", err)
 		}
 		servers = append(servers, &s)
@@ -92,6 +93,21 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 		servers = make([]*Server, 0)
 	}
 	return servers, nil
+}
+
+// GetByID returns a single server by ID and UserID.
+func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, error) {
+	var s Server
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT id, user_id, name, ip_address, status, os_info, snapshot, created_at, updated_at 
+		 FROM servers WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("get server by id: %w", err)
+	}
+	return &s, nil
 }
 
 // Delete removes a server by ID and UserID.

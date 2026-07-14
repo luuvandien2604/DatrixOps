@@ -19,8 +19,9 @@ type Metrics struct {
 	MemoryUsed  uint64  `json:"memory_used"`
 	NetIn       uint64  `json:"net_in"`      // bytes per sec
 	NetOut      uint64  `json:"net_out"`     // bytes per sec
-	DiskRead    uint64  `json:"disk_read"`   // bytes per sec
-	DiskWrite   uint64  `json:"disk_write"`  // bytes per sec
+	DiskRead    uint64    `json:"disk_read"`   // bytes per sec
+	DiskWrite   uint64    `json:"disk_write"`  // bytes per sec
+	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 }
 
 var (

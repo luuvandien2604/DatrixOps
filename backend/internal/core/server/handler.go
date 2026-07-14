@@ -64,6 +64,28 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, servers)
 }
 
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Server ID is required")
+		return
+	}
+
+	server, err := h.svc.GetServer(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+
+	response.Success(w, http.StatusOK, server)
+}
+
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {

@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { 
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye
 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
@@ -109,7 +110,9 @@ export default function ServersPage() {
                   return (
                     <tr key={server.id} className="hover:bg-white/[0.02] transition-colors group">
                       <td className="py-4 px-6">
-                        <div className="font-medium text-[var(--foreground)]">{server.name}</div>
+                        <Link href={`/dashboard/servers/${server.id}`} className="font-medium text-[var(--foreground)] hover:text-blue-400 transition-colors">
+                          {server.name}
+                        </Link>
                         <div className="text-xs text-[var(--color-muted)] font-mono mt-1">ID: {server.id.substring(0,8)}...</div>
                       </td>
                       <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
@@ -153,6 +156,9 @@ export default function ServersPage() {
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
+                            <Eye className="w-4 h-4" />
+                          </button>
                           <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
                             <TerminalSquare className="w-4 h-4" />
                           </button>

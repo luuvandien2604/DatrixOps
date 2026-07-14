@@ -33,12 +33,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Initial heartbeat immediately on startup
-	sendHeartbeat(ctx, apiClient)
+	// Initial heartbeat immediately on startup with snapshot
+	sendHeartbeat(ctx, apiClient, true)
 
 	// Ticker for periodic heartbeats
 	ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
 	defer ticker.Stop()
+
+	var lastSnapshotTime time.Time
 
 	for {
 		select {
@@ -46,16 +48,26 @@ func main() {
 			log.Println("Agent shutting down gracefully...")
 			return
 		case <-ticker.C:
-			sendHeartbeat(ctx, apiClient)
+			// Send snapshot every 60 seconds
+			sendSnapshot := false
+			if time.Since(lastSnapshotTime) >= 60*time.Second {
+				sendSnapshot = true
+				lastSnapshotTime = time.Now()
+			}
+			sendHeartbeat(ctx, apiClient, sendSnapshot)
 		}
 	}
 }
 
-func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient) {
+func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeSnapshot bool) {
 	metrics, err := collector.Collect()
 	if err != nil {
 		log.Printf("Error collecting metrics: %v", err)
 		return
+	}
+
+	if includeSnapshot {
+		metrics.Snapshot = collector.CollectSnapshot()
 	}
 
 	if err := apiClient.SendHeartbeat(ctx, metrics); err != nil {
