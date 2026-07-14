@@ -82,7 +82,7 @@ func main() {
 	website.RegisterRoutes(mux, c.DB, c.Config.JWTSecret)
 
 	// --- Scheduler ---
-	websiteRepo := website.NewRepository(c.DB.DB)
+	websiteRepo := website.NewRepository(c.DB)
 	websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
 	websiteJob.Start()
 	defer websiteJob.Stop()

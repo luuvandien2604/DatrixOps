@@ -2,8 +2,9 @@ package website
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
 
 type Repository interface {
@@ -15,10 +16,10 @@ type Repository interface {
 }
 
 type repository struct {
-	db *sql.DB
+	db *database.DB
 }
 
-func NewRepository(db *sql.DB) Repository {
+func NewRepository(db *database.DB) Repository {
 	return &repository{db: db}
 }
 
@@ -28,7 +29,7 @@ func (r *repository) Create(ctx context.Context, w *Website) error {
 		VALUES ($1, $2, $3)
 		RETURNING id, status, created_at, updated_at
 	`
-	return r.db.QueryRowContext(ctx, query, w.UserID, w.Name, w.URL).
+	return r.db.Pool.QueryRow(ctx, query, w.UserID, w.Name, w.URL).
 		Scan(&w.ID, &w.Status, &w.CreatedAt, &w.UpdatedAt)
 }
 
@@ -39,7 +40,7 @@ func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website
 		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	rows, err := r.db.Pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,12 +59,11 @@ func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website
 
 func (r *repository) Delete(ctx context.Context, id string, userID string) error {
 	query := `DELETE FROM websites WHERE id = $1 AND user_id = $2`
-	res, err := r.db.ExecContext(ctx, query, id, userID)
+	res, err := r.db.Pool.Exec(ctx, query, id, userID)
 	if err != nil {
 		return err
 	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
+	if res.RowsAffected() == 0 {
 		return errors.New("website not found or unauthorized")
 	}
 	return nil
@@ -74,7 +74,7 @@ func (r *repository) ListAll(ctx context.Context) ([]Website, error) {
 		SELECT id, user_id, name, url, status, ssl_issuer, ssl_valid_to, ssl_days_remaining, last_check, created_at, updated_at
 		FROM websites
 	`
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.db.Pool.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +97,6 @@ func (r *repository) UpdateStatus(ctx context.Context, w *Website) error {
 		SET status = $1, ssl_issuer = $2, ssl_valid_to = $3, ssl_days_remaining = $4, last_check = $5, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $6
 	`
-	_, err := r.db.ExecContext(ctx, query, w.Status, w.SSLIssuer, w.SSLValidTo, w.SSLDaysRemaining, w.LastCheck, w.ID)
+	_, err := r.db.Pool.Exec(ctx, query, w.Status, w.SSLIssuer, w.SSLValidTo, w.SSLDaysRemaining, w.LastCheck, w.ID)
 	return err
 }

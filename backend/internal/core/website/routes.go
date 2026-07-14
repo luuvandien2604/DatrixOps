@@ -8,11 +8,11 @@ import (
 )
 
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, jwtSecret string) {
-	repo := NewRepository(db.DB)
+	repo := NewRepository(db)
 	svc := NewService(repo)
 	h := NewHandler(svc)
 
-	authMiddleware := middleware.Auth(jwtSecret)
+	authMiddleware := middleware.RequireAuth([]byte(jwtSecret))
 
 	mux.Handle("GET /api/v1/websites", authMiddleware(http.HandlerFunc(h.List)))
 	mux.Handle("POST /api/v1/websites", authMiddleware(http.HandlerFunc(h.Create)))
