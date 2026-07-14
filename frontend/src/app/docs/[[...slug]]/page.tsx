@@ -5,18 +5,20 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookOpen } from 'lucide-react';
 
-export default async function DocsPage({ params }: { params: { slug?: string[] } }) {
-  const { slug } = params;
+export default async function DocsPage({ params }: { params: Promise<{ slug?: string[] }> }) {
+  const { slug } = await params;
   
   // Mặc định load file introduction.md nếu truy cập /docs
   const filePath = slug && slug.length > 0 
-    ? path.join(process.cwd(), '..', 'docs', 'user-guide', `${slug.join('/')}.md`)
-    : path.join(process.cwd(), '..', 'docs', 'user-guide', 'introduction.md');
+    ? path.join(process.cwd(), 'public', 'docs', 'user-guide', `${slug.join('/')}.md`)
+    : path.join(process.cwd(), 'public', 'docs', 'user-guide', 'introduction.md');
 
   let content = '';
   try {
+    console.log("Trying to read file at:", filePath);
     content = fs.readFileSync(filePath, 'utf8');
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error reading file:", error.message);
     notFound();
   }
 
