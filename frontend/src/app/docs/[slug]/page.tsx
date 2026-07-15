@@ -2,12 +2,7 @@ import { getDocBySlug, getAllDocs } from '@/lib/docs';
 import { notFound } from 'next/navigation';
 import DocViewer from './DocViewer';
 
-export async function generateStaticParams() {
-  const docs = getAllDocs();
-  return docs.map((doc) => ({
-    slug: doc.slug,
-  }));
-}
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const doc = getDocBySlug(params.slug);

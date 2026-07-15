@@ -1,6 +1,8 @@
 import { getAllDocs } from '@/lib/docs';
 import DocsList from './DocsList';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Tài liệu hướng dẫn | DatrixOps',
   description: 'Hướng dẫn sử dụng và thông tin về hệ thống DatrixOps',
