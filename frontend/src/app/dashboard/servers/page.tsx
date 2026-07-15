@@ -28,6 +28,9 @@ export default function ServersPage() {
   const [editMetaServer, setEditMetaServer] = useState<any>(null);
   const [editGroupName, setEditGroupName] = useState('');
   const [editTags, setEditTags] = useState('');
+
+  // Update Agent
+  const [serverToUpdate, setServerToUpdate] = useState<{id: string, name: string} | null>(null);
   
   const router = useRouter();
 
@@ -182,6 +185,11 @@ export default function ServersPage() {
                           </button>
                           <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
                             <TerminalSquare className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => setServerToUpdate({id: server.id, name: server.name})}
+                            className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors" title="Update Agent">
+                            <RefreshCw className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={() => setServerToRestart(server.name)}
@@ -454,6 +462,46 @@ export default function ServersPage() {
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
                 >
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Agent Confirm Dialog */}
+      {serverToUpdate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-emerald-500/30 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-emerald-500/5">
+              <RefreshCw className="w-6 h-6 text-emerald-500" />
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
+            </div>
+            <div className="p-6">
+              <p className="text-[var(--color-muted)] mb-6">
+                You are about to send an update command to <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>. The agent will restart and download the latest version automatically.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => setServerToUpdate(null)} 
+                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => {
+                    try {
+                      await apiClient(`/servers/${serverToUpdate.id}/tasks`, { 
+                        method: 'POST',
+                        data: { type: 'agent_update', payload: '{}' }
+                      });
+                      alert(`Update command sent to ${serverToUpdate.name}`);
+                      setServerToUpdate(null);
+                    } catch (err: any) {
+                      alert(err.message || 'Error updating agent');
+                    }
+                  }} 
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors">
+                  Start Update
                 </button>
               </div>
             </div>

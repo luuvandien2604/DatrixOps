@@ -135,6 +135,11 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		cmd = exec.Command("docker", "restart", containerID)
 	case "docker_logs":
 		cmd = exec.Command("docker", "logs", "--tail", "100", containerID)
+	case "agent_update":
+		log.Println("Received agent_update task. Initiating auto-update...")
+		go triggerAutoUpdate()
+		statusStr = "completed"
+		resultStr = "Auto update initiated"
 	default:
 		statusStr = "failed"
 		resultStr = "Unknown task type: " + task.Type
