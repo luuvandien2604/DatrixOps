@@ -8,6 +8,7 @@ import {
   LayoutDashboard, Server, Activity, Bell, Zap, FileText, Network, Shield,
   Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, Sun, User, Globe
 } from 'lucide-react';
+import { getUserRole } from '@/lib/apiClient';
 
 const navGroups = [
   {
@@ -42,6 +43,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const { theme, setTheme } = useTheme();
+  
+  const [role, setRole] = useState('user');
+  React.useEffect(() => {
+    setRole(getUserRole());
+  }, []);
 
   // Mock health percentage for the signature gradient (95% healthy)
   const healthPercentage = 95;
@@ -78,7 +84,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
-            {navGroups.map((group, idx) => (
+            {navGroups.map((group, idx) => {
+              if (group.title === 'QUẢN LÝ' && role !== 'superadmin') {
+                return null;
+              }
+              return (
               <div key={idx} className="mb-6">
                 {isSidebarOpen && (
                   <h3 className="px-5 text-xs font-semibold text-[var(--color-muted)] mb-3 tracking-wider">
@@ -98,16 +108,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               : 'text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)]'
                           }`}
                         >
-                          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-blue-500 rounded-r-full" />}
-                          <Icon className={`w-5 h-5 shrink-0 ${!isSidebarOpen && 'mx-auto'}`} />
-                          {isSidebarOpen && <span className="text-sm font-medium truncate">{item.name}</span>}
+                          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1/2 bg-blue-500 rounded-r" />}
+                          <Icon className="w-5 h-5 shrink-0" />
+                          {isSidebarOpen && <span className="font-medium">{item.name}</span>}
                         </Link>
                       </li>
                     );
                   })}
                 </ul>
               </div>
-            ))}
+            )})}
           </div>
 
           <div className="p-4 border-t border-[var(--color-muted)]/10">

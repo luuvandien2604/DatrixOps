@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/agent_api"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/admin"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/audit"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/apikey"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/logger"
@@ -79,13 +83,30 @@ func main() {
 	auth.RegisterRoutes(mux, c.DB, c.Config)
 	server.RegisterRoutes(mux, c.DB, c.Config)
 	agent_api.RegisterRoutes(mux, c.DB, c.Config)
+	alert.RegisterRoutes(mux, c.DB, c.Config)
 	website.RegisterRoutes(mux, c.DB, c.Config.JWTSecret)
+
+	adminRepo := admin.NewRepository(c.DB)
+	adminHandler := admin.NewHandler(adminRepo)
+	admin.RegisterRoutes(mux, adminHandler, c.DB, []byte(c.Config.JWTSecret))
+
+	auditRepo := audit.NewRepository(c.DB)
+	auditHandler := audit.NewHandler(auditRepo)
+	audit.RegisterRoutes(mux, auditHandler, c.DB, []byte(c.Config.JWTSecret))
+
+	apiKeyRepo := apikey.NewRepository(c.DB)
+	apiKeyHandler := apikey.NewHandler(apiKeyRepo)
+	apikey.RegisterRoutes(mux, apiKeyHandler, c.DB, []byte(c.Config.JWTSecret))
 
 	// --- Scheduler ---
 	websiteRepo := website.NewRepository(c.DB)
 	websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
 	websiteJob.Start()
 	defer websiteJob.Stop()
+
+	alertJob := scheduler.NewAlertJob(c.DB, log)
+	alertJob.Start()
+	defer alertJob.Stop()
 
 	// --- Middleware ---
 	var handler http.Handler = mux

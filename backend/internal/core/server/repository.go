@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,6 +22,8 @@ type Server struct {
 	UserID     string    `json:"user_id"`
 	Name       string    `json:"name"`
 	IPAddress  *string   `json:"ip_address,omitempty"`
+	GroupName  *string   `json:"group_name,omitempty"`
+	Tags       []string  `json:"tags"`
 	AgentToken string    `json:"agent_token,omitempty"` // only shown on creation
 	Status     string    `json:"status"`
 	OSInfo     *string   `json:"os_info,omitempty"`     // JSON raw message or string
@@ -51,26 +54,28 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 	}
 
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO servers (user_id, name, ip_address, agent_token) 
-		 VALUES ($1, $2, $3, $4) 
-		 RETURNING id, user_id, name, ip_address, agent_token, status, created_at, updated_at`,
+		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags) 
+		 VALUES ($1, $2, $3, $4, '[]'::jsonb) 
+		 RETURNING id, user_id, name, ip_address, group_name, agent_token, status, created_at, updated_at`,
 		userID, name, ip, agentToken,
-	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.AgentToken, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("create server: %w", err)
 	}
-
+	s.Tags = make([]string, 0)
 	return &s, nil
 }
 
-// ListByUser returns all servers for a specific user.
+// ListByUser returns all servers for a given user.
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, error) {
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, user_id, name, ip_address, status, os_info, snapshot, created_at, updated_at 
-		 FROM servers WHERE user_id = $1 ORDER BY created_at DESC`,
-		userID,
-	)
+	query := `
+		SELECT id, user_id, name, ip_address, group_name, tags, status, os_info, snapshot, created_at, updated_at 
+		FROM servers 
+		WHERE user_id = $1 
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list servers query: %w", err)
 	}
@@ -79,20 +84,49 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	var servers []*Server
 	for rows.Next() {
 		var s Server
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("list servers scan: %w", err)
+		var tagsBytes []byte
+		err := rows.Scan(
+			&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
+			&s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan server: %w", err)
 		}
-		servers = append(servers, &s)
-	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list servers iterate: %w", err)
+		s.Tags = make([]string, 0)
+		if len(tagsBytes) > 0 {
+			if err := json.Unmarshal(tagsBytes, &s.Tags); err != nil {
+				return nil, fmt.Errorf("unmarshal tags: %w", err)
+			}
+		}
+
+		servers = append(servers, &s)
 	}
 
 	if servers == nil {
 		servers = make([]*Server, 0)
 	}
+
 	return servers, nil
+}
+
+// UpdateServerMeta updates the group_name and tags of a server.
+func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, groupName string, tags []string) error {
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+	tag, err := r.db.Pool.Exec(ctx,
+		"UPDATE servers SET group_name = $1, tags = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4",
+		groupName, tagsJSON, id, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update server meta: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("server not found or no permission")
+	}
+	return nil
 }
 
 // GetByID returns a single server by ID and UserID.

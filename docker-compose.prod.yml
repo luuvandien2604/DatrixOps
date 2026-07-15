@@ -38,6 +38,8 @@ services:
       - backend
     ports:
       - "3000:3000"
+    volumes:
+      - ./docs:/app/docs:ro
     # To make this work properly across networks, you might need to rebuild 
     # the frontend with the correct NEXT_PUBLIC_API_URL pointing to your VPS IP if not using a reverse proxy.
 

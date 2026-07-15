@@ -23,6 +23,7 @@ type User struct {
 	ID           string
 	Email        string
 	PasswordHash string
+	Role         string
 	CreatedAt    time.Time
 }
 
@@ -45,12 +46,12 @@ func (r *Repository) UserCount(ctx context.Context) (int, error) {
 }
 
 // CreateUser inserts a new user.
-func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string) (*User, error) {
+func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, 
-		"INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, password_hash, created_at",
-		email, passwordHash,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt)
+		"INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, password_hash, role, created_at",
+		email, passwordHash, role,
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 	
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
@@ -62,9 +63,9 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash string)
 func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, 
-		"SELECT id, email, password_hash, created_at FROM users WHERE email = $1",
+		"SELECT id, email, password_hash, role, created_at FROM users WHERE email = $1",
 		email,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 	
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -79,9 +80,9 @@ func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, 
 func (r *Repository) FindUserByID(ctx context.Context, id string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, 
-		"SELECT id, email, password_hash, created_at FROM users WHERE id = $1",
+		"SELECT id, email, password_hash, role, created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 	
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

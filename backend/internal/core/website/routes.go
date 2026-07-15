@@ -12,9 +12,15 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, jwtSecret string) {
 	svc := NewService(repo)
 	h := NewHandler(svc)
 
-	authMiddleware := middleware.RequireAuth([]byte(jwtSecret))
+	authMiddleware := middleware.RequireAuth([]byte(jwtSecret), db)
 
-	mux.Handle("GET /api/v1/websites", authMiddleware(http.HandlerFunc(h.List)))
-	mux.Handle("POST /api/v1/websites", authMiddleware(http.HandlerFunc(h.Create)))
-	mux.Handle("DELETE /api/v1/websites/{id}", authMiddleware(http.HandlerFunc(h.Delete)))
+	withAuth := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			authMiddleware(http.HandlerFunc(handlerFunc)).ServeHTTP(w, r)
+		}
+	}
+
+	mux.Handle("GET /api/v1/websites", withAuth(h.List))
+	mux.Handle("POST /api/v1/websites", withAuth(h.Create))
+	mux.Handle("DELETE /api/v1/websites/{id}", withAuth(h.Delete))
 }

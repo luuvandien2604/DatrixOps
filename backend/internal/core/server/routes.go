@@ -14,7 +14,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	svc := NewService(repo)
 	h := NewHandler(svc)
 
-	authMiddleware := middleware.RequireAuth([]byte(cfg.JWTSecret))
+	authMiddleware := middleware.RequireAuth([]byte(cfg.JWTSecret), db)
 
 	// Helper to wrap handler with auth middleware
 	withAuth := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
@@ -27,5 +27,8 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("GET /api/v1/servers/{id}", withAuth(h.Get))
 	mux.HandleFunc("POST /api/v1/servers", withAuth(h.Create))
 	mux.HandleFunc("GET /api/v1/servers/{id}/metrics", withAuth(h.ListMetrics))
+	mux.HandleFunc("POST /api/v1/servers/{id}/tasks", withAuth(h.CreateTask))
+	mux.HandleFunc("GET /api/v1/servers/{id}/tasks/{taskId}", withAuth(h.GetTask))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", withAuth(h.Delete))
+	mux.HandleFunc("PUT /api/v1/servers/{id}/meta", withAuth(h.UpdateMeta))
 }

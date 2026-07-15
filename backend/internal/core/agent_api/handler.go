@@ -39,11 +39,22 @@ type SystemInfo struct {
 	Virtualization string `json:"virtualization"`
 }
 
+type DockerContainer struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Image  string `json:"image"`
+	State  string `json:"state"`
+	Status string `json:"status"`
+	CPU    string `json:"cpu"`
+	RAM    string `json:"ram"`
+}
+
 type Snapshot struct {
-	SystemInfo    *SystemInfo     `json:"system_info,omitempty"`
-	TopProcesses  []TopProcess    `json:"top_processes,omitempty"`
-	Services      []ServiceStatus `json:"services,omitempty"`
-	PackageUpdate int             `json:"package_update"`
+	SystemInfo       *SystemInfo       `json:"system_info,omitempty"`
+	TopProcesses     []TopProcess      `json:"top_processes,omitempty"`
+	Services         []ServiceStatus   `json:"services,omitempty"`
+	DockerContainers []DockerContainer `json:"docker_containers,omitempty"`
+	PackageUpdate    int               `json:"package_update"`
 }
 
 type HeartbeatRequest struct {
@@ -58,6 +69,12 @@ type HeartbeatRequest struct {
 	DiskRead    uint64  `json:"disk_read"`
 	DiskWrite   uint64  `json:"disk_write"`
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
+}
+
+type ServerTask struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Payload string `json:"payload"` // JSON string
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
@@ -136,8 +153,75 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		updateRequired = true
 	}
 
+	// Fetch pending tasks
+	rows, err := h.db.Pool.Query(ctx,
+		`UPDATE server_tasks SET status = 'processing', updated_at = NOW() 
+		 WHERE server_id = $1 AND status = 'pending' 
+		 RETURNING id, type, payload::text`,
+		serverID,
+	)
+	var tasks []ServerTask
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t ServerTask
+			if err := rows.Scan(&t.ID, &t.Type, &t.Payload); err == nil {
+				tasks = append(tasks, t)
+			}
+		}
+	}
+
+	if tasks == nil {
+		tasks = make([]ServerTask, 0)
+	}
+
 	response.Success(w, http.StatusOK, map[string]interface{}{
 		"status":          "recorded",
 		"update_required": updateRequired,
+		"tasks":           tasks,
 	})
+}
+
+type ReportTaskRequest struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"` // completed, failed
+	Result string `json:"result"`
+}
+
+func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing Authorization header")
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
+		return
+	}
+	agentToken := parts[1]
+
+	var req ReportTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	// Verify server owns the task
+	var taskID string
+	err := h.db.Pool.QueryRow(r.Context(),
+		`UPDATE server_tasks SET status = $1, result = $2::jsonb, updated_at = NOW()
+		 FROM servers 
+		 WHERE server_tasks.id = $3 AND servers.id = server_tasks.server_id AND servers.agent_token = $4
+		 RETURNING server_tasks.id`,
+		req.Status, req.Result, req.TaskID, agentToken,
+	).Scan(&taskID)
+
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Task not found or permission denied")
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{"status": "recorded"})
 }

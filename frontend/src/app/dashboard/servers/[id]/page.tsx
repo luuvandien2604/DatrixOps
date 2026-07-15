@@ -25,10 +25,21 @@ interface SystemInfo {
   virtualization: string;
 }
 
+interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  cpu: string;
+  ram: string;
+}
+
 interface Snapshot {
   system_info?: SystemInfo;
   top_processes?: TopProcess[];
   services?: ServiceStatus[];
+  docker_containers?: DockerContainer[];
   package_update?: number;
 }
 
@@ -48,6 +59,7 @@ export default function ServerDetailsPage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
 
   useEffect(() => {
     fetchServer();
@@ -66,6 +78,49 @@ export default function ServerDetailsPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDockerAction = async (action: string, containerId: string) => {
+    try {
+      if (action === 'docker_logs') {
+        setLogsModal({isOpen: true, containerId, logs: 'Đang gửi yêu cầu lấy logs...', loading: true});
+      } else {
+        alert(`Đã gửi lệnh ${action} cho container ${containerId}. Sẽ mất khoảng 15s để thực thi.`);
+      }
+
+      const task = await apiClient(`/servers/${params.id}/tasks`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: action,
+          payload: JSON.stringify({ container_id: containerId })
+        })
+      });
+
+      if (action === 'docker_logs') {
+        // Poll for task result
+        const pollLogs = setInterval(async () => {
+          try {
+            const res = await apiClient(`/servers/${params.id}/tasks/${task.id}`);
+            if (res.status === 'completed') {
+              setLogsModal({isOpen: true, containerId, logs: res.result || 'Không có logs.', loading: false});
+              clearInterval(pollLogs);
+            } else if (res.status === 'failed') {
+              setLogsModal({isOpen: true, containerId, logs: `Lỗi khi lấy logs:\n${res.result}`, loading: false});
+              clearInterval(pollLogs);
+            }
+          } catch (e) {
+             console.error("Lỗi poll logs", e);
+             clearInterval(pollLogs);
+          }
+        }, 2000); // poll every 2s
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Có lỗi xảy ra khi gửi lệnh.');
+      if (action === 'docker_logs') {
+        setLogsModal(prev => ({...prev, loading: false, logs: 'Có lỗi xảy ra khi gọi API.'}));
+      }
     }
   };
 
@@ -107,6 +162,7 @@ export default function ServerDetailsPage() {
         <button onClick={() => setActiveTab('overview')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tổng quan (Overview)</button>
         <button onClick={() => setActiveTab('processes')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'processes' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tiến trình (Processes)</button>
         <button onClick={() => setActiveTab('services')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'services' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Dịch vụ (Services)</button>
+        <button onClick={() => setActiveTab('docker')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'docker' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Docker</button>
       </div>
 
       {activeTab === 'overview' && (
@@ -204,6 +260,78 @@ export default function ServerDetailsPage() {
               Chưa có dữ liệu dịch vụ.
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'docker' && (
+        <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
+          <div className="p-5 border-b border-[var(--border-color)]">
+            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Box className="w-4 h-4" /> DANH SÁCH DOCKER CONTAINERS</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#0B0F14] text-[var(--color-muted)]">
+                <tr>
+                  <th className="px-6 py-3 font-medium">Tên</th>
+                  <th className="px-6 py-3 font-medium">Image</th>
+                  <th className="px-6 py-3 font-medium">Trạng thái</th>
+                  <th className="px-6 py-3 font-medium">CPU %</th>
+                  <th className="px-6 py-3 font-medium">RAM %</th>
+                  <th className="px-6 py-3 font-medium">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border-color)]">
+                {snapshot?.docker_containers?.map(c => (
+                  <tr key={c.id} className="hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-3 font-medium text-[var(--foreground)]">{c.name}</td>
+                    <td className="px-6 py-3 text-[var(--color-muted)] truncate max-w-xs">{c.image}</td>
+                    <td className="px-6 py-3">
+                      <span className={`px-2 py-1 text-xs rounded-full font-medium border ${c.state === 'running' ? 'border-emerald-500/30 text-emerald-500' : 'border-gray-500/30 text-gray-500'}`}>
+                        {c.state.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 text-rose-400">{c.cpu}</td>
+                    <td className="px-6 py-3 text-blue-400">{c.ram}</td>
+                    <td className="px-6 py-3 flex gap-2">
+                      <button onClick={() => handleDockerAction('docker_start', c.id)} className="text-emerald-500 hover:text-emerald-400 text-xs border border-emerald-500/30 px-2 py-1 rounded">Start</button>
+                      <button onClick={() => handleDockerAction('docker_stop', c.id)} className="text-rose-500 hover:text-rose-400 text-xs border border-rose-500/30 px-2 py-1 rounded">Stop</button>
+                      <button onClick={() => handleDockerAction('docker_restart', c.id)} className="text-amber-500 hover:text-amber-400 text-xs border border-amber-500/30 px-2 py-1 rounded">Restart</button>
+                      <button onClick={() => handleDockerAction('docker_logs', c.id)} className="text-blue-500 hover:text-blue-400 text-xs border border-blue-500/30 px-2 py-1 rounded">Logs</button>
+                    </td>
+                  </tr>
+                ))}
+                {!snapshot?.docker_containers?.length && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">Không tìm thấy Docker container nào.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Logs Modal */}
+      {logsModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-[#0B0F14] border border-[var(--border-color)] rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)]">
+              <h3 className="font-semibold text-white">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
+              <button onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} className="text-[var(--color-muted)] hover:text-white transition-colors">
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 font-mono text-sm bg-black text-gray-300 whitespace-pre-wrap">
+              {logsModal.loading ? (
+                <div className="flex items-center gap-3 text-blue-400 animate-pulse">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  {logsModal.logs}
+                </div>
+              ) : (
+                logsModal.logs
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

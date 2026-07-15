@@ -380,7 +380,7 @@ export default function LandingPage() {
                 <li><a href="#features" className="hover:text-white transition-colors">Tính năng</a></li>
                 <li><a href="#pricing" className="hover:text-white transition-colors">Bảng giá</a></li>
                 <li><a href="#" className="hover:text-white transition-colors">Changelog</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Tài liệu API</a></li>
+                <li><Link href="/docs" className="hover:text-white transition-colors">Tài liệu hướng dẫn</Link></li>
               </ul>
             </div>
             

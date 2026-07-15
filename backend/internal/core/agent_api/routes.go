@@ -12,4 +12,5 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	h := NewHandler(db)
 
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", h.Heartbeat)
+	mux.HandleFunc("POST /api/v1/agent/tasks/result", h.ReportTaskResult)
 }

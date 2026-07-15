@@ -28,29 +28,29 @@
 ## 🟡 Đang thực hiện & Chuẩn bị (Phase 3: Deep Monitoring)
 
 **Sprint 5: Giám sát chuyên sâu (Infrastructure & System)**
-- [ ] **Thông tin hệ thống chi tiết:** OS, Kernel, Public/Private IP, Virtualization (KVM/Docker), Uptime.
-- [ ] **Top Processes:** Giám sát các tiến trình đang ngốn CPU/RAM nhất (Gồm PID, Owner, Search).
-- [ ] **Service Status:** Giám sát các dịch vụ như Nginx, MySQL, Redis, Docker (Running/Stopped).
-- [ ] **Package Updates:** Hiển thị số lượng Package hệ thống cần cập nhật và nút Update 1-click.
+- [x] **Thông tin hệ thống chi tiết:** OS, Kernel, Public/Private IP, Virtualization (KVM/Docker), Uptime.
+- [x] **Top Processes:** Giám sát các tiến trình đang ngốn CPU/RAM nhất (Gồm PID, Owner, Search).
+- [x] **Service Status:** Giám sát các dịch vụ như Nginx, MySQL, Redis, Docker (Running/Stopped).
+- [x] **Package Updates:** Hiển thị số lượng Package hệ thống cần cập nhật và nút Update 1-click.
 - [ ] **Cron Monitoring:** Giám sát lịch sử chạy Cronjob (Last run, Next run).
 
 **Sprint 6: Docker Ecosystem**
-- [ ] Auto Discovery: Tự phát hiện Docker Container đang chạy.
-- [ ] Container Metrics: CPU, RAM của từng Container.
-- [ ] Container Controls: Start, Stop, Restart, Pull, Exec.
-- [ ] Xem Logs trực tiếp (Docker logs).
+- [x] Auto Discovery: Tự phát hiện Docker Container đang chạy.
+- [x] Container Metrics: CPU, RAM của từng Container.
+- [x] Container Controls: Start, Stop, Restart, Pull, Exec.
+- [x] Xem Logs trực tiếp (Docker logs).
 
 ---
 
 ## 🟠 Tính năng quản trị & Tự động hoá (Phase 4: Automation & Admin)
 
 **Sprint 7: Alerting & Webhooks**
-- [ ] Rule Engine: Đặt ngưỡng cảnh báo (vd: CPU > 90%, Server Offline, Service Down).
-- [ ] Notification Channels: Gửi cảnh báo qua Telegram, Discord, Slack, Email.
-- [ ] System Webhooks: Gắn webhook để tích hợp hệ thống bên ngoài.
+- [x] Rule Engine: Đặt ngưỡng cảnh báo (vd: CPU > 90%, Server Offline, Service Down).
+- [x] Notification Channels: Gửi cảnh báo qua Telegram, Discord, Slack, Email.
+- [x] System Webhooks: Gắn webhook để tích hợp hệ thống bên ngoài.
 
-**Sprint 8: Quản trị viên (RBAC & Audit)**
-- [ ] Roles: Admin, Operator, Viewer.
+**Sprint 8: Quản trị viên & SaaS (Multi-Tenant & Audit)**
+- [x] Multi-Tenant SaaS & Roles: Hỗ trợ nhiều người dùng đăng ký, tạo Workspace độc lập. Roles: SuperAdmin, User.
 - [ ] Nhóm Server (Group) & Gắn Tag (Production, Vietnam, DB).
 - [ ] Audit Log: Ghi log mọi thao tác (Ai đã restart VPS, xoá file, chạy lệnh).
 - [ ] Public REST API Key: Cấp API Token cho bên thứ 3 gọi vào DatrixOps.

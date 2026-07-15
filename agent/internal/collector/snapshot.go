@@ -35,18 +35,20 @@ type SystemInfo struct {
 }
 
 type Snapshot struct {
-	SystemInfo    *SystemInfo     `json:"system_info,omitempty"`
-	TopProcesses  []TopProcess    `json:"top_processes,omitempty"`
-	Services      []ServiceStatus `json:"services,omitempty"`
-	PackageUpdate int             `json:"package_update"`
+	SystemInfo       *SystemInfo       `json:"system_info,omitempty"`
+	TopProcesses     []TopProcess      `json:"top_processes,omitempty"`
+	Services         []ServiceStatus   `json:"services,omitempty"`
+	DockerContainers []DockerContainer `json:"docker_containers,omitempty"`
+	PackageUpdate    int               `json:"package_update"`
 }
 
 func CollectSnapshot() *Snapshot {
 	return &Snapshot{
-		SystemInfo:    collectSystemInfo(),
-		TopProcesses:  collectTopProcesses(),
-		Services:      collectServices(),
-		PackageUpdate: collectPackageUpdate(),
+		SystemInfo:       collectSystemInfo(),
+		TopProcesses:     collectTopProcesses(),
+		Services:         collectServices(),
+		DockerContainers: collectDockerContainers(),
+		PackageUpdate:    collectPackageUpdate(),
 	}
 }
 

@@ -33,13 +33,15 @@ func NewService(repo *Repository, jwtSecret string) *Service {
 
 // Register creates the first and ONLY user in the system.
 func (s *Service) Register(ctx context.Context, email, password string) (*User, error) {
-	// Single user constraint check
+	// Single user constraint check - REMOVED FOR MULTI-TENANT
 	count, err := s.repo.UserCount(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("check user count: %w", err)
 	}
-	if count > 0 {
-		return nil, ErrRegistrationClosed
+	
+	role := "user"
+	if count == 0 {
+		role = "superadmin"
 	}
 
 	// Check if email somehow exists (race condition guard)
@@ -58,7 +60,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 	}
 
 	// Create user
-	user, err := s.repo.CreateUser(ctx, email, string(hash))
+	user, err := s.repo.CreateUser(ctx, email, string(hash), role)
 	if err != nil {
 		return nil, fmt.Errorf("create user in db: %w", err)
 	}
@@ -86,7 +88,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthResul
 		return nil, ErrInvalidCredentials
 	}
 
-	return s.issueTokens(ctx, user.ID)
+	return s.issueTokens(ctx, user.ID, user.Role)
 }
 
 // Refresh issues a new access token using a valid refresh token.
@@ -104,7 +106,12 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*AuthResult
 	// OR we can rotate it. Let's rotate it for better security.
 	_ = s.repo.DeleteRefreshToken(ctx, refreshToken)
 
-	return s.issueTokens(ctx, rt.UserID)
+	user, err := s.repo.FindUserByID(ctx, rt.UserID)
+	if err != nil || user == nil {
+		return nil, ErrInvalidToken
+	}
+
+	return s.issueTokens(ctx, rt.UserID, user.Role)
 }
 
 // Logout revokes the given refresh token.
@@ -113,12 +120,13 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 }
 
 // issueTokens is a helper to generate JWT and Refresh token.
-func (s *Service) issueTokens(ctx context.Context, userID string) (*AuthResult, error) {
+func (s *Service) issueTokens(ctx context.Context, userID, role string) (*AuthResult, error) {
 	// 1. Generate JWT Access Token (15 minutes)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   userID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": userID,
+		"role": role,
+		"exp": time.Now().Add(15 * time.Minute).Unix(),
+		"iat": time.Now().Unix(),
 	})
 
 	accessToken, err := token.SignedString(s.jwtSecret)

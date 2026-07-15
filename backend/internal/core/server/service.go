@@ -45,3 +45,8 @@ func (s *Service) GetServer(ctx context.Context, id, userID string) (*Server, er
 func (s *Service) ListMetrics(ctx context.Context, serverID, userID, timeRange string) ([]*ServerMetric, error) {
 	return s.repo.ListMetrics(ctx, serverID, userID, timeRange)
 }
+
+// UpdateServerMeta updates group name and tags
+func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, groupName string, tags []string) error {
+	return s.repo.UpdateServerMeta(ctx, id, userID, groupName, tags)
+}

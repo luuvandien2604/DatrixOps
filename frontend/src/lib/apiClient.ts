@@ -34,3 +34,18 @@ export async function apiClient(endpoint: string, options: ApiOptions = {}) {
 
   return result.data;
 }
+
+export function getUserRole(): string {
+  if (typeof window === 'undefined') return 'user';
+  const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+  if (!token) return 'user';
+  
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return 'user';
+    const payload = JSON.parse(atob(payloadBase64));
+    return payload.role || 'user';
+  } catch (e) {
+    return 'user';
+  }
+}

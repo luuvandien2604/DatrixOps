@@ -23,6 +23,11 @@ export default function ServersPage() {
   
   const [serverToDelete, setServerToDelete] = useState<{id: string, name: string} | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
+
+  // Edit Meta
+  const [editMetaServer, setEditMetaServer] = useState<any>(null);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editTags, setEditTags] = useState('');
   
   const router = useRouter();
 
@@ -113,7 +118,14 @@ export default function ServersPage() {
                         <Link href={`/dashboard/servers/${server.id}`} className="font-medium text-[var(--foreground)] hover:text-blue-400 transition-colors">
                           {server.name}
                         </Link>
-                        <div className="text-xs text-[var(--color-muted)] font-mono mt-1">ID: {server.id.substring(0,8)}...</div>
+                        {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {server.tags && server.tags.map((t: string) => (
+                            <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
                         {server.ip_address || '—'}
@@ -159,11 +171,17 @@ export default function ServersPage() {
                           <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
                             <Eye className="w-4 h-4" />
                           </button>
+                          <button 
+                            onClick={() => {
+                              setEditMetaServer(server);
+                              setEditGroupName(server.group_name || '');
+                              setEditTags((server.tags || []).join(', '));
+                            }}
+                            className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors" title="Edit Group & Tags">
+                            <FileText className="w-4 h-4" />
+                          </button>
                           <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
                             <TerminalSquare className="w-4 h-4" />
-                          </button>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="View Logs (Sắp ra mắt)">
-                            <FileText className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={() => setServerToRestart(server.name)}
@@ -382,6 +400,67 @@ export default function ServersPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Meta Confirm Dialog */}
+      {editMetaServer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/30 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/5">
+              <FileText className="w-6 h-6 text-amber-500" />
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
+                <input 
+                  type="text"
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-amber-500"
+                  placeholder="e.g. Production"
+                />
+              </div>
+              <div className="mb-6">
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
+                <input 
+                  type="text"
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-amber-500"
+                  placeholder="e.g. web, database, vietnam"
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => setEditMetaServer(null)}
+                  className="px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors text-[var(--color-muted)]"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => {
+                    const tagsArray = editTags.split(',').map(t => t.trim()).filter(Boolean);
+                    try {
+                      await apiClient(`/servers/${editMetaServer.id}/meta`, {
+                        method: 'PUT',
+                        data: { group_name: editGroupName.trim(), tags: tagsArray }
+                      });
+                      fetchServers();
+                      setEditMetaServer(null);
+                    } catch (err: any) {
+                      alert(err.message || 'Error updating server');
+                    }
+                  }}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
