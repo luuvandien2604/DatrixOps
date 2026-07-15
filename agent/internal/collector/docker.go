@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -29,10 +30,10 @@ func collectDockerContainers() []DockerContainer {
 	}
 
 	// 2. Get list of containers with state/status
-	// docker ps -a --format '{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}"}'
 	psCmd := exec.CommandContext(ctx, cmdPath, "ps", "-a", "--format", `{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}"}`)
-	psOut, err := psCmd.Output()
+	psOut, err := psCmd.CombinedOutput()
 	if err != nil {
+		log.Printf("Docker collector: failed to run docker ps: %v, output: %s", err, string(psOut))
 		return nil
 	}
 
@@ -45,6 +46,8 @@ func collectDockerContainers() []DockerContainer {
 		var c DockerContainer
 		if err := json.Unmarshal([]byte(line), &c); err == nil {
 			containers = append(containers, c)
+		} else {
+			log.Printf("Docker collector: failed to parse line: %s, error: %v", line, err)
 		}
 	}
 
