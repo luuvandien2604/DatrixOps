@@ -35,6 +35,12 @@ const navGroups = [
       { name: 'API & Tích hợp', path: '/dashboard/manage/api', icon: CloudFog },
       { name: 'Sao lưu & Khôi phục', path: '/dashboard/manage/backup', icon: DatabaseBackup },
     ]
+  },
+  {
+    title: 'TRỢ GIÚP',
+    items: [
+      { name: 'Tài liệu (Docs)', path: '/docs', icon: FileText },
+    ]
   }
 ];
 
