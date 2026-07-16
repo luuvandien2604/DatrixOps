@@ -7,7 +7,7 @@ import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye
 } from 'lucide-react';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
+import toast from 'react-hot-toast'; // Đã import toast
 
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
@@ -19,7 +19,8 @@ export default function ServersPage() {
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
 
-  const [serverToRestart, setServerToRestart] = useState<string | null>(null);
+  // Đã sửa thành object để lưu cả id và name
+  const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
 
   const [serverToDelete, setServerToDelete] = useState<{ id: string, name: string } | null>(null);
@@ -169,6 +170,7 @@ export default function ServersPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right">
+                        {/* Đã xóa hiệu ứng hover ẩn hiện, nút luôn hiển thị */}
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
                             <Eye className="w-4 h-4" />
@@ -191,7 +193,7 @@ export default function ServersPage() {
                             <RefreshCw className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => setServerToRestart(server.name)}
+                            onClick={() => setServerToRestart({ id: server.id, name: server.name })}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
                             <Play className="w-4 h-4 rotate-180" />
                           </button>
@@ -248,8 +250,9 @@ export default function ServersPage() {
                         try {
                           const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
                           setGeneratedAgentToken(res.agent_token);
+                          toast.success('Tạo lệnh cài đặt thành công!');
                         } catch (err: any) {
-                          alert(err.message || 'Error generating token');
+                          toast.error(err.message || 'Lỗi khi tạo token cài đặt');
                         }
                       }}
                       disabled={!newServerName.trim()}
@@ -315,18 +318,18 @@ export default function ServersPage() {
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
-                You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart}</strong>. This action may cause downtime.
+                You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart.name}</strong>. This action may cause downtime.
               </p>
               <div className="mb-6">
                 <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
-                  Type "{serverToRestart}" to confirm
+                  Type "{serverToRestart.name}" to confirm
                 </label>
                 <input
                   type="text"
                   value={confirmRestartText}
                   onChange={(e) => setConfirmRestartText(e.target.value)}
                   className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
-                  placeholder={serverToRestart}
+                  placeholder={serverToRestart.name}
                 />
               </div>
               <div className="flex justify-end gap-3">
@@ -339,11 +342,20 @@ export default function ServersPage() {
                   Cancel
                 </button>
                 <button
-                  disabled={confirmRestartText !== serverToRestart}
-                  onClick={() => {
-                    alert(`Restart command sent to ${serverToRestart}`);
-                    setServerToRestart(null);
-                    setConfirmRestartText('');
+                  disabled={confirmRestartText !== serverToRestart.name}
+                  onClick={async () => {
+                    if (!serverToRestart) return;
+                    try {
+                      await apiClient(`/servers/${serverToRestart.id}/tasks`, {
+                        method: 'POST',
+                        data: { type: 'vps_reboot', payload: '{}' }
+                      });
+                      toast.success(`Đã gửi lệnh khởi động lại đến ${serverToRestart.name}`);
+                      setServerToRestart(null);
+                      setConfirmRestartText('');
+                    } catch (err: any) {
+                      toast.error(err.message || 'Lỗi khi gửi lệnh khởi động lại');
+                    }
                   }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Restart Server
@@ -393,10 +405,11 @@ export default function ServersPage() {
                     try {
                       await apiClient(`/servers/${serverToDelete.id}`, { method: 'DELETE' });
                       fetchServers();
+                      toast.success(`Đã xoá thành công máy chủ ${serverToDelete.name}`);
                       setServerToDelete(null);
                       setConfirmDeleteText('');
                     } catch (err: any) {
-                      alert(err.message || 'Error deleting server');
+                      toast.error(err.message || 'Lỗi khi xoá máy chủ');
                     }
                   }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
@@ -453,9 +466,10 @@ export default function ServersPage() {
                         data: { group_name: editGroupName.trim(), tags: tagsArray }
                       });
                       fetchServers();
+                      toast.success('Đã cập nhật thông tin máy chủ!');
                       setEditMetaServer(null);
                     } catch (err: any) {
-                      alert(err.message || 'Error updating server');
+                      toast.error(err.message || 'Lỗi khi cập nhật thông tin máy chủ');
                     }
                   }}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
@@ -493,11 +507,9 @@ export default function ServersPage() {
                         method: 'POST',
                         data: { type: 'agent_update', payload: '{}' }
                       });
-                      // Thay alert() bằng toast.success()
                       toast.success(`Đã gửi lệnh cập nhật đến ${serverToUpdate.name}`);
                       setServerToUpdate(null);
                     } catch (err: any) {
-                      // Thay alert() bằng toast.error()
                       toast.error(err.message || 'Error updating agent');
                     }
                   }}
