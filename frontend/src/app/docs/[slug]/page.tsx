@@ -1,23 +1,41 @@
-import { getDocBySlug, getAllDocs } from '@/lib/docs';
+import { getDocBySlug } from '@/lib/docs';
 import { notFound } from 'next/navigation';
 import DocViewer from './DocViewer';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const doc = getDocBySlug(params.slug);
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
+  const doc = getDocBySlug(slug);
+
   if (!doc) {
-    return { title: 'Not Found | DatrixOps' };
+    return {
+      title: 'Not Found | DatrixOps',
+    };
   }
+
   return {
     title: `${doc.meta.title} | Tài liệu DatrixOps`,
     description: doc.meta.description,
   };
 }
 
-export default async function DocPage({ params }: { params: { slug: string } }) {
-  const doc = getDocBySlug(params.slug);
-  
+export default async function DocPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
+  console.log('slug =', slug);
+
+  const doc = getDocBySlug(slug);
+
   if (!doc) {
     notFound();
   }

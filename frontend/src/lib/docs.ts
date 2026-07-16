@@ -5,9 +5,18 @@ import matter from 'gray-matter';
 const getDocsDirectory = () => {
   // In development, process.cwd() is frontend/
   // In production (Docker), process.cwd() is /app and docs is mounted at /app/docs
-  const devPath = path.join(process.cwd(), '../docs/user-guide');
-  const prodPath = path.join(process.cwd(), 'docs/user-guide');
-  
+console.log("cwd =", process.cwd());  
+
+const devPath = path.join(process.cwd(), '../docs/user-guide');
+const prodPath = path.join(process.cwd(), 'docs/user-guide');
+ 
+
+console.log("devPath =", devPath);
+console.log("devExists =", fs.existsSync(devPath));
+
+console.log("prodPath =", prodPath);
+console.log("prodExists =", fs.existsSync(prodPath));
+
   if (fs.existsSync(devPath)) {
     return devPath;
   }
@@ -52,14 +61,21 @@ export function getAllDocs(): DocMeta[] {
 
 export function getDocBySlug(slug: string) {
   const docsDirectory = getDocsDirectory();
+
+  console.log("slug =", slug);
+
   const fullPath = path.join(docsDirectory, `${slug}.md`);
+
+  console.log("fullPath =", fullPath);
+  console.log("fileExists =", fs.existsSync(fullPath));
+
   if (!fs.existsSync(fullPath)) {
-      return null;
+    return null;
   }
-  
+
   const fileContents = fs.readFileSync(fullPath, 'utf8');
   const { data, content } = matter(fileContents);
-  
+
   return {
     meta: {
       slug,
@@ -71,3 +87,5 @@ export function getDocBySlug(slug: string) {
     content,
   };
 }
+
+
