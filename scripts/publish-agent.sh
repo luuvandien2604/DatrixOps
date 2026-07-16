@@ -251,11 +251,12 @@ Write-Host "[*] Downloading DatrixOps Agent..."
 Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
 
 Write-Host "[*] Creating wrapper script..."
+$LogPath = "$InstallDir\agent.log"
 $BatContent = @(
     "@echo off",
     "set DATRIXOPS_SERVER_URL=$ApiUrl",
     "set DATRIXOPS_AGENT_TOKEN=$Token",
-    "`"$ExePath`""
+    "`"$ExePath`" >> `"$LogPath`" 2>&1"
 )
 $BatContent | Set-Content -Path $BatPath -Encoding ASCII
 
@@ -267,8 +268,14 @@ $Action = New-ScheduledTaskAction -Execute $BatPath
 # Trigger: at startup
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 
-# Settings: don't stop on battery, restart on failure if possible (simplified here)
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
+# Settings: don't stop on battery, auto-restart up to 999 times if the process exits
+# (needed so "Restart Agent" from the dashboard actually brings the agent back up,
+# not just on reboot). RestartInterval must be between 1 minute and 31 days.
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
+
+# Additional trigger: also restart if the process ends unexpectedly (Scheduled Tasks
+# only retry via RestartCount when the task itself is considered "failed", so we also
+# register an Event Trigger is overkill here — RestartCount handles the common case).
 
 # System account
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest

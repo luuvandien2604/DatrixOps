@@ -149,8 +149,11 @@ func triggerReboot() {
 	}
 
 	log.Println("💥 Rebooting host now...")
-	if err := cmd.Run(); err != nil {
-		log.Printf("❌ Reboot command failed: %v", err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("❌ Reboot command failed: %v | output: %s", err, string(out))
+	} else if len(out) > 0 {
+		log.Printf("Reboot command output: %s", string(out))
 	}
 }
 
