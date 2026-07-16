@@ -12,29 +12,8 @@ const docsNavigation = [
   {
     title: 'Bắt đầu',
     items: [
-      { name: 'Giới thiệu', path: '/docs/introduction' },
-      { name: 'Cài đặt Agent', path: '/docs/agent-installation' },
-      { name: 'Tổng quan Dashboard', path: '/docs/dashboard-overview' },
-    ]
-  },
-  {
-    title: 'Quản lý Server',
-    items: [
-      { name: 'Servers', path: '/docs/servers' },
-    ]
-  },
-  {
-    title: 'Cảnh báo & Giám sát',
-    items: [
-      { name: 'Alerts', path: '/docs/alerts' },
-      { name: 'Websites & SSL', path: '/docs/websites' },
-    ]
-  },
-  {
-    title: 'Quản trị',
-    items: [
-      { name: 'API Keys', path: '/docs/api-keys' },
-      { name: 'Audit Log', path: '/docs/audit-log' },
+      { name: 'Giới thiệu', path: '/docs' },
+      { name: 'Cài đặt Agent', path: '/docs/installation' },
     ]
   },
   {
