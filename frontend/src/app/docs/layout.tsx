@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from 'next-themes';
-import { 
+import {
   BookOpen, Terminal, Server, Activity, Menu, X, Moon, Sun, Home, ChevronRight
 } from 'lucide-react';
 
@@ -42,6 +42,12 @@ const docsNavigation = [
     items: [
       { name: 'Lỗi thường gặp', path: '/docs/troubleshooting' },
     ]
+  },
+  {
+    title: 'Vận hành Agent',
+    items: [
+      { name: 'Quản lý Service Agent', path: '/docs/agent-service-management' },
+    ]
   }
 ];
 
@@ -58,7 +64,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[var(--background)]/80 backdrop-blur">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
+            <button
               className="lg:hidden p-2 -ml-2 text-[var(--color-muted)] hover:text-[var(--foreground)]"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
@@ -69,7 +75,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               <span>DatrixOps <span className="text-blue-500">Docs</span></span>
             </Link>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[var(--color-muted)]">
               <Link href="/" className="hover:text-[var(--foreground)] transition-colors">Trang chủ</Link>
@@ -101,14 +107,13 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                     const isActive = pathname === item.path;
                     return (
                       <li key={item.path}>
-                        <Link 
+                        <Link
                           href={item.path}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                            isActive 
-                              ? 'bg-blue-500/10 text-blue-500 font-medium' 
-                              : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/5'
-                          }`}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${isActive
+                            ? 'bg-blue-500/10 text-blue-500 font-medium'
+                            : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/5'
+                            }`}
                         >
                           {isActive && <ChevronRight className="w-4 h-4 shrink-0" />}
                           {item.name}
@@ -124,7 +129,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
 
         {/* Overlay for mobile */}
         {isMobileMenuOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 z-30 lg:hidden"
             onClick={() => setIsMobileMenuOpen(false)}
           />

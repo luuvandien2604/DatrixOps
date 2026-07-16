@@ -37,6 +37,14 @@ type HeartbeatResponse struct {
 	Tasks          []Task `json:"tasks"`
 }
 
+// apiEnvelope khớp với response.APIResponse ở backend
+// (backend/internal/platform/response/response.go) — MỌI response từ backend
+// đều bọc trong { success, data, error }, không trả field phẳng ở top-level.
+type apiEnvelope struct {
+	Success bool              `json:"success"`
+	Data    HeartbeatResponse `json:"data"`
+}
+
 // SendHeartbeat sends the collected metrics to the Core API.
 func (c *DatrixClient) SendHeartbeat(ctx context.Context, metrics *collector.Metrics) (*HeartbeatResponse, error) {
 	payload, err := json.Marshal(metrics)
@@ -63,10 +71,12 @@ func (c *DatrixClient) SendHeartbeat(ctx context.Context, metrics *collector.Met
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	var result HeartbeatResponse
-	_ = json.NewDecoder(resp.Body).Decode(&result)
+	var envelope apiEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
 
-	return &result, nil
+	return &envelope.Data, nil
 }
 
 func (c *DatrixClient) ReportTaskResult(ctx context.Context, taskID, status, result string) error {
@@ -90,5 +100,9 @@ func (c *DatrixClient) ReportTaskResult(ctx context.Context, taskID, status, res
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 	return nil
 }
