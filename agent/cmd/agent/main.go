@@ -97,22 +97,61 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 
 func triggerAutoUpdate() {
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
+
+	switch runtime.GOOS {
+	case "windows":
 		cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-Command", "Invoke-WebRequest -Uri https://datrixops.vandien.space/install.ps1 -OutFile install.ps1; .\\install.ps1 -Token $env:DATRIXOPS_AGENT_TOKEN")
-	} else if runtime.GOOS == "darwin" {
+	case "darwin":
 		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install-mac.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
-	} else {
+	default: // linux
 		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
 	}
 
-	// Detach process
 	if err := cmd.Start(); err != nil {
 		log.Printf("❌ Failed to start auto-update: %v", err)
 		return
 	}
 
 	log.Println("🚀 Auto-update script launched. Exiting agent to allow replacement...")
-	os.Exit(0)
+	os.Exit(1)
+}
+
+// triggerRestart thoát process hiện tại để service manager của OS tự khởi động lại
+// (systemd Restart=always trên Linux, launchd KeepAlive trên macOS, Scheduled Task
+// restart-on-failure trên Windows). Khác agent_update: không tải lại binary mới.
+func triggerRestart() {
+	// Đợi đủ thời gian để request báo kết quả task kịp gửi đi trước khi process thoát.
+	time.Sleep(2 * time.Second)
+	log.Println("🔁 Exiting for restart. Service manager should bring the agent back up...")
+	os.Exit(1) // non-zero — xem giải thích trong triggerAutoUpdate() ở trên
+}
+
+// triggerReboot khởi động lại toàn bộ máy chủ (khác triggerRestart chỉ restart
+// process Agent). Yêu cầu Agent đang chạy với quyền đủ để reboot máy:
+// - Linux: agent chạy bằng systemd, mặc định user root nếu không set User= trong service file
+// - macOS: agent cài bằng "sudo", LaunchDaemon mặc định chạy quyền root
+// - Windows: Scheduled Task chạy dưới tài khoản SYSTEM (đã cấu hình trong install.ps1)
+func triggerReboot() {
+	// Đợi đủ thời gian để request báo kết quả task kịp gửi đi trước khi máy tắt.
+	time.Sleep(2 * time.Second)
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		// /r = reboot, /t 0 = không chờ, /f = force đóng app đang chạy
+		cmd = exec.Command("shutdown", "/r", "/t", "0", "/f")
+	case "darwin":
+		cmd = exec.Command("shutdown", "-r", "now")
+	default: // linux
+		cmd = exec.Command("reboot")
+	}
+
+	log.Println("💥 Rebooting host now...")
+	if err := cmd.Run(); err != nil {
+		// Nếu lệnh reboot lỗi (thường do thiếu quyền), chỉ log — không có cách nào
+		// báo lỗi này về backend vì task đã được report "completed" trước đó.
+		log.Printf("❌ Reboot command failed: %v", err)
+	}
 }
 
 func processTask(ctx context.Context, apiClient *client.DatrixClient, task client.Task) {
@@ -120,6 +159,9 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	var cmd *exec.Cmd
 	var resultStr string
 	var statusStr = "completed"
+
+	// Dùng biến này để "nhớ" hành động cần làm sau khi report xong
+	var postAction string
 
 	// payload depends on type
 	var payload map[string]string
@@ -135,11 +177,25 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		cmd = exec.Command("docker", "restart", containerID)
 	case "docker_logs":
 		cmd = exec.Command("docker", "logs", "--tail", "100", containerID)
+
 	case "agent_update":
 		log.Println("Received agent_update task. Initiating auto-update...")
-		go triggerAutoUpdate()
+		postAction = "update" // Đánh dấu lại, CHƯA CHẠY NGAY
 		statusStr = "completed"
 		resultStr = "Auto update initiated"
+
+	case "agent_restart":
+		log.Println("Received agent_restart task. Restarting agent process...")
+		postAction = "restart" // Đánh dấu lại, CHƯA CHẠY NGAY
+		statusStr = "completed"
+		resultStr = "Agent restart initiated"
+
+	case "vps_reboot":
+		log.Println("Received vps_reboot task. Rebooting host...")
+		postAction = "reboot" // Đánh dấu lại, CHƯA CHẠY NGAY
+		statusStr = "completed"
+		resultStr = "Reboot initiated"
+
 	default:
 		statusStr = "failed"
 		resultStr = "Unknown task type: " + task.Type
@@ -155,8 +211,19 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		}
 	}
 
+	// 1. GỬI BÁO CÁO TRƯỚC: Đảm bảo Backend đã ghi nhận thành công
 	err := apiClient.ReportTaskResult(ctx, task.ID, statusStr, resultStr)
 	if err != nil {
 		log.Printf("Failed to report task %s result: %v", task.ID, err)
+	}
+
+	// 2. THỰC THI HÀNH ĐỘNG SAU: Lúc này tắt máy/app là an toàn tuyệt đối
+	switch postAction {
+	case "update":
+		triggerAutoUpdate()
+	case "restart":
+		triggerRestart()
+	case "reboot":
+		triggerReboot()
 	}
 }
