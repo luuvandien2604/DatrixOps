@@ -3,25 +3,26 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
-import { 
+import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye
 } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modals state
   const [isAddServerModalOpen, setIsAddServerModalOpen] = useState(false);
   const [newServerName, setNewServerName] = useState('');
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
-  
+
   const [serverToRestart, setServerToRestart] = useState<string | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
-  
-  const [serverToDelete, setServerToDelete] = useState<{id: string, name: string} | null>(null);
+
+  const [serverToDelete, setServerToDelete] = useState<{ id: string, name: string } | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
 
   // Edit Meta
@@ -30,8 +31,8 @@ export default function ServersPage() {
   const [editTags, setEditTags] = useState('');
 
   // Update Agent
-  const [serverToUpdate, setServerToUpdate] = useState<{id: string, name: string} | null>(null);
-  
+  const [serverToUpdate, setServerToUpdate] = useState<{ id: string, name: string } | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -77,7 +78,7 @@ export default function ServersPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Làm mới
           </button>
-          <button 
+          <button
             onClick={() => setIsAddServerModalOpen(true)}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 text-white flex items-center gap-2">
             <Server className="w-4 h-4" />
@@ -111,8 +112,8 @@ export default function ServersPage() {
               ) : (
                 servers.map((server) => {
                   let osInfo = null;
-                  try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) {}
-                  
+                  try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+
                   const isCritical = osInfo && osInfo.cpu_usage > 90;
 
                   return (
@@ -150,22 +151,20 @@ export default function ServersPage() {
                       <td className="py-4 px-6">
                         {osInfo ? (
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm min-w-[3rem]">{((osInfo.memory_used/osInfo.memory_total)*100).toFixed(1)}%</span>
+                            <span className="font-mono text-sm min-w-[3rem]">{((osInfo.memory_used / osInfo.memory_total) * 100).toFixed(1)}%</span>
                             <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-500" style={{ width: `${Math.min((osInfo.memory_used/osInfo.memory_total)*100, 100)}%` }}></div>
+                              <div className="h-full bg-emerald-500" style={{ width: `${Math.min((osInfo.memory_used / osInfo.memory_total) * 100, 100)}%` }}></div>
                             </div>
                           </div>
                         ) : <span className="text-[var(--color-muted)]">—</span>}
                       </td>
                       <td className="py-4 px-6">
-                        <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                          server.status === 'online' 
-                            ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${
-                            server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
-                          }`}></div>
+                        <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${server.status === 'online'
+                          ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
+                          }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
+                            }`}></div>
                           {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
                         </div>
                       </td>
@@ -174,7 +173,7 @@ export default function ServersPage() {
                           <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button 
+                          <button
                             onClick={() => {
                               setEditMetaServer(server);
                               setEditGroupName(server.group_name || '');
@@ -186,18 +185,18 @@ export default function ServersPage() {
                           <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
                             <TerminalSquare className="w-4 h-4" />
                           </button>
-                          <button 
-                            onClick={() => setServerToUpdate({id: server.id, name: server.name})}
+                          <button
+                            onClick={() => setServerToUpdate({ id: server.id, name: server.name })}
                             className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors" title="Update Agent">
                             <RefreshCw className="w-4 h-4" />
                           </button>
-                          <button 
+                          <button
                             onClick={() => setServerToRestart(server.name)}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
                             <Play className="w-4 h-4 rotate-180" />
                           </button>
-                          <button 
-                            onClick={() => setServerToDelete({id: server.id, name: server.name})}
+                          <button
+                            onClick={() => setServerToDelete({ id: server.id, name: server.name })}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -243,7 +242,7 @@ export default function ServersPage() {
                     <button onClick={() => setIsAddServerModalOpen(false)} className="px-6 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                       Cancel
                     </button>
-                    <button 
+                    <button
                       onClick={async () => {
                         if (!newServerName.trim()) return;
                         try {
@@ -264,21 +263,21 @@ export default function ServersPage() {
                   <p className="text-[var(--color-muted)] mb-4">
                     Đã tạo thành công. Vui lòng chọn hệ điều hành và chạy lệnh (với quyền Admin/Root) để cài đặt Agent.
                   </p>
-                  
+
                   {/* OS Tabs */}
                   <div className="flex gap-2 mb-4 border-b border-white/10 pb-2">
-                    <button 
-                      onClick={() => setSelectedOs('linux')} 
+                    <button
+                      onClick={() => setSelectedOs('linux')}
                       className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'linux' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
                       Linux
                     </button>
-                    <button 
-                      onClick={() => setSelectedOs('macos')} 
+                    <button
+                      onClick={() => setSelectedOs('macos')}
                       className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'macos' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
                       macOS
                     </button>
-                    <button 
-                      onClick={() => setSelectedOs('windows')} 
+                    <button
+                      onClick={() => setSelectedOs('windows')}
                       className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${selectedOs === 'windows' ? 'bg-blue-600/20 text-blue-400' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
                       Windows
                     </button>
@@ -288,7 +287,7 @@ export default function ServersPage() {
                     <div className="text-emerald-400 whitespace-nowrap">
                       {getInstallCommand()}
                     </div>
-                    <button 
+                    <button
                       onClick={() => navigator.clipboard.writeText(getInstallCommand())}
                       className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
                       Copy
@@ -322,8 +321,8 @@ export default function ServersPage() {
                 <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
                   Type "{serverToRestart}" to confirm
                 </label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={confirmRestartText}
                   onChange={(e) => setConfirmRestartText(e.target.value)}
                   className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
@@ -331,21 +330,21 @@ export default function ServersPage() {
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button 
+                <button
                   onClick={() => {
                     setServerToRestart(null);
                     setConfirmRestartText('');
-                  }} 
+                  }}
                   className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
-                <button 
+                <button
                   disabled={confirmRestartText !== serverToRestart}
                   onClick={() => {
                     alert(`Restart command sent to ${serverToRestart}`);
                     setServerToRestart(null);
                     setConfirmRestartText('');
-                  }} 
+                  }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Restart Server
                 </button>
@@ -371,8 +370,8 @@ export default function ServersPage() {
                 <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
                   Type "{serverToDelete.name}" to confirm
                 </label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={confirmDeleteText}
                   onChange={(e) => setConfirmDeleteText(e.target.value)}
                   className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
@@ -380,15 +379,15 @@ export default function ServersPage() {
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button 
+                <button
                   onClick={() => {
                     setServerToDelete(null);
                     setConfirmDeleteText('');
-                  }} 
+                  }}
                   className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
-                <button 
+                <button
                   disabled={confirmDeleteText !== serverToDelete.name}
                   onClick={async () => {
                     try {
@@ -399,7 +398,7 @@ export default function ServersPage() {
                     } catch (err: any) {
                       alert(err.message || 'Error deleting server');
                     }
-                  }} 
+                  }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
                   Delete Server
                 </button>
@@ -420,7 +419,7 @@ export default function ServersPage() {
             <div className="p-6">
               <div className="mb-4">
                 <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
-                <input 
+                <input
                   type="text"
                   value={editGroupName}
                   onChange={(e) => setEditGroupName(e.target.value)}
@@ -430,7 +429,7 @@ export default function ServersPage() {
               </div>
               <div className="mb-6">
                 <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
-                <input 
+                <input
                   type="text"
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
@@ -439,13 +438,13 @@ export default function ServersPage() {
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button 
+                <button
                   onClick={() => setEditMetaServer(null)}
                   className="px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors text-[var(--color-muted)]"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={async () => {
                     const tagsArray = editTags.split(',').map(t => t.trim()).filter(Boolean);
                     try {
@@ -482,24 +481,26 @@ export default function ServersPage() {
                 You are about to send an update command to <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>. The agent will restart and download the latest version automatically.
               </p>
               <div className="flex justify-end gap-3">
-                <button 
-                  onClick={() => setServerToUpdate(null)} 
+                <button
+                  onClick={() => setServerToUpdate(null)}
                   className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
-                <button 
+                <button
                   onClick={async () => {
                     try {
-                      await apiClient(`/servers/${serverToUpdate.id}/tasks`, { 
+                      await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
                         method: 'POST',
                         data: { type: 'agent_update', payload: '{}' }
                       });
-                      alert(`Update command sent to ${serverToUpdate.name}`);
+                      // Thay alert() bằng toast.success()
+                      toast.success(`Đã gửi lệnh cập nhật đến ${serverToUpdate.name}`);
                       setServerToUpdate(null);
                     } catch (err: any) {
-                      alert(err.message || 'Error updating agent');
+                      // Thay alert() bằng toast.error()
+                      toast.error(err.message || 'Error updating agent');
                     }
-                  }} 
+                  }}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors">
                   Start Update
                 </button>
