@@ -169,7 +169,7 @@ export default function ServersPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0">
+                        <div className="flex items-center justify-end gap-2">
                           <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
                             <Eye className="w-4 h-4" />
                           </button>
