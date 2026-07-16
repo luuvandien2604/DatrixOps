@@ -139,7 +139,7 @@ func triggerReboot() {
 	switch runtime.GOOS {
 	case "windows":
 		// /r = reboot, /t 0 = không chờ, /f = force đóng app đang chạy
-		cmd = exec.Command("shutdown", "/r", "/t", "0", "/f")
+		cmd = exec.Command("powershell", "-Command", "Restart-Computer -Force")
 	case "darwin":
 		cmd = exec.Command("shutdown", "-r", "now")
 	default: // linux
