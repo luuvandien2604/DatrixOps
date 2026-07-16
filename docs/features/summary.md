@@ -166,11 +166,11 @@ SELECT id, type, status, result FROM server_tasks WHERE server_id = '<id>' ORDER
 
 ---
 
-## 12. Update Agent (và vì sao không có "Restart Agent" riêng)
+## 12. Update Agent
 
 | Lớp | File |
 |---|---|
-| Frontend — nút "Update Agent" + dialog xác nhận | `frontend/src/app/dashboard/servers/page.tsx` (state `serverToUpdate`, dòng ~32, ~191, ~472-497) |
+| Frontend — nút "Update Agent" + dialog xác nhận | `frontend/src/app/dashboard/servers/page.tsx` (state `serverToUpdate`) |
 | Frontend gửi lệnh | Gọi `POST /servers/{id}/tasks` với `{ type: 'agent_update', payload: '{}' }` (dùng chung `apiClient`, `frontend/src/lib/apiClient.ts`) |
 | Backend tạo task | `server/handler.go` (hàm `CreateTask`) — giống hệt luồng tạo task Docker, chỉ khác `type` |
 | Backend agent nhận task | `agent_api/handler.go` (`Heartbeat` trả `tasks[]` chứa task `agent_update`) |
@@ -182,13 +182,43 @@ SELECT id, type, status, result FROM server_tasks WHERE server_id = '<id>' ORDER
 1. **Chủ động từ người dùng** — bấm nút "Update Agent" trên UI → tạo task `agent_update` → agent nhận task ở heartbeat tiếp theo.
 2. **Tự động từ backend** — mỗi heartbeat, backend so `req.Version` (agent gửi lên) với version hard-code `"1.1.0"` trong `agent_api/handler.go`; nếu khác, trả `update_required: true` → agent tự trigger update mà **không cần** ai bấm nút.
 
-**Vì sao không có "Restart Agent" tách riêng:** `triggerAutoUpdate()` chạy script cài đặt mới rồi gọi `os.Exit(0)` để thoát agent — service `datrix-agent` chạy với `Restart=always` (systemd) nên **tự khởi động lại bằng binary mới** ngay sau đó. Restart là hệ quả tự nhiên của Update, không phải hành động riêng biệt.
-
 **Ghi chú debug:**
 - Muốn ép agent update dù không đổi code: đổi hằng số version trong `agent_api/handler.go` (`req.Version != "1.1.0"`) — **nhưng đây là version hard-code, không đọc từ config/DB**, sửa xong phải rebuild + deploy lại backend.
 - Nếu bấm "Update Agent" mà không thấy gì xảy ra: task vẫn theo mô hình poll (xem mục 5) — đợi tối đa `DATRIXOPS_INTERVAL` giây để agent nhận.
-- Nếu agent "biến mất" (offline) sau khi update mà không tự online lại: kiểm tra `systemctl status datrix-agent` — nếu service không có `Restart=always` hoặc bị `disable`, agent sẽ không tự khởi động lại sau khi tự thoát.
+- Tên service thật là **`datrixops-agent`** (có "ops"), không phải `datrix-agent` — kiểm tra bằng `systemctl status datrixops-agent`.
 - Không có cơ chế "rollback" nếu bản mới lỗi — auto-update ghi đè trực tiếp binary hiện tại.
+
+---
+
+## 12b. Restart Agent (nội bộ) & Reboot VPS (nút UI)
+
+| Lớp | File |
+|---|---|
+| Frontend — nút "Reboot VPS" + dialog xác nhận | `frontend/src/app/dashboard/servers/page.tsx` (state `serverToRestart`, dialog "Reboot VPS?") |
+| Frontend gửi lệnh | `POST /servers/{id}/tasks` với `{ type: 'vps_reboot', payload: '{}' }` |
+| Agent xử lý `vps_reboot` | `agent/cmd/agent/main.go` (case `"vps_reboot"` trong `processTask` → `go triggerReboot()`) |
+| Agent xử lý `agent_restart` | `agent/cmd/agent/main.go` (case `"agent_restart"` → `go triggerRestart()`) — **chưa có nút UI nào gọi task này**, để dành cho tool vận hành/CLI sau này |
+| Lệnh reboot theo OS | `triggerReboot()`: Linux `reboot`, macOS `shutdown -r now`, Windows `shutdown /r /t 0 /f` |
+
+**Phân biệt 2 task dễ nhầm:**
+
+| Task type | Ảnh hưởng | Dùng khi |
+|---|---|---|
+| `agent_restart` | Chỉ agent process restart, VPS và các service khác (nginx, docker...) không bị ảnh hưởng | Agent bị treo/lỗi nhẹ, muốn restart mà không downtime cả máy |
+| `vps_reboot` | Reboot toàn bộ máy chủ, mọi service trên VPS đều gián đoạn tạm thời | Cần restart thật sự cấp hệ điều hành (kernel update, treo hệ thống...) |
+
+**Cơ chế tự hồi phục sau reboot/crash — ở tầng OS, KHÔNG phải code Go:**
+
+| OS | Sống lại sau crash | Sống lại sau VPS reboot |
+|---|---|---|
+| Linux | `Restart=always` + `RestartSec=10` (`scripts/publish-agent.sh`, systemd unit `datrixops-agent`) | `systemctl enable datrixops-agent` |
+| macOS | `KeepAlive: true` (launchd plist) | `RunAtLoad: true` + `launchctl load -w` |
+| Windows | `RestartCount 999` / `RestartInterval 1min` (`New-ScheduledTaskSettingsSet`) | Trigger `AtStartup` |
+
+**Ghi chú debug quan trọng:**
+- Cả `triggerRestart()` và `triggerAutoUpdate()` dùng `os.Exit(1)` (KHÔNG phải `0`) — vì Windows Task Scheduler chỉ áp dụng `RestartCount` khi coi task là "failed" (exit code ≠ 0). Nếu sau này sửa code mà đổi lại thành `os.Exit(0)`, **restart/update trên Windows sẽ ngừng hoạt động âm thầm** (Linux/macOS vẫn chạy bình thường vì không quan tâm exit code) — dễ bị bỏ sót khi test chỉ trên Linux.
+- `triggerReboot()` report `status: completed` **trước khi** biết lệnh reboot có chạy thành công hay không (do gọi `go triggerReboot()` bất đồng bộ) — nếu Agent không đủ quyền reboot (thiếu `sudo`/không phải SYSTEM account), lỗi chỉ nằm trong log của agent, **không** phản ánh lên `server_tasks.status` hay UI.
+- Muốn kiểm tra agent có hiểu 2 task type mới không: agent phải là bản build **sau** khi thêm 2 case này — agent cũ trả `status: failed, result: "Unknown task type"`.
 
 ---
 
