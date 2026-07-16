@@ -132,24 +132,24 @@ func triggerRestart() {
 // - macOS: agent cài bằng "sudo", LaunchDaemon mặc định chạy quyền root
 // - Windows: Scheduled Task chạy dưới tài khoản SYSTEM (đã cấu hình trong install.ps1)
 func triggerReboot() {
-	// Đợi đủ thời gian để request báo kết quả task kịp gửi đi trước khi máy tắt.
 	time.Sleep(2 * time.Second)
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		// /r = reboot, /t 0 = không chờ, /f = force đóng app đang chạy
-		cmd = exec.Command("powershell", "-Command", "Restart-Computer -Force")
+		// /r: Khởi động lại
+		// /t 0: Không chờ giây nào
+		// /f: Ép buộc đóng tất cả ứng dụng (Force)
+		// /d p:4:1: Ghi chú lý do là "Hệ thống bảo trì" (giúp tránh việc Windows từ chối lệnh)
+		cmd = exec.Command("shutdown", "/r", "/t", "0", "/f", "/d", "p:4:1")
 	case "darwin":
 		cmd = exec.Command("shutdown", "-r", "now")
-	default: // linux
+	default:
 		cmd = exec.Command("reboot")
 	}
 
 	log.Println("💥 Rebooting host now...")
 	if err := cmd.Run(); err != nil {
-		// Nếu lệnh reboot lỗi (thường do thiếu quyền), chỉ log — không có cách nào
-		// báo lỗi này về backend vì task đã được report "completed" trước đó.
 		log.Printf("❌ Reboot command failed: %v", err)
 	}
 }
