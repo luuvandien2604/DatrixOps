@@ -102,7 +102,10 @@ func (j *AlertJob) run() {
 
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
 	// 1. Fetch servers matching rule AND user
-	query := `SELECT id, name, last_seen FROM servers WHERE user_id = $1`
+	// LƯU Ý: bảng servers KHÔNG có cột "last_seen" — trước đây query sai tên cột này
+	// khiến câu query lỗi ngay lập tức mỗi lần chạy (lỗi bị nuốt âm thầm ở dưới), nghĩa
+	// là rule loại "status" (Offline) chưa từng thật sự đánh giá được. Dùng "updated_at".
+	query := `SELECT id, name, updated_at FROM servers WHERE user_id = $1`
 	var args []interface{}
 	args = append(args, rule.UserID)
 
@@ -171,7 +174,7 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 			// Fire alert
 			j.logger.Info("Alert firing", "rule", rule.Name, "server", s.Name)
 			j.db.Pool.Exec(ctx, `INSERT INTO alert_state (rule_id, server_id, status, last_triggered_at) VALUES ($1, $2, 'firing', NOW()) ON CONFLICT (rule_id, server_id) DO UPDATE SET status = 'firing', last_triggered_at = NOW()`, rule.ID, s.ID)
-			
+
 			msg := fmt.Sprintf("🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f", rule.Name, s.Name, currentValue)
 			if rule.Metric == "status" {
 				msg = fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 mins ago.", s.Name)
@@ -182,7 +185,7 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 			// Resolve alert
 			j.logger.Info("Alert resolved", "rule", rule.Name, "server", s.Name)
 			j.db.Pool.Exec(ctx, `UPDATE alert_state SET status = 'ok', last_triggered_at = NOW() WHERE rule_id = $1 AND server_id = $2`, rule.ID, s.ID)
-			
+
 			msg := fmt.Sprintf("✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f", rule.Name, s.Name, currentValue)
 			if rule.Metric == "status" {
 				msg = fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", s.Name)

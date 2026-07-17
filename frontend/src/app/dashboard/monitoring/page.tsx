@@ -40,7 +40,7 @@ export default function MonitoringPage() {
     if (!selectedServerId) return;
 
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 10000); // refresh every 10s
+    const interval = setInterval(fetchMetrics, 5000); // refresh every 5s
     return () => clearInterval(interval);
   }, [selectedServerId, timeRange]);
 
@@ -48,17 +48,17 @@ export default function MonitoringPage() {
     try {
       setLoading(true);
       const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
-      
+
       // Format data for charts
       const formatted = data.map((m: any) => {
         const date = new Date(m.created_at);
         let timeLabel = '';
         if (timeRange === '7d' || timeRange === '24h') {
-            timeLabel = date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+          timeLabel = date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         } else {
-            timeLabel = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          timeLabel = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
-        
+
         return {
           time: timeLabel,
           cpu: Number(m.cpu_usage.toFixed(1)),
@@ -88,7 +88,7 @@ export default function MonitoringPage() {
     { value: '24h', label: 'Last 24 hours' },
     { value: '7d', label: 'Last 7 days' },
   ];
-  
+
   const selectedTimeRangeLabel = timeRangeOptions.find(o => o.value === timeRange)?.label || 'Last 15 minutes';
 
   return (
@@ -98,11 +98,11 @@ export default function MonitoringPage() {
           <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Giám sát tài nguyên</h1>
           <p className="text-sm text-[var(--color-muted)]">Phân tích hiệu năng hệ thống chi tiết qua các biểu đồ thực tế (Live Data)</p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <div className="relative">
             <ServerIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-            <select 
+            <select
               value={selectedServerId}
               onChange={(e) => setSelectedServerId(e.target.value)}
               className="pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
@@ -114,7 +114,7 @@ export default function MonitoringPage() {
             </select>
           </div>
           <div className="relative">
-            <select 
+            <select
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
               className="pl-4 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
@@ -124,7 +124,7 @@ export default function MonitoringPage() {
               ))}
             </select>
           </div>
-          
+
           <button onClick={fetchMetrics} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-colors text-[var(--color-muted)]" title="Làm mới">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
           </button>
@@ -156,7 +156,7 @@ export default function MonitoringPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis dataKey="time" stroke="#8B96A5" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
                   <YAxis stroke="#8B96A5" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 'dataMax + 10']} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#0B0F14', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px' }}
                     itemStyle={{ color: '#E6EAF0' }}
                   />
@@ -179,8 +179,8 @@ export default function MonitoringPage() {
                 <AreaChart data={metrics}>
                   <defs>
                     <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
@@ -192,7 +192,7 @@ export default function MonitoringPage() {
               </ResponsiveContainer>
             </div>
           </div>
-          
+
           {/* Network Throughput */}
           <div className="glass-card p-6">
             <div className="flex justify-between items-center mb-6">

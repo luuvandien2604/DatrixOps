@@ -26,8 +26,8 @@ type Server struct {
 	Tags       []string  `json:"tags"`
 	AgentToken string    `json:"agent_token,omitempty"` // only shown on creation
 	Status     string    `json:"status"`
-	OSInfo     *string   `json:"os_info,omitempty"`     // JSON raw message or string
-	Snapshot   *string   `json:"snapshot,omitempty"`    // JSONB raw message
+	OSInfo     *string   `json:"os_info,omitempty"`  // JSON raw message or string
+	Snapshot   *string   `json:"snapshot,omitempty"` // JSONB raw message
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -69,8 +69,13 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 
 // ListByUser returns all servers for a given user.
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, error) {
+	// status được tính động: nếu > 1 phút không có heartbeat mới (updated_at) thì coi là
+	// offline bất kể cột status lưu gì — cột status chỉ được Heartbeat handler set = 'online',
+	// không có nơi nào set lại 'offline' khi mất kết nối, nên không thể tin trực tiếp cột này.
 	query := `
-		SELECT id, user_id, name, ip_address, group_name, tags, status, os_info, snapshot, created_at, updated_at 
+		SELECT id, user_id, name, ip_address, group_name, tags,
+			CASE WHEN updated_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
+			os_info, snapshot, created_at, updated_at 
 		FROM servers 
 		WHERE user_id = $1 
 		ORDER BY created_at DESC
@@ -133,7 +138,9 @@ func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, gr
 func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, error) {
 	var s Server
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT id, user_id, name, ip_address, status, os_info, snapshot, created_at, updated_at 
+		`SELECT id, user_id, name, ip_address,
+			CASE WHEN updated_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
+			os_info, snapshot, created_at, updated_at 
 		 FROM servers WHERE id = $1 AND user_id = $2`,
 		id, userID,
 	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt)
