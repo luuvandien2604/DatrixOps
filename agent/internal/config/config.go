@@ -18,7 +18,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		ServerURL:       getEnv("DATRIXOPS_SERVER_URL", "http://localhost:8080"),
 		AgentToken:      getEnv("DATRIXOPS_AGENT_TOKEN", ""),
-		IntervalSeconds: getEnvInt("DATRIXOPS_INTERVAL", 10),
+		IntervalSeconds: getEnvInt("DATRIXOPS_INTERVAL", 5),
 	}
 
 	if cfg.AgentToken == "" {
