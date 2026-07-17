@@ -46,7 +46,7 @@ export default function MonitoringPage() {
   }, [selectedServerId, timeRange]);
 
   const BUCKET_SECONDS: Record<string, number> = {
-    '15m': 10,
+    '15m': 5,
     '1h': 60,
     '3h': 120,
     '6h': 300,
