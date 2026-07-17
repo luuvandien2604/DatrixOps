@@ -44,9 +44,19 @@ export default function MonitoringPage() {
     return () => clearInterval(interval);
   }, [selectedServerId, timeRange]);
 
-  // Server heartbeat mặc định mỗi 10s — coi khoảng cách > 30s giữa 2 điểm liên tiếp
-  // là server đã offline trong lúc đó (mất >= 3 lần heartbeat liên tục).
-  const GAP_THRESHOLD_MS = 30 * 1000;
+  // Bucket size backend dùng để downsample (PHẢI khớp chính xác với switch-case
+  // trong backend/internal/core/server/repository.go, hàm ListMetrics) — dùng để
+  // tính ngưỡng phát hiện gap ĐỘNG theo từng khung, không cố định 1 giá trị,
+  // vì khung càng dài thì khoảng cách bình thường giữa 2 điểm càng lớn.
+  const BUCKET_SECONDS: Record<string, number> = {
+    '15m': 10,
+    '1h': 60,
+    '3h': 120,
+    '6h': 300,
+    '12h': 600,
+    '24h': 900,
+    '7d': 3600,
+  };
 
   const formatTimeLabel = (date: Date) => {
     if (timeRange === '7d' || timeRange === '24h') {
@@ -60,6 +70,12 @@ export default function MonitoringPage() {
       setLoading(true);
       const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
 
+      // Ngưỡng gap = 3x khoảng cách bình thường của khung đang chọn — coi như mất
+      // liên tục >= 3 lần "nhịp" (bucket) thì mới tính là offline thật, tránh báo
+      // gap giả ở những khung downsample có khoảng cách điểm vốn đã lớn (1h, 3h...).
+      const bucketSeconds = BUCKET_SECONDS[timeRange] ?? 10;
+      const gapThresholdMs = bucketSeconds * 3 * 1000;
+
       // KHÔNG cần reverse — backend (repository.go, hàm ListMetrics) đã luôn trả về
       // đúng thứ tự "ORDER BY bucket_time ASC" (cũ → mới) cho MỌI khung thời gian,
       // dùng thẳng "data" theo đúng thứ tự API trả về.
@@ -69,7 +85,7 @@ export default function MonitoringPage() {
 
         if (idx > 0) {
           const prevDate = new Date(data[idx - 1].created_at);
-          if (date.getTime() - prevDate.getTime() > GAP_THRESHOLD_MS) {
+          if (date.getTime() - prevDate.getTime() > gapThresholdMs) {
             formatted.push({
               time: formatTimeLabel(new Date(prevDate.getTime() + 1000)),
               cpu: null,
