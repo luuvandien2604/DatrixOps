@@ -60,15 +60,15 @@ export default function MonitoringPage() {
       setLoading(true);
       const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
 
-      // THÊM DÒNG NÀY: Đảo ngược mảng để dữ liệu tăng dần theo thời gian
-      const sortedData = [...data].reverse();
-
+      // KHÔNG cần reverse — backend (repository.go, hàm ListMetrics) đã luôn trả về
+      // đúng thứ tự "ORDER BY bucket_time ASC" (cũ → mới) cho MỌI khung thời gian,
+      // dùng thẳng "data" theo đúng thứ tự API trả về.
       const formatted: any[] = [];
-      sortedData.forEach((m: any, idx: number) => { // Dùng sortedData thay vì data
+      data.forEach((m: any, idx: number) => {
         const date = new Date(m.created_at);
 
         if (idx > 0) {
-          const prevDate = new Date(sortedData[idx - 1].created_at);
+          const prevDate = new Date(data[idx - 1].created_at);
           if (date.getTime() - prevDate.getTime() > GAP_THRESHOLD_MS) {
             formatted.push({
               time: formatTimeLabel(new Date(prevDate.getTime() + 1000)),
