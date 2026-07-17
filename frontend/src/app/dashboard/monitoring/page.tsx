@@ -73,7 +73,7 @@ export default function MonitoringPage() {
       // Ngưỡng gap = 3x khoảng cách bình thường của khung đang chọn — coi như mất
       // liên tục >= 3 lần "nhịp" (bucket) thì mới tính là offline thật, tránh báo
       // gap giả ở những khung downsample có khoảng cách điểm vốn đã lớn (1h, 3h...).
-      const bucketSeconds = BUCKET_SECONDS[timeRange] ?? 10;
+      const bucketSeconds = BUCKET_SECONDS[timeRange] ?? 5;
       const gapThresholdMs = bucketSeconds * 3 * 1000;
 
       // KHÔNG cần reverse — backend (repository.go, hàm ListMetrics) đã luôn trả về
