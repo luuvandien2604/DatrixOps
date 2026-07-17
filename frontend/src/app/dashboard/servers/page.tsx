@@ -38,11 +38,15 @@ export default function ServersPage() {
 
   useEffect(() => {
     fetchServers();
+    // Tự động làm mới danh sách mỗi 5s để CPU/RAM/Status cập nhật gần real-time,
+    // không cần người dùng bấm nút "Làm mới" thủ công.
+    const interval = setInterval(() => fetchServers(true), 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchServers = async () => {
+  const fetchServers = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const data = await apiClient('/servers');
       setServers(data);
     } catch (err: any) {
@@ -50,7 +54,7 @@ export default function ServersPage() {
         router.push('/login');
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -115,7 +119,12 @@ export default function ServersPage() {
                   let osInfo = null;
                   try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
 
-                  const isCritical = osInfo && osInfo.cpu_usage > 90;
+                  const isOffline = server.status !== 'online';
+                  // Khi agent offline, os_info vẫn còn giữ số liệu cũ (backend không xoá).
+                  // Không dùng số liệu này để hiển thị CPU/RAM nữa, tránh gây hiểu nhầm là server vẫn đang chạy.
+                  const liveInfo = isOffline ? null : osInfo;
+
+                  const isCritical = liveInfo && liveInfo.cpu_usage > 90;
 
                   return (
                     <tr key={server.id} className="hover:bg-white/[0.02] transition-colors group">
@@ -140,24 +149,24 @@ export default function ServersPage() {
                         <div className="text-xs text-[var(--color-muted)] mt-1">{osInfo ? `${osInfo.cpu_cores} Cores` : '—'}</div>
                       </td>
                       <td className="py-4 px-6">
-                        {osInfo ? (
+                        {liveInfo ? (
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm min-w-[3rem]">{osInfo.cpu_usage.toFixed(1)}%</span>
+                            <span className="font-mono text-sm min-w-[3rem]">{liveInfo.cpu_usage.toFixed(1)}%</span>
                             <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className={`h-full ${osInfo.cpu_usage > 90 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(osInfo.cpu_usage, 100)}%` }}></div>
+                              <div className={`h-full ${liveInfo.cpu_usage > 90 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(liveInfo.cpu_usage, 100)}%` }}></div>
                             </div>
                           </div>
-                        ) : <span className="text-[var(--color-muted)]">—</span>}
+                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent đang offline' : undefined}>—</span>}
                       </td>
                       <td className="py-4 px-6">
-                        {osInfo ? (
+                        {liveInfo ? (
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm min-w-[3rem]">{((osInfo.memory_used / osInfo.memory_total) * 100).toFixed(1)}%</span>
+                            <span className="font-mono text-sm min-w-[3rem]">{((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1)}%</span>
                             <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-500" style={{ width: `${Math.min((osInfo.memory_used / osInfo.memory_total) * 100, 100)}%` }}></div>
+                              <div className="h-full bg-emerald-500" style={{ width: `${Math.min((liveInfo.memory_used / liveInfo.memory_total) * 100, 100)}%` }}></div>
                             </div>
                           </div>
-                        ) : <span className="text-[var(--color-muted)]">—</span>}
+                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent đang offline' : undefined}>—</span>}
                       </td>
                       <td className="py-4 px-6">
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${server.status === 'online'
