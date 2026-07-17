@@ -1,192 +1,150 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useTheme } from 'next-themes';
-import { 
-  LayoutDashboard, Server, Activity, Bell, Zap, FileText, Network, Shield,
-  Settings, Users, Sliders, List, CloudFog, DatabaseBackup, Search, Moon, Sun, User, Globe
+import {
+  Activity, Bell, BookOpen, ChevronLeft, ChevronRight, CircleUserRound,
+  Command, Gauge, Globe2, LogOut, Menu, Search, Server, Settings2, ShieldCheck,
+  SlidersHorizontal, Users, X, Zap,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { getUserRole } from '@/lib/apiClient';
 
-const navGroups = [
-  {
-    title: 'GIÁM SÁT',
-    items: [
-      { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-      { name: 'Servers', path: '/dashboard/servers', icon: Server },
-      { name: 'Website & SSL', path: '/dashboard/websites', icon: Globe },
-      { name: 'Monitoring', path: '/dashboard/monitoring', icon: Activity },
-      { name: 'Alerts', path: '/dashboard/alerts', icon: Bell },
-      { name: 'Performance', path: '/dashboard/performance', icon: Zap },
-      { name: 'Logs', path: '/dashboard/logs', icon: FileText },
-      { name: 'Network', path: '/dashboard/network', icon: Network },
-      { name: 'Security', path: '/dashboard/security', icon: Shield },
-    ]
-  },
-  {
-    title: 'QUẢN LÝ',
-    items: [
-      { name: 'Quản lý Server', path: '/dashboard/manage/servers', icon: Server },
-      { name: 'Người dùng & Phân quyền', path: '/dashboard/manage/users', icon: Users },
-      { name: 'Cấu hình hệ thống', path: '/dashboard/manage/config', icon: Sliders },
-      { name: 'Nhật ký hoạt động', path: '/dashboard/manage/audit', icon: List },
-      { name: 'API & Tích hợp', path: '/dashboard/manage/api', icon: CloudFog },
-      { name: 'Sao lưu & Khôi phục', path: '/dashboard/manage/backup', icon: DatabaseBackup },
-    ]
-  },
-  {
-    title: 'TRỢ GIÚP',
-    items: [
-      { name: 'Tài liệu (Docs)', path: '/docs', icon: FileText },
-    ]
-  }
+type NavDefinition = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  count?: number;
+};
+
+const primaryNav: NavDefinition[] = [
+  { label: 'Overview', href: '/dashboard', icon: Gauge },
+  { label: 'Servers', href: '/dashboard/servers', icon: Server },
+  { label: 'Uptime', href: '/dashboard/websites', icon: Globe2 },
+  { label: 'Metrics', href: '/dashboard/monitoring', icon: Activity },
+  { label: 'Alerts', href: '/dashboard/alerts', icon: Bell, count: 2 },
+];
+
+const observeNav: NavDefinition[] = [
+  { label: 'Performance', href: '/dashboard/performance', icon: Zap },
+  { label: 'Network', href: '/dashboard/network', icon: SlidersHorizontal },
+  { label: 'Security', href: '/dashboard/security', icon: ShieldCheck },
+];
+
+const adminNav: NavDefinition[] = [
+  { label: 'Team access', href: '/dashboard/manage/users', icon: Users },
+  { label: 'System config', href: '/dashboard/manage/config', icon: Settings2 },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const { theme, setTheme } = useTheme();
-  
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
-  React.useEffect(() => {
-    setRole(getUserRole());
-  }, []);
 
-  // Mock health percentage for the signature gradient (95% healthy)
-  const healthPercentage = 95;
-  const signatureColor = healthPercentage > 90 ? 'from-emerald-500 to-emerald-300' 
-                       : healthPercentage > 70 ? 'from-amber-500 to-amber-300' 
-                       : 'from-rose-500 to-rose-300';
+  useEffect(() => setRole(getUserRole()), []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('refresh_token');
+  const logout = () => {
+    ['access_token', 'refresh_token'].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
     router.push('/login');
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+  const NavItem = ({ item }: { item: NavDefinition }) => {
+    const active = item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        href={item.href}
+        title={collapsed ? item.label : undefined}
+        className={`liquid-nav-item ${active ? 'is-active' : ''} ${collapsed ? 'justify-center' : ''}`}
+      >
+        <Icon className="h-[18px] w-[18px] shrink-0" />
+        {!collapsed && <span>{item.label}</span>}
+        {!collapsed && item.count && <span className="ml-auto rounded-full bg-[#ff7a90]/15 px-2 py-0.5 text-[10px] text-[#ff98aa]">{item.count}</span>}
+      </Link>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans overflow-hidden flex flex-col transition-colors duration-300">
-      {/* Signature Element - Health Bar */}
-      <div className={`h-[3px] w-full bg-gradient-to-r ${signatureColor} z-50`} />
+    <div className="liquid-shell min-h-screen text-[#f6f8fb]">
+      <div className="liquid-aurora" aria-hidden="true" />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className={`bg-[var(--background)] border-r border-[var(--color-muted)]/10 transition-all duration-300 flex flex-col ${isSidebarOpen ? 'w-[240px]' : 'w-[80px]'}`}>
-          <div className="p-4 flex items-center justify-between border-b border-[var(--color-muted)]/10 h-16 shrink-0">
-            {isSidebarOpen ? (
-              <h1 className="text-xl font-bold text-[var(--foreground)] tracking-wide truncate">DatrixOps</h1>
-            ) : (
-              <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center mx-auto text-white font-bold">D</div>
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed left-4 top-4 z-40 rounded-full border border-white/10 bg-black/60 p-3 backdrop-blur-xl lg:hidden"
+        aria-label="Open navigation"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {mobileOpen && <button className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" />}
+
+      <aside className={`liquid-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}>
+        <div className="flex h-20 items-center gap-3 px-4">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
+            <div className="brand-orbit"><Command className="h-4 w-4" /></div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-[0.16em]">DATRIX<span className="text-[#98f7d5]">OPS</span></p>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">control plane</p>
+              </div>
             )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
-            {navGroups.map((group, idx) => {
-              if (group.title === 'QUẢN LÝ' && role !== 'superadmin') {
-                return null;
-              }
-              return (
-              <div key={idx} className="mb-6">
-                {isSidebarOpen && (
-                  <h3 className="px-5 text-xs font-semibold text-[var(--color-muted)] mb-3 tracking-wider">
-                    {group.title}
-                  </h3>
-                )}
-                <ul className="space-y-1 px-2">
-                  {group.items.map((item) => {
-                    const isActive = pathname === item.path;
-                    const Icon = item.icon;
-                    return (
-                      <li key={item.path}>
-                        <Link href={item.path}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 ${
-                            isActive 
-                              ? 'bg-blue-500/10 text-blue-500 relative' 
-                              : 'text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)]'
-                          }`}
-                        >
-                          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1/2 bg-blue-500 rounded-r" />}
-                          <Icon className="w-5 h-5 shrink-0" />
-                          {isSidebarOpen && <span className="font-medium">{item.name}</span>}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )})}
-          </div>
-
-          <div className="p-4 border-t border-[var(--color-muted)]/10">
-            <Link href="/dashboard/settings"
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)] transition-all ${
-                pathname === '/dashboard/settings' ? 'bg-blue-500/10 text-blue-500' : ''
-              }`}
-            >
-              <Settings className={`w-5 h-5 shrink-0 ${!isSidebarOpen && 'mx-auto'}`} />
-              {isSidebarOpen && <span className="text-sm font-medium">Settings</span>}
-            </Link>
-          </div>
-        </aside>
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Top Nav */}
-          <header className="h-16 shrink-0 border-b border-[var(--color-muted)]/10 flex items-center justify-between px-6 bg-[var(--background)]/80 backdrop-blur-md z-10 transition-colors duration-300">
-            <div className="flex items-center gap-4 flex-1">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-[var(--color-muted)] hover:text-[var(--foreground)] lg:hidden">
-                <List className="w-5 h-5" />
-              </button>
-              
-              {/* Search */}
-              <div className="relative max-w-md w-full hidden md:block">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-                <input 
-                  type="text" 
-                  placeholder="Search (⌘K)" 
-                  className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-[var(--color-muted)]"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-5">
-              <button className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors relative">
-                <Bell className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[10px] font-bold flex items-center justify-center rounded-full text-white border border-[var(--background)]">
-                  3
-                </span>
-              </button>
-              
-              <button onClick={toggleTheme} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
-                {theme === 'light' ? <Moon className="w-5 h-5 animate-in spin-in-180" /> : <Sun className="w-5 h-5 animate-in spin-in-180" />}
-              </button>
-              
-              <div className="flex items-center gap-3 pl-5 border-l border-white/10 cursor-pointer group" onClick={handleLogout} title="Click to logout">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-white group-hover:text-blue-400 transition-colors">Admin User</p>
-                  <p className="text-xs text-[var(--color-muted)]">Administrator</p>
-                </div>
-                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white border border-white/10">
-                  <User className="w-4 h-4" />
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* Page Content */}
-          <main className="flex-1 overflow-y-auto p-6 relative">
-            {children}
-          </main>
+          </Link>
+          <button onClick={() => setMobileOpen(false)} className="ml-auto lg:hidden"><X className="h-5 w-5" /></button>
         </div>
+
+        <div className="px-3">
+          <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#70f2be] opacity-50" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#70f2be]" />
+            </span>
+            {!collapsed && <div><p className="text-xs font-medium">Agent network</p><p className="text-[10px] text-white/40">12 of 12 connected</p></div>}
+          </div>
+        </div>
+
+        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-5">
+          <p className={`nav-eyebrow ${collapsed ? 'text-center' : ''}`}>{collapsed ? '•' : 'Workspace'}</p>
+          <div className="space-y-1">{primaryNav.map((item) => <NavItem item={item} key={item.href} />)}</div>
+          <p className={`nav-eyebrow mt-7 ${collapsed ? 'text-center' : ''}`}>{collapsed ? '•' : 'Observe'}</p>
+          <div className="space-y-1">{observeNav.map((item) => <NavItem item={item} key={item.href} />)}</div>
+          {role === 'superadmin' && <>
+            <p className={`nav-eyebrow mt-7 ${collapsed ? 'text-center' : ''}`}>{collapsed ? '•' : 'Admin'}</p>
+            <div className="space-y-1">{adminNav.map((item) => <NavItem item={item} key={item.href} />)}</div>
+          </>}
+        </nav>
+
+        <div className="border-t border-white/[0.06] p-3">
+          <Link href="/docs" className={`liquid-nav-item ${collapsed ? 'justify-center' : ''}`}><BookOpen className="h-[18px] w-[18px]" />{!collapsed && <span>Documentation</span>}</Link>
+          <Link href="/dashboard/settings" className={`liquid-nav-item ${collapsed ? 'justify-center' : ''}`}><CircleUserRound className="h-[18px] w-[18px]" />{!collapsed && <span>Workspace settings</span>}</Link>
+          <button onClick={logout} className={`liquid-nav-item w-full ${collapsed ? 'justify-center' : ''}`}><LogOut className="h-[18px] w-[18px]" />{!collapsed && <span>Sign out</span>}</button>
+        </div>
+        <button onClick={() => setCollapsed(!collapsed)} className="sidebar-collapse hidden lg:flex" aria-label="Toggle sidebar">
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+      </aside>
+
+      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
+        <header className="liquid-topbar">
+          <div className="hidden items-center gap-2 text-xs text-white/35 md:flex">
+            <span className="text-white/75">Datrix Cloud</span><span>/</span><span>Production</span>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button className="topbar-action hidden sm:flex"><Search className="h-4 w-4" /><span>Search</span><kbd>⌘ K</kbd></button>
+            <Link href="/dashboard/alerts" className="topbar-icon relative"><Bell className="h-4 w-4" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff7a90]" /></Link>
+            <div className="ml-1 flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] py-1.5 pl-1.5 pr-3">
+              <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-[#786cff] to-[#3ed6c0] text-[10px] font-bold">DA</div>
+              <div className="hidden sm:block"><p className="text-[11px] font-medium">DevOps Admin</p><p className="text-[9px] text-[#70f2be]">● Online</p></div>
+            </div>
+          </div>
+        </header>
+        <main className="relative min-h-[calc(100vh-72px)] px-4 pb-12 pt-6 sm:px-6 xl:px-10">{children}</main>
       </div>
     </div>
   );
