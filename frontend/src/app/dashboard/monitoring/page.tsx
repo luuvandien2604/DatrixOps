@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import { Cpu, HardDrive, Wifi, DatabaseBackup, Server as ServerIcon, RefreshCw } from 'lucide-react';
 import {
-  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
+  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
 export default function MonitoringPage() {
@@ -29,7 +29,7 @@ export default function MonitoringPage() {
         setSelectedServerId(data[0].id);
       }
     } catch (err: any) {
-      if (err.message.includes('token') || err.message.includes('UNAUTHORIZED')) {
+      if (err.message?.includes('token') || err.message?.includes('UNAUTHORIZED')) {
         router.push('/login');
       }
     }
@@ -39,15 +39,12 @@ export default function MonitoringPage() {
   useEffect(() => {
     if (!selectedServerId) return;
 
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 5000); // refresh every 5s
+    fetchMetrics(false); // Lần đầu tiên load có xoay icon
+    const interval = setInterval(() => fetchMetrics(true), 5000); // Các lần sau chạy ngầm (không xoay icon)
+
     return () => clearInterval(interval);
   }, [selectedServerId, timeRange]);
 
-  // Bucket size backend dùng để downsample (PHẢI khớp chính xác với switch-case
-  // trong backend/internal/core/server/repository.go, hàm ListMetrics) — dùng để
-  // tính ngưỡng phát hiện gap ĐỘNG theo từng khung, không cố định 1 giá trị,
-  // vì khung càng dài thì khoảng cách bình thường giữa 2 điểm càng lớn.
   const BUCKET_SECONDS: Record<string, number> = {
     '15m': 10,
     '1h': 60,
@@ -59,32 +56,34 @@ export default function MonitoringPage() {
   };
 
   const formatTimeLabel = (date: Date) => {
+    if (isNaN(date.getTime())) return ''; // Check invalid date
     if (timeRange === '7d' || timeRange === '24h') {
       return date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
     return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
-  const fetchMetrics = async () => {
+  // Thêm cờ isBackground để phân biệt giữa việc người dùng chủ động tải lại vs. tự động chạy ngầm
+  const fetchMetrics = async (isBackground = false) => {
     try {
-      setLoading(true);
-      const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
+      if (!isBackground) setLoading(true);
 
-      // Ngưỡng gap = 3x khoảng cách bình thường của khung đang chọn — coi như mất
-      // liên tục >= 3 lần "nhịp" (bucket) thì mới tính là offline thật, tránh báo
-      // gap giả ở những khung downsample có khoảng cách điểm vốn đã lớn (1h, 3h...).
+      const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
+      if (!data || !Array.isArray(data)) return;
+
       const bucketSeconds = BUCKET_SECONDS[timeRange] ?? 5;
       const gapThresholdMs = bucketSeconds * 3 * 1000;
 
-      // KHÔNG cần reverse — backend (repository.go, hàm ListMetrics) đã luôn trả về
-      // đúng thứ tự "ORDER BY bucket_time ASC" (cũ → mới) cho MỌI khung thời gian,
-      // dùng thẳng "data" theo đúng thứ tự API trả về.
       const formatted: any[] = [];
       data.forEach((m: any, idx: number) => {
-        const date = new Date(m.created_at);
+        // Fallback an toàn: Có thể backend trả về bucket_time khi downsample thay vì created_at
+        const timeField = m.bucket_time || m.created_at || m.time;
+        const date = new Date(timeField);
 
         if (idx > 0) {
-          const prevDate = new Date(data[idx - 1].created_at);
+          const prevTimeField = data[idx - 1].bucket_time || data[idx - 1].created_at || data[idx - 1].time;
+          const prevDate = new Date(prevTimeField);
+
           if (date.getTime() - prevDate.getTime() > gapThresholdMs) {
             formatted.push({
               time: formatTimeLabel(new Date(prevDate.getTime() + 1000)),
@@ -98,21 +97,22 @@ export default function MonitoringPage() {
           }
         }
 
+        // Bọc Number() an toàn trước khi .toFixed() để chống crash
         formatted.push({
           time: formatTimeLabel(date),
-          cpu: Number(m.cpu_usage.toFixed(1)),
-          ram: m.memory_total > 0 ? Number(((m.memory_used / m.memory_total) * 100).toFixed(1)) : 0,
-          netIn: m.net_in / 1024,
-          netOut: m.net_out / 1024,
-          diskRead: m.disk_read / 1024,
-          diskWrite: m.disk_write / 1024,
+          cpu: m.cpu_usage != null ? Number(Number(m.cpu_usage).toFixed(1)) : null,
+          ram: (m.memory_total > 0 && m.memory_used != null) ? Number(((m.memory_used / m.memory_total) * 100).toFixed(1)) : null,
+          netIn: m.net_in != null ? m.net_in / 1024 : null,
+          netOut: m.net_out != null ? m.net_out / 1024 : null,
+          diskRead: m.disk_read != null ? m.disk_read / 1024 : null,
+          diskWrite: m.disk_write != null ? m.disk_write / 1024 : null,
         });
       });
       setMetrics(formatted);
     } catch (err) {
       console.error("Failed to fetch metrics", err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
@@ -164,7 +164,11 @@ export default function MonitoringPage() {
             </select>
           </div>
 
-          <button onClick={fetchMetrics} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-colors text-[var(--color-muted)]" title="Làm mới">
+          <button
+            onClick={() => fetchMetrics(false)}
+            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-colors text-[var(--color-muted)]"
+            title="Làm mới"
+          >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
           </button>
         </div>
