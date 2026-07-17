@@ -60,14 +60,15 @@ export default function MonitoringPage() {
       setLoading(true);
       const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
 
-      // Format data for charts, chèn điểm null tại chỗ gap thời gian để chart hiện
-      // đứt đoạn đúng khoảng server offline, thay vì nối thẳng qua như trước đây.
+      // THÊM DÒNG NÀY: Đảo ngược mảng để dữ liệu tăng dần theo thời gian
+      const sortedData = [...data].reverse();
+
       const formatted: any[] = [];
-      data.forEach((m: any, idx: number) => {
+      sortedData.forEach((m: any, idx: number) => { // Dùng sortedData thay vì data
         const date = new Date(m.created_at);
 
         if (idx > 0) {
-          const prevDate = new Date(data[idx - 1].created_at);
+          const prevDate = new Date(sortedData[idx - 1].created_at);
           if (date.getTime() - prevDate.getTime() > GAP_THRESHOLD_MS) {
             formatted.push({
               time: formatTimeLabel(new Date(prevDate.getTime() + 1000)),
@@ -85,10 +86,10 @@ export default function MonitoringPage() {
           time: formatTimeLabel(date),
           cpu: Number(m.cpu_usage.toFixed(1)),
           ram: m.memory_total > 0 ? Number(((m.memory_used / m.memory_total) * 100).toFixed(1)) : 0,
-          netIn: m.net_in / 1024, // KB/s
-          netOut: m.net_out / 1024, // KB/s
-          diskRead: m.disk_read / 1024, // KB/s
-          diskWrite: m.disk_write / 1024, // KB/s
+          netIn: m.net_in / 1024,
+          netOut: m.net_out / 1024,
+          diskRead: m.disk_read / 1024,
+          diskWrite: m.disk_write / 1024,
         });
       });
       setMetrics(formatted);
