@@ -79,7 +79,7 @@ export default function ServersPage() {
           <p className="text-sm text-[var(--color-muted)]">Quản lý và giám sát danh sách máy chủ của bạn</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={fetchServers} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
+          <button onClick={() => fetchServers()} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Làm mới
           </button>
