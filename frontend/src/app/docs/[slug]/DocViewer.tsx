@@ -32,7 +32,7 @@ export default function DocViewer({ meta, content }: { meta: DocMeta, content: s
       <div className="container mx-auto px-4 py-12 max-w-3xl text-center">
         <h1 className="text-3xl font-bold mb-4">Bạn không có quyền truy cập</h1>
         <p className="text-foreground-muted mb-8">Vui lòng đăng nhập để xem tài liệu này.</p>
-        <Link href="/login" className="bg-accent-blue px-6 py-2 rounded-lg font-medium text-white hover:bg-blue-600 transition-colors">
+        <Link href="/login" className="landing-cta primary">
           Đăng nhập ngay
         </Link>
       </div>

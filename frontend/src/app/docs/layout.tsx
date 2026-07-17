@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import {
-  BookOpen, Terminal, Server, Activity, Menu, X, Moon, Sun, Home, ChevronRight
+  Menu, X, Moon, Sun, ChevronRight, Command
 } from 'lucide-react';
 
 const docsNavigation = [
@@ -59,9 +59,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans flex flex-col">
+    <div className="docs-shell min-h-screen text-[var(--foreground)] font-sans flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[var(--background)]/80 backdrop-blur">
+      <header className="docs-header sticky top-0 z-50 w-full">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
@@ -70,9 +70,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <Link href="/docs" className="flex items-center gap-2 font-bold text-xl tracking-tight">
-              <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white">D</div>
-              <span>DatrixOps <span className="text-blue-500">Docs</span></span>
+            <Link href="/docs" className="flex items-center gap-3 font-semibold tracking-tight">
+              <span className="brand-orbit"><Command className="h-4 w-4" /></span>
+              <span>DatrixOps <span className="text-[#9b8cff]">Docs</span></span>
             </Link>
           </div>
 
@@ -93,7 +93,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <div className="container mx-auto px-4 flex-1 flex">
         {/* Sidebar */}
         <aside className={`
-          fixed inset-y-0 left-0 z-40 w-64 bg-[var(--background)] border-r border-white/10 pt-16
+          docs-aside fixed inset-y-0 left-0 z-40 w-64 pt-16
           lg:static lg:pt-0 lg:block
           transition-transform duration-300 ease-in-out
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -101,7 +101,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <div className="h-full overflow-y-auto py-8 px-4 custom-scrollbar">
             {docsNavigation.map((group, idx) => (
               <div key={idx} className="mb-8">
-                <h4 className="font-semibold text-[var(--foreground)] mb-3 text-sm">{group.title}</h4>
+                <h4 className="docs-group-title">{group.title}</h4>
                 <ul className="space-y-1.5">
                   {group.items.map((item) => {
                     const isActive = pathname === item.path;
@@ -110,8 +110,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                         <Link
                           href={item.path}
                           onClick={() => setIsMobileMenuOpen(false)}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${isActive
-                            ? 'bg-blue-500/10 text-blue-500 font-medium'
+                          className={`docs-link ${isActive
+                            ? 'is-active'
                             : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/5'
                             }`}
                         >
@@ -136,7 +136,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         )}
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 py-8 lg:px-12">
+        <main className="docs-content flex-1 min-w-0 py-8 lg:px-12">
           <div className="prose prose-invert prose-blue max-w-4xl w-full">
             {children}
           </div>

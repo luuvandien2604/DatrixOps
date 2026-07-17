@@ -1,4 +1,8 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   Activity, ArrowRight, BellRing, Check, ChevronRight, Command, Cpu,
   Database, Globe2, HardDrive, Radio, Server, ShieldCheck, Terminal,
@@ -8,8 +12,29 @@ import type { LucideIcon } from 'lucide-react';
 const signal = [34, 46, 39, 54, 49, 68, 52, 73, 59, 65, 48, 57, 41, 63, 52, 70, 58, 76];
 
 export default function LandingPage() {
+  const [liveSignal, setLiveSignal] = useState(signal);
+  const [activeFeed, setActiveFeed] = useState(0);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setLiveSignal((current) => [...current.slice(1), 34 + Math.round(Math.random() * 45)]);
+      setActiveFeed((current) => (current + 1) % 3);
+    }, 1800);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const x = Math.round((event.clientX / window.innerWidth) * 100);
+    const y = Math.round((event.clientY / window.innerHeight) * 100);
+    pageRef.current?.style.setProperty('--pointer-x', `${x}%`);
+    pageRef.current?.style.setProperty('--pointer-y', `${y}%`);
+  };
+
+  const currentCpu = liveSignal[liveSignal.length - 1];
+
   return (
-    <div className="landing-liquid min-h-screen overflow-hidden text-[#f5f7fb]">
+    <div ref={pageRef} onPointerMove={handlePointerMove} className="landing-liquid min-h-screen overflow-hidden text-[#f5f7fb]">
       <div className="landing-noise" aria-hidden="true" />
 
       <header className="landing-header">
@@ -47,7 +72,7 @@ export default function LandingPage() {
               <div className="console-topbar">
                 <div className="flex gap-1.5"><i /><i /><i /></div>
                 <div className="console-address"><ShieldCheck className="h-2.5 w-2.5 text-[#7af0c9]" />app.datrixops.io / production</div>
-                <span className="text-[8px] text-[#7af0c9]">● LIVE</span>
+                <span className="text-[11px] text-[#7af0c9]">● LIVE</span>
               </div>
               <div className="console-body">
                 <aside className="console-rail">
@@ -56,18 +81,18 @@ export default function LandingPage() {
                 </aside>
                 <div className="min-w-0 flex-1 p-4 sm:p-5">
                   <div className="mb-5 flex items-end justify-between">
-                    <div><p className="text-[7px] uppercase tracking-[.2em] text-[#7af0c9]">Live infrastructure</p><h2 className="mt-1 text-sm font-medium">Production overview</h2></div>
+                    <div><p className="text-[10px] uppercase tracking-[.2em] text-[#7af0c9]">Live infrastructure</p><h2 className="mt-1 text-base font-medium">Production overview</h2></div>
                     <span className="console-button"><span className="h-1.5 w-1.5 rounded-full bg-[#7af0c9]" />12 agents</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <ConsoleMetric icon={Server} label="Online" value="11/12" tint="#7af0c9" />
-                    <ConsoleMetric icon={Cpu} label="Avg. CPU" value="41%" tint="#a99cff" />
-                    <ConsoleMetric icon={BellRing} label="Incidents" value="02" tint="#ff91a4" />
+                    <ConsoleMetric icon={Cpu} label="Live CPU" value={`${currentCpu}%`} tint="#a99cff" pulse />
+                    <ConsoleMetric icon={BellRing} label="Incidents" value={activeFeed === 2 ? '01' : '02'} tint="#ff91a4" />
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-[1.55fr_.8fr]">
                     <div className="console-chart">
-                      <div className="flex items-center justify-between"><span>Resource load</span><span className="font-mono text-[7px] text-white/25">LAST 2 HOURS</span></div>
-                      <div className="signal-bars">{signal.map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div>
+                      <div className="flex items-center justify-between"><span>Resource load</span><span className="font-mono text-[10px] text-white/35">LAST 2 HOURS</span></div>
+                      <div className="signal-bars">{liveSignal.map((height, index) => <i key={index} className={index === liveSignal.length - 1 ? 'is-live' : ''} style={{ height: `${height}%` }} />)}</div>
                     </div>
                     <div className="console-health">
                       <span>Fleet health</span>
@@ -125,9 +150,9 @@ export default function LandingPage() {
             <div className="liquid-demo teal">
               <div className="demo-toolbar"><BellRing className="h-3.5 w-3.5" /><span>Incident stream</span><i>2 OPEN</i></div>
               <div className="alert-stack">
-                <DemoAlert icon={Database} title="Memory threshold exceeded" server="db-primary-01" tone="red" />
-                <DemoAlert icon={HardDrive} title="Disk pressure detected" server="worker-sg-03" tone="amber" />
-                <DemoAlert icon={Check} title="CPU load recovered" server="api-prod-02" tone="green" />
+                <DemoAlert icon={Database} title="Memory threshold exceeded" server="db-primary-01" tone="red" active={activeFeed === 0} />
+                <DemoAlert icon={HardDrive} title="Disk pressure detected" server="worker-sg-03" tone="amber" active={activeFeed === 1} />
+                <DemoAlert icon={Check} title="CPU load recovered" server="api-prod-02" tone="green" active={activeFeed === 2} />
               </div>
             </div>
           </div>
@@ -177,12 +202,12 @@ export default function LandingPage() {
   );
 }
 
-function ConsoleMetric({ icon: Icon, label, value, tint }: { icon: LucideIcon; label: string; value: string; tint: string }) {
-  return <div className="console-metric"><div style={{ color: tint }}><Icon className="h-3 w-3" />{label}</div><strong>{value}</strong></div>;
+function ConsoleMetric({ icon: Icon, label, value, tint, pulse = false }: { icon: LucideIcon; label: string; value: string; tint: string; pulse?: boolean }) {
+  return <div className={`console-metric ${pulse ? 'is-updating' : ''}`}><div style={{ color: tint }}><Icon className="h-3 w-3" />{label}</div><strong>{value}</strong></div>;
 }
 
-function DemoAlert({ icon: Icon, title, server, tone }: { icon: LucideIcon; title: string; server: string; tone: string }) {
-  return <div className="demo-alert"><span className={`demo-alert-icon ${tone}`}><Icon className="h-4 w-4" /></span><div><b>{title}</b><p>{server} · just now</p></div><ChevronRight className="ml-auto h-4 w-4 text-white/20" /></div>;
+function DemoAlert({ icon: Icon, title, server, tone, active }: { icon: LucideIcon; title: string; server: string; tone: string; active: boolean }) {
+  return <div className={`demo-alert ${active ? 'is-active' : ''}`}><span className={`demo-alert-icon ${tone}`}><Icon className="h-4 w-4" /></span><div><b>{title}</b><p>{server} · just now</p></div><ChevronRight className="ml-auto h-4 w-4 text-white/20" /></div>;
 }
 
 function WorkflowItem({ number, icon: Icon, title, text }: { number: string; icon: LucideIcon; title: string; text: string }) {

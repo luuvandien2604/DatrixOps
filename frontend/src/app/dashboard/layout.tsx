@@ -52,7 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
-    router.push('/login');
+    router.push('/');
   };
 
   const NavItem = ({ item }: { item: NavDefinition }) => {

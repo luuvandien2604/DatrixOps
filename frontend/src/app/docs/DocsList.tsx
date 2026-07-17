@@ -33,7 +33,7 @@ export default function DocsList({ docs }: { docs: DocMeta[] }) {
         <p className="text-foreground-muted">Không có tài liệu nào hiển thị.</p>
       ) : (
         visibleDocs.map(doc => (
-          <Link href={`/docs/${doc.slug}`} key={doc.slug} className="glass-card p-6 block hover:bg-white/5 transition-colors">
+          <Link href={`/docs/${doc.slug}`} key={doc.slug} className="docs-card glass-card p-6 block transition-colors">
             <h2 className="text-xl font-semibold mb-2">{doc.title}</h2>
             {doc.description && <p className="text-foreground-muted">{doc.description}</p>}
             <div className="mt-4">

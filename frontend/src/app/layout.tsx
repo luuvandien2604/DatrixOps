@@ -29,11 +29,13 @@ export default function RootLayout({
             position="bottom-right"
             toastOptions={{
               style: {
-                background: '#0B0F14', // Trùng màu nền glass-card của bạn
+                background: 'linear-gradient(145deg, rgba(26,29,38,.96), rgba(12,14,19,.96))',
                 color: '#fff',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
                 fontSize: '14px',
-                borderRadius: '8px',
+                borderRadius: '14px',
+                backdropFilter: 'blur(24px)',
+                boxShadow: '0 22px 60px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.07)',
               },
               success: {
                 iconTheme: {
