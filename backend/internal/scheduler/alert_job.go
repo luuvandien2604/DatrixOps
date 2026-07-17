@@ -197,13 +197,14 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 
 func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, msg string) {
 	for _, c := range channels {
-		if c.Type == "telegram" {
+		switch c.Type {
+		case "telegram":
 			token, _ := c.Config["bot_token"].(string)
 			chatID, _ := c.Config["chat_id"].(string)
 			if token != "" && chatID != "" {
 				notifier.SendTelegram(token, chatID, msg)
 			}
-		} else if c.Type == "discord" {
+		case "discord":
 			url, _ := c.Config["webhook_url"].(string)
 			if url != "" {
 				// Strip HTML tags for discord
