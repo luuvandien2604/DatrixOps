@@ -40,7 +40,8 @@ export default function ServersPage() {
     fetchServers();
     // Tự động làm mới danh sách mỗi 5s để CPU/RAM/Status cập nhật gần real-time,
     // không cần người dùng bấm nút "Làm mới" thủ công.
-    const interval = setInterval(() => fetchServers(true), 5000);
+    // Agent gửi heartbeat mỗi 10s (DATRIXOPS_INTERVAL), nên poll nhanh hơn cũng không có dữ liệu mới.
+    const interval = setInterval(() => fetchServers(true), 10000);
     return () => clearInterval(interval);
   }, []);
 
