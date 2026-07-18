@@ -6,6 +6,7 @@ echo "🚀 DatrixOps Agent Installer (Linux)"
 echo "================================================="
 
 TOKEN=$1
+SERVICES=$2
 SERVER_URL="https://datrixops.vandien.space"
 API_URL="${SERVER_URL}/api/v1"
 INSTALL_DIR="/usr/local/bin"
@@ -14,6 +15,11 @@ SERVICE_FILE="/etc/systemd/system/datrixops-agent.service"
 if [ -z "$TOKEN" ]; then
     echo "❌ Error: Agent token is required."
     echo "Usage: curl -sL ${SERVER_URL}/install.sh | sudo bash -s -- <AGENT_TOKEN>"
+    exit 1
+fi
+
+if [ -n "$SERVICES" ] && ! printf '%s' "$SERVICES" | grep -Eq '^[A-Za-z0-9._@,$ -]+$'; then
+    echo "❌ Error: Services contains unsupported characters."
     exit 1
 fi
 
@@ -50,6 +56,7 @@ After=network.target
 Type=simple
 Environment="DATRIXOPS_SERVER_URL=$API_URL"
 Environment="DATRIXOPS_AGENT_TOKEN=$TOKEN"
+Environment="DATRIXOPS_SERVICES=$SERVICES"
 ExecStart=$INSTALL_DIR/datrixops-agent
 Restart=always
 RestartSec=10

@@ -33,8 +33,14 @@ type TopProcess struct {
 }
 
 type ServiceStatus struct {
-	Name   string `json:"name"`
-	Status string `json:"status"` // running, stopped, not_installed
+	Name          string    `json:"name"`
+	DisplayName   string    `json:"display_name"`
+	Status        string    `json:"status"` // running, stopped, not_installed, unknown
+	SubStatus     string    `json:"sub_status,omitempty"`
+	StartupType   string    `json:"startup_type,omitempty"`
+	Source        string    `json:"source"`
+	Description   string    `json:"description,omitempty"`
+	LastCheckedAt time.Time `json:"last_checked_at"`
 }
 
 type SystemInfo struct {
@@ -88,7 +94,7 @@ type Snapshot struct {
 	PackageUpdate         int               `json:"package_update"`
 }
 
-func CollectSnapshot(agentVersion string) *Snapshot {
+func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot {
 	cronJobs, cronDiscoveryComplete := collectCronJobs()
 	return &Snapshot{
 		SystemInfo:            collectSystemInfo(),
@@ -96,7 +102,7 @@ func CollectSnapshot(agentVersion string) *Snapshot {
 		CronJobs:              cronJobs,
 		CronDiscoveryComplete: cronDiscoveryComplete,
 		TopProcesses:          collectTopProcesses(),
-		Services:              collectServices(),
+		Services:              collectServices(monitoredServices),
 		DockerContainers:      collectDockerContainers(),
 		PackageUpdate:         collectPackageUpdate(),
 	}
@@ -316,27 +322,6 @@ func collectTopProcesses() []TopProcess {
 
 	if len(results) > 20 {
 		results = results[:20]
-	}
-
-	return results
-}
-
-func collectServices() []ServiceStatus {
-	services := []string{"nginx", "mysql", "redis-server", "docker", "apache2", "php-fpm"}
-	var results []ServiceStatus
-
-	for _, srv := range services {
-		cmd := exec.Command("systemctl", "is-active", srv)
-		out, _ := cmd.Output()
-		status := strings.TrimSpace(string(out))
-
-		if status == "active" {
-			results = append(results, ServiceStatus{Name: srv, Status: "running"})
-		} else if status == "inactive" || status == "failed" {
-			results = append(results, ServiceStatus{Name: srv, Status: "stopped"})
-		} else {
-			results = append(results, ServiceStatus{Name: srv, Status: "not_installed"})
-		}
 	}
 
 	return results

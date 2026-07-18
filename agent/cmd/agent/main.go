@@ -40,7 +40,7 @@ func main() {
 	defer stop()
 
 	// Initial heartbeat immediately on startup with snapshot
-	sendHeartbeat(ctx, apiClient, true)
+	sendHeartbeat(ctx, apiClient, true, cfg.MonitoredServices)
 
 	// Ticker for periodic heartbeats
 	ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
@@ -60,12 +60,12 @@ func main() {
 				sendSnapshot = true
 				lastSnapshotTime = time.Now()
 			}
-			sendHeartbeat(ctx, apiClient, sendSnapshot)
+			sendHeartbeat(ctx, apiClient, sendSnapshot, cfg.MonitoredServices)
 		}
 	}
 }
 
-func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeSnapshot bool) {
+func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeSnapshot bool, monitoredServices []string) {
 	metrics, err := collector.Collect()
 	if err != nil {
 		log.Printf("Error collecting metrics: %v", err)
@@ -75,7 +75,7 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	metrics.Version = Version
 
 	if includeSnapshot {
-		metrics.Snapshot = collector.CollectSnapshot(Version)
+		metrics.Snapshot = collector.CollectSnapshot(Version, monitoredServices)
 	}
 
 	response, err := apiClient.SendHeartbeat(ctx, metrics)

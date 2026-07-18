@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 
 interface TopProcess {
@@ -15,7 +15,13 @@ interface TopProcess {
 
 interface ServiceStatus {
   name: string;
+  display_name?: string;
   status: string;
+  sub_status?: string;
+  startup_type?: string;
+  source?: string;
+  description?: string;
+  last_checked_at?: string;
 }
 
 interface SystemInfo {
@@ -102,6 +108,8 @@ export default function ServerDetailsPage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
@@ -214,6 +222,21 @@ export default function ServerDetailsPage() {
     ['services', 'Services'],
     ['docker', 'Docker'],
   ];
+  const services = snapshot?.services || [];
+  const filteredServices = services.filter(service => {
+    const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
+    const query = serviceSearch.trim().toLowerCase();
+    const matchesSearch = !query || [service.name, service.display_name, service.description, service.source]
+      .some(value => value?.toLowerCase().includes(query));
+    return matchesStatus && matchesSearch;
+  });
+  const serviceCounts = services.reduce<Record<string, number>>((counts, service) => {
+    counts[service.status] = (counts[service.status] || 0) + 1;
+    return counts;
+  }, {});
+  const monitoredOS = inventory?.platform || (server.os_info ? (() => {
+    try { return JSON.parse(server.os_info).os_name; } catch { return 'Unknown OS'; }
+  })() : 'Unknown OS');
 
   return (
     <div className="space-y-6">
@@ -432,25 +455,81 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'services' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {snapshot?.services?.map(s => (
-            <div key={s.name} className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${s.status === 'running' ? 'bg-emerald-500/10 text-emerald-500' : s.status === 'stopped' ? 'bg-rose-500/10 text-rose-500' : 'bg-[var(--background)] text-[var(--color-muted)]'}`}>
-                  <TerminalSquare className="w-5 h-5" />
-                </div>
-                <h3 className="font-semibold text-[var(--foreground)]">{s.name}</h3>
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: 'Running', value: serviceCounts.running || 0, icon: CircleCheck, tone: 'text-emerald-500' },
+              { label: 'Stopped', value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
+              { label: 'Not installed', value: serviceCounts.not_installed || 0, icon: TerminalSquare, tone: 'text-[var(--color-muted)]' },
+              { label: 'Unknown', value: serviceCounts.unknown || 0, icon: CircleHelp, tone: 'text-amber-500' },
+            ].map(({ label, value, icon: Icon, tone }) => (
+              <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                <div className={`flex items-center gap-2 text-sm font-semibold ${tone}`}><Icon className="h-4 w-4" />{label}</div>
+                <p className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{value}</p>
               </div>
-              <span className={`px-2 py-1 text-xs rounded-full font-medium border ${s.status === 'running' ? 'border-emerald-500/30 text-emerald-500' : s.status === 'stopped' ? 'border-rose-500/30 text-rose-500' : 'border-[var(--border-color)] text-[var(--color-muted)]'}`}>
-                {s.status.toUpperCase()}
-              </span>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
+            <div className="flex flex-col gap-4 border-b border-[var(--border-color)] p-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-[var(--foreground)]">Services on {monitoredOS}</h3>
+                <p className="mt-1 text-sm text-[var(--color-muted)]">Reported by the operating system&apos;s native service manager. Configure the agent with DATRIXOPS_SERVICES to replace the default list.</p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <label className="relative">
+                  <span className="sr-only">Search services</span>
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--color-muted)]" />
+                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 pl-9 pr-4 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder="Search services" />
+                </label>
+                <label>
+                  <span className="sr-only">Filter service status</span>
+                  <select value={serviceFilter} onChange={event => setServiceFilter(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500">
+                    <option value="all">All statuses</option>
+                    <option value="running">Running</option>
+                    <option value="stopped">Stopped</option>
+                    <option value="not_installed">Not installed</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+              </div>
             </div>
-          ))}
-          {!snapshot?.services?.length && (
-            <div className="col-span-full p-12 text-center text-[var(--color-muted)] bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl">
-              No service data available.
+
+            <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
+              {filteredServices.map(service => {
+                const statusStyle = service.status === 'running'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                  : service.status === 'stopped'
+                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-500'
+                    : service.status === 'unknown'
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-500'
+                      : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--color-muted)]';
+                return (
+                  <article key={service.name} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h4 className="truncate font-semibold text-[var(--foreground)]">{service.display_name || service.name}</h4>
+                        <p className="mt-1 truncate font-mono text-xs text-[var(--color-muted)]">{service.name}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyle}`}>{service.status.replace(/_/g, ' ')}</span>
+                    </div>
+                    {service.description && <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">{service.description}</p>}
+                    <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-color)] pt-4 text-sm">
+                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source || 'Unknown'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">Startup</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.startup_type || 'Unknown'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">Detail</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">Checked</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{formatTimestamp(service.last_checked_at)}</dd></div>
+                    </dl>
+                  </article>
+                );
+              })}
+              {!filteredServices.length && (
+                <div className="col-span-full p-10 text-center text-[var(--color-muted)]">
+                  {services.length ? 'No services match the current filters.' : 'No service data has been reported by this agent.'}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 

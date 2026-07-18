@@ -4,21 +4,24 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds agent configuration.
 type Config struct {
-	ServerURL       string // Core API URL (e.g. https://api.datrixops.app)
-	AgentToken      string // Token to authenticate with Core API
-	IntervalSeconds int    // Metric collection interval
+	ServerURL         string   // Core API URL (e.g. https://api.datrixops.app)
+	AgentToken        string   // Token to authenticate with Core API
+	IntervalSeconds   int      // Metric collection interval
+	MonitoredServices []string // Optional OS-specific service list override
 }
 
 // Load reads agent configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerURL:       getEnv("DATRIXOPS_SERVER_URL", "http://localhost:8080"),
-		AgentToken:      getEnv("DATRIXOPS_AGENT_TOKEN", ""),
-		IntervalSeconds: getEnvInt("DATRIXOPS_INTERVAL", 5),
+		ServerURL:         getEnv("DATRIXOPS_SERVER_URL", "http://localhost:8080"),
+		AgentToken:        getEnv("DATRIXOPS_AGENT_TOKEN", ""),
+		IntervalSeconds:   getEnvInt("DATRIXOPS_INTERVAL", 5),
+		MonitoredServices: getEnvList("DATRIXOPS_SERVICES"),
 	}
 
 	if cfg.AgentToken == "" {
@@ -26,6 +29,30 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func getEnvList(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	values := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, item := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(item)
+		if value == "" || len(value) > 200 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+		if len(values) == 50 {
+			break
+		}
+	}
+	return values
 }
 
 func getEnv(key, fallback string) string {

@@ -1,7 +1,14 @@
 param (
     [Parameter(Mandatory=$true)]
-    [string]$Token
+    [string]$Token,
+    [Parameter(Mandatory=$false)]
+    [string]$Services = ""
 )
+
+if ($Services -and $Services -notmatch '^[A-Za-z0-9._@,$ \-]+$') {
+    Write-Error "Services contains unsupported characters."
+    exit 1
+}
 
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host "[*] DatrixOps Agent Installer (Windows)" -ForegroundColor Cyan
@@ -38,8 +45,9 @@ Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
 Write-Host "[*] Creating wrapper script..."
 $BatContent = @(
     "@echo off",
-    "set DATRIXOPS_SERVER_URL=$ApiUrl",
-    "set DATRIXOPS_AGENT_TOKEN=$Token",
+    "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
+    "set `"DATRIXOPS_AGENT_TOKEN=$Token`"",
+    "set `"DATRIXOPS_SERVICES=$Services`"",
     "`"$ExePath`""
 )
 $BatContent | Set-Content -Path $BatPath -Encoding ASCII

@@ -6,6 +6,7 @@ echo "🚀 DatrixOps Agent Installer (macOS)"
 echo "================================================="
 
 TOKEN=$1
+SERVICES=$2
 SERVER_URL="https://datrixops.vandien.space"
 API_URL="${SERVER_URL}/api/v1"
 INSTALL_DIR="/usr/local/bin"
@@ -14,6 +15,11 @@ PLIST_FILE="/Library/LaunchDaemons/com.datrixops.agent.plist"
 if [ -z "$TOKEN" ]; then
     echo "❌ Error: Agent token is required."
     echo "Usage: curl -sL ${SERVER_URL}/install-mac.sh | sudo bash -s -- <AGENT_TOKEN>"
+    exit 1
+fi
+
+if [ -n "$SERVICES" ] && ! printf '%s' "$SERVICES" | grep -Eq '^[A-Za-z0-9._@,$ -]+$'; then
+    echo "❌ Error: Services contains unsupported characters."
     exit 1
 fi
 
@@ -59,6 +65,8 @@ cat << PLIST_EOF > $PLIST_FILE
         <string>$API_URL</string>
         <key>DATRIXOPS_AGENT_TOKEN</key>
         <string>$TOKEN</string>
+        <key>DATRIXOPS_SERVICES</key>
+        <string>$SERVICES</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

@@ -25,3 +25,5 @@ The command contains a unique Agent Token. Treat it as a secret.
 Return to **Servers**. The server should become **Online** after its first successful heartbeat. If it remains offline, verify outbound access to the dashboard and inspect the agent service logs.
 
 For service commands and removal steps, see [Agent Service Management](/docs/agent-service-management).
+To replace the operating-system-specific service watch list, see
+[Service Monitoring](/docs/service-monitoring).

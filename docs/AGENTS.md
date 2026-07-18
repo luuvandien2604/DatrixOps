@@ -30,7 +30,7 @@ agent/
   cmd/agent/main.go            # vòng lặp heartbeat + xử lý task + auto-update
   internal/collector/          # thu thập CPU/RAM/Disk/Net (collector.go), Docker (docker.go), snapshot (snapshot.go)
   internal/client/http.go      # gọi API backend
-  internal/config/config.go    # đọc env: DATRIXOPS_SERVER_URL, DATRIXOPS_AGENT_TOKEN, DATRIXOPS_INTERVAL
+  internal/config/config.go    # đọc env: DATRIXOPS_SERVER_URL, DATRIXOPS_AGENT_TOKEN, DATRIXOPS_INTERVAL, DATRIXOPS_SERVICES
 
 frontend/
   src/app/dashboard/           # các trang UI, xem mục 5

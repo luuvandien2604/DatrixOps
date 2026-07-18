@@ -28,8 +28,14 @@ type TopProcess struct {
 }
 
 type ServiceStatus struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	Name          string     `json:"name"`
+	DisplayName   string     `json:"display_name"`
+	Status        string     `json:"status"`
+	SubStatus     string     `json:"sub_status,omitempty"`
+	StartupType   string     `json:"startup_type,omitempty"`
+	Source        string     `json:"source"`
+	Description   string     `json:"description,omitempty"`
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 }
 
 type SystemInfo struct {

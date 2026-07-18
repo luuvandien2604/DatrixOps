@@ -18,6 +18,7 @@ export default function ServersPage() {
   const [newServerName, setNewServerName] = useState('');
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
+  const [customServices, setCustomServices] = useState('');
 
   // Keep both id and name for confirmation dialogs.
   const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
@@ -62,13 +63,16 @@ export default function ServersPage() {
   };
 
   const getInstallCommand = () => {
+    const services = customServices.trim();
+    const shellServicesArgument = services ? ` "${services}"` : '';
+    const powershellServicesArgument = services ? ` -Services "${services}"` : '';
     switch (selectedOs) {
       case 'linux':
-        return `curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}`;
+        return `curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}${shellServicesArgument}`;
       case 'macos':
-        return `curl -sL https://datrixops.vandien.space/install-mac.sh | sudo bash -s -- ${generatedAgentToken}`;
+        return `curl -sL https://datrixops.vandien.space/install-mac.sh | sudo bash -s -- ${generatedAgentToken}${shellServicesArgument}`;
       case 'windows':
-        return `Invoke-WebRequest -Uri "https://datrixops.vandien.space/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}"`;
+        return `Invoke-WebRequest -Uri "https://datrixops.vandien.space/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}"${powershellServicesArgument}`;
       default:
         return '';
     }
@@ -234,7 +238,7 @@ export default function ServersPage() {
           <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
             <div className="flex justify-between items-center p-6 border-b border-white/5">
               <h2 id="add-server-title" className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
-              <button type="button" aria-label="Close add server dialog" onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+              <button type="button" aria-label="Close add server dialog" onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
@@ -303,6 +307,18 @@ export default function ServersPage() {
                     </button>
                   </div>
 
+                  <div className="mb-4">
+                    <label htmlFor="custom-services" className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Services to monitor <span className="normal-case font-normal">(optional)</span></label>
+                    <input
+                      id="custom-services"
+                      value={customServices}
+                      onChange={event => setCustomServices(event.target.value.replace(/[^A-Za-z0-9._@,$ \-]/g, ''))}
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
+                      placeholder={selectedOs === 'linux' ? 'nginx,postgresql,docker,ssh' : selectedOs === 'macos' ? 'com.openssh.sshd,homebrew.mxcl.nginx' : 'EventLog,Schedule,WinRM,sshd'}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">Leave blank to use the recommended defaults for {selectedOs === 'macos' ? 'macOS' : selectedOs === 'windows' ? 'Windows' : 'Linux'}. Use comma-separated native service identifiers.</p>
+                  </div>
+
                   <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
                     <div className="text-emerald-400 whitespace-nowrap">
                       {getInstallCommand()}
@@ -314,7 +330,7 @@ export default function ServersPage() {
                     </button>
                   </div>
                   <div className="flex justify-end">
-                    <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); fetchServers(); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors">
+                    <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); fetchServers(); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors">
                       Done
                     </button>
                   </div>

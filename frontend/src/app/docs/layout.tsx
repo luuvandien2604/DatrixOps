@@ -26,6 +26,7 @@ const docsNavigation = [
   {
     title: 'Alerts & Monitoring',
     items: [
+      { name: 'Service Monitoring', path: '/docs/service-monitoring' },
       { name: 'Alerts', path: '/docs/alerts' },
       { name: 'Websites & SSL', path: '/docs/websites' },
     ]
