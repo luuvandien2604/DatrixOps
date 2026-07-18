@@ -720,7 +720,9 @@ export default function ServersPage() {
               <p className="leading-6 text-[var(--color-muted)]">
                 This queues the current agent release for all {servers.length} servers in your workspace. Online agents will update on their next heartbeat; offline agents can claim the task when they reconnect within 24 hours.
               </p>
-              <p className="mt-3 text-sm text-[var(--color-muted)]">Agents that already have a pending or processing update will be skipped.</p>
+              <p className="mt-3 text-sm text-[var(--color-muted)]">
+                Agents that already have a pending or processing update will be skipped. Legacy agents older than 1.3.0 require the one-time token-free in-place update before they can process dashboard update tasks.
+              </p>
               <div className="mt-6 flex justify-end gap-3">
                 <button type="button" disabled={isUpdatingAll} onClick={() => setIsUpdateAllOpen(false)} className="rounded-lg px-4 py-2 font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--background)] disabled:opacity-50">
                   Cancel

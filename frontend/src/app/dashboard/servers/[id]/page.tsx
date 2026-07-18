@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 
@@ -140,6 +140,7 @@ export default function ServerDetailsPage() {
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateState, setAgentUpdateState] = useState<AgentUpdateState>({ phase: 'idle' });
+  const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
 
   useEffect(() => {
     fetchServer();
@@ -267,6 +268,13 @@ export default function ServerDetailsPage() {
   };
 
   const queueAgentUpdate = async () => {
+    if (!supportsServiceControls) {
+      const message = `Agent ${reportedAgentVersion || 'unknown'} cannot reliably claim modern update tasks. Run the token-free in-place update command once, then use Update All Agents for future releases.`;
+      setAgentUpdateState({ phase: 'failed', message });
+      toast.error('This legacy agent requires a one-time in-place update.');
+      return;
+    }
+
     setQueueingAgentUpdate(true);
     setAgentUpdateState({ phase: 'waiting', message: 'Sending the update command to the running agent…' });
     try {
@@ -298,6 +306,17 @@ export default function ServerDetailsPage() {
       toast.error(error.message || 'Unable to queue agent update');
     } finally {
       setQueueingAgentUpdate(false);
+    }
+  };
+
+  const copyUpdateCommand = async (command: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedUpdateCommand(true);
+      window.setTimeout(() => setCopiedUpdateCommand(false), 2000);
+      toast.success('Token-free update command copied');
+    } catch {
+      toast.error('Unable to copy the update command');
     }
   };
 
@@ -395,6 +414,9 @@ export default function ServerDetailsPage() {
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
+  const manualUpdateCommand = osFamily === 'windows'
+    ? 'irm https://datrixops.vandien.space/update-agent.ps1 | iex'
+    : 'curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh';
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -659,6 +681,22 @@ export default function ServerDetailsPage() {
                   <div>
                     <p className="font-semibold">Agent {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer is required for service controls.</p>
                     <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {reportedAgentVersion || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
+                    <p className="mt-2 leading-6 text-[var(--color-muted)]">
+                      Agents older than {MIN_SERVICE_CONTROL_AGENT_VERSION} cannot reliably read the current task response. Run this token-free command once; later releases can use Update All Agents.
+                    </p>
+                    <div className="mt-3 flex max-w-3xl items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-2 pl-4">
+                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-xs font-semibold text-[var(--foreground)] sm:text-sm">
+                        {manualUpdateCommand}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => copyUpdateCommand(manualUpdateCommand)}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-2 font-semibold text-[var(--foreground)] transition-colors hover:border-blue-500"
+                      >
+                        <Copy className="h-4 w-4" />
+                        {copiedUpdateCommand ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
                     {agentUpdateState.message && (
                       <p className={`mt-2 font-medium leading-6 ${agentUpdateState.phase === 'failed' ? 'text-rose-500' : 'text-blue-500'}`}>
                         {agentUpdateState.message}
@@ -671,9 +709,9 @@ export default function ServerDetailsPage() {
                     )}
                   </div>
                 </div>
-                <button type="button" disabled={queueingAgentUpdate || server.status !== 'online'} onClick={queueAgentUpdate} className="liquid-button shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
-                  {queueingAgentUpdate ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  {queueingAgentUpdate ? 'Queueing…' : 'Update agent now'}
+                <button type="button" disabled={queueingAgentUpdate || (supportsServiceControls && server.status !== 'online')} onClick={() => supportsServiceControls ? queueAgentUpdate() : copyUpdateCommand(manualUpdateCommand)} className="liquid-button shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
+                  {queueingAgentUpdate ? <LoaderCircle className="h-4 w-4 animate-spin" /> : supportsServiceControls ? <RefreshCw className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {queueingAgentUpdate ? 'Queueing…' : supportsServiceControls ? 'Update agent now' : 'Copy update command'}
                 </button>
               </div>
             </div>

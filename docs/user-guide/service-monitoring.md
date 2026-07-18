@@ -76,6 +76,33 @@ built legacy-numbered binary from disabling service controls or causing the
 control plane and downloaded artifact to disagree. Keep the backend
 `AGENT_VERSION` equal to the version passed to `scripts/publish-agent.sh`.
 
+### One-time token-free update
+
+Agent 1.1.0 predates the current heartbeat response envelope and cannot
+reliably claim modern update tasks. Its legacy installer can also be terminated
+by the old systemd control group when the agent exits. This cannot be repaired
+reliably from the control plane because the affected binary does not receive
+the command.
+
+Run the same command directly on any existing Linux or macOS installation:
+
+```bash
+curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh
+```
+
+For Windows, open PowerShell as Administrator:
+
+```powershell
+irm https://datrixops.vandien.space/update-agent.ps1 | iex
+```
+
+These update scripts do not accept or modify an agent token. They detect the
+platform, validate the downloaded executable, replace only the existing agent
+binary, restart the existing service, and preserve its environment, service
+list, token, and registration. The server detail page displays and copies the
+correct command for the detected operating system. After the dashboard reports
+1.3.0, use Update Agent or Update All Agents for all later releases.
+
 ## Customize an agent
 
 Set `DATRIXOPS_SERVICES` to a comma-separated list of native service identifiers.
