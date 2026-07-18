@@ -67,7 +67,14 @@ Agents older than 1.3.0 may acknowledge an update before their legacy
 background installer has replaced the binary. If the reported version does not
 change after the service reconnects, perform a one-time manual binary
 replacement on the host. Subsequent updates use the hardened updater included
-in Agent 1.3.0.
+in Agent 1.3.0 and can be distributed from the dashboard with Update Agent or
+Update All Agents. The server header marks older versions with **Update
+required** instead of presenting them as control-capable agents.
+
+Release publishing refuses versions older than 1.3.0, preventing a freshly
+built legacy-numbered binary from disabling service controls or causing the
+control plane and downloaded artifact to disagree. Keep the backend
+`AGENT_VERSION` equal to the version passed to `scripts/publish-agent.sh`.
 
 ## Customize an agent
 

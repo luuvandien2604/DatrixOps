@@ -110,6 +110,8 @@ type AgentUpdateState = {
   message?: string;
 };
 
+const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
+
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
   const parse = (value: string) => value.split('.').map(part => Number.parseInt(part, 10) || 0);
@@ -280,7 +282,7 @@ export default function ServerDetailsPage() {
         if (result.status === 'completed') {
           setAgentUpdateState({
             phase: 'waiting',
-            message: 'The agent acknowledged the update. Waiting for it to restart and report version 1.3.0 or newer…',
+            message: `The agent acknowledged the update. Waiting for it to restart and report version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer…`,
           });
           toast.success('Update acknowledged. Verifying the running agent version…');
           await fetchServer();
@@ -392,7 +394,7 @@ export default function ServerDetailsPage() {
   // Heartbeat version is authoritative for the binary that is running now.
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
-  const supportsServiceControls = versionAtLeast(reportedAgentVersion, '1.3.0');
+  const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -407,22 +409,40 @@ export default function ServerDetailsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <button onClick={() => router.push('/dashboard/servers')} className="p-2 hover:bg-[var(--background-card)] rounded-lg text-[var(--color-muted)] transition-colors">
+      <div className="flex items-start gap-4">
+        <button onClick={() => router.push('/dashboard/servers')} aria-label="Back to servers" className="mt-1 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] p-2.5 text-[var(--color-muted)] transition-colors hover:text-[var(--foreground)]">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] tracking-tight flex items-center gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-4xl font-bold tracking-tight text-[var(--foreground)] sm:text-5xl">
             {server.name}
-            <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${server.status === 'online' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+          </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm">
+            <span className="flex items-center gap-2 text-[var(--color-muted)]">
+              <ServerIcon className="h-4 w-4" />
+              {server.ip_address || snapshot?.system_info?.public_ip || 'Unknown IP'}
+            </span>
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${
+              server.status === 'online'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+            }`}>
+              <span className={`h-2 w-2 rounded-full ${server.status === 'online' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
               {server.status === 'online' ? 'Online' : 'Offline'}
             </span>
-          </h1>
-          <p className="text-[var(--color-muted)] text-sm mt-1 flex items-center gap-2">
-            <ServerIcon className="w-4 h-4" /> {server.ip_address || (snapshot?.system_info?.public_ip) || 'Unknown IP'}
-            <span aria-hidden="true">•</span>
-            <span className="font-semibold text-[var(--foreground)]">Agent {reportedAgentVersion || 'Unknown'}</span>
-          </p>
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 font-semibold ${
+              supportsServiceControls
+                ? 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--foreground)]'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+            }`}>
+              Agent {reportedAgentVersion || 'version unknown'}
+            </span>
+            {!supportsServiceControls && (
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                Update required
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -637,7 +657,7 @@ export default function ServerDetailsPage() {
                 <div className="flex items-start gap-3">
                   <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
                   <div>
-                    <p className="font-semibold">Agent 1.3.0 or newer is required for service controls.</p>
+                    <p className="font-semibold">Agent {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer is required for service controls.</p>
                     <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {reportedAgentVersion || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
                     {agentUpdateState.message && (
                       <p className={`mt-2 font-medium leading-6 ${agentUpdateState.phase === 'failed' ? 'text-rose-500' : 'text-blue-500'}`}>
@@ -646,7 +666,7 @@ export default function ServerDetailsPage() {
                     )}
                     {agentUpdateState.phase === 'waiting' && (
                       <p className="mt-2 leading-6 text-[var(--color-muted)]">
-                        Task acknowledgement does not confirm that the binary was replaced. Controls unlock only after a heartbeat reports version 1.3.0 or newer.
+                        Task acknowledgement does not confirm that the binary was replaced. Controls unlock only after a heartbeat reports version {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.
                       </p>
                     )}
                   </div>
@@ -779,7 +799,7 @@ export default function ServerDetailsPage() {
                           key={action}
                           type="button"
                           disabled={disabled}
-                          title={unavailableReason || (!supportsServiceControls ? 'Update the agent to version 1.3.0 or newer.' : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
+                          title={unavailableReason || (!supportsServiceControls ? `Update the agent to version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.` : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
                           onClick={() => setServiceActionRequest({ action, service })}
                           className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold transition-colors ${tone} disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--border-color)] disabled:hover:bg-transparent`}
                         >
