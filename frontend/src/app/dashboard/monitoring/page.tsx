@@ -1,292 +1,722 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/apiClient';
-import { Cpu, HardDrive, Wifi, DatabaseBackup, Server as ServerIcon, RefreshCw } from 'lucide-react';
 import {
-  LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  Activity, ChevronDown, CircleAlert, Clock3, Cpu, DatabaseBackup,
+  HardDrive, RefreshCw, Server as ServerIcon, Wifi,
+} from 'lucide-react';
+import {
+  Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceArea,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { apiClient } from '@/lib/apiClient';
+
+type MonitoringServer = {
+  id: string;
+  name: string;
+  status: string;
+  last_seen_at?: string;
+};
+
+type MetricApiPoint = {
+  created_at?: string;
+  bucket_time?: string;
+  time?: string;
+  bucket_seconds?: number;
+  cpu_usage?: number | string;
+  memory_used?: number | string;
+  memory_total?: number | string;
+  net_in?: number | string;
+  net_out?: number | string;
+  disk_read?: number | string;
+  disk_write?: number | string;
+};
+
+type TimelinePoint = {
+  timestamp: number;
+  cpu: number | null;
+  ram: number | null;
+  netIn: number | null;
+  netOut: number | null;
+  diskRead: number | null;
+  diskWrite: number | null;
+  hasData: boolean;
+  isConfirmedMissing: boolean;
+};
+
+type MissingInterval = {
+  start: number;
+  end: number;
+};
+
+type TimeRange = '15m' | '1h' | '3h' | '6h' | '12h' | '24h' | '7d';
+
+type RangeOption = {
+  value: TimeRange;
+  label: string;
+  durationMs: number;
+  bucketSeconds: number;
+};
+
+type TooltipItem = {
+  name?: string;
+  value?: number | string | null;
+  color?: string;
+  payload?: TimelinePoint;
+};
+
+type MetricsTooltipProps = {
+  active?: boolean;
+  label?: number | string;
+  payload?: TooltipItem[];
+};
+
+const POLL_INTERVAL_MS = 5_000;
+const TIMELINE_TICK_MS = 1_000;
+const MISSING_DATA_GRACE_MS = 15_000;
+
+// Keep this resolution synchronized with ListMetrics in the backend.
+const RANGE_OPTIONS: RangeOption[] = [
+  { value: '15m', label: '15 phút gần nhất', durationMs: 15 * 60_000, bucketSeconds: 5 },
+  { value: '1h', label: '1 giờ gần nhất', durationMs: 60 * 60_000, bucketSeconds: 15 },
+  { value: '3h', label: '3 giờ gần nhất', durationMs: 3 * 60 * 60_000, bucketSeconds: 30 },
+  { value: '6h', label: '6 giờ gần nhất', durationMs: 6 * 60 * 60_000, bucketSeconds: 60 },
+  { value: '12h', label: '12 giờ gần nhất', durationMs: 12 * 60 * 60_000, bucketSeconds: 120 },
+  { value: '24h', label: '24 giờ gần nhất', durationMs: 24 * 60 * 60_000, bucketSeconds: 300 },
+  { value: '7d', label: '7 ngày gần nhất', durationMs: 7 * 24 * 60 * 60_000, bucketSeconds: 1_800 },
+];
+
+const RANGE_CONFIG = Object.fromEntries(
+  RANGE_OPTIONS.map((option) => [option.value, option]),
+) as Record<TimeRange, RangeOption>;
 
 export default function MonitoringPage() {
-  const [servers, setServers] = useState<any[]>([]);
-  const [selectedServerId, setSelectedServerId] = useState<string>('');
-  const [timeRange, setTimeRange] = useState<string>('15m');
-  const [metrics, setMetrics] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [servers, setServers] = useState<MonitoringServer[]>([]);
+  const [selectedServerId, setSelectedServerId] = useState('');
+  const [timeRange, setTimeRange] = useState<TimeRange>('15m');
+  const [rawMetrics, setRawMetrics] = useState<MetricApiPoint[]>([]);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [metricsLoaded, setMetricsLoaded] = useState(false);
+  const [metricsError, setMetricsError] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  const activeMetricsRequest = useRef<AbortController | null>(null);
   const router = useRouter();
 
-  // 1. Fetch servers on mount
-  useEffect(() => {
-    fetchServers();
-  }, []);
-
-  const fetchServers = async () => {
+  const fetchServers = useCallback(async () => {
     try {
       const data = await apiClient('/servers');
-      setServers(data);
-      if (data.length > 0 && !selectedServerId) {
-        setSelectedServerId(data[0].id);
-      }
-    } catch (err: any) {
-      if (err.message?.includes('token') || err.message?.includes('UNAUTHORIZED')) {
+      const nextServers = Array.isArray(data) ? data as MonitoringServer[] : [];
+      setServers(nextServers);
+      setSelectedServerId((current) => {
+        if (current && nextServers.some((server) => server.id === current)) return current;
+        return nextServers[0]?.id ?? '';
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('token') || message.includes('UNAUTHORIZED')) {
         router.push('/login');
       }
     }
-  };
+  }, [router]);
 
-  // 2. Fetch metrics when selectedServerId or timeRange changes or periodically
+  useEffect(() => {
+    void fetchServers();
+    const interval = window.setInterval(() => void fetchServers(), 10_000);
+    return () => window.clearInterval(interval);
+  }, [fetchServers]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), TIMELINE_TICK_MS);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const fetchMetrics = useCallback(async (background = false, replaceActiveRequest = false) => {
+    if (!selectedServerId) return;
+    if (activeMetricsRequest.current) {
+      if (!replaceActiveRequest) return;
+      activeMetricsRequest.current.abort();
+    }
+
+    const controller = new AbortController();
+    activeMetricsRequest.current = controller;
+    if (background) setRefreshing(true);
+    else setInitialLoading(true);
+
+    try {
+      const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`, {
+        signal: controller.signal,
+      });
+      if (activeMetricsRequest.current !== controller) return;
+      setRawMetrics(Array.isArray(data) ? data as MetricApiPoint[] : []);
+      setMetricsLoaded(true);
+      setMetricsError('');
+      setNow(Date.now());
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      const message = error instanceof Error ? error.message : 'Không thể tải metrics';
+      if (message.includes('token') || message.includes('UNAUTHORIZED')) {
+        router.push('/login');
+        return;
+      }
+      setMetricsError(message);
+    } finally {
+      if (activeMetricsRequest.current === controller) {
+        activeMetricsRequest.current = null;
+        setInitialLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [router, selectedServerId, timeRange]);
+
   useEffect(() => {
     if (!selectedServerId) return;
+    setRawMetrics([]);
+    setMetricsLoaded(false);
+    setMetricsError('');
+    void fetchMetrics(false, true);
 
-    fetchMetrics(false); // Lần đầu tiên load có xoay icon
-    const interval = setInterval(() => fetchMetrics(true), 5000); // Các lần sau chạy ngầm (không xoay icon)
+    const interval = window.setInterval(
+      () => void fetchMetrics(true),
+      POLL_INTERVAL_MS,
+    );
 
-    return () => clearInterval(interval);
-  }, [selectedServerId, timeRange]);
+    return () => {
+      window.clearInterval(interval);
+      activeMetricsRequest.current?.abort();
+      activeMetricsRequest.current = null;
+    };
+  }, [fetchMetrics, selectedServerId]);
 
-  const BUCKET_SECONDS: Record<string, number> = {
-    '15m': 10,
-    '1h': 60,
-    '3h': 120,
-    '6h': 300,
-    '12h': 600,
-    '24h': 900,
-    '7d': 3600,
+  const rangeConfig = RANGE_CONFIG[timeRange];
+  const effectiveBucketSeconds = useMemo(
+    () => resolveBucketSeconds(rawMetrics, rangeConfig.bucketSeconds),
+    [rawMetrics, rangeConfig.bucketSeconds],
+  );
+  const timelineConfig = useMemo(
+    () => ({ ...rangeConfig, bucketSeconds: effectiveBucketSeconds }),
+    [effectiveBucketSeconds, rangeConfig],
+  );
+  const timeline = useMemo(
+    () => buildTimeline(rawMetrics, timelineConfig, now),
+    [now, rawMetrics, timelineConfig],
+  );
+  const missingIntervals = useMemo(
+    () => buildMissingIntervals(timeline, effectiveBucketSeconds * 1_000, now),
+    [effectiveBucketSeconds, now, timeline],
+  );
+  const selectedServer = servers.find((server) => server.id === selectedServerId);
+  const serverOnline = selectedServer?.status === 'online';
+  const dataPoints = timeline.reduce((total, point) => total + (point.hasData ? 1 : 0), 0);
+  const expectedPoints = timeline.reduce(
+    (total, point) => total + (point.isConfirmedMissing || point.hasData ? 1 : 0),
+    0,
+  );
+  const coverage = expectedPoints > 0 ? Math.round((dataPoints / expectedPoints) * 100) : 0;
+  const lastMetricAt = getLastMetricTimestamp(rawMetrics);
+  const xDomain: [number, number] = [now - rangeConfig.durationMs, now];
+  const chartContext = {
+    data: timeline,
+    domain: xDomain,
+    range: timeRange,
+    missingIntervals,
   };
-
-  const formatTimeLabel = (date: Date) => {
-    if (isNaN(date.getTime())) return ''; // Check invalid date
-    if (timeRange === '7d' || timeRange === '24h') {
-      return date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
-
-  // Thêm cờ isBackground để phân biệt giữa việc người dùng chủ động tải lại vs. tự động chạy ngầm
-  const fetchMetrics = async (isBackground = false) => {
-    try {
-      if (!isBackground) setLoading(true);
-
-      const data = await apiClient(`/servers/${selectedServerId}/metrics?range=${timeRange}`);
-      if (!data || !Array.isArray(data)) return;
-
-      const bucketSeconds = BUCKET_SECONDS[timeRange] ?? 5;
-      const gapThresholdMs = bucketSeconds * 3 * 1000;
-
-      const formatted: any[] = [];
-      data.forEach((m: any, idx: number) => {
-        // Fallback an toàn: Có thể backend trả về bucket_time khi downsample thay vì created_at
-        const timeField = m.bucket_time || m.created_at || m.time;
-        const date = new Date(timeField);
-
-        if (idx > 0) {
-          const prevTimeField = data[idx - 1].bucket_time || data[idx - 1].created_at || data[idx - 1].time;
-          const prevDate = new Date(prevTimeField);
-
-          if (date.getTime() - prevDate.getTime() > gapThresholdMs) {
-            formatted.push({
-              time: formatTimeLabel(new Date(prevDate.getTime() + 1000)),
-              cpu: null,
-              ram: null,
-              netIn: null,
-              netOut: null,
-              diskRead: null,
-              diskWrite: null,
-            });
-          }
-        }
-
-        // Bọc Number() an toàn trước khi .toFixed() để chống crash
-        formatted.push({
-          time: formatTimeLabel(date),
-          cpu: m.cpu_usage != null ? Number(Number(m.cpu_usage).toFixed(1)) : null,
-          ram: (m.memory_total > 0 && m.memory_used != null) ? Number(((m.memory_used / m.memory_total) * 100).toFixed(1)) : null,
-          netIn: m.net_in != null ? m.net_in / 1024 : null,
-          netOut: m.net_out != null ? m.net_out / 1024 : null,
-          diskRead: m.disk_read != null ? m.disk_read / 1024 : null,
-          diskWrite: m.disk_write != null ? m.disk_write / 1024 : null,
-        });
-      });
-      setMetrics(formatted);
-    } catch (err) {
-      console.error("Failed to fetch metrics", err);
-    } finally {
-      if (!isBackground) setLoading(false);
-    }
-  };
-
-  const timeRangeOptions = [
-    { value: '15m', label: 'Last 15 minutes' },
-    { value: '1h', label: 'Last 1 hour' },
-    { value: '3h', label: 'Last 3 hours' },
-    { value: '6h', label: 'Last 6 hours' },
-    { value: '12h', label: 'Last 12 hours' },
-    { value: '24h', label: 'Last 24 hours' },
-    { value: '7d', label: 'Last 7 days' },
-  ];
-
-  const selectedTimeRangeLabel = timeRangeOptions.find(o => o.value === timeRange)?.label || 'Last 15 minutes';
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-6">
+      <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Giám sát tài nguyên</h1>
-          <p className="text-sm text-[var(--color-muted)]">Phân tích hiệu năng hệ thống chi tiết qua các biểu đồ thực tế (Live Data)</p>
+          <p className="panel-kicker mb-2 flex items-center gap-2">
+            <Activity className="h-3.5 w-3.5" />
+            Continuous telemetry
+          </p>
+          <h1>Giám sát <em>tài nguyên.</em></h1>
+          <p className="mt-3 text-sm text-[var(--color-muted)]">
+            Timeline tiếp tục chạy khi agent offline; khoảng thiếu metrics được giữ trống và đánh dấu rõ ràng.
+          </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <ServerIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-            <label htmlFor="monitoring-server" className="sr-only">Select server</label>
+        <div className="monitoring-toolbar">
+          <div className="monitoring-control monitoring-server-control">
+            <ServerIcon className="monitoring-control-icon" aria-hidden="true" />
+            <label htmlFor="monitoring-server" className="sr-only">Chọn server</label>
             <select
               id="monitoring-server"
               name="monitoring-server"
               value={selectedServerId}
-              onChange={(e) => setSelectedServerId(e.target.value)}
-              className="pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+              onChange={(event) => setSelectedServerId(event.target.value)}
+              className="monitoring-server-select"
             >
-              <option value="" disabled>Select a server</option>
-              {servers.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+              {servers.length === 0 && <option value="">Chưa có server</option>}
+              {servers.map((server) => (
+                <option key={server.id} value={server.id}>{server.name}</option>
               ))}
             </select>
+            <ChevronDown className="monitoring-control-chevron" aria-hidden="true" />
           </div>
-          <div className="relative">
-            <label htmlFor="monitoring-range" className="sr-only">Select time range</label>
+
+          {selectedServer && (
+            <span className={`monitoring-server-status ${serverOnline ? 'is-online' : 'is-offline'}`}>
+              <span className={`status-dot ${serverOnline ? 'online' : 'offline'}`} />
+              {serverOnline ? 'Online' : 'Offline'}
+            </span>
+          )}
+
+          <div className="monitoring-control monitoring-range-control">
+            <Clock3 className="monitoring-control-icon" aria-hidden="true" />
+            <label htmlFor="monitoring-range" className="sr-only">Chọn khoảng thời gian</label>
             <select
               id="monitoring-range"
               name="monitoring-range"
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              className="pl-4 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+              onChange={(event) => setTimeRange(event.target.value as TimeRange)}
+              className="monitoring-range-select"
             >
-              {timeRangeOptions.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
+            <ChevronDown className="monitoring-control-chevron" aria-hidden="true" />
           </div>
 
           <button
             type="button"
-            onClick={() => fetchMetrics(false)}
-            className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-colors text-[var(--color-muted)]"
-            title="Làm mới"
-            aria-label="Làm mới biểu đồ"
+            onClick={() => void fetchMetrics(false, true)}
+            className="monitoring-refresh"
+            title="Đồng bộ metrics ngay"
+            aria-label="Đồng bộ metrics ngay"
+            disabled={!selectedServerId || initialLoading}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${initialLoading || refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
-      </div>
+      </header>
 
-      {metrics.length === 0 && !loading && (
-        <div className="glass-card p-12 text-center flex flex-col items-center justify-center">
-          <DatabaseBackup className="w-12 h-12 text-[var(--color-muted)] mb-4 opacity-50" />
-          <h3 className="text-lg font-medium text-[var(--foreground)] mb-2">Chưa có dữ liệu</h3>
-          <p className="text-[var(--color-muted)]">Server này chưa gửi bất kỳ metrics nào về hệ thống. Hãy kiểm tra lại Agent.</p>
-        </div>
+      {selectedServerId && (
+        <section className="monitoring-live-strip" aria-live="polite">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
+            <span className="flex items-center gap-2">
+              <span className="live-data-dot" aria-hidden="true" />
+              Timeline cập nhật mỗi giây
+            </span>
+            <span>Dữ liệu API: mỗi {POLL_INTERVAL_MS / 1_000} giây</span>
+            <span>Điểm metrics gần nhất: {formatRelativeTime(lastMetricAt, now)}</span>
+            <span>Data coverage: {coverage}%</span>
+          </div>
+          <div className="ml-auto flex items-center gap-4">
+            <span className="missing-data-legend"><i />No data / Offline</span>
+            {refreshing && <span>Đang đồng bộ…</span>}
+            {metricsError && <span className="text-[var(--rose)]">Mất đồng bộ: {metricsError}</span>}
+          </div>
+        </section>
       )}
 
-      {metrics.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* CPU Line Chart */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-blue-400" />
-                CPU Usage (%)
-              </h3>
-              <span className="text-xs text-[var(--color-muted)]">{selectedTimeRangeLabel}</span>
+      {!selectedServerId ? (
+        <div className="glass-card p-12 text-center">
+          <ServerIcon className="mx-auto mb-4 h-10 w-10 text-[var(--color-muted)] opacity-45" />
+          <h2 className="text-xl">Chưa có server để giám sát</h2>
+          <p className="mt-2 text-[var(--color-muted)]">Kết nối DatrixOps Agent để bắt đầu nhận metrics.</p>
+        </div>
+      ) : (
+        <>
+          {!initialLoading && metricsLoaded && dataPoints === 0 && (
+            <div className="monitoring-empty-notice">
+              <CircleAlert className="h-4 w-4" />
+              Không có metrics trong khoảng đã chọn. Timeline vẫn tiếp tục chạy và toàn bộ vùng thiếu dữ liệu được đánh dấu.
             </div>
-            <div className="h-72">
+          )}
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <MetricChartCard
+              title="CPU Usage (%)"
+              icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
+              rangeLabel={rangeConfig.label}
+              loading={initialLoading}
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={metrics}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 'dataMax + 10']} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0d0e12', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                    itemStyle={{ color: '#f6f3ec' }}
+                <LineChart data={chartContext.data}>
+                  <ChartScaffolding {...chartContext} percentAxis />
+                  <Tooltip content={<MetricsTooltip />} />
+                  <Line
+                    type="monotone"
+                    dataKey="cpu"
+                    name="CPU Usage"
+                    stroke="var(--violet)"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, fill: 'var(--violet)' }}
+                    connectNulls={false}
+                    isAnimationActive={false}
                   />
-                  <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#a397ff" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#a397ff' }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-          </div>
+            </MetricChartCard>
 
-          {/* Memory Area Chart */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <DatabaseBackup className="w-5 h-5 text-emerald-400" />
-                Memory Usage (%)
-              </h3>
-            </div>
-            <div className="h-72">
+            <MetricChartCard
+              title="Memory Usage (%)"
+              icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
+              rangeLabel={rangeConfig.label}
+              loading={initialLoading}
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={metrics}>
+                <AreaChart data={chartContext.data}>
                   <defs>
-                    <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#7ce7c4" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#7ce7c4" stopOpacity={0} />
+                    <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
+                      <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Area type="monotone" dataKey="ram" name="RAM Usage" stroke="#7ce7c4" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={false} />
+                  <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
+                  <Tooltip content={<MetricsTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="ram"
+                    name="Memory Usage"
+                    stroke="var(--mint)"
+                    strokeWidth={2}
+                    fill="url(#monitoringRamFill)"
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-          </div>
+            </MetricChartCard>
 
-          {/* Network Throughput */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <Wifi className="w-5 h-5 text-purple-400" />
-                Network Throughput (KB/s)
-              </h3>
-            </div>
-            <div className="h-72">
+            <MetricChartCard
+              title="Network Throughput (KB/s)"
+              icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
+              rangeLabel={rangeConfig.label}
+              loading={initialLoading}
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={metrics}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Line type="monotone" dataKey="netIn" name="Recv (KB/s)" stroke="#a397ff" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="netOut" name="Sent (KB/s)" stroke="#79c9f4" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <LineChart data={chartContext.data}>
+                  <ChartScaffolding {...chartContext} />
+                  <Tooltip content={<MetricsTooltip />} />
+                  <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-          </div>
+            </MetricChartCard>
 
-          {/* Disk I/O */}
-          <div className="glass-card p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <HardDrive className="w-5 h-5 text-amber-400" />
-                Disk I/O (KB/s)
-              </h3>
-            </div>
-            <div className="h-72">
+            <MetricChartCard
+              title="Disk I/O (KB/s)"
+              icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
+              rangeLabel={rangeConfig.label}
+              loading={initialLoading}
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={metrics}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Line type="monotone" dataKey="diskRead" name="Read (KB/s)" stroke="#f1ca7b" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="diskWrite" name="Write (KB/s)" stroke="#d9a746" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
+                <LineChart data={chartContext.data}>
+                  <ChartScaffolding {...chartContext} />
+                  <Tooltip content={<MetricsTooltip />} />
+                  <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
+            </MetricChartCard>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MetricChartCard({
+  title,
+  icon,
+  rangeLabel,
+  loading,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  rangeLabel: string;
+  loading: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="glass-card monitoring-chart-card p-5 sm:p-6">
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h2 className="flex items-center gap-2 text-base font-semibold">
+          {icon}
+          {title}
+        </h2>
+        <span className="text-xs text-[var(--color-muted)]">{rangeLabel}</span>
+      </div>
+      <div className="relative h-72">
+        {children}
+        {loading && (
+          <div className="monitoring-chart-loading">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            Đang lấy metrics…
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ChartScaffolding({
+  domain,
+  range,
+  missingIntervals,
+  percentAxis = false,
+  fixedPercentDomain = false,
+}: {
+  data: TimelinePoint[];
+  domain: [number, number];
+  range: TimeRange;
+  missingIntervals: MissingInterval[];
+  percentAxis?: boolean;
+  fixedPercentDomain?: boolean;
+}) {
+  return (
+    <>
+      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
+      {missingIntervals.map((interval) => (
+        <ReferenceArea
+          key={`${interval.start}-${interval.end}`}
+          x1={interval.start}
+          x2={interval.end}
+          fill="var(--rose)"
+          fillOpacity={0.055}
+          strokeOpacity={0}
+          ifOverflow="hidden"
+        />
+      ))}
+      <XAxis
+        type="number"
+        dataKey="timestamp"
+        domain={domain}
+        scale="time"
+        allowDataOverflow
+        stroke="var(--color-muted)"
+        fontSize={10}
+        tickLine={false}
+        axisLine={false}
+        minTickGap={42}
+        tickFormatter={(value) => formatAxisTime(Number(value), range)}
+      />
+      <YAxis
+        stroke="var(--color-muted)"
+        fontSize={11}
+        tickLine={false}
+        axisLine={false}
+        width={46}
+        tickFormatter={(value) => percentAxis ? `${value}%` : formatCompactNumber(Number(value))}
+        domain={fixedPercentDomain ? [0, 100] : percentAxis ? [0, 'auto'] : [0, 'auto']}
+      />
+    </>
+  );
+}
+
+function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
+  if (!active) return null;
+  const timestamp = Number(label);
+  const point = payload?.[0]?.payload;
+  const visibleItems = (payload ?? []).filter((item) => item.value != null);
+
+  return (
+    <div className="monitoring-tooltip">
+      <p>{formatTooltipTime(timestamp)}</p>
+      {!point?.hasData || visibleItems.length === 0 ? (
+        <div className="monitoring-tooltip-missing">
+          <CircleAlert className="h-3.5 w-3.5" />
+          Không có metrics
+        </div>
+      ) : (
+        <div className="mt-2 space-y-1.5">
+          {visibleItems.map((item) => (
+            <div key={item.name} className="flex items-center justify-between gap-6">
+              <span className="flex items-center gap-2">
+                <i style={{ background: item.color }} />
+                {item.name}
+              </span>
+              <strong>{formatTooltipValue(item.value)}</strong>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+function buildTimeline(
+  metrics: MetricApiPoint[],
+  range: RangeOption,
+  now: number,
+): TimelinePoint[] {
+  const bucketMs = range.bucketSeconds * 1_000;
+  const alignedStart = Math.floor((now - range.durationMs) / bucketMs) * bucketMs;
+  const alignedEnd = Math.floor(now / bucketMs) * bucketMs;
+  const metricByBucket = new Map<number, MetricApiPoint>();
+
+  for (const metric of metrics) {
+    const timestamp = getMetricTimestamp(metric);
+    if (timestamp == null) continue;
+    metricByBucket.set(Math.floor(timestamp / bucketMs) * bucketMs, metric);
+  }
+
+  const timeline: TimelinePoint[] = [];
+  for (let timestamp = alignedStart; timestamp <= alignedEnd; timestamp += bucketMs) {
+    const metric = metricByBucket.get(timestamp);
+    const hasData = Boolean(metric);
+    timeline.push({
+      timestamp,
+      cpu: metric ? toFiniteMetric(metric.cpu_usage) : null,
+      ram: metric ? calculateMemoryPercent(metric.memory_used, metric.memory_total) : null,
+      netIn: metric ? toKilobytes(metric.net_in) : null,
+      netOut: metric ? toKilobytes(metric.net_out) : null,
+      diskRead: metric ? toKilobytes(metric.disk_read) : null,
+      diskWrite: metric ? toKilobytes(metric.disk_write) : null,
+      hasData,
+      isConfirmedMissing: !hasData && timestamp < now - MISSING_DATA_GRACE_MS,
+    });
+  }
+
+  return timeline;
+}
+
+function resolveBucketSeconds(metrics: MetricApiPoint[], fallback: number) {
+  const declaredResolution = metrics.find(
+    (metric) =>
+      Number.isFinite(Number(metric.bucket_seconds)) &&
+      Number(metric.bucket_seconds) > 0,
+  )?.bucket_seconds;
+
+  if (declaredResolution) return Number(declaredResolution);
+
+  // Compatibility for API responses from before bucket_seconds was exposed.
+  const timestamps = metrics
+    .map(getMetricTimestamp)
+    .filter((timestamp): timestamp is number => timestamp != null)
+    .sort((left, right) => left - right);
+  const intervals = timestamps
+    .slice(1)
+    .map((timestamp, index) => timestamp - timestamps[index])
+    .filter((interval) => interval > 0);
+
+  if (intervals.length === 0) return fallback;
+  return Math.max(fallback, Math.round(Math.min(...intervals) / 1_000));
+}
+
+function buildMissingIntervals(
+  timeline: TimelinePoint[],
+  bucketMs: number,
+  now: number,
+): MissingInterval[] {
+  const intervals: MissingInterval[] = [];
+  let start: number | null = null;
+
+  for (const point of timeline) {
+    if (point.isConfirmedMissing && start == null) {
+      start = point.timestamp;
+    }
+    if (!point.isConfirmedMissing && start != null) {
+      intervals.push({ start, end: point.timestamp });
+      start = null;
+    }
+  }
+
+  if (start != null) {
+    const lastTimestamp = timeline.at(-1)?.timestamp ?? now;
+    intervals.push({ start, end: Math.min(now, lastTimestamp + bucketMs) });
+  }
+
+  return intervals;
+}
+
+function getMetricTimestamp(metric: MetricApiPoint): number | null {
+  const value = metric.bucket_time ?? metric.created_at ?? metric.time;
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function getLastMetricTimestamp(metrics: MetricApiPoint[]): number | null {
+  let latest: number | null = null;
+  for (const metric of metrics) {
+    const timestamp = getMetricTimestamp(metric);
+    if (timestamp != null && (latest == null || timestamp > latest)) latest = timestamp;
+  }
+  return latest;
+}
+
+function toFiniteMetric(value: number | string | undefined): number | null {
+  if (value == null) return null;
+  const metric = Number(value);
+  return Number.isFinite(metric) ? Number(metric.toFixed(1)) : null;
+}
+
+function calculateMemoryPercent(
+  usedValue: number | string | undefined,
+  totalValue: number | string | undefined,
+): number | null {
+  const used = Number(usedValue);
+  const total = Number(totalValue);
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null;
+  return Number(((used / total) * 100).toFixed(1));
+}
+
+function toKilobytes(value: number | string | undefined): number | null {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) return null;
+  return Number((bytes / 1_024).toFixed(2));
+}
+
+function formatAxisTime(timestamp: number, range: TimeRange): string {
+  if (!Number.isFinite(timestamp)) return '';
+  const date = new Date(timestamp);
+  if (range === '7d' || range === '24h') {
+    return date.toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(range === '15m' ? { second: '2-digit' } : {}),
+  });
+}
+
+function formatTooltipTime(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return 'Không xác định';
+  return new Date(timestamp).toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatRelativeTime(timestamp: number | null, now: number): string {
+  if (timestamp == null) return 'Chưa từng nhận';
+  const seconds = Math.round((timestamp - now) / 1_000);
+  const formatter = new Intl.RelativeTimeFormat('vi', { numeric: 'auto' });
+  if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
+  const minutes = Math.round(seconds / 60);
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour');
+  return formatter.format(Math.round(hours / 24), 'day');
+}
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  return new Intl.NumberFormat('vi-VN', {
+    notation: value >= 1_000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatTooltipValue(value: number | string | null | undefined): string {
+  const metric = Number(value);
+  if (!Number.isFinite(metric)) return '—';
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(metric);
 }

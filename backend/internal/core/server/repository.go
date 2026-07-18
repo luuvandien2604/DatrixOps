@@ -34,16 +34,17 @@ type Server struct {
 }
 
 type ServerMetric struct {
-	ID          string    `json:"id"`
-	ServerID    string    `json:"server_id"`
-	CPUUsage    float64   `json:"cpu_usage"`
-	MemoryUsed  uint64    `json:"memory_used"`
-	MemoryTotal uint64    `json:"memory_total"`
-	NetIn       uint64    `json:"net_in"`
-	NetOut      uint64    `json:"net_out"`
-	DiskRead    uint64    `json:"disk_read"`
-	DiskWrite   uint64    `json:"disk_write"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	ServerID      string    `json:"server_id"`
+	BucketSeconds int       `json:"bucket_seconds,omitempty"`
+	CPUUsage      float64   `json:"cpu_usage"`
+	MemoryUsed    uint64    `json:"memory_used"`
+	MemoryTotal   uint64    `json:"memory_total"`
+	NetIn         uint64    `json:"net_in"`
+	NetOut        uint64    `json:"net_out"`
+	DiskRead      uint64    `json:"disk_read"`
+	DiskWrite     uint64    `json:"disk_write"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // DashboardServer is a server enriched with the latest metric received from its agent.
@@ -232,28 +233,28 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRang
 	switch timeRange {
 	case "15m":
 		interval = "15 minutes"
-		bucketSeconds = 10 // Raw 10s points
+		bucketSeconds = 5 // Preserve the agent's default real-time cadence
 	case "1h":
 		interval = "1 hour"
-		bucketSeconds = 60 // 1 minute buckets
+		bucketSeconds = 15
 	case "3h":
 		interval = "3 hours"
-		bucketSeconds = 120 // 2 minute buckets
+		bucketSeconds = 30
 	case "6h":
 		interval = "6 hours"
-		bucketSeconds = 300 // 5 minute buckets
+		bucketSeconds = 60
 	case "12h":
 		interval = "12 hours"
-		bucketSeconds = 600 // 10 minute buckets
+		bucketSeconds = 120
 	case "24h":
 		interval = "24 hours"
-		bucketSeconds = 900 // 15 minute buckets
+		bucketSeconds = 300
 	case "7d":
 		interval = "7 days"
-		bucketSeconds = 3600 // 1 hour buckets
+		bucketSeconds = 1800
 	default:
 		interval = "15 minutes" // Default to 15m
-		bucketSeconds = 10
+		bucketSeconds = 5
 	}
 
 	query := fmt.Sprintf(`
@@ -287,6 +288,7 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRang
 		if err := rows.Scan(&m.ID, &m.ServerID, &m.CPUUsage, &m.MemoryUsed, &m.MemoryTotal, &m.NetIn, &m.NetOut, &m.DiskRead, &m.DiskWrite, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("list metrics scan: %w", err)
 		}
+		m.BucketSeconds = bucketSeconds
 		metrics = append(metrics, &m)
 	}
 
