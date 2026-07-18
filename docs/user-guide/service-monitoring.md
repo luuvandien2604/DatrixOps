@@ -17,6 +17,12 @@ The Services tab shows whether each configured service is running, stopped, not
 installed, or unknown. It also displays the native service identifier, startup
 mode, manager, detailed state, and collection time.
 
+The server-detail navigation and terminology follow the detected operating
+system. Linux shows System Services and Cron Monitoring, macOS shows Launch
+Services and Cron Jobs, and Windows shows Windows Services while omitting the
+unsupported Cron tab. Older Linux-only snapshots are hidden on macOS and
+Windows until the agent reports native service-manager data.
+
 ## Default service sets
 
 When `DATRIXOPS_SERVICES` is empty, the agent uses an operating-system-specific

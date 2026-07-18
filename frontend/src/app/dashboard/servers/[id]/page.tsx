@@ -214,15 +214,62 @@ export default function ServerDetailsPage() {
     ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
     : 'Unknown';
 
-  const tabs = [
+  const reportedServices = snapshot?.services || [];
+  const reportedServiceManager = reportedServices.find(service => service.source)?.source;
+  const monitoredOS = inventory?.platform || (server.os_info ? (() => {
+    try { return JSON.parse(server.os_info).os_name; } catch { return 'Unknown OS'; }
+  })() : 'Unknown OS');
+  const normalizedOS = `${inventory?.platform || ''} ${monitoredOS}`.toLowerCase();
+  const osFamily = normalizedOS.includes('windows') || reportedServiceManager === 'windows-scm'
+    ? 'windows'
+    : normalizedOS.includes('darwin') || normalizedOS.includes('mac') || reportedServiceManager === 'launchd'
+      ? 'macos'
+      : normalizedOS.includes('linux') || reportedServiceManager === 'systemd' || ['ubuntu', 'debian', 'centos', 'fedora', 'alpine'].some(name => normalizedOS.includes(name))
+        ? 'linux'
+        : 'unknown';
+  const serviceManager = osFamily === 'macos' ? 'launchd' : osFamily === 'windows' ? 'windows-scm' : 'systemd';
+  const serviceContent = osFamily === 'macos'
+    ? {
+        tab: 'Launch Services',
+        title: 'launchd services',
+        description: 'Reported from macOS system and console-user launchd domains.',
+        stopped: 'Not loaded',
+        missing: 'Label not found',
+        search: 'Search launchd labels',
+      }
+    : osFamily === 'windows'
+      ? {
+          tab: 'Windows Services',
+          title: 'Windows services',
+          description: 'Reported by the Windows Service Control Manager.',
+          stopped: 'Stopped',
+          missing: 'Not installed',
+          search: 'Search Windows services',
+        }
+      : {
+          tab: 'System Services',
+          title: 'systemd services',
+          description: 'Reported from systemd unit state and unit-file configuration.',
+          stopped: 'Inactive',
+          missing: 'Unit not found',
+          search: 'Search systemd units',
+        };
+  const tabs: Array<[string, string]> = [
     ['overview', 'Overview'],
     ['inventory', 'Inventory'],
-    ['cron', 'Cron Monitoring'],
+    ...(osFamily === 'windows' ? [] : [['cron', osFamily === 'macos' ? 'Cron Jobs' : 'Cron Monitoring'] as [string, string]]),
     ['processes', 'Processes'],
-    ['services', 'Services'],
-    ['docker', 'Docker'],
+    ['services', serviceContent.tab],
+    ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
   ];
-  const services = snapshot?.services || [];
+  // Old agents sent a Linux-only list without a service manager. Do not show
+  // those entries as valid launchd or Windows services.
+  const services = reportedServices.filter(service =>
+    osFamily === 'unknown'
+      || (osFamily === 'linux' && !service.source)
+      || service.source === serviceManager,
+  );
+  const hasIncompatibleLegacyServices = reportedServices.length > services.length;
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -234,9 +281,6 @@ export default function ServerDetailsPage() {
     counts[service.status] = (counts[service.status] || 0) + 1;
     return counts;
   }, {});
-  const monitoredOS = inventory?.platform || (server.os_info ? (() => {
-    try { return JSON.parse(server.os_info).os_name; } catch { return 'Unknown OS'; }
-  })() : 'Unknown OS');
 
   return (
     <div className="space-y-6">
@@ -427,8 +471,8 @@ export default function ServerDetailsPage() {
               <thead className="bg-[var(--background)] text-[var(--color-muted)]">
                 <tr>
                   <th className="px-6 py-3 font-medium">PID</th>
-                  <th className="px-6 py-3 font-medium">Command</th>
-                  <th className="px-6 py-3 font-medium">User</th>
+                  <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
+                  <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
                   <th className="px-6 py-3 font-medium">CPU %</th>
                   <th className="px-6 py-3 font-medium">RAM %</th>
                 </tr>
@@ -456,11 +500,22 @@ export default function ServerDetailsPage() {
 
       {activeTab === 'services' && (
         <div className="space-y-5">
+          {hasIncompatibleLegacyServices && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-[var(--foreground)]">
+              <div className="flex items-start gap-3">
+                <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div>
+                  <p className="font-semibold">This snapshot contains a service list from an older agent.</p>
+                  <p className="mt-1 leading-6 text-[var(--color-muted)]">Linux service names were hidden because this server is identified as {monitoredOS}. Update and restart the agent to collect native {serviceContent.title}.</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: 'Running', value: serviceCounts.running || 0, icon: CircleCheck, tone: 'text-emerald-500' },
-              { label: 'Stopped', value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
-              { label: 'Not installed', value: serviceCounts.not_installed || 0, icon: TerminalSquare, tone: 'text-[var(--color-muted)]' },
+              { label: serviceContent.stopped, value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
+              { label: serviceContent.missing, value: serviceCounts.not_installed || 0, icon: TerminalSquare, tone: 'text-[var(--color-muted)]' },
               { label: 'Unknown', value: serviceCounts.unknown || 0, icon: CircleHelp, tone: 'text-amber-500' },
             ].map(({ label, value, icon: Icon, tone }) => (
               <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
@@ -473,22 +528,22 @@ export default function ServerDetailsPage() {
           <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
             <div className="flex flex-col gap-4 border-b border-[var(--border-color)] p-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-[var(--foreground)]">Services on {monitoredOS}</h3>
-                <p className="mt-1 text-sm text-[var(--color-muted)]">Reported by the operating system&apos;s native service manager. Configure the agent with DATRIXOPS_SERVICES to replace the default list.</p>
+                <h3 className="text-base font-semibold text-[var(--foreground)]">{serviceContent.title} on {monitoredOS}</h3>
+                <p className="mt-1 text-sm text-[var(--color-muted)]">{serviceContent.description} Configure DATRIXOPS_SERVICES to replace the {osFamily === 'unknown' ? 'platform' : osFamily} defaults.</p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <label className="relative">
                   <span className="sr-only">Search services</span>
                   <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--color-muted)]" />
-                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 pl-9 pr-4 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder="Search services" />
+                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 pl-9 pr-4 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder={serviceContent.search} />
                 </label>
                 <label>
                   <span className="sr-only">Filter service status</span>
                   <select value={serviceFilter} onChange={event => setServiceFilter(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500">
                     <option value="all">All statuses</option>
                     <option value="running">Running</option>
-                    <option value="stopped">Stopped</option>
-                    <option value="not_installed">Not installed</option>
+                    <option value="stopped">{serviceContent.stopped}</option>
+                    <option value="not_installed">{serviceContent.missing}</option>
                     <option value="unknown">Unknown</option>
                   </select>
                 </label>
@@ -497,6 +552,11 @@ export default function ServerDetailsPage() {
 
             <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
               {filteredServices.map(service => {
+                const statusLabel = service.status === 'stopped'
+                  ? serviceContent.stopped
+                  : service.status === 'not_installed'
+                    ? serviceContent.missing
+                    : service.status.replace(/_/g, ' ');
                 const statusStyle = service.status === 'running'
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
                   : service.status === 'stopped'
@@ -511,13 +571,13 @@ export default function ServerDetailsPage() {
                         <h4 className="truncate font-semibold text-[var(--foreground)]">{service.display_name || service.name}</h4>
                         <p className="mt-1 truncate font-mono text-xs text-[var(--color-muted)]">{service.name}</p>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyle}`}>{service.status.replace(/_/g, ' ')}</span>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyle}`}>{statusLabel}</span>
                     </div>
                     {service.description && <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">{service.description}</p>}
                     <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-color)] pt-4 text-sm">
-                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source || 'Unknown'}</dd></div>
-                      <div><dt className="text-[var(--color-muted)]">Startup</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.startup_type || 'Unknown'}</dd></div>
-                      <div><dt className="text-[var(--color-muted)]">Detail</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source === 'windows-scm' ? 'Windows SCM' : service.source || 'Unknown'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'Loading model' : 'Startup'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.startup_type || 'Unknown'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'launchd state' : 'Native state'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
                       <div><dt className="text-[var(--color-muted)]">Checked</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{formatTimestamp(service.last_checked_at)}</dd></div>
                     </dl>
                   </article>
@@ -525,7 +585,11 @@ export default function ServerDetailsPage() {
               })}
               {!filteredServices.length && (
                 <div className="col-span-full p-10 text-center text-[var(--color-muted)]">
-                  {services.length ? 'No services match the current filters.' : 'No service data has been reported by this agent.'}
+                  {services.length
+                    ? `No ${serviceContent.title} match the current filters.`
+                    : hasIncompatibleLegacyServices
+                      ? `Native ${serviceContent.title} will appear after the agent is updated.`
+                      : `No ${serviceContent.title} have been reported by this agent.`}
                 </div>
               )}
             </div>
@@ -536,7 +600,8 @@ export default function ServerDetailsPage() {
       {activeTab === 'docker' && (
         <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
           <div className="p-5 border-b border-[var(--border-color)]">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Box className="w-4 h-4" /> DOCKER CONTAINERS</h3>
+            <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2"><Box className="w-4 h-4" /> {osFamily === 'macos' || osFamily === 'windows' ? 'Local containers' : 'Docker containers'}</h3>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{osFamily === 'macos' || osFamily === 'windows' ? 'Containers reported through the local Docker-compatible engine.' : 'Containers reported through the local Docker Engine.'}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -578,7 +643,7 @@ export default function ServerDetailsPage() {
                 ))}
                 {!snapshot?.docker_containers?.length && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">No Docker containers found.</td>
+                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">{osFamily === 'macos' || osFamily === 'windows' ? 'No local containers were reported.' : 'No Docker containers were reported.'}</td>
                   </tr>
                 )}
               </tbody>
