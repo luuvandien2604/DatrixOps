@@ -2,21 +2,40 @@
 
 set -Eeuo pipefail
 
-# Installer scripts vẫn được quản lý trực tiếp trong frontend/public.
-# Release có chữ ký được lưu tại:
-# frontend/public/releases/<version>/
+# DatrixOps Agent release publisher
+#
+# Usage:
+#   ./scripts/publish-agent.sh 1.6.0
+#
+# Optional:
+#   AGENT_FORCE=1 ./scripts/publish-agent.sh 1.6.0
+#
+# Configuration is loaded from:
+#   <project-root>/.env.release
+#
+# Supported signing-key configuration:
+#
+#   AGENT_SIGNING_PRIVATE_KEY=<base64-key>
+#
+# or, preferably:
+#
+#   AGENT_SIGNING_PRIVATE_KEY_FILE=/root/.datrixops/agent-signing-key.base64
+#
+# Installer scripts remain managed directly in frontend/public.
+# Signed releases are stored under:
+#
+#   frontend/public/releases/<version>/
 
 PROJECT_ROOT="$(
     cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1
     pwd
 )"
 
+ENV_FILE="$PROJECT_ROOT/.env.release"
+
 AGENT_DIR="$PROJECT_ROOT/agent"
 PUBLIC_DIR="$PROJECT_ROOT/frontend/public"
 RELEASE_ROOT="$PUBLIC_DIR/releases"
-
-AGENT_VERSION="${AGENT_VERSION:-}"
-AGENT_RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL:-}"
 
 MIN_SELF_UPDATING_VERSION="1.3.0"
 
@@ -28,19 +47,53 @@ die() {
     exit 1
 }
 
+info() {
+    echo "INFO: $*"
+}
+
 cleanup() {
     unset AGENT_SIGNING_PRIVATE_KEY || true
 
     if [[ -n "${STAGING_DIR:-}" && -d "$STAGING_DIR" ]]; then
-        rm -rf "$STAGING_DIR"
+        rm -rf -- "$STAGING_DIR"
     fi
 
     if [[ -n "${BACKUP_DIR:-}" && -d "$BACKUP_DIR" ]]; then
-        rm -rf "$BACKUP_DIR"
+        rm -rf -- "$BACKUP_DIR"
     fi
 }
 
 trap cleanup EXIT
+trap 'die "script failed at line $LINENO"' ERR
+
+load_release_environment() {
+    if [[ ! -f "$ENV_FILE" ]]; then
+        return
+    fi
+
+    info "Loading release configuration from $ENV_FILE"
+
+    # shellcheck disable=SC1090
+    set -a
+    source "$ENV_FILE"
+    set +a
+}
+
+read_arguments() {
+    if [[ $# -gt 1 ]]; then
+        die "cách dùng: $0 <version>"
+    fi
+
+    if [[ $# -eq 1 ]]; then
+        AGENT_VERSION="$1"
+    else
+        AGENT_VERSION="${AGENT_VERSION:-}"
+    fi
+
+    AGENT_RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL:-}"
+    AGENT_SIGNING_PRIVATE_KEY="${AGENT_SIGNING_PRIVATE_KEY:-}"
+    AGENT_SIGNING_PRIVATE_KEY_FILE="${AGENT_SIGNING_PRIVATE_KEY_FILE:-}"
+}
 
 version_at_least() {
     local current_core="${1%%[-+]*}"
@@ -72,13 +125,30 @@ version_at_least() {
             10#$current_patch >= 10#$minimum_patch))
 }
 
+validate_required_commands() {
+    local required_commands=(
+        go
+        mktemp
+        sha256sum
+        stat
+    )
+
+    local command_name
+
+    for command_name in "${required_commands[@]}"; do
+        if ! command -v "$command_name" >/dev/null 2>&1; then
+            die "không tìm thấy command bắt buộc: $command_name"
+        fi
+    done
+}
+
 validate_configuration() {
     if [[ -z "$AGENT_VERSION" ]]; then
-        die "chưa đặt AGENT_VERSION"
+        die "chưa chỉ định version. Ví dụ: ./scripts/publish-agent.sh 1.6.0"
     fi
 
     if ! [[ "$AGENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-        die "AGENT_VERSION không hợp lệ: '$AGENT_VERSION'. Ví dụ: 1.6.0 hoặc 1.6.0-beta.1"
+        die "version không hợp lệ: '$AGENT_VERSION'. Ví dụ: 1.6.0 hoặc 1.6.0-beta.1"
     fi
 
     if ! version_at_least \
@@ -89,12 +159,15 @@ validate_configuration() {
     fi
 
     if [[ -z "$AGENT_RELEASE_BASE_URL" ]]; then
-        die "chưa đặt AGENT_RELEASE_BASE_URL"
+        die "chưa đặt AGENT_RELEASE_BASE_URL trong $ENV_FILE"
     fi
 
     if [[ "$AGENT_RELEASE_BASE_URL" != https://* ]]; then
         die "AGENT_RELEASE_BASE_URL phải sử dụng HTTPS"
     fi
+
+    # Tránh URL trong manifest có dấu // không cần thiết.
+    AGENT_RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL%/}"
 
     if [[ ! -d "$AGENT_DIR" ]]; then
         die "không tìm thấy Agent directory: $AGENT_DIR"
@@ -103,26 +176,58 @@ validate_configuration() {
     if [[ ! -f "$AGENT_DIR/go.mod" ]]; then
         die "không tìm thấy file: $AGENT_DIR/go.mod"
     fi
+
+    if [[ ! -d "$AGENT_DIR/cmd/agent" ]]; then
+        die "không tìm thấy Agent entry point: $AGENT_DIR/cmd/agent"
+    fi
+
+    if [[ ! -d "$AGENT_DIR/tools/sign-release" ]]; then
+        die "không tìm thấy release signing tool: $AGENT_DIR/tools/sign-release"
+    fi
+}
+
+load_signing_key_from_file() {
+    local key_file="$1"
+
+    if [[ ! -f "$key_file" ]]; then
+        die "không tìm thấy signing key file: $key_file"
+    fi
+
+    if [[ ! -r "$key_file" ]]; then
+        die "không thể đọc signing key file: $key_file"
+    fi
+
+    AGENT_SIGNING_PRIVATE_KEY="$(
+        tr -d '\r\n[:space:]' <"$key_file"
+    )"
 }
 
 load_signing_key() {
     if [[ -n "${AGENT_SIGNING_PRIVATE_KEY:-}" ]]; then
-        return
+        :
+    elif [[ -n "${AGENT_SIGNING_PRIVATE_KEY_FILE:-}" ]]; then
+        load_signing_key_from_file "$AGENT_SIGNING_PRIVATE_KEY_FILE"
+    elif [[ -t 0 ]]; then
+        read -rsp "Nhập Ed25519 private key Base64: " \
+            AGENT_SIGNING_PRIVATE_KEY
+        echo
+    else
+        die "chưa cấu hình AGENT_SIGNING_PRIVATE_KEY hoặc AGENT_SIGNING_PRIVATE_KEY_FILE"
     fi
 
-    if [[ ! -t 0 ]]; then
-        die "chưa đặt AGENT_SIGNING_PRIVATE_KEY"
-    fi
-
-PRIVATE_KEY="${AGENT_SIGNING_KEY:-}"
-
-if [ -z "$PRIVATE_KEY" ]; then
-    read -rsp "Nhập Ed25519 private key Base64: " PRIVATE_KEY
-    echo
-fi
+    AGENT_SIGNING_PRIVATE_KEY="$(
+        printf '%s' "$AGENT_SIGNING_PRIVATE_KEY" |
+            tr -d '\r\n[:space:]'
+    )"
 
     if [[ -z "$AGENT_SIGNING_PRIVATE_KEY" ]]; then
         die "private key không được để trống"
+    fi
+
+    # Kiểm tra sơ bộ định dạng Base64.
+    # Việc xác minh đúng key Ed25519 vẫn do sign-release đảm nhiệm.
+    if ! [[ "$AGENT_SIGNING_PRIVATE_KEY" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+        die "private key không có định dạng Base64 hợp lệ"
     fi
 
     export AGENT_SIGNING_PRIVATE_KEY
@@ -140,7 +245,7 @@ build_agent() {
     CGO_ENABLED=0 \
     GOOS="$goos" \
     GOARCH="$goarch" \
-    go build \
+        go build \
         -trimpath \
         -buildvcs=false \
         -ldflags="-s -w -X main.Version=${AGENT_VERSION}" \
@@ -201,12 +306,12 @@ publish_release_directory() {
         BACKUP_DIR="${release_dir}.backup.$$"
 
         echo "Backing up existing release..."
-        mv "$release_dir" "$BACKUP_DIR"
+        mv -- "$release_dir" "$BACKUP_DIR"
     fi
 
-    if ! mv "$STAGING_DIR" "$release_dir"; then
+    if ! mv -- "$STAGING_DIR" "$release_dir"; then
         if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
-            mv "$BACKUP_DIR" "$release_dir"
+            mv -- "$BACKUP_DIR" "$release_dir"
             BACKUP_DIR=""
         fi
 
@@ -216,7 +321,7 @@ publish_release_directory() {
     STAGING_DIR=""
 
     if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
-        rm -rf "$BACKUP_DIR"
+        rm -rf -- "$BACKUP_DIR"
         BACKUP_DIR=""
     fi
 }
@@ -261,7 +366,34 @@ copy_latest_binaries() {
     fi
 }
 
+print_release_summary() {
+    local release_dir="$RELEASE_ROOT/$AGENT_VERSION"
+
+    echo
+    echo "Agent release published successfully"
+    echo "Version   : $AGENT_VERSION"
+    echo "Directory : $release_dir"
+    echo "Base URL  : $AGENT_RELEASE_BASE_URL"
+
+    echo
+    echo "Release files:"
+
+    ls -lh "$release_dir"
+
+    echo
+    echo "SHA-256 checksums:"
+
+    sha256sum "$release_dir"/*
+
+    echo
+    echo "Set backend AGENT_VERSION=${AGENT_VERSION} for version reporting."
+}
+
 main() {
+    load_release_environment
+    read_arguments "$@"
+
+    validate_required_commands
     validate_configuration
     load_signing_key
 
@@ -323,25 +455,7 @@ main() {
 
     unset AGENT_SIGNING_PRIVATE_KEY
 
-    local release_dir="$RELEASE_ROOT/$AGENT_VERSION"
-
-    echo
-    echo "Agent release published successfully"
-    echo "Version   : $AGENT_VERSION"
-    echo "Directory : $release_dir"
-    echo "Base URL  : $AGENT_RELEASE_BASE_URL"
-    echo
-    echo "Release files:"
-
-    ls -lh "$release_dir"
-
-    echo
-    echo "SHA-256 checksums:"
-
-    sha256sum "$release_dir"/*
-
-    echo
-    echo "Set backend AGENT_VERSION=${AGENT_VERSION} for version reporting."
+    print_release_summary
 }
 
 main "$@"
