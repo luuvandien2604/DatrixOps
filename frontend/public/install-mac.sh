@@ -38,14 +38,16 @@ else
     exit 1
 fi
 
-echo "🛑 Stopping existing service (if any)..."
-launchctl unload $PLIST_FILE 2>/dev/null || true
-pkill -f datrixops-agent 2>/dev/null || true
-
 mkdir -p "$INSTALL_DIR"
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
-curl -sL -o "$INSTALL_DIR/datrixops-agent" "$BINARY_URL"
-chmod +x "$INSTALL_DIR/datrixops-agent"
+UPDATE_FILE="$INSTALL_DIR/.datrixops-agent.update"
+curl --fail --silent --show-error --location -o "$UPDATE_FILE" "$BINARY_URL"
+if [ ! -s "$UPDATE_FILE" ]; then
+    echo "❌ Error: Downloaded agent binary is empty."
+    exit 1
+fi
+chmod +x "$UPDATE_FILE"
+mv -f "$UPDATE_FILE" "$INSTALL_DIR/datrixops-agent"
 
 echo "⚙️ Creating launchd service..."
 cat << PLIST_EOF > $PLIST_FILE
@@ -81,8 +83,13 @@ cat << PLIST_EOF > $PLIST_FILE
 PLIST_EOF
 
 echo "🔄 Starting DatrixOps Agent service..."
-launchctl unload $PLIST_FILE 2>/dev/null || true
-launchctl load -w $PLIST_FILE
+if launchctl print system/com.datrixops.agent >/dev/null 2>&1; then
+    # Keep kickstart as the final command because an update can run as a child
+    # of the existing launchd job.
+    launchctl kickstart -k system/com.datrixops.agent
+else
+    launchctl bootstrap system $PLIST_FILE
+fi
 
 echo "✅ DatrixOps Agent installed successfully!"
 echo "📡 The agent is now running in the background."

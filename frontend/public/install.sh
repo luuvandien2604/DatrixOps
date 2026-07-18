@@ -38,13 +38,15 @@ else
     exit 1
 fi
 
-echo "🛑 Stopping existing service (if any)..."
-systemctl stop datrixops-agent 2>/dev/null || true
-pkill -f datrixops-agent 2>/dev/null || true
-
 echo "📥 Downloading DatrixOps Agent from $BINARY_URL..."
-curl -sL -o "$INSTALL_DIR/datrixops-agent" "$BINARY_URL"
-chmod +x "$INSTALL_DIR/datrixops-agent"
+UPDATE_FILE="$INSTALL_DIR/.datrixops-agent.update"
+curl --fail --silent --show-error --location -o "$UPDATE_FILE" "$BINARY_URL"
+if [ ! -s "$UPDATE_FILE" ]; then
+    echo "❌ Error: Downloaded agent binary is empty."
+    exit 1
+fi
+chmod +x "$UPDATE_FILE"
+mv -f "$UPDATE_FILE" "$INSTALL_DIR/datrixops-agent"
 
 echo "⚙️ Creating Systemd service..."
 cat << SERVICE_EOF > $SERVICE_FILE
@@ -69,6 +71,8 @@ SERVICE_EOF
 echo "🔄 Starting DatrixOps Agent service..."
 systemctl daemon-reload
 systemctl enable datrixops-agent
+# Keep restart as the final command. During an update this installer may be a
+# child of the running service and can be terminated by the restart itself.
 systemctl restart datrixops-agent
 
 echo "✅ DatrixOps Agent installed successfully!"

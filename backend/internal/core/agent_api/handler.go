@@ -12,11 +12,12 @@ import (
 )
 
 type Handler struct {
-	db *database.DB
+	db                  *database.DB
+	desiredAgentVersion string
 }
 
-func NewHandler(db *database.DB) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *database.DB, desiredAgentVersion string) *Handler {
+	return &Handler{db: db, desiredAgentVersion: desiredAgentVersion}
 }
 
 type TopProcess struct {
@@ -188,9 +189,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		println("Error inserting metric:", err.Error())
 	}
 
-	updateRequired := false
-	if req.Version != "" && req.Version != "1.1.0" {
-		updateRequired = true
+	updateAvailable := false
+	if req.Version != "" && h.desiredAgentVersion != "" && req.Version != h.desiredAgentVersion {
+		updateAvailable = true
 	}
 
 	// Expire tasks that were never claimed before their deadline.
@@ -245,9 +246,13 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, http.StatusOK, map[string]interface{}{
-		"status":          "recorded",
-		"update_required": updateRequired,
-		"tasks":           tasks,
+		"status": "recorded",
+		// Legacy agents treated update_required=true as permission to update
+		// immediately. Keep it false so all releases require an approved task.
+		"update_required":  false,
+		"update_available": updateAvailable,
+		"latest_version":   h.desiredAgentVersion,
+		"tasks":            tasks,
 	})
 }
 

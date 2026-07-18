@@ -34,8 +34,10 @@ type Task struct {
 }
 
 type HeartbeatResponse struct {
-	UpdateRequired bool   `json:"update_required"`
-	Tasks          []Task `json:"tasks"`
+	UpdateRequired  bool   `json:"update_required"`
+	UpdateAvailable bool   `json:"update_available"`
+	LatestVersion   string `json:"latest_version"`
+	Tasks           []Task `json:"tasks"`
 }
 
 // apiEnvelope khớp với response.APIResponse ở backend

@@ -1,14 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -92,30 +98,161 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 		go processTask(ctx, apiClient, task)
 	}
 
-	if response.UpdateRequired {
-		log.Println("🔄 Update required! Initiating auto-update...")
-		triggerAutoUpdate()
+	if response.UpdateAvailable || response.UpdateRequired {
+		log.Printf("Agent update available (%s). Waiting for an approved agent_update task.", response.LatestVersion)
 	}
 }
 
-func triggerAutoUpdate() {
-	var cmd *exec.Cmd
+func prepareAgentUpdate(ctx context.Context) error {
+	binaryURL, err := agentBinaryURL()
+	if err != nil {
+		return err
+	}
+	executablePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve agent executable: %w", err)
+	}
+	executablePath, err = filepath.Abs(executablePath)
+	if err != nil {
+		return fmt.Errorf("resolve absolute executable path: %w", err)
+	}
 
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, binaryURL, nil)
+	if err != nil {
+		return fmt.Errorf("create update request: %w", err)
+	}
+	response, err := (&http.Client{Timeout: 2 * time.Minute}).Do(request)
+	if err != nil {
+		return fmt.Errorf("download update: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("download update: unexpected HTTP status %d", response.StatusCode)
+	}
+
+	updatePath := executablePath + ".update"
+	updateFile, err := os.OpenFile(updatePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
+	if err != nil {
+		return fmt.Errorf("create staged update: %w", err)
+	}
+	written, copyErr := io.Copy(updateFile, io.LimitReader(response.Body, 256<<20))
+	closeErr := updateFile.Close()
+	if copyErr != nil {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("write staged update: %w", copyErr)
+	}
+	if closeErr != nil {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("close staged update: %w", closeErr)
+	}
+	if written == 0 {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("downloaded update is empty")
+	}
+	if err := validateStagedBinary(updatePath); err != nil {
+		_ = os.Remove(updatePath)
+		return err
+	}
+
+	if runtime.GOOS == "windows" {
+		return writeWindowsUpdateScript(executablePath, updatePath)
+	}
+	if err := os.Chmod(updatePath, 0755); err != nil {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("mark staged update executable: %w", err)
+	}
+	if err := os.Rename(updatePath, executablePath); err != nil {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("replace agent binary: %w", err)
+	}
+	return nil
+}
+
+func validateStagedBinary(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open staged update for validation: %w", err)
+	}
+	defer file.Close()
+
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(file, header); err != nil {
+		return fmt.Errorf("read staged update header: %w", err)
+	}
+	valid := false
 	switch runtime.GOOS {
+	case "linux":
+		valid = bytes.Equal(header, []byte{0x7f, 'E', 'L', 'F'})
 	case "windows":
-		cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-Command", "Invoke-WebRequest -Uri https://datrixops.vandien.space/install.ps1 -OutFile install.ps1; .\\install.ps1 -Token $env:DATRIXOPS_AGENT_TOKEN")
+		valid = header[0] == 'M' && header[1] == 'Z'
 	case "darwin":
-		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install-mac.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
-	default: // linux
-		cmd = exec.Command("sh", "-c", "curl -sL https://datrixops.vandien.space/install.sh | bash -s -- $DATRIXOPS_AGENT_TOKEN")
+		valid = bytes.Equal(header, []byte{0xfe, 0xed, 0xfa, 0xce}) ||
+			bytes.Equal(header, []byte{0xfe, 0xed, 0xfa, 0xcf}) ||
+			bytes.Equal(header, []byte{0xce, 0xfa, 0xed, 0xfe}) ||
+			bytes.Equal(header, []byte{0xcf, 0xfa, 0xed, 0xfe}) ||
+			bytes.Equal(header, []byte{0xca, 0xfe, 0xba, 0xbe})
 	}
-
-	if err := cmd.Start(); err != nil {
-		log.Printf("❌ Failed to start auto-update: %v", err)
-		return
+	if !valid {
+		return fmt.Errorf("downloaded file is not a valid %s agent binary", runtime.GOOS)
 	}
+	return nil
+}
 
-	log.Println("🚀 Auto-update script launched. Exiting agent to allow replacement...")
+func agentBinaryURL() (string, error) {
+	baseURL := "https://datrixops.vandien.space"
+	switch runtime.GOOS {
+	case "linux":
+		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+			return "", fmt.Errorf("unsupported Linux architecture %s", runtime.GOARCH)
+		}
+		return fmt.Sprintf("%s/datrixops-agent-linux-%s", baseURL, runtime.GOARCH), nil
+	case "darwin":
+		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+			return "", fmt.Errorf("unsupported macOS architecture %s", runtime.GOARCH)
+		}
+		return fmt.Sprintf("%s/datrixops-agent-darwin-%s", baseURL, runtime.GOARCH), nil
+	case "windows":
+		if runtime.GOARCH != "amd64" {
+			return "", fmt.Errorf("unsupported Windows architecture %s", runtime.GOARCH)
+		}
+		return baseURL + "/datrixops-agent-windows-amd64.exe", nil
+	default:
+		return "", fmt.Errorf("unsupported operating system %s", runtime.GOOS)
+	}
+}
+
+func writeWindowsUpdateScript(executablePath, updatePath string) error {
+	escape := func(value string) string { return strings.ReplaceAll(value, "'", "''") }
+	scriptPath := executablePath + ".update.ps1"
+	script := fmt.Sprintf(`$ErrorActionPreference = 'Stop'
+Wait-Process -Id %d -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 750
+Move-Item -LiteralPath '%s' -Destination '%s' -Force
+Start-ScheduledTask -TaskName 'DatrixOpsAgent'
+Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force
+`, os.Getpid(), escape(updatePath), escape(executablePath))
+	if err := os.WriteFile(scriptPath, []byte(script), 0600); err != nil {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("write Windows update script: %w", err)
+	}
+	return nil
+}
+
+func activatePreparedAgentUpdate() {
+	if runtime.GOOS == "windows" {
+		executablePath, err := os.Executable()
+		if err != nil {
+			log.Printf("Failed to resolve agent executable for activation: %v", err)
+			return
+		}
+		scriptPath := executablePath + ".update.ps1"
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+		if err := cmd.Start(); err != nil {
+			log.Printf("Failed to launch Windows update helper: %v", err)
+			return
+		}
+	}
+	log.Println("Agent update staged successfully. Restarting into the new binary...")
 	os.Exit(1)
 }
 
@@ -126,7 +263,7 @@ func triggerRestart() {
 	// Đợi đủ thời gian để request báo kết quả task kịp gửi đi trước khi process thoát.
 	time.Sleep(2 * time.Second)
 	log.Println("🔁 Exiting for restart. Service manager should bring the agent back up...")
-	os.Exit(1) // non-zero — xem giải thích trong triggerAutoUpdate() ở trên
+	os.Exit(1) // non-zero so Windows Task Scheduler applies restart-on-failure
 }
 
 // triggerReboot khởi động lại toàn bộ máy chủ (khác triggerRestart chỉ restart
@@ -197,10 +334,15 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 			cmd = exec.CommandContext(taskContext, "docker", "logs", "--tail", "100", containerID)
 
 		case "agent_update":
-			log.Println("Received agent_update task. Initiating auto-update...")
-			postAction = "update" // Đánh dấu lại, CHƯA CHẠY NGAY
-			statusStr = "completed"
-			resultStr = "Auto update initiated"
+			log.Println("Received agent_update task. Downloading the current release...")
+			if err := prepareAgentUpdate(taskContext); err != nil {
+				statusStr = "failed"
+				resultStr = "Unable to stage agent update: " + err.Error()
+			} else {
+				postAction = "update"
+				statusStr = "completed"
+				resultStr = "Agent update staged and ready to activate"
+			}
 
 		case "agent_restart":
 			log.Println("Received agent_restart task. Restarting agent process...")
@@ -247,7 +389,7 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	// 2. THỰC THI HÀNH ĐỘNG SAU: Lúc này tắt máy/app là an toàn tuyệt đối
 	switch postAction {
 	case "update":
-		triggerAutoUpdate()
+		activatePreparedAgentUpdate()
 	case "restart":
 		triggerRestart()
 	case "reboot":

@@ -277,6 +277,24 @@ Queues an allowlisted remote task. Arbitrary shell commands are not accepted.
 `timeout_seconds` must be between 10 and 900 seconds. Reusing an idempotency key
 for the same server returns the existing task instead of dispatching it twice.
 
+### `POST /api/v1/servers/actions/update-agents`
+
+Queues an `agent_update` task for every server owned by the authenticated user.
+Servers that already have a pending or processing update are skipped. Tasks can
+be claimed for 24 hours and use a 300-second execution timeout.
+
+```json
+{
+  "success": true,
+  "data": {
+    "total": 8,
+    "queued": 6,
+    "skipped": 2,
+    "tasks": ["task-uuid"]
+  }
+}
+```
+
 ---
 
 ## Agent Ingestion API

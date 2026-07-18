@@ -29,6 +29,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("POST /api/v1/servers", withAuth(h.Create))
 	mux.HandleFunc("GET /api/v1/servers/{id}/metrics", withAuth(h.ListMetrics))
 	mux.HandleFunc("GET /api/v1/servers/{id}/cron-jobs", withAuth(h.ListCronJobs))
+	mux.HandleFunc("POST /api/v1/servers/actions/update-agents", withAuth(h.UpdateAllAgents))
 	mux.HandleFunc("POST /api/v1/servers/{id}/tasks", withAuth(h.CreateTask))
 	mux.HandleFunc("GET /api/v1/servers/{id}/tasks/{taskId}", withAuth(h.GetTask))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", withAuth(h.Delete))

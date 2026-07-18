@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
@@ -232,16 +233,28 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var taskID string
 	var taskStatus string
 	err = h.svc.repo.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO server_tasks
-			(server_id, type, payload, requested_by, idempotency_key, timeout_seconds, expires_at)
-		 VALUES ($1, $2, $3::jsonb, $4, NULLIF($5, ''), $6, NOW() + make_interval(secs => $6))
-		 ON CONFLICT (server_id, idempotency_key) WHERE idempotency_key IS NOT NULL
-		 DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
-		 RETURNING id, status`,
+		`WITH inserted AS (
+			INSERT INTO server_tasks
+				(server_id, type, payload, requested_by, idempotency_key, timeout_seconds, expires_at)
+			 VALUES ($1, $2, $3::jsonb, $4, NULLIF($5, ''), $6, NOW() + INTERVAL '24 hours')
+			 ON CONFLICT DO NOTHING
+			 RETURNING id, status
+		 )
+		 SELECT id, status FROM inserted
+		 UNION
+		 SELECT existing.id, existing.status
+		 FROM server_tasks AS existing
+		 WHERE existing.server_id = $1
+		   AND (
+				(NULLIF($5, '') IS NOT NULL AND existing.idempotency_key = $5)
+				OR ($2 = 'agent_update' AND existing.type = 'agent_update' AND existing.status IN ('pending', 'processing'))
+		   )
+		 LIMIT 1`,
 		serverID, req.Type, req.Payload, userID, req.IdempotencyKey, req.TimeoutSeconds,
 	).Scan(&taskID, &taskStatus)
 
 	if err != nil {
+		slog.Error("failed to create server task", "error", err, "server_id", serverID, "task_type", req.Type)
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create task")
 		return
 	}
@@ -251,6 +264,75 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		"type":    req.Type,
 	})
 	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": taskStatus})
+}
+
+func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	var total int
+	if err := h.svc.repo.db.Pool.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM servers WHERE user_id = $1`,
+		userID,
+	).Scan(&total); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to count agents")
+		return
+	}
+
+	rows, err := h.svc.repo.db.Pool.Query(r.Context(),
+		`INSERT INTO server_tasks
+			(server_id, type, payload, requested_by, timeout_seconds, expires_at)
+		 SELECT server.id, 'agent_update', '{}'::jsonb, $1, 300, NOW() + INTERVAL '24 hours'
+		 FROM servers AS server
+		 WHERE server.user_id = $1
+		   AND NOT EXISTS (
+			 SELECT 1 FROM server_tasks AS existing
+			 WHERE existing.server_id = server.id
+			   AND existing.type = 'agent_update'
+			   AND existing.status IN ('pending', 'processing')
+		   )
+		 ON CONFLICT DO NOTHING
+		 RETURNING server_id, id`,
+		userID,
+	)
+	if err != nil {
+		slog.Error("failed to queue bulk agent update", "error", err, "user_id", userID)
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue agent updates")
+		return
+	}
+	defer rows.Close()
+
+	taskIDs := make([]string, 0)
+	serverIDs := make([]string, 0)
+	for rows.Next() {
+		var serverID, taskID string
+		if err := rows.Scan(&serverID, &taskID); err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to read queued agent updates")
+			return
+		}
+		serverIDs = append(serverIDs, serverID)
+		taskIDs = append(taskIDs, taskID)
+	}
+	if err := rows.Err(); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue all agent updates")
+		return
+	}
+
+	h.recordAudit(r.Context(), userID, "QUEUE_AGENT_UPDATE_ALL", "SERVER_FLEET", userID, map[string]interface{}{
+		"queued":     len(taskIDs),
+		"skipped":    total - len(taskIDs),
+		"server_ids": serverIDs,
+		"task_ids":   taskIDs,
+	})
+	response.Success(w, http.StatusCreated, map[string]interface{}{
+		"total":   total,
+		"queued":  len(taskIDs),
+		"skipped": total - len(taskIDs),
+		"tasks":   taskIDs,
+	})
 }
 
 func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {

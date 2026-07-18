@@ -176,16 +176,17 @@ SELECT id, type, status, result FROM server_tasks WHERE server_id = '<id>' ORDER
 | Frontend gửi lệnh | Gọi `POST /servers/{id}/tasks` với `{ type: 'agent_update', payload: '{}' }` (dùng chung `apiClient`, `frontend/src/lib/apiClient.ts`) |
 | Backend tạo task | `server/handler.go` (hàm `CreateTask`) — giống hệt luồng tạo task Docker, chỉ khác `type` |
 | Backend agent nhận task | `agent_api/handler.go` (`Heartbeat` trả `tasks[]` chứa task `agent_update`) |
-| Agent xử lý task | `agent/cmd/agent/main.go` (hàm `processTask`, case `"agent_update"`) → gọi `go triggerAutoUpdate()` |
-| Agent tự update (2 cách kích hoạt) | `agent/cmd/agent/main.go` (hàm `triggerAutoUpdate`) |
-| Script cài đặt lại (được auto-update gọi) | `frontend/public/install.sh`, `install-mac.sh`, `install.ps1` (được publish bởi `scripts/publish-agent.sh`) |
+| Agent xử lý task | `agent/cmd/agent/main.go` (hàm `processTask`, case `"agent_update"`) → stage binary đúng OS/architecture |
+| Agent kích hoạt update | Thay binary theo cơ chế atomic; Windows dùng update helper rồi service manager restart |
+| Installer | Chỉ dùng cho cài mới và làm cầu nối cho agent legacy; publish script không ghi đè installer |
 
-**2 cách một agent nhận lệnh update:**
-1. **Chủ động từ người dùng** — bấm nút "Update Agent" trên UI → tạo task `agent_update` → agent nhận task ở heartbeat tiếp theo.
-2. **Tự động từ backend** — mỗi heartbeat, backend so `req.Version` (agent gửi lên) với version hard-code `"1.1.0"` trong `agent_api/handler.go`; nếu khác, trả `update_required: true` → agent tự trigger update mà **không cần** ai bấm nút.
+**Cách một agent nhận lệnh update:** người dùng bấm **Update Agent** hoặc
+**Update all agents** → backend tạo task `agent_update` → agent nhận task ở
+heartbeat tiếp theo. `update_available` chỉ thông báo lệch version;
+`update_required` luôn là `false` để agent legacy không tự ý thực thi update.
 
 **Ghi chú debug:**
-- Muốn ép agent update dù không đổi code: đổi hằng số version trong `agent_api/handler.go` (`req.Version != "1.1.0"`) — **nhưng đây là version hard-code, không đọc từ config/DB**, sửa xong phải rebuild + deploy lại backend.
+- Version mong đợi đọc từ `AGENT_VERSION` của backend; binary được đóng version bằng cùng biến khi chạy `scripts/publish-agent.sh`.
 - Nếu bấm "Update Agent" mà không thấy gì xảy ra: task vẫn theo mô hình poll (xem mục 5) — đợi tối đa `DATRIXOPS_INTERVAL` giây để agent nhận.
 - Tên service thật là **`datrixops-agent`** (có "ops"), không phải `datrix-agent` — kiểm tra bằng `systemctl status datrixops-agent`.
 - Không có cơ chế "rollback" nếu bản mới lỗi — auto-update ghi đè trực tiếp binary hiện tại.
@@ -213,12 +214,12 @@ SELECT id, type, status, result FROM server_tasks WHERE server_id = '<id>' ORDER
 
 | OS | Sống lại sau crash | Sống lại sau VPS reboot |
 |---|---|---|
-| Linux | `Restart=always` + `RestartSec=10` (`scripts/publish-agent.sh`, systemd unit `datrixops-agent`) | `systemctl enable datrixops-agent` |
+| Linux | `Restart=always` + `RestartSec=10` (`frontend/public/install.sh`, systemd unit `datrixops-agent`) | `systemctl enable datrixops-agent` |
 | macOS | `KeepAlive: true` (launchd plist) | `RunAtLoad: true` + `launchctl load -w` |
 | Windows | `RestartCount 999` / `RestartInterval 1min` (`New-ScheduledTaskSettingsSet`) | Trigger `AtStartup` |
 
 **Ghi chú debug quan trọng:**
-- Cả `triggerRestart()` và `triggerAutoUpdate()` dùng `os.Exit(1)` (KHÔNG phải `0`) — vì Windows Task Scheduler chỉ áp dụng `RestartCount` khi coi task là "failed" (exit code ≠ 0). Nếu sau này sửa code mà đổi lại thành `os.Exit(0)`, **restart/update trên Windows sẽ ngừng hoạt động âm thầm** (Linux/macOS vẫn chạy bình thường vì không quan tâm exit code) — dễ bị bỏ sót khi test chỉ trên Linux.
+- `triggerRestart()` và bước kích hoạt update dùng `os.Exit(1)` (không phải `0`) để Windows Task Scheduler áp dụng restart-on-failure.
 - `triggerReboot()` report `status: completed` **trước khi** biết lệnh reboot có chạy thành công hay không (do gọi `go triggerReboot()` bất đồng bộ) — nếu Agent không đủ quyền reboot (thiếu `sudo`/không phải SYSTEM account), lỗi chỉ nằm trong log của agent, **không** phản ánh lên `server_tasks.status` hay UI.
 - Muốn kiểm tra agent có hiểu 2 task type mới không: agent phải là bản build **sau** khi thêm 2 case này — agent cũ trả `status: failed, result: "Unknown task type"`.
 

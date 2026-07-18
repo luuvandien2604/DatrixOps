@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye, UploadCloud
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -37,6 +37,9 @@ export default function ServersPage() {
 
   // Update Agent
   const [serverToUpdate, setServerToUpdate] = useState<{ id: string, name: string } | null>(null);
+  const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
+  const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
+  const [isUpdatingAll, setIsUpdatingAll] = useState(false);
 
   const router = useRouter();
 
@@ -80,12 +83,21 @@ export default function ServersPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex justify-between items-end mb-6">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Server Management</h1>
           <p className="text-sm text-[var(--color-muted)]">Manage and monitor your server fleet</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setIsUpdateAllOpen(true)}
+            disabled={servers.length === 0 || isUpdatingAll}
+            className="liquid-button secondary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <UploadCloud className="h-4 w-4" />
+            Update all agents
+          </button>
           <button onClick={() => fetchServers()} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Refresh
@@ -562,20 +574,66 @@ export default function ServersPage() {
                   Cancel
                 </button>
                 <button
+                  disabled={isUpdatingAgent}
                   onClick={async () => {
+                    setIsUpdatingAgent(true);
                     try {
                       await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
                         method: 'POST',
-                        data: { type: 'agent_update', payload: '{}' }
+                        data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
                       });
                       toast.success(`Update command sent to ${serverToUpdate.name}`);
                       setServerToUpdate(null);
                     } catch (err: any) {
                       toast.error(err.message || 'Error updating agent');
+                    } finally {
+                      setIsUpdatingAgent(false);
                     }
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors">
-                  Start Update
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
+                  {isUpdatingAgent ? 'Queueing…' : 'Start Update'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isUpdateAllOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="update-all-agents-title" className="glass-card flex w-full max-w-lg flex-col overflow-hidden border border-emerald-500/30 bg-[var(--background-card)]">
+            <div className="flex items-center gap-3 border-b border-[var(--border-color)] bg-emerald-500/5 p-6">
+              <UploadCloud className="h-6 w-6 text-emerald-500" />
+              <h2 id="update-all-agents-title" className="text-xl font-bold text-[var(--foreground)]">Update all agents?</h2>
+            </div>
+            <div className="p-6">
+              <p className="leading-6 text-[var(--color-muted)]">
+                This queues the current agent release for all {servers.length} servers in your workspace. Online agents will update on their next heartbeat; offline agents can claim the task when they reconnect within 24 hours.
+              </p>
+              <p className="mt-3 text-sm text-[var(--color-muted)]">Agents that already have a pending or processing update will be skipped.</p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={isUpdatingAll} onClick={() => setIsUpdateAllOpen(false)} className="rounded-lg px-4 py-2 font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--background)] disabled:opacity-50">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdatingAll}
+                  onClick={async () => {
+                    setIsUpdatingAll(true);
+                    try {
+                      const result = await apiClient('/servers/actions/update-agents', { method: 'POST', data: {} });
+                      toast.success(`${result.queued} agent update${result.queued === 1 ? '' : 's'} queued; ${result.skipped} skipped.`);
+                      setIsUpdateAllOpen(false);
+                    } catch (err: any) {
+                      toast.error(err.message || 'Unable to queue all agent updates');
+                    } finally {
+                      setIsUpdatingAll(false);
+                    }
+                  }}
+                  className="liquid-button disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  {isUpdatingAll ? 'Queueing updates…' : 'Update all agents'}
                 </button>
               </div>
             </div>

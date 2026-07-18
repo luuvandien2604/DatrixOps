@@ -33,22 +33,29 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
 
-# Stop existing task and process if running
+# During an update this installer can be launched by the running agent. Wait for
+# that process to exit instead of terminating the Scheduled Task and its child
+# updater before the new binary has been downloaded.
 $TaskName = "DatrixOpsAgent"
-Write-Host "[*] Stopping existing agent (if running)..."
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null
-Stop-Process -Name "datrixops-agent" -Force -ErrorAction SilentlyContinue | Out-Null
+Write-Host "[*] Waiting for the existing agent to exit (if running)..."
+Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
 
 Write-Host "[*] Downloading DatrixOps Agent..."
-Invoke-WebRequest -Uri $BinaryUrl -OutFile $ExePath
+$UpdatePath = "$ExePath.update"
+Invoke-WebRequest -Uri $BinaryUrl -OutFile $UpdatePath
+if ((Get-Item $UpdatePath).Length -eq 0) {
+    throw "Downloaded agent binary is empty."
+}
+Move-Item -LiteralPath $UpdatePath -Destination $ExePath -Force
 
 Write-Host "[*] Creating wrapper script..."
+$LogPath = "$InstallDir\agent.log"
 $BatContent = @(
     "@echo off",
     "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
     "set `"DATRIXOPS_AGENT_TOKEN=$Token`"",
     "set `"DATRIXOPS_SERVICES=$Services`"",
-    "`"$ExePath`""
+    "`"$ExePath`" >> `"$LogPath`" 2>&1"
 )
 $BatContent | Set-Content -Path $BatPath -Encoding ASCII
 
@@ -60,8 +67,8 @@ $Action = New-ScheduledTaskAction -Execute $BatPath
 # Trigger: at startup
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 
-# Settings: don't stop on battery, restart on failure if possible (simplified here)
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable
+# Keep the agent alive after an approved update or restart task.
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
 
 # System account
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
