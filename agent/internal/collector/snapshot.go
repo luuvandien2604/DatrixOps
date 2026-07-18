@@ -58,6 +58,7 @@ type InventoryDisk struct {
 }
 
 type Inventory struct {
+	OSFamily        string          `json:"os_family"`
 	Hostname        string          `json:"hostname"`
 	Architecture    string          `json:"architecture"`
 	Platform        string          `json:"platform"`
@@ -84,6 +85,7 @@ type CronJob struct {
 }
 
 type Snapshot struct {
+	OSFamily              string            `json:"os_family"`
 	SystemInfo            *SystemInfo       `json:"system_info,omitempty"`
 	Inventory             *Inventory        `json:"inventory,omitempty"`
 	CronJobs              []CronJob         `json:"cron_jobs"`
@@ -97,6 +99,7 @@ type Snapshot struct {
 func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot {
 	cronJobs, cronDiscoveryComplete := collectCronJobs()
 	return &Snapshot{
+		OSFamily:              currentOSFamily(),
 		SystemInfo:            collectSystemInfo(),
 		Inventory:             collectInventory(agentVersion),
 		CronJobs:              cronJobs,
@@ -140,6 +143,7 @@ func collectInventory(agentVersion string) *Inventory {
 
 	hostname, _ := os.Hostname()
 	inventory := &Inventory{
+		OSFamily:      currentOSFamily(),
 		Hostname:      hostname,
 		Architecture:  runtime.GOARCH,
 		LogicalCores:  logicalCores,
@@ -197,6 +201,13 @@ func collectInventory(agentVersion string) *Inventory {
 	}
 
 	return inventory
+}
+
+func currentOSFamily() string {
+	if runtime.GOOS == "darwin" {
+		return "macos"
+	}
+	return runtime.GOOS
 }
 
 func readMemoryTotal() (uint64, error) {

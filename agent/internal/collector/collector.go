@@ -12,15 +12,16 @@ import (
 )
 
 type Metrics struct {
-	OSName      string  `json:"os_name"`
-	CPUCores    int     `json:"cpu_cores"`
-	CPUUsage    float64 `json:"cpu_usage"`
-	MemoryTotal uint64  `json:"memory_total"`
-	MemoryUsed  uint64  `json:"memory_used"`
-	NetIn       uint64  `json:"net_in"`      // bytes per sec
-	NetOut      uint64  `json:"net_out"`     // bytes per sec
-	DiskRead    uint64    `json:"disk_read"`   // bytes per sec
-	DiskWrite   uint64    `json:"disk_write"`  // bytes per sec
+	OSFamily    string    `json:"os_family"`
+	OSName      string    `json:"os_name"`
+	CPUCores    int       `json:"cpu_cores"`
+	CPUUsage    float64   `json:"cpu_usage"`
+	MemoryTotal uint64    `json:"memory_total"`
+	MemoryUsed  uint64    `json:"memory_used"`
+	NetIn       uint64    `json:"net_in"`     // bytes per sec
+	NetOut      uint64    `json:"net_out"`    // bytes per sec
+	DiskRead    uint64    `json:"disk_read"`  // bytes per sec
+	DiskWrite   uint64    `json:"disk_write"` // bytes per sec
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 	Version     string    `json:"version"`
 }
@@ -110,6 +111,7 @@ func Collect() (*Metrics, error) {
 	lastTime = now
 
 	return &Metrics{
+		OSFamily:    currentOSFamily(),
 		OSName:      osName,
 		CPUCores:    cpuCores,
 		CPUUsage:    cpuUsage,

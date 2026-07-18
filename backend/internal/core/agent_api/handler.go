@@ -65,6 +65,7 @@ type CronJob struct {
 }
 
 type Snapshot struct {
+	OSFamily              string            `json:"os_family"`
 	SystemInfo            *SystemInfo       `json:"system_info,omitempty"`
 	Inventory             map[string]any    `json:"inventory,omitempty"`
 	CronJobs              []CronJob         `json:"cron_jobs"`
@@ -77,6 +78,7 @@ type Snapshot struct {
 
 type HeartbeatRequest struct {
 	Version     string    `json:"version"`
+	OSFamily    string    `json:"os_family"`
 	OSName      string    `json:"os_name"`
 	CPUCores    int       `json:"cpu_cores"`
 	CPUUsage    float64   `json:"cpu_usage"`
@@ -121,6 +123,13 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	// 3. Update Server Status in Database
 	// We use the agent_token directly to find the server and update it.
 	// Convert OS Info to JSON string
+	if req.Snapshot != nil {
+		family := req.OSFamily
+		if family == "" {
+			family = req.Snapshot.OSFamily
+		}
+		req.Snapshot.Services = servicesForOS(req.OSName, family, req.Snapshot.Services)
+	}
 	osInfoBytes, _ := json.Marshal(req)
 	osInfoStr := string(osInfoBytes)
 
@@ -240,6 +249,52 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"update_required": updateRequired,
 		"tasks":           tasks,
 	})
+}
+
+func servicesForOS(osName, osFamily string, services []ServiceStatus) []ServiceStatus {
+	family := strings.ToLower(strings.TrimSpace(osFamily))
+	name := strings.ToLower(osName)
+	if family == "" {
+		switch {
+		case strings.Contains(name, "windows"):
+			family = "windows"
+		case strings.Contains(name, "darwin"), strings.Contains(name, "mac"):
+			family = "macos"
+		case strings.Contains(name, "linux"),
+			strings.Contains(name, "ubuntu"),
+			strings.Contains(name, "debian"),
+			strings.Contains(name, "centos"),
+			strings.Contains(name, "fedora"),
+			strings.Contains(name, "alpine"):
+			family = "linux"
+		}
+	}
+
+	expectedSource := map[string]string{
+		"linux":   "systemd",
+		"macos":   "launchd",
+		"darwin":  "launchd",
+		"windows": "windows-scm",
+	}[family]
+	if expectedSource == "" {
+		return services
+	}
+
+	filtered := make([]ServiceStatus, 0, len(services))
+	for _, service := range services {
+		// Source-less entries are the legacy Linux collector. They remain
+		// compatible only when the heartbeat itself identifies as Linux.
+		if service.Source == "" {
+			if family == "linux" {
+				filtered = append(filtered, service)
+			}
+			continue
+		}
+		if service.Source == expectedSource {
+			filtered = append(filtered, service)
+		}
+	}
+	return filtered
 }
 
 func (h *Handler) persistCronJobs(ctx context.Context, serverID string, jobs []CronJob) error {

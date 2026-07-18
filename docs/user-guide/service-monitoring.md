@@ -22,6 +22,8 @@ system. Linux shows System Services and Cron Monitoring, macOS shows Launch
 Services and Cron Jobs, and Windows shows Windows Services while omitting the
 unsupported Cron tab. Older Linux-only snapshots are hidden on macOS and
 Windows until the agent reports native service-manager data.
+The agent sends an explicit `os_family` value, so this behavior does not depend
+on the server display name or on guessing the platform from service names.
 
 ## Default service sets
 

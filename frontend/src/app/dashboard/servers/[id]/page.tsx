@@ -49,6 +49,7 @@ interface InventoryDisk {
 }
 
 interface Inventory {
+  os_family?: string;
   hostname: string;
   architecture: string;
   platform: string;
@@ -79,6 +80,7 @@ interface CronJob {
 }
 
 interface Snapshot {
+  os_family?: string;
   system_info?: SystemInfo;
   inventory?: Inventory;
   top_processes?: TopProcess[];
@@ -92,7 +94,7 @@ interface ServerDetails {
   name: string;
   status: string;
   ip_address: string;
-  os_info?: string;
+  os_info?: string | { os_name?: string; os_family?: string; platform?: string };
   snapshot?: string;
   inventory?: string;
   inventory_updated_at?: string;
@@ -216,15 +218,23 @@ export default function ServerDetailsPage() {
 
   const reportedServices = snapshot?.services || [];
   const reportedServiceManager = reportedServices.find(service => service.source)?.source;
-  const monitoredOS = inventory?.platform || (server.os_info ? (() => {
-    try { return JSON.parse(server.os_info).os_name; } catch { return 'Unknown OS'; }
-  })() : 'Unknown OS');
+  const parsedOSInfo = (() => {
+    if (!server.os_info) return {};
+    if (typeof server.os_info === 'object') return server.os_info;
+    try {
+      return JSON.parse(server.os_info) as { os_name?: string; os_family?: string; platform?: string };
+    } catch {
+      return {};
+    }
+  })();
+  const explicitOSFamily = (snapshot?.os_family || inventory?.os_family || parsedOSInfo.os_family)?.toLowerCase();
+  const monitoredOS = inventory?.platform || parsedOSInfo.os_name || parsedOSInfo.platform || explicitOSFamily || 'Unknown OS';
   const normalizedOS = `${inventory?.platform || ''} ${monitoredOS}`.toLowerCase();
-  const osFamily = normalizedOS.includes('windows') || reportedServiceManager === 'windows-scm'
+  const osFamily = explicitOSFamily === 'windows' || normalizedOS.includes('windows') || reportedServiceManager === 'windows-scm'
     ? 'windows'
-    : normalizedOS.includes('darwin') || normalizedOS.includes('mac') || reportedServiceManager === 'launchd'
+    : explicitOSFamily === 'macos' || explicitOSFamily === 'darwin' || normalizedOS.includes('darwin') || normalizedOS.includes('mac') || reportedServiceManager === 'launchd'
       ? 'macos'
-      : normalizedOS.includes('linux') || reportedServiceManager === 'systemd' || ['ubuntu', 'debian', 'centos', 'fedora', 'alpine'].some(name => normalizedOS.includes(name))
+      : explicitOSFamily === 'linux' || normalizedOS.includes('linux') || reportedServiceManager === 'systemd' || ['ubuntu', 'debian', 'centos', 'fedora', 'alpine'].some(name => normalizedOS.includes(name))
         ? 'linux'
         : 'unknown';
   const serviceManager = osFamily === 'macos' ? 'launchd' : osFamily === 'windows' ? 'windows-scm' : 'systemd';
@@ -316,7 +326,7 @@ export default function ServerDetailsPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-[var(--color-muted)]">Operating System</span>
-                <span className="text-sm font-medium text-[var(--foreground)]">{server.os_info ? JSON.parse(server.os_info).os_name : 'N/A'}</span>
+                <span className="text-sm font-medium text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-[var(--color-muted)]">Kernel Version</span>
