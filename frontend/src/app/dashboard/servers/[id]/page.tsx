@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
+import WebTerminal from '@/components/WebTerminal';
 
 interface TopProcess {
   pid: number;
@@ -103,6 +104,9 @@ interface ServerDetails {
     cpu_usage?: number;
     memory_used?: number;
     memory_total?: number;
+    disk_used?: number;
+    disk_total?: number;
+    disk_usage?: number;
   };
   snapshot?: string;
   inventory?: string;
@@ -115,6 +119,7 @@ interface ServerDetails {
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
+const MIN_TERMINAL_AGENT_VERSION = '1.5.0';
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
@@ -145,6 +150,9 @@ export default function ServerDetailsPage() {
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
+      setActiveTab('terminal');
+    }
     fetchServer();
     const interval = setInterval(fetchServer, 15000); // refresh every 15s
     return () => clearInterval(interval);
@@ -320,6 +328,9 @@ export default function ServerDetailsPage() {
         cpu_usage?: number;
         memory_used?: number;
         memory_total?: number;
+        disk_used?: number;
+        disk_total?: number;
+        disk_usage?: number;
       };
     } catch {
       return {};
@@ -369,6 +380,7 @@ export default function ServerDetailsPage() {
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
+    ['terminal', 'Terminal'],
   ];
   // Old agents sent a Linux-only list without a service manager. Do not show
   // those entries as valid launchd or Windows services.
@@ -490,7 +502,7 @@ export default function ServerDetailsPage() {
               </div>
             </section>
           )}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
               <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Cpu className="w-4 h-4" /> SYSTEM INFORMATION</h3>
               <div className="space-y-4">
@@ -527,6 +539,28 @@ export default function ServerDetailsPage() {
                 <div>
                   <p className="text-sm text-[var(--color-muted)]">Packages awaiting upgrade</p>
                   <div className="text-2xl font-bold text-[var(--foreground)]">{snapshot?.package_update || 0} <span className="text-sm font-normal text-[var(--color-muted)]">packages</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
+              <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><HardDrive className="w-4 h-4" /> SYSTEM DISK</h3>
+              <div className="space-y-3">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-[var(--color-muted)]">Storage used</p>
+                    <p className="mt-1 text-2xl font-bold text-[var(--foreground)]">
+                      {parsedOSInfo.disk_usage !== undefined ? `${parsedOSInfo.disk_usage.toFixed(1)}%` : 'Unavailable'}
+                    </p>
+                  </div>
+                  <p className="text-right text-xs font-semibold text-[var(--color-muted)]">
+                    {parsedOSInfo.disk_total ? `${formatBytes(parsedOSInfo.disk_used)} / ${formatBytes(parsedOSInfo.disk_total)}` : 'Waiting for agent telemetry'}
+                  </p>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--background)]">
+                  <div
+                    className={`h-full rounded-full ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : Number(parsedOSInfo.disk_usage || 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                    style={{ width: `${Math.min(Number(parsedOSInfo.disk_usage || 0), 100)}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -862,6 +896,19 @@ export default function ServerDetailsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {activeTab === 'terminal' && (
+        <WebTerminal
+          serverId={server.id}
+          serverName={server.name}
+          enabled={server.status === 'online' && versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION)}
+          disabledReason={
+            server.status !== 'online'
+              ? 'The agent must be online before a terminal session can start.'
+              : `Agent ${MIN_TERMINAL_AGENT_VERSION} or newer is required for reverse terminal support.`
+          }
+        />
       )}
 
       {activeTab === 'docker' && (

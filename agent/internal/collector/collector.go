@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -22,6 +23,9 @@ type Metrics struct {
 	NetOut      uint64    `json:"net_out"`    // bytes per sec
 	DiskRead    uint64    `json:"disk_read"`  // bytes per sec
 	DiskWrite   uint64    `json:"disk_write"` // bytes per sec
+	DiskTotal   uint64    `json:"disk_total"`
+	DiskUsed    uint64    `json:"disk_used"`
+	DiskUsage   float64   `json:"disk_usage"`
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 	Version     string    `json:"version"`
 }
@@ -80,6 +84,17 @@ func Collect() (*Metrics, error) {
 			currentDiskWrite += io.WriteBytes
 		}
 	}
+	systemVolume := "/"
+	if runtime.GOOS == "windows" {
+		systemVolume = `C:\`
+	}
+	var diskTotal, diskUsed uint64
+	var diskUsage float64
+	if usage, usageErr := disk.Usage(systemVolume); usageErr == nil {
+		diskTotal = usage.Total
+		diskUsed = usage.Used
+		diskUsage = usage.UsedPercent
+	}
 
 	now := time.Now()
 	var netInRate, netOutRate, diskReadRate, diskWriteRate uint64
@@ -121,5 +136,8 @@ func Collect() (*Metrics, error) {
 		NetOut:      netOutRate,
 		DiskRead:    diskReadRate,
 		DiskWrite:   diskWriteRate,
+		DiskTotal:   diskTotal,
+		DiskUsed:    diskUsed,
+		DiskUsage:   diskUsage,
 	}, nil
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/agent/internal/client"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/collector"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/config"
+	"github.com/luuvandien2604/DatrixOps/agent/internal/terminal"
 )
 
 var (
@@ -47,6 +48,7 @@ func main() {
 	// Graceful shutdown context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go terminal.Run(ctx, cfg)
 
 	// Initial heartbeat immediately on startup with snapshot
 	sendHeartbeat(ctx, apiClient, true, cfg.MonitoredServices)

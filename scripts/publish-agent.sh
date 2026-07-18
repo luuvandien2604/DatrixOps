@@ -6,7 +6,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_DIR="$PROJECT_ROOT/agent"
 PUBLIC_DIR="$PROJECT_ROOT/frontend/public"
-AGENT_VERSION="${AGENT_VERSION:-1.3.0}"
+AGENT_VERSION="${AGENT_VERSION:-1.5.0}"
 MIN_SELF_UPDATING_VERSION="1.3.0"
 
 version_at_least() {

@@ -89,6 +89,9 @@ type HeartbeatRequest struct {
 	NetOut      uint64    `json:"net_out"`
 	DiskRead    uint64    `json:"disk_read"`
 	DiskWrite   uint64    `json:"disk_write"`
+	DiskTotal   uint64    `json:"disk_total"`
+	DiskUsed    uint64    `json:"disk_used"`
+	DiskUsage   float64   `json:"disk_usage"`
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 }
 

@@ -77,7 +77,7 @@
 ## 🔴 Tính năng đột phá (Phase 5: "Killer" Features)
 
 **Sprint 10: Tương tác trực tiếp (Interactive Tools)**
-- [ ] **Web Terminal (SSH Browser):** Truy cập SSH trực tiếp ngay trên Dashboard qua WebSocket/Reverse Tunnel (khác Local SSH Handoff; cần thiết kế tunnel, auth và audit trước).
+- [x] **Web Terminal (Reverse Shell):** Terminal tương tác cho Linux, macOS và Windows qua outbound WebSocket của Agent; dùng one-time ticket, same-origin validation, thời hạn 30 phút, một session/server và audit metadata.
 - [ ] **File Manager:** Duyệt thư mục `/etc`, `/var`, `/home`, Upload/Download/Edit/Chmod file trực tiếp qua Web.
 - [ ] **Realtime Log Viewer:** `journalctl` streaming, xem log Nginx/MySQL realtime.
 

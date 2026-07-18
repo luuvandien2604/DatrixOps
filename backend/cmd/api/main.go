@@ -9,14 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/admin"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/agent_api"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/apikey"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/audit"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/terminal"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/admin"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/audit"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/apikey"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/logger"
@@ -83,6 +84,7 @@ func main() {
 	auth.RegisterRoutes(mux, c.DB, c.Config)
 	server.RegisterRoutes(mux, c.DB, c.Config)
 	agent_api.RegisterRoutes(mux, c.DB, c.Config)
+	terminal.RegisterRoutes(mux, c.DB, c.Config)
 	alert.RegisterRoutes(mux, c.DB, c.Config)
 	website.RegisterRoutes(mux, c.DB, c.Config.JWTSecret)
 

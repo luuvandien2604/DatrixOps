@@ -40,12 +40,6 @@ export default function ServersPage() {
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
 
-  // Safe hand-off to the operator's local SSH client. Browser terminal/tunnel
-  // support remains a separate architecture item.
-  const [sshServer, setSSHServer] = useState<{name: string, ipAddress: string} | null>(null);
-  const [sshUsername, setSSHUsername] = useState('root');
-  const [sshPort, setSSHPort] = useState('22');
-
   const router = useRouter();
 
   useEffect(() => {
@@ -85,10 +79,6 @@ export default function ServersPage() {
         return '';
     }
   };
-
-  const getSSHCommand = () => sshServer
-    ? `ssh -p ${sshPort || '22'} ${sshUsername || 'root'}@${sshServer.ipAddress}`
-    : '';
 
   return (
     <div className="space-y-6 pb-20">
@@ -131,6 +121,7 @@ export default function ServersPage() {
                 <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">OS / Spec</th>
                 <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">CPU</th>
                 <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">RAM</th>
+                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Disk</th>
                 <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Status</th>
                 <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider text-right">Quick Actions</th>
               </tr>
@@ -138,7 +129,7 @@ export default function ServersPage() {
             <tbody className="divide-y divide-white/5">
               {servers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[var(--color-muted)]">
+                  <td colSpan={8} className="py-12 text-center text-[var(--color-muted)]">
                     No servers found. Add your first server to start monitoring.
                   </td>
                 </tr>
@@ -216,6 +207,19 @@ export default function ServersPage() {
                         ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : undefined}>—</span>}
                       </td>
                       <td className="py-4 px-6">
+                        {liveInfo && liveInfo.disk_total > 0 ? (
+                          <div className="flex items-center gap-3">
+                            <span className="min-w-[3rem] font-mono text-sm">{Number(liveInfo.disk_usage || 0).toFixed(1)}%</span>
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-700">
+                              <div
+                                className={`h-full ${Number(liveInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : Number(liveInfo.disk_usage || 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                style={{ width: `${Math.min(Number(liveInfo.disk_usage || 0), 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : 'Upgrade the agent to report disk usage'}>—</span>}
+                      </td>
+                      <td className="py-4 px-6">
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${server.status === 'online'
                           ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                           : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
@@ -242,16 +246,12 @@ export default function ServersPage() {
                             <FileText className="w-4 h-4" />
                           </button>
                           <button
-                            disabled={!agentIPAddress}
                             onClick={event => {
                               event.stopPropagation();
-                              if (!agentIPAddress) return;
-                              setSSHUsername('root');
-                              setSSHPort('22');
-                              setSSHServer({ name: server.name, ipAddress: agentIPAddress });
+                              router.push(`/dashboard/servers/${server.id}?view=terminal`);
                             }}
-                            className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-35"
-                            title={agentIPAddress ? 'Open local SSH connection' : 'IP address is unavailable'}
+                            className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+                            title="Open Web Terminal"
                           >
                             <TerminalSquare className="w-4 h-4" />
                           </button>
@@ -289,83 +289,6 @@ export default function ServersPage() {
           </table>
         </div>
       </div>
-
-      {sshServer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="ssh-connect-title" className="glass-card w-full max-w-lg overflow-hidden border-blue-500/30 bg-[var(--background-card)]">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] p-6">
-              <div className="flex items-center gap-3">
-                <TerminalSquare className="h-6 w-6 text-blue-500" />
-                <div>
-                  <h2 id="ssh-connect-title" className="text-xl font-bold text-[var(--foreground)]">Connect with SSH</h2>
-                  <p className="mt-1 text-sm text-[var(--color-muted)]">{sshServer.name}</p>
-                </div>
-              </div>
-              <button type="button" aria-label="Close SSH connection dialog" onClick={() => setSSHServer(null)} className="text-[var(--color-muted)] transition-colors hover:text-[var(--foreground)]">
-                <XCircle className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-5 p-6">
-              <p className="text-sm leading-6 text-[var(--color-muted)]">
-                This opens your operating system&apos;s local SSH application; it is not an embedded browser terminal. The command is copied automatically as a fallback, and credentials and private keys remain on your device.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
-                <label>
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Username</span>
-                  <input value={sshUsername} onChange={event => setSSHUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g, ''))} className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-[var(--foreground)] outline-none focus:border-blue-500" />
-                </label>
-                <label>
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Port</span>
-                  <input inputMode="numeric" value={sshPort} onChange={event => setSSHPort(event.target.value.replace(/\D/g, '').slice(0, 5))} className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-[var(--foreground)] outline-none focus:border-blue-500" />
-                </label>
-              </div>
-              <div>
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Host</span>
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-3 font-mono text-sm text-[var(--foreground)]">{sshServer.ipAddress}</div>
-              </div>
-              <div className="rounded-xl border border-[var(--border-color)] bg-black/25 px-4 py-3 font-mono text-sm text-emerald-500">
-                {getSSHCommand()}
-              </div>
-              <div className="flex flex-wrap justify-end gap-3">
-                <button type="button" onClick={() => setSSHServer(null)} className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--background)]">Cancel</button>
-                <button
-                  type="button"
-                  disabled={!sshUsername || !sshPort}
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(getSSHCommand());
-                      toast.success('SSH command copied');
-                    } catch {
-                      toast.error('Clipboard access was denied');
-                    }
-                  }}
-                  className="liquid-button secondary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Copy command
-                </button>
-                <button
-                  type="button"
-                  disabled={!sshUsername || !sshPort || Number(sshPort) < 1 || Number(sshPort) > 65535}
-                  onClick={async () => {
-                    const host = sshServer.ipAddress.includes(':') ? `[${sshServer.ipAddress}]` : sshServer.ipAddress;
-                    try {
-                      await navigator.clipboard.writeText(getSSHCommand());
-                      toast.success('SSH command copied; opening your local SSH application');
-                    } catch {
-                      toast('Opening your local SSH application');
-                    }
-                    window.location.href = `ssh://${encodeURIComponent(sshUsername)}@${host}:${sshPort}`;
-                  }}
-                  className="liquid-button disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <TerminalSquare className="h-4 w-4" />
-                  Open local SSH app
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add Server Modal */}
       {isAddServerModalOpen && (

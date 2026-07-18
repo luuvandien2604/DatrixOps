@@ -19,7 +19,7 @@ func Load() (*Config, error) {
 		Port:         getEnv("PORT", "8080"),
 		DatabaseURL:  getEnv("DATABASE_URL", "postgres://datrixops:datrixops_secret@localhost:5432/datrixops?sslmode=disable"),
 		JWTSecret:    getEnv("JWT_SECRET", ""),
-		AgentVersion: getEnv("AGENT_VERSION", "1.3.0"),
+		AgentVersion: getEnv("AGENT_VERSION", "1.5.0"),
 	}
 
 	if cfg.JWTSecret == "" {
