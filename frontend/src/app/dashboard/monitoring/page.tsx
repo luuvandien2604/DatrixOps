@@ -505,16 +505,16 @@ function ChartScaffolding({
         domain={domain}
         scale="time"
         allowDataOverflow
-        stroke="var(--color-muted)"
-        fontSize={12}
+        stroke="var(--border-color)"
+        tick={{ fill: 'var(--text-strong)', fontSize: 13, fontWeight: 600 }}
         tickLine={false}
         axisLine={false}
         minTickGap={42}
         tickFormatter={(value) => formatAxisTime(Number(value), range)}
       />
       <YAxis
-        stroke="var(--color-muted)"
-        fontSize={12}
+        stroke="var(--border-color)"
+        tick={{ fill: 'var(--text-strong)', fontSize: 13, fontWeight: 600 }}
         tickLine={false}
         axisLine={false}
         width={46}
@@ -533,7 +533,7 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
 
   return (
     <div className="monitoring-tooltip">
-      <p>{formatTooltipTime(timestamp)}</p>
+      <p className="monitoring-tooltip-time">{formatTooltipTime(timestamp)}</p>
       {!point?.hasData || visibleItems.length === 0 ? (
         <div className="monitoring-tooltip-missing">
           <CircleAlert className="h-3.5 w-3.5" />
@@ -545,7 +545,7 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
             <div key={item.name} className="flex items-center justify-between gap-6">
               <span className="flex items-center gap-2">
                 <i style={{ background: item.color }} />
-                {item.name}
+                <span className="monitoring-tooltip-name">{item.name}</span>
               </span>
               <strong>{formatTooltipValue(item.value)}</strong>
             </div>

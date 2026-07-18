@@ -48,7 +48,7 @@
   --control-background: rgba(255, 255, 255, .028);
   --control-hover: rgba(255, 255, 255, .055);
   --overlay-background: rgba(2, 3, 4, .76);
-  --tooltip-background: rgba(13, 14, 18, .94);
+  --tooltip-background: #101217;
   --toast-background: rgba(13, 14, 18, .94);
   --body-glow: rgba(38, 66, 225, .09);
   --button-primary-background: #f7f7f4;
@@ -126,7 +126,7 @@ html.light {
   --control-background: rgba(23, 32, 51, .04);
   --control-hover: rgba(23, 32, 51, .075);
   --overlay-background: rgba(21, 29, 45, .36);
-  --tooltip-background: rgba(255, 255, 255, .96);
+  --tooltip-background: #ffffff;
   --toast-background: rgba(255, 255, 255, .96);
   --body-glow: rgba(64, 88, 214, .11);
   --button-primary-background: #172033;
@@ -1170,9 +1170,9 @@ button:disabled {
 }
 
 .monitoring-chart-card header span {
-  color: var(--text-secondary) !important;
+  color: var(--text-strong) !important;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .monitoring-chart-loading {
@@ -1191,33 +1191,41 @@ button:disabled {
 }
 
 .monitoring-tooltip {
-  min-width: 170px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  min-width: 190px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 13px;
   background: var(--tooltip-background);
-  padding: 10px 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  box-shadow: var(--shadow-surface);
-  backdrop-filter: blur(20px);
+  padding: 13px 14px;
+  color: var(--foreground);
+  font-size: 13px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .22), 0 4px 12px rgba(15, 23, 42, .12);
 }
 
-.monitoring-tooltip > p {
-  color: var(--text-secondary);
-  font-size: 11px;
+.monitoring-tooltip-time {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .01em;
 }
 
 .monitoring-tooltip i {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
+  flex: none;
   border-radius: 50%;
+}
+
+.monitoring-tooltip-name {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .monitoring-tooltip strong {
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 750;
 }
 
 .monitoring-tooltip-missing {
