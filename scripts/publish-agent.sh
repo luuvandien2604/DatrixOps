@@ -114,10 +114,12 @@ load_signing_key() {
         die "chưa đặt AGENT_SIGNING_PRIVATE_KEY"
     fi
 
-    read -rsp "Nhập Ed25519 private key Base64: " \
-        AGENT_SIGNING_PRIVATE_KEY
+PRIVATE_KEY="${AGENT_SIGNING_KEY:-}"
 
+if [ -z "$PRIVATE_KEY" ]; then
+    read -rsp "Nhập Ed25519 private key Base64: " PRIVATE_KEY
     echo
+fi
 
     if [[ -z "$AGENT_SIGNING_PRIVATE_KEY" ]]; then
         die "private key không được để trống"
