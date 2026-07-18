@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   ArrowUpRight, ChevronRight, Command, Menu, X
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const docsNavigation = [
   {
@@ -71,11 +72,12 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             </button>
             <Link href="/docs" className="flex items-center gap-3 font-semibold tracking-tight">
               <span className="brand-orbit"><Command className="h-4 w-4" /></span>
-              <span className="tracking-[.08em]">DATRIX<span className="text-[#9b8cff]">OPS</span> <span className="font-normal tracking-normal text-white/40">/ Docs</span></span>
+              <span className="tracking-[.08em]">DATRIX<span className="text-[var(--violet)]">OPS</span> <span className="font-normal tracking-normal text-white/40">/ Docs</span></span>
             </Link>
           </div>
 
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <nav aria-label="Documentation utilities" className="hidden items-center gap-6 text-sm font-medium text-[var(--color-muted)] md:flex">
               <Link href="/" className="hover:text-[var(--foreground)] transition-colors">Trang chủ</Link>
               <Link href="/dashboard" className="hover:text-[var(--foreground)] transition-colors">Dashboard</Link>

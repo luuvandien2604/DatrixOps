@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
@@ -22,6 +22,10 @@ export const metadata: Metadata = {
   description: "Real-time server and agent monitoring control plane.",
 };
 
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,35 +34,35 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${display.variable} h-full antialiased dark`}
+      className={`${sans.variable} ${display.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
 
           <Toaster
             position="bottom-right"
             toastOptions={{
               style: {
-                background: "rgba(13, 14, 18, .92)",
-                color: "#f7f4ee",
-                border: "1px solid rgba(255, 255, 255, .12)",
+                background: "var(--toast-background)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border-color)",
                 fontSize: "13px",
                 borderRadius: "999px",
                 backdropFilter: "blur(24px)",
-                boxShadow: "0 24px 70px rgba(0, 0, 0, .48), inset 0 1px rgba(255, 255, 255, .07)",
+                boxShadow: "var(--shadow-raised)",
               },
               success: {
                 iconTheme: {
-                  primary: "#75e8bf",
-                  secondary: "#08100d",
+                  primary: "var(--mint)",
+                  secondary: "var(--surface-raised)",
                 },
               },
               error: {
                 iconTheme: {
-                  primary: "#ff8fa3",
-                  secondary: "#16090c",
+                  primary: "var(--rose)",
+                  secondary: "var(--surface-raised)",
                 },
               },
             }}

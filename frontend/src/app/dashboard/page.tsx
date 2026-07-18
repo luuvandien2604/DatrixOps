@@ -176,7 +176,7 @@ export default function OverviewDashboard() {
     <div className="mx-auto max-w-[1540px] space-y-6">
       <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[#8bd5c5]">
+          <div className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--mint)]">
             <Activity className="h-3 w-3" />
             Live infrastructure
             <span className="live-data-dot" aria-hidden="true" />
@@ -189,7 +189,7 @@ export default function OverviewDashboard() {
             <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
             <span aria-hidden="true">·</span>
             <span>{refreshing ? 'Đang nhận dữ liệu mới…' : 'Auto-refresh đang bật'}</span>
-            {error && <span className="text-[#ff8da1]">Lần cập nhật gần nhất lỗi: {error}</span>}
+            {error && <span className="text-[var(--rose)]">Lần cập nhật gần nhất lỗi: {error}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -206,7 +206,7 @@ export default function OverviewDashboard() {
           label="Fleet online"
           value={`${online}/${total}`}
           note={total > 0 ? `${health}% heartbeat hợp lệ` : 'Chưa có server'}
-          color="#8bd5c5"
+          color="var(--mint)"
           bars={fleetBars}
         />
         <MetricCard
@@ -214,7 +214,7 @@ export default function OverviewDashboard() {
           label="Average CPU"
           value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
           note={hasLiveMetrics ? 'Trung bình server online' : 'Chưa có metrics'}
-          color="#8fa2ff"
+          color="var(--violet)"
           bars={cpuBars}
         />
         <MetricCard
@@ -222,7 +222,7 @@ export default function OverviewDashboard() {
           label="Memory used"
           value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
           note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'Chưa có metrics'}
-          color="#79c9f4"
+          color="var(--sky)"
           bars={memoryBars}
         />
         <MetricCard
@@ -230,7 +230,7 @@ export default function OverviewDashboard() {
           label="Open incidents"
           value={String(summary?.open_incidents ?? 0)}
           note={warning > 0 ? `${warning} server bị ảnh hưởng` : 'Không có alert firing'}
-          color="#ff8da1"
+          color="var(--rose)"
           bars={incidentBars}
         />
       </section>
@@ -248,20 +248,20 @@ export default function OverviewDashboard() {
             </div>
           </div>
           <div className="mb-4 flex gap-6 text-xs">
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#8fa2ff]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#8bd5c5]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--violet)]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--mint)]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
           </div>
           <div className="h-[260px]">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="cpuLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3150ff" stopOpacity=".42" /><stop offset="1" stopColor="#3150ff" stopOpacity="0" /></linearGradient>
-                    <linearGradient id="ramLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8bd5c5" stopOpacity=".28" /><stop offset="1" stopColor="#8bd5c5" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="cpuLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".42" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="ramLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".28" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
                   </defs>
-                  <Tooltip contentStyle={{ background: '#0b0c10', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, fontSize: 11 }} />
-                  <Area type="monotone" dataKey="ram" name="Memory" stroke="#8bd5c5" strokeWidth={2} fill="url(#ramLiquid)" isAnimationActive={false} />
-                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="#8fa2ff" strokeWidth={2} fill="url(#cpuLiquid)" isAnimationActive={false} />
+                  <Tooltip contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }} />
+                  <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={2} fill="url(#ramLiquid)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={2} fill="url(#cpuLiquid)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -280,9 +280,9 @@ export default function OverviewDashboard() {
             <div className="text-center"><p className="font-mono text-4xl font-medium">{total > 0 ? `${health}%` : '—'}</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">heartbeat score</p></div>
           </div>
           <div className="grid grid-cols-3 gap-2 border-t border-white/[.06] pt-5 text-center">
-            <HealthStat label="Online" value={online} color="text-[#8bd5c5]" />
-            <HealthStat label="Alerted" value={warning} color="text-[#ffd27a]" />
-            <HealthStat label="Offline" value={offline} color="text-[#ff879c]" />
+            <HealthStat label="Online" value={online} color="text-[var(--mint)]" />
+            <HealthStat label="Alerted" value={warning} color="text-[var(--amber)]" />
+            <HealthStat label="Offline" value={offline} color="text-[var(--rose)]" />
           </div>
         </div>
       </section>
@@ -357,7 +357,7 @@ function ServerRow({ server }: { server: DashboardServer }) {
 
 function LoadBar({ value }: { value: number }) {
   const normalized = Math.max(0, Math.min(value, 100));
-  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full bg-gradient-to-r from-[#3150ff] to-[#8bd5c5]" style={{ width: `${normalized}%` }} /></span><span className="font-mono text-[10px] text-white/45">{roundMetric(value)}%</span></div>;
+  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: 'linear-gradient(90deg, var(--violet-strong), var(--mint))' }} /></span><span className="font-mono text-[10px] text-white/45">{roundMetric(value)}%</span></div>;
 }
 
 function Incident({ incident }: { incident: DashboardIncident }) {
@@ -370,7 +370,7 @@ function Incident({ incident }: { incident: DashboardIncident }) {
     <div className="incident-row">
       <span className="incident-icon critical"><Icon className="h-4 w-4" /></span>
       <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
-      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[#ff879c]" />
+      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[var(--rose)]" />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type NavDefinition = {
   label: string;
@@ -107,25 +108,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <Icon className="h-[18px] w-[18px] shrink-0" />
         {!collapsed && <span>{item.label}</span>}
-        {!collapsed && Boolean(count) && <span className="ml-auto rounded-full bg-[#ff7a90]/15 px-2 py-0.5 text-[10px] text-[#ff98aa]">{count}</span>}
+        {!collapsed && Boolean(count) && <span className="nav-alert-count">{count}</span>}
       </Link>
     );
   };
 
   return (
-    <div className="liquid-shell min-h-screen text-[#f6f8fb]">
+    <div className="liquid-shell min-h-screen text-[var(--foreground)]">
       <div className="liquid-aurora" aria-hidden="true" />
 
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 rounded-full border border-white/10 bg-black/60 p-3 backdrop-blur-xl lg:hidden"
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-full p-3 backdrop-blur-xl lg:hidden"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
       </button>
 
-      {mobileOpen && <button type="button" className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" />}
+      {mobileOpen && <button type="button" className="mobile-nav-overlay fixed inset-0 z-40 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" />}
 
       <aside aria-label="Dashboard navigation" className={`liquid-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}>
         <div className="flex h-20 items-center gap-3 px-4">
@@ -133,7 +134,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="brand-orbit"><Command className="h-4 w-4" /></div>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold tracking-[0.16em]">DATRIX<span className="text-[#aebdff]">OPS</span></p>
+                <p className="truncate text-sm font-semibold tracking-[0.16em]">DATRIX<span className="text-[var(--violet)]">OPS</span></p>
                 <p className="text-[10px] uppercase tracking-[0.22em] text-white/35">control plane</p>
               </div>
             )}
@@ -144,8 +145,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="px-3">
           <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              {!fleetSyncFailed && (fleetSummary?.online_servers ?? 0) > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#70f2be] opacity-50" />}
-              <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${fleetSyncFailed ? 'bg-[#ffcf70]' : (fleetSummary?.online_servers ?? 0) > 0 ? 'bg-[#70f2be]' : 'bg-white/25'}`} />
+              {!fleetSyncFailed && (fleetSummary?.online_servers ?? 0) > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mint)] opacity-50" />}
+              <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${fleetSyncFailed ? 'bg-[var(--amber)]' : (fleetSummary?.online_servers ?? 0) > 0 ? 'bg-[var(--mint)]' : 'bg-white/25'}`} />
             </span>
             {!collapsed && (
               <div>
@@ -190,13 +191,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button type="button" className="topbar-action hidden sm:flex" aria-label="Search dashboard"><Search className="h-4 w-4" /><span>Search</span><kbd>⌘ K</kbd></button>
+            <ThemeToggle />
             <Link href="/dashboard/alerts" aria-label="Open alerts" className="topbar-icon relative">
               <Bell className="h-4 w-4" />
-              {(fleetSummary?.open_incidents ?? 0) > 0 && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff7a90]" />}
+              {(fleetSummary?.open_incidents ?? 0) > 0 && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[var(--rose)]" />}
             </Link>
             <div className="ml-1 flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] py-1.5 pl-1.5 pr-3">
-              <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-[#dfe4ff] via-[#3150ff] to-[#090b12] text-[10px] font-bold">{role === 'superadmin' ? 'SA' : 'OP'}</div>
-              <div className="hidden sm:block"><p className="text-[11px] font-medium">{role === 'superadmin' ? 'Superadmin' : 'Operator'}</p><p className="text-[9px] text-[#70f2be]">● Authenticated</p></div>
+              <div className="operator-avatar">{role === 'superadmin' ? 'SA' : 'OP'}</div>
+              <div className="hidden sm:block"><p className="text-[11px] font-medium">{role === 'superadmin' ? 'Superadmin' : 'Operator'}</p><p className="text-[9px] text-[var(--mint)]">● Authenticated</p></div>
             </div>
           </div>
         </header>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Command, Server } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -34,13 +35,14 @@ export default function RegisterPage() {
   return (
     <main id="main-content" className="auth-shell">
       <Link href="/" className="auth-back"><ArrowLeft className="h-4 w-4" /> Back to home</Link>
+      <ThemeToggle className="auth-theme-toggle" />
       <div className="auth-liquid auth-liquid-one" />
       <div className="auth-liquid auth-liquid-two" />
       <div className="auth-card glass-card">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 hover:opacity-80 transition-opacity">
             <span className="brand-orbit"><Command className="h-4 w-4" /></span>
-            <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#86f2cf]">OPS</span></span>
+            <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--mint)]">OPS</span></span>
           </Link>
           <div className="auth-icon"><Server className="h-5 w-5" /></div>
           <h1>Create <em>workspace.</em></h1>

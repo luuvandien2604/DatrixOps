@@ -8,6 +8,7 @@ import {
   Database, Globe2, HardDrive, Radio, Server, ShieldCheck, Terminal,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const signal = [34, 46, 39, 54, 49, 68, 52, 73, 59, 65, 48, 57, 41, 63, 52, 70, 58, 76];
 
@@ -42,14 +43,14 @@ export default function LandingPage() {
   };
 
   return (
-    <div ref={pageRef} onPointerMove={handlePointerMove} className="landing-liquid min-h-screen overflow-hidden text-[#f5f7fb]">
+    <div ref={pageRef} onPointerMove={handlePointerMove} className="landing-liquid min-h-screen overflow-hidden text-[var(--foreground)]">
       <a href="#main-content" className="skip-link">Skip to content</a>
       <div className="landing-noise" aria-hidden="true" />
 
       <header className="landing-header">
         <Link href="/" className="flex items-center gap-3">
           <span className="brand-orbit"><Command className="h-4 w-4" /></span>
-          <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#aebdff]">OPS</span></span>
+          <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--violet)]">OPS</span></span>
         </Link>
         <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-[11px] text-white/45 md:flex">
           <a href="#platform" className="transition hover:text-white">Platform</a>
@@ -58,6 +59,7 @@ export default function LandingPage() {
           <Link href="/docs" className="transition hover:text-white">Docs</Link>
         </nav>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Link href="/login" className="hidden px-3 py-2 text-[11px] text-white/50 transition hover:text-white sm:block">Sign in</Link>
           <Link href="/register" className="landing-pill">Start monitoring <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
