@@ -105,10 +105,6 @@ interface ServerDetails {
 }
 
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
-type AgentUpdateState = {
-  phase: 'idle' | 'waiting' | 'failed';
-  message?: string;
-};
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
 
@@ -138,8 +134,6 @@ export default function ServerDetailsPage() {
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
-  const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
-  const [agentUpdateState, setAgentUpdateState] = useState<AgentUpdateState>({ phase: 'idle' });
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
 
   useEffect(() => {
@@ -264,48 +258,6 @@ export default function ServerDetailsPage() {
       toast.error(error.message || `Unable to ${action} service`);
     } finally {
       setServiceActionBusy(false);
-    }
-  };
-
-  const queueAgentUpdate = async () => {
-    if (!supportsServiceControls) {
-      const message = `Agent ${reportedAgentVersion || 'unknown'} cannot reliably claim modern update tasks. Run the token-free in-place update command once, then use Update All Agents for future releases.`;
-      setAgentUpdateState({ phase: 'failed', message });
-      toast.error('This legacy agent requires a one-time in-place update.');
-      return;
-    }
-
-    setQueueingAgentUpdate(true);
-    setAgentUpdateState({ phase: 'waiting', message: 'Sending the update command to the running agent…' });
-    try {
-      const task = await apiClient(`/servers/${params.id}/tasks`, {
-        method: 'POST',
-        data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 },
-      });
-
-      setAgentUpdateState({ phase: 'waiting', message: 'Update queued. Waiting for the agent to acknowledge the task…' });
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        await new Promise(resolve => window.setTimeout(resolve, 2000));
-        const result = await apiClient(`/servers/${params.id}/tasks/${task.id}`);
-        if (result.status === 'completed') {
-          setAgentUpdateState({
-            phase: 'waiting',
-            message: `The agent acknowledged the update. Waiting for it to restart and report version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer…`,
-          });
-          toast.success('Update acknowledged. Verifying the running agent version…');
-          await fetchServer();
-          return;
-        }
-        if (['failed', 'expired', 'timed_out'].includes(result.status)) {
-          throw new Error(result.result || `Agent update task ${result.status}`);
-        }
-      }
-      throw new Error('The agent did not acknowledge the update within two minutes');
-    } catch (error: any) {
-      setAgentUpdateState({ phase: 'failed', message: error.message || 'Unable to update the agent' });
-      toast.error(error.message || 'Unable to queue agent update');
-    } finally {
-      setQueueingAgentUpdate(false);
     }
   };
 
@@ -477,43 +429,85 @@ export default function ServerDetailsPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Cpu className="w-4 h-4" /> SYSTEM INFORMATION</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Operating System</span>
-                <span className="text-sm font-medium text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
+        <div className="space-y-6">
+          {!supportsServiceControls && (
+            <section aria-labelledby="agent-update-required-title" className="rounded-2xl border border-amber-500/40 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="rounded-full border border-amber-500/30 bg-amber-500/15 p-2 text-[var(--amber)]">
+                    <RefreshCw className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 id="agent-update-required-title" className="text-base font-bold text-[var(--foreground)]">
+                        Agent update required
+                      </h2>
+                      <span className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-[var(--amber)]">
+                        Current: {reportedAgentVersion || 'Unknown'}
+                      </span>
+                      <span className="rounded-full border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-xs font-bold text-[var(--foreground)]">
+                        Required: {MIN_SERVICE_CONTROL_AGENT_VERSION}+
+                      </span>
+                    </div>
+                    <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-[var(--foreground)] opacity-80">
+                      Update this legacy agent once to enable Start, Stop, Restart, and Reload. The in-place updater preserves its token, registration, environment, and monitored services.
+                    </p>
+                    <div className="mt-4 flex max-w-3xl flex-col gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-2 sm:flex-row sm:items-center sm:pl-4">
+                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap px-2 py-1 text-xs font-bold text-[var(--foreground)] sm:text-sm">
+                        {manualUpdateCommand}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => copyUpdateCommand(manualUpdateCommand)}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] px-4 py-2 text-sm font-bold text-[var(--foreground)] transition-colors hover:border-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                      >
+                        <Copy className="h-4 w-4" />
+                        {copiedUpdateCommand ? 'Copied' : 'Copy command'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Running Agent Version</span>
-                <span className={`text-sm font-semibold ${reportedAgentVersion ? 'text-[var(--foreground)]' : 'text-amber-500'}`}>
-                  {reportedAgentVersion || 'Not reported'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Kernel Version</span>
-                <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Virtualization Platform</span>
-                <span className="text-sm font-medium text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Uptime</span>
-                <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : 'N/A'}</span>
+            </section>
+          )}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
+              <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Cpu className="w-4 h-4" /> SYSTEM INFORMATION</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[var(--color-muted)]">Operating System</span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[var(--color-muted)]">Running Agent Version</span>
+                  <span className={`text-sm font-semibold ${reportedAgentVersion ? 'text-[var(--foreground)]' : 'text-amber-500'}`}>
+                    {reportedAgentVersion || 'Not reported'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[var(--color-muted)]">Kernel Version</span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[var(--color-muted)]">Virtualization Platform</span>
+                  <span className="text-sm font-medium text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-[var(--color-muted)]">Uptime</span>
+                  <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : 'N/A'}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Box className="w-4 h-4" /> PACKAGE UPDATES</h3>
-            <div className="flex items-center gap-4">
-              <div className="p-4 bg-blue-500/10 rounded-xl text-blue-500">
-                <ShieldCheck className="w-8 h-8" />
-              </div>
-              <div>
-                <p className="text-sm text-[var(--color-muted)]">Packages awaiting upgrade</p>
-                <div className="text-2xl font-bold text-[var(--foreground)]">{snapshot?.package_update || 0} <span className="text-sm font-normal text-[var(--color-muted)]">packages</span></div>
+            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
+              <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Box className="w-4 h-4" /> PACKAGE UPDATES</h3>
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-blue-500/10 rounded-xl text-blue-500">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--color-muted)]">Packages awaiting upgrade</p>
+                  <div className="text-2xl font-bold text-[var(--foreground)]">{snapshot?.package_update || 0} <span className="text-sm font-normal text-[var(--color-muted)]">packages</span></div>
+                </div>
               </div>
             </div>
           </div>
@@ -673,49 +667,6 @@ export default function ServerDetailsPage() {
 
       {activeTab === 'services' && (
         <div className="space-y-5">
-          {!supportsServiceControls && (
-            <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 text-sm text-[var(--foreground)]">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
-                  <div>
-                    <p className="font-semibold">Agent {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer is required for service controls.</p>
-                    <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {reportedAgentVersion || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
-                    <p className="mt-2 leading-6 text-[var(--color-muted)]">
-                      Agents older than {MIN_SERVICE_CONTROL_AGENT_VERSION} cannot reliably read the current task response. Run this token-free command once; later releases can use Update All Agents.
-                    </p>
-                    <div className="mt-3 flex max-w-3xl items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-2 pl-4">
-                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-xs font-semibold text-[var(--foreground)] sm:text-sm">
-                        {manualUpdateCommand}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => copyUpdateCommand(manualUpdateCommand)}
-                        className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-2 font-semibold text-[var(--foreground)] transition-colors hover:border-blue-500"
-                      >
-                        <Copy className="h-4 w-4" />
-                        {copiedUpdateCommand ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    {agentUpdateState.message && (
-                      <p className={`mt-2 font-medium leading-6 ${agentUpdateState.phase === 'failed' ? 'text-rose-500' : 'text-blue-500'}`}>
-                        {agentUpdateState.message}
-                      </p>
-                    )}
-                    {agentUpdateState.phase === 'waiting' && (
-                      <p className="mt-2 leading-6 text-[var(--color-muted)]">
-                        Task acknowledgement does not confirm that the binary was replaced. Controls unlock only after a heartbeat reports version {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button type="button" disabled={queueingAgentUpdate || (supportsServiceControls && server.status !== 'online')} onClick={() => supportsServiceControls ? queueAgentUpdate() : copyUpdateCommand(manualUpdateCommand)} className="liquid-button shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
-                  {queueingAgentUpdate ? <LoaderCircle className="h-4 w-4 animate-spin" /> : supportsServiceControls ? <RefreshCw className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {queueingAgentUpdate ? 'Queueing…' : supportsServiceControls ? 'Update agent now' : 'Copy update command'}
-                </button>
-              </div>
-            </div>
-          )}
           {hasIncompatibleLegacyServices && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-[var(--foreground)]">
               <div className="flex items-start gap-3">
