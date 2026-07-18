@@ -23,8 +23,8 @@ export function ThemeToggle({ className = '' }: ThemeToggleProps) {
       type="button"
       className={`theme-toggle ${className}`}
       onClick={() => setTheme(targetTheme)}
-      aria-label={mounted ? `Chuyển sang giao diện ${targetTheme === 'light' ? 'sáng' : 'tối'}` : 'Đổi giao diện'}
-      title={mounted ? `Chuyển sang ${targetTheme === 'light' ? 'Light mode' : 'Dark mode'}` : 'Theme'}
+      aria-label={mounted ? `Switch to ${targetTheme === 'light' ? 'light' : 'dark'} mode` : 'Change theme'}
+      title={mounted ? `Switch to ${targetTheme === 'light' ? 'light mode' : 'dark mode'}` : 'Theme'}
       suppressHydrationWarning
     >
       {isDark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}

@@ -105,7 +105,7 @@ export default function OverviewDashboard() {
       hasLoaded.current = true;
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      const message = err instanceof Error ? err.message : 'Không thể tải dữ liệu dashboard';
+      const message = err instanceof Error ? err.message : 'Unable to load dashboard data';
       if (message.includes('token') || message.includes('UNAUTHORIZED')) {
         router.push('/login');
         return;
@@ -157,15 +157,15 @@ export default function OverviewDashboard() {
   const incidentBars = incidents.slice(0, 7).map(() => 100);
 
   if (loading && !overview) {
-    return <DashboardMessage title="Đang đồng bộ dữ liệu thật" description="Đang lấy heartbeat, metrics và alert state mới nhất từ hệ thống." loading />;
+    return <DashboardMessage title="Syncing live data" description="Fetching the latest heartbeat, metrics, and alert state." loading />;
   }
 
   if (!overview && error) {
     return (
       <DashboardMessage
-        title="Không thể tải dữ liệu"
+        title="Unable to load data"
         description={error}
-        action={<button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary"><RefreshCw className="h-4 w-4" />Thử lại</button>}
+        action={<button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
       />
     );
   }
@@ -183,20 +183,20 @@ export default function OverviewDashboard() {
           </div>
           <h1 className="liquid-title">Infrastructure, <em>as it is now.</em></h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-white/42">
-            Dữ liệu thật từ heartbeat của DatrixOps Agent, tự động làm mới mỗi {POLL_INTERVAL_MS / 1000} giây.
+            Live data from DatrixOps Agent heartbeats, automatically refreshed every {POLL_INTERVAL_MS / 1000} seconds.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-white/35" aria-live="polite">
             <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
             <span aria-hidden="true">·</span>
-            <span>{refreshing ? 'Đang nhận dữ liệu mới…' : 'Auto-refresh đang bật'}</span>
-            {error && <span className="text-[var(--rose)]">Lần cập nhật gần nhất lỗi: {error}</span>}
+            <span>{refreshing ? 'Receiving fresh data…' : 'Auto-refresh is on'}</span>
+            {error && <span className="text-[var(--rose)]">Latest refresh failed: {error}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary" disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Đồng bộ ngay
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
           </button>
-          <Link href="/dashboard/servers" className="liquid-button primary"><Plus className="h-4 w-4" />Thêm server</Link>
+          <Link href="/dashboard/servers" className="liquid-button primary"><Plus className="h-4 w-4" />Add server</Link>
         </div>
       </section>
 
@@ -205,7 +205,7 @@ export default function OverviewDashboard() {
           icon={Server}
           label="Fleet online"
           value={`${online}/${total}`}
-          note={total > 0 ? `${health}% heartbeat hợp lệ` : 'Chưa có server'}
+          note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
           color="var(--mint)"
           bars={fleetBars}
         />
@@ -213,7 +213,7 @@ export default function OverviewDashboard() {
           icon={Cpu}
           label="Average CPU"
           value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
-          note={hasLiveMetrics ? 'Trung bình server online' : 'Chưa có metrics'}
+          note={hasLiveMetrics ? 'Online server average' : 'No metrics'}
           color="var(--violet)"
           bars={cpuBars}
         />
@@ -221,7 +221,7 @@ export default function OverviewDashboard() {
           icon={MemoryStick}
           label="Memory used"
           value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
-          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'Chưa có metrics'}
+          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
           color="var(--sky)"
           bars={memoryBars}
         />
@@ -229,7 +229,7 @@ export default function OverviewDashboard() {
           icon={BellRing}
           label="Open incidents"
           value={String(summary?.open_incidents ?? 0)}
-          note={warning > 0 ? `${warning} server bị ảnh hưởng` : 'Không có alert firing'}
+          note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
           color="var(--rose)"
           bars={incidentBars}
         />
@@ -239,7 +239,7 @@ export default function OverviewDashboard() {
         <div className="liquid-panel min-h-[390px] p-5 sm:p-6">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
-            <div className="range-picker" aria-label="Khoảng thời gian biểu đồ">
+            <div className="range-picker" aria-label="Chart time range">
               {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
                 <button type="button" key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''} aria-pressed={range === item}>
                   {item}
@@ -265,7 +265,7 @@ export default function OverviewDashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyPanel icon={Activity} title="Chưa có telemetry trong khoảng này" description="Biểu đồ sẽ xuất hiện khi agent gửi metrics." />
+              <EmptyPanel icon={Activity} title="No telemetry in this range" description="The chart will appear when an agent sends metrics." />
             )}
           </div>
         </div>
@@ -289,7 +289,7 @@ export default function OverviewDashboard() {
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
         <div className="liquid-panel overflow-hidden">
-          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">Xem tất cả <ChevronRight className="inline h-3 w-3" /></Link></div>
+          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
           {servers.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="server-table">
@@ -298,7 +298,7 @@ export default function OverviewDashboard() {
               </table>
             </div>
           ) : (
-            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="Chưa có server" description="Kết nối agent đầu tiên để bắt đầu nhận dữ liệu thật." /></div>
+            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="No servers" description="Connect your first agent to start receiving live data." /></div>
           )}
         </div>
 
@@ -312,9 +312,9 @@ export default function OverviewDashboard() {
               {incidents.slice(0, 4).map((incident) => <Incident key={`${incident.rule_id}-${incident.server_id}`} incident={incident} />)}
             </div>
           ) : (
-            <div className="mt-5"><EmptyPanel icon={Check} title="Không có incident đang firing" description="Alert state hiện tại của fleet đang ổn định." /></div>
+            <div className="mt-5"><EmptyPanel icon={Check} title="No firing incidents" description="The fleet's current alert state is stable." /></div>
           )}
-          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Mở incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Open incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
         </div>
       </section>
     </div>
@@ -345,7 +345,7 @@ function ServerRow({ server }: { server: DashboardServer }) {
 
   return (
     <tr>
-      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[9px] text-white/25">{server.ip_address ?? 'Chưa có IP'}</p></div></div></td>
+      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[11px] text-white/55">{server.ip_address ?? 'No IP address'}</p></div></div></td>
       <td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td>
       <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
       <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
@@ -363,7 +363,7 @@ function LoadBar({ value }: { value: number }) {
 function Incident({ incident }: { incident: DashboardIncident }) {
   const Icon = getIncidentIcon(incident.metric);
   const valueDescription = incident.metric === 'status'
-    ? 'Heartbeat quá 60 giây'
+    ? 'Heartbeat is over 60 seconds old'
     : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
 
   return (
@@ -415,7 +415,7 @@ function formatBytes(bytes: number): string {
 function formatChartTime(value: string, range: DashboardRange): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('vi-VN', {
+  return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     ...(range === '1H' || range === '2H' ? { second: '2-digit' } : {}),
@@ -423,19 +423,19 @@ function formatChartTime(value: string, range: DashboardRange): string {
 }
 
 function formatSnapshotTime(value?: string): string {
-  if (!value) return 'Chưa có dữ liệu';
+  if (!value) return 'No data';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Không xác định';
-  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function formatRelativeTime(value?: string): string {
-  if (!value) return 'Chưa từng';
+  if (!value) return 'Never';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Không xác định';
+  if (Number.isNaN(date.getTime())) return 'Unknown';
 
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const formatter = new Intl.RelativeTimeFormat('vi', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');

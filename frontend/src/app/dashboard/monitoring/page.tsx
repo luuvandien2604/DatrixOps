@@ -75,17 +75,17 @@ type MetricsTooltipProps = {
 
 const POLL_INTERVAL_MS = 5_000;
 const TIMELINE_TICK_MS = 1_000;
-const MISSING_DATA_GRACE_MS = 15_000;
+const MISSING_DATA_GRACE_MS = 25_000;
 
 // Keep this resolution synchronized with ListMetrics in the backend.
 const RANGE_OPTIONS: RangeOption[] = [
-  { value: '15m', label: '15 phút gần nhất', durationMs: 15 * 60_000, bucketSeconds: 5 },
-  { value: '1h', label: '1 giờ gần nhất', durationMs: 60 * 60_000, bucketSeconds: 15 },
-  { value: '3h', label: '3 giờ gần nhất', durationMs: 3 * 60 * 60_000, bucketSeconds: 30 },
-  { value: '6h', label: '6 giờ gần nhất', durationMs: 6 * 60 * 60_000, bucketSeconds: 60 },
-  { value: '12h', label: '12 giờ gần nhất', durationMs: 12 * 60 * 60_000, bucketSeconds: 120 },
-  { value: '24h', label: '24 giờ gần nhất', durationMs: 24 * 60 * 60_000, bucketSeconds: 300 },
-  { value: '7d', label: '7 ngày gần nhất', durationMs: 7 * 24 * 60 * 60_000, bucketSeconds: 1_800 },
+  { value: '15m', label: 'Last 15 minutes', durationMs: 15 * 60_000, bucketSeconds: 10 },
+  { value: '1h', label: 'Last hour', durationMs: 60 * 60_000, bucketSeconds: 15 },
+  { value: '3h', label: 'Last 3 hours', durationMs: 3 * 60 * 60_000, bucketSeconds: 30 },
+  { value: '6h', label: 'Last 6 hours', durationMs: 6 * 60 * 60_000, bucketSeconds: 60 },
+  { value: '12h', label: 'Last 12 hours', durationMs: 12 * 60 * 60_000, bucketSeconds: 120 },
+  { value: '24h', label: 'Last 24 hours', durationMs: 24 * 60 * 60_000, bucketSeconds: 300 },
+  { value: '7d', label: 'Last 7 days', durationMs: 7 * 24 * 60 * 60_000, bucketSeconds: 1_800 },
 ];
 
 const RANGE_CONFIG = Object.fromEntries(
@@ -156,7 +156,7 @@ export default function MonitoringPage() {
       setNow(Date.now());
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      const message = error instanceof Error ? error.message : 'Không thể tải metrics';
+      const message = error instanceof Error ? error.message : 'Unable to load metrics';
       if (message.includes('token') || message.includes('UNAUTHORIZED')) {
         router.push('/login');
         return;
@@ -232,16 +232,16 @@ export default function MonitoringPage() {
             <Activity className="h-3.5 w-3.5" />
             Continuous telemetry
           </p>
-          <h1>Giám sát <em>tài nguyên.</em></h1>
+          <h1>Resource <em>monitoring.</em></h1>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            Timeline tiếp tục chạy khi agent offline; khoảng thiếu metrics được giữ trống và đánh dấu rõ ràng.
+            The timeline keeps moving while an agent is offline, with every telemetry gap clearly preserved.
           </p>
         </div>
 
         <div className="monitoring-toolbar">
           <div className="monitoring-control monitoring-server-control">
             <ServerIcon className="monitoring-control-icon" aria-hidden="true" />
-            <label htmlFor="monitoring-server" className="sr-only">Chọn server</label>
+            <label htmlFor="monitoring-server" className="sr-only">Select server</label>
             <select
               id="monitoring-server"
               name="monitoring-server"
@@ -249,7 +249,7 @@ export default function MonitoringPage() {
               onChange={(event) => setSelectedServerId(event.target.value)}
               className="monitoring-server-select"
             >
-              {servers.length === 0 && <option value="">Chưa có server</option>}
+              {servers.length === 0 && <option value="">No servers available</option>}
               {servers.map((server) => (
                 <option key={server.id} value={server.id}>{server.name}</option>
               ))}
@@ -266,7 +266,7 @@ export default function MonitoringPage() {
 
           <div className="monitoring-control monitoring-range-control">
             <Clock3 className="monitoring-control-icon" aria-hidden="true" />
-            <label htmlFor="monitoring-range" className="sr-only">Chọn khoảng thời gian</label>
+            <label htmlFor="monitoring-range" className="sr-only">Select time range</label>
             <select
               id="monitoring-range"
               name="monitoring-range"
@@ -285,8 +285,8 @@ export default function MonitoringPage() {
             type="button"
             onClick={() => void fetchMetrics(false, true)}
             className="monitoring-refresh"
-            title="Đồng bộ metrics ngay"
-            aria-label="Đồng bộ metrics ngay"
+            title="Refresh metrics now"
+            aria-label="Refresh metrics now"
             disabled={!selectedServerId || initialLoading}
           >
             <RefreshCw className={`h-4 w-4 ${initialLoading || refreshing ? 'animate-spin' : ''}`} />
@@ -299,16 +299,16 @@ export default function MonitoringPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
             <span className="flex items-center gap-2">
               <span className="live-data-dot" aria-hidden="true" />
-              Timeline cập nhật mỗi giây
+              Timeline updates every second
             </span>
-            <span>Dữ liệu API: mỗi {POLL_INTERVAL_MS / 1_000} giây</span>
-            <span>Điểm metrics gần nhất: {formatRelativeTime(lastMetricAt, now)}</span>
+            <span>API refresh: every {POLL_INTERVAL_MS / 1_000} seconds</span>
+            <span>Latest metric: {formatRelativeTime(lastMetricAt, now)}</span>
             <span>Data coverage: {coverage}%</span>
           </div>
           <div className="ml-auto flex items-center gap-4">
             <span className="missing-data-legend"><i />No data / Offline</span>
-            {refreshing && <span>Đang đồng bộ…</span>}
-            {metricsError && <span className="text-[var(--rose)]">Mất đồng bộ: {metricsError}</span>}
+            {refreshing && <span>Syncing…</span>}
+            {metricsError && <span className="text-[var(--rose)]">Sync error: {metricsError}</span>}
           </div>
         </section>
       )}
@@ -316,15 +316,15 @@ export default function MonitoringPage() {
       {!selectedServerId ? (
         <div className="glass-card p-12 text-center">
           <ServerIcon className="mx-auto mb-4 h-10 w-10 text-[var(--color-muted)] opacity-45" />
-          <h2 className="text-xl">Chưa có server để giám sát</h2>
-          <p className="mt-2 text-[var(--color-muted)]">Kết nối DatrixOps Agent để bắt đầu nhận metrics.</p>
+          <h2 className="text-xl">No servers to monitor</h2>
+          <p className="mt-2 text-[var(--color-muted)]">Connect a DatrixOps Agent to start receiving metrics.</p>
         </div>
       ) : (
         <>
           {!initialLoading && metricsLoaded && dataPoints === 0 && (
             <div className="monitoring-empty-notice">
               <CircleAlert className="h-4 w-4" />
-              Không có metrics trong khoảng đã chọn. Timeline vẫn tiếp tục chạy và toàn bộ vùng thiếu dữ liệu được đánh dấu.
+              No metrics were received in this range. The timeline remains live and every missing interval is highlighted.
             </div>
           )}
 
@@ -449,7 +449,7 @@ function MetricChartCard({
         {loading && (
           <div className="monitoring-chart-loading">
             <RefreshCw className="h-5 w-5 animate-spin" />
-            Đang lấy metrics…
+            Loading metrics…
           </div>
         )}
       </div>
@@ -492,7 +492,7 @@ function ChartScaffolding({
         scale="time"
         allowDataOverflow
         stroke="var(--color-muted)"
-        fontSize={10}
+        fontSize={12}
         tickLine={false}
         axisLine={false}
         minTickGap={42}
@@ -500,7 +500,7 @@ function ChartScaffolding({
       />
       <YAxis
         stroke="var(--color-muted)"
-        fontSize={11}
+        fontSize={12}
         tickLine={false}
         axisLine={false}
         width={46}
@@ -523,7 +523,7 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
       {!point?.hasData || visibleItems.length === 0 ? (
         <div className="monitoring-tooltip-missing">
           <CircleAlert className="h-3.5 w-3.5" />
-          Không có metrics
+          No metrics
         </div>
       ) : (
         <div className="mt-2 space-y-1.5">
@@ -585,7 +585,7 @@ function resolveBucketSeconds(metrics: MetricApiPoint[], fallback: number) {
       Number(metric.bucket_seconds) > 0,
   )?.bucket_seconds;
 
-  if (declaredResolution) return Number(declaredResolution);
+  if (declaredResolution) return Math.max(fallback, Number(declaredResolution));
 
   // Compatibility for API responses from before bucket_seconds was exposed.
   const timestamps = metrics
@@ -669,14 +669,14 @@ function formatAxisTime(timestamp: number, range: TimeRange): string {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp);
   if (range === '7d' || range === '24h') {
-    return date.toLocaleString('vi-VN', {
+    return date.toLocaleString('en-US', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     });
   }
-  return date.toLocaleTimeString('vi-VN', {
+  return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     ...(range === '15m' ? { second: '2-digit' } : {}),
@@ -684,8 +684,8 @@ function formatAxisTime(timestamp: number, range: TimeRange): string {
 }
 
 function formatTooltipTime(timestamp: number): string {
-  if (!Number.isFinite(timestamp)) return 'Không xác định';
-  return new Date(timestamp).toLocaleString('vi-VN', {
+  if (!Number.isFinite(timestamp)) return 'Unknown';
+  return new Date(timestamp).toLocaleString('en-US', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -696,9 +696,9 @@ function formatTooltipTime(timestamp: number): string {
 }
 
 function formatRelativeTime(timestamp: number | null, now: number): string {
-  if (timestamp == null) return 'Chưa từng nhận';
+  if (timestamp == null) return 'Never received';
   const seconds = Math.round((timestamp - now) / 1_000);
-  const formatter = new Intl.RelativeTimeFormat('vi', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
@@ -709,7 +709,7 @@ function formatRelativeTime(timestamp: number | null, now: number): string {
 
 function formatCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return '0';
-  return new Intl.NumberFormat('vi-VN', {
+  return new Intl.NumberFormat('en-US', {
     notation: value >= 1_000 ? 'compact' : 'standard',
     maximumFractionDigits: 1,
   }).format(value);
@@ -718,5 +718,5 @@ function formatCompactNumber(value: number): string {
 function formatTooltipValue(value: number | string | null | undefined): string {
   const metric = Number(value);
   if (!Number.isFinite(metric)) return '—';
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(metric);
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(metric);
 }

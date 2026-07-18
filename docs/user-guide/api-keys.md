@@ -1,37 +1,24 @@
 ---
 title: "API Keys"
-description: "Tạo và quản lý API Key để tích hợp DatrixOps với công cụ bên ngoài."
+description: "Create and manage API keys for third-party integrations."
 role: "public"
 order: 7
 ---
 
 # API Keys
 
-API Key cho phép bạn gọi REST API của DatrixOps từ bên ngoài — ví dụ từ script tự động, pipeline CI/CD, hoặc Postman — mà không cần đăng nhập bằng tài khoản.
+API keys authenticate scripts, CI/CD pipelines, Postman, and other integrations without an interactive user session.
 
-## Tạo API Key mới
+## Create a key
 
-1. Vào **Manage → API**.
-2. Chọn tạo Key mới (Create), đặt tên gợi nhớ (ví dụ: "CI/CD Pipeline").
-3. Hệ thống sinh ra một chuỗi Key.
-4. **Sao chép và lưu lại Key ngay lập tức** — đây là lần duy nhất Key được hiển thị đầy đủ, không thể xem lại sau đó.
+1. Open **Manage → API**.
+2. Select **Create Key** and provide a descriptive name.
+3. Copy the generated value immediately. It is shown only once.
 
-## Sử dụng API Key
+Send the key in the authorization header:
 
-Đính kèm Key vào header `Authorization` khi gọi API, ví dụ:
-
-```
-Authorization: Bearer <api_key_của_bạn>
+```http
+Authorization: Bearer <your_api_key>
 ```
 
-## Thu hồi (Revoke) Key
-
-1. Vào **Manage → API**, tìm Key cần thu hồi trong danh sách.
-2. Chọn **Revoke Key**.
-3. Sau khi thu hồi, Key ngừng hoạt động ngay lập tức — mọi request dùng Key này sẽ bị từ chối.
-
-## Lưu ý bảo mật
-
-- Không chia sẻ API Key qua kênh không an toàn (chat công khai, commit vào Git...).
-- Nếu nghi ngờ Key bị lộ, thu hồi ngay và tạo Key mới.
-- Nên đặt tên Key theo mục đích sử dụng để dễ quản lý khi có nhiều Key.
+Revoke a key immediately if it may have been exposed. Use a separate, clearly named key for each integration.

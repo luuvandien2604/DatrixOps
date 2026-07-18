@@ -10,43 +10,43 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 
 const docsNavigation = [
   {
-    title: 'Bắt đầu',
+    title: 'Getting Started',
     items: [
-      { name: 'Giới thiệu', path: '/docs/introduction' },
-      { name: 'Cài đặt Agent', path: '/docs/agent-installation' },
-      { name: 'Tổng quan Dashboard', path: '/docs/dashboard-overview' },
+      { name: 'Introduction', path: '/docs/introduction' },
+      { name: 'Agent Installation', path: '/docs/agent-installation' },
+      { name: 'Dashboard Overview', path: '/docs/dashboard-overview' },
     ]
   },
   {
-    title: 'Quản lý Server',
+    title: 'Server Management',
     items: [
       { name: 'Servers', path: '/docs/servers' },
     ]
   },
   {
-    title: 'Cảnh báo & Giám sát',
+    title: 'Alerts & Monitoring',
     items: [
       { name: 'Alerts', path: '/docs/alerts' },
       { name: 'Websites & SSL', path: '/docs/websites' },
     ]
   },
   {
-    title: 'Quản trị',
+    title: 'Administration',
     items: [
       { name: 'API Keys', path: '/docs/api-keys' },
       { name: 'Audit Log', path: '/docs/audit-log' },
     ]
   },
   {
-    title: 'Khắc phục sự cố',
+    title: 'Troubleshooting',
     items: [
-      { name: 'Lỗi thường gặp', path: '/docs/troubleshooting' },
+      { name: 'Common Issues', path: '/docs/troubleshooting-user' },
     ]
   },
   {
-    title: 'Vận hành Agent',
+    title: 'Agent Operations',
     items: [
-      { name: 'Quản lý Service Agent', path: '/docs/agent-service-management' },
+      { name: 'Agent Service Management', path: '/docs/agent-service-management' },
     ]
   }
 ];
@@ -79,7 +79,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <div className="flex items-center gap-4">
             <ThemeToggle />
             <nav aria-label="Documentation utilities" className="hidden items-center gap-6 text-sm font-medium text-[var(--color-muted)] md:flex">
-              <Link href="/" className="hover:text-[var(--foreground)] transition-colors">Trang chủ</Link>
+              <Link href="/" className="hover:text-[var(--foreground)] transition-colors">Home</Link>
               <Link href="/dashboard" className="hover:text-[var(--foreground)] transition-colors">Dashboard</Link>
               <a href="https://github.com/luuvandien2604/DatrixOps" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 transition-colors hover:text-[var(--foreground)]">GitHub <ArrowUpRight className="h-3.5 w-3.5" /></a>
             </nav>

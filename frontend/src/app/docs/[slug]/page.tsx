@@ -20,7 +20,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${doc.meta.title} | Tài liệu DatrixOps`,
+    title: `${doc.meta.title} | DatrixOps Documentation`,
     description: doc.meta.description,
   };
 }

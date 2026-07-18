@@ -23,7 +23,7 @@ export default function DocsList({ docs }: { docs: DocMeta[] }) {
   const visibleDocs = docs.filter(doc => {
     if (doc.role === 'public') return true;
     if (doc.role === 'user' && isAuthenticated) return true;
-    // Tạm thời nếu là admin thì cũng cần role tương ứng (chưa triển khai role admin nên cho phép user xem)
+    // Admin documentation currently follows the same authenticated access gate.
     if (doc.role === 'admin' && isAuthenticated) return true; 
     return false;
   });
@@ -31,7 +31,7 @@ export default function DocsList({ docs }: { docs: DocMeta[] }) {
   return (
     <div className="docs-grid">
       {visibleDocs.length === 0 ? (
-        <p className="text-foreground-muted">Không có tài liệu nào hiển thị.</p>
+        <p className="text-foreground-muted">No documentation is available.</p>
       ) : (
         visibleDocs.map(doc => (
           <Link href={`/docs/${doc.slug}`} key={doc.slug} className="docs-card glass-card">
@@ -40,7 +40,7 @@ export default function DocsList({ docs }: { docs: DocMeta[] }) {
             <h2>{doc.title}</h2>
             {doc.description && <p>{doc.description}</p>}
             <div className="docs-card-link">
-              Đọc hướng dẫn <ArrowUpRight className="h-4 w-4" />
+              Read guide <ArrowUpRight className="h-4 w-4" />
             </div>
           </Link>
         ))

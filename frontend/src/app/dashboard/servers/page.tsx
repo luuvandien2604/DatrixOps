@@ -7,7 +7,7 @@ import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye
 } from 'lucide-react';
 import Link from 'next/link';
-import toast from 'react-hot-toast'; // Đã import toast
+import toast from 'react-hot-toast';
 
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
@@ -19,7 +19,7 @@ export default function ServersPage() {
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
 
-  // Đã sửa thành object để lưu cả id và name
+  // Keep both id and name for confirmation dialogs.
   const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
 
@@ -38,9 +38,8 @@ export default function ServersPage() {
 
   useEffect(() => {
     fetchServers();
-    // Tự động làm mới danh sách mỗi 5s để CPU/RAM/Status cập nhật gần real-time,
-    // không cần người dùng bấm nút "Làm mới" thủ công.
-    // Agent gửi heartbeat mỗi 10s (DATRIXOPS_INTERVAL), nên poll nhanh hơn cũng không có dữ liệu mới.
+    // Refresh every five seconds so CPU, RAM, and status stay near real time.
+    // Production agents report every ten seconds, so faster polling adds no new data.
     const interval = setInterval(() => fetchServers(true), 10000);
     return () => clearInterval(interval);
   }, []);
@@ -76,13 +75,13 @@ export default function ServersPage() {
     <div className="space-y-6 pb-20">
       <div className="flex justify-between items-end mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Quản lý Servers</h1>
-          <p className="text-sm text-[var(--color-muted)]">Quản lý và giám sát danh sách máy chủ của bạn</p>
+          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Server Management</h1>
+          <p className="text-sm text-[var(--color-muted)]">Manage and monitor your server fleet</p>
         </div>
         <div className="flex gap-3">
           <button onClick={() => fetchServers()} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
-            Làm mới
+            Refresh
           </button>
           <button
             onClick={() => setIsAddServerModalOpen(true)}
@@ -121,8 +120,8 @@ export default function ServersPage() {
                   try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
 
                   const isOffline = server.status !== 'online';
-                  // Khi agent offline, os_info vẫn còn giữ số liệu cũ (backend không xoá).
-                  // Không dùng số liệu này để hiển thị CPU/RAM nữa, tránh gây hiểu nhầm là server vẫn đang chạy.
+                  // os_info remains available after an agent disconnects.
+                  // Do not present stale CPU or RAM values as live telemetry.
                   const liveInfo = isOffline ? null : osInfo;
 
                   const isCritical = liveInfo && liveInfo.cpu_usage > 90;
@@ -157,7 +156,7 @@ export default function ServersPage() {
                               <div className={`h-full ${liveInfo.cpu_usage > 90 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(liveInfo.cpu_usage, 100)}%` }}></div>
                             </div>
                           </div>
-                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent đang offline' : undefined}>—</span>}
+                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : undefined}>—</span>}
                       </td>
                       <td className="py-4 px-6">
                         {liveInfo ? (
@@ -167,7 +166,7 @@ export default function ServersPage() {
                               <div className="h-full bg-emerald-500" style={{ width: `${Math.min((liveInfo.memory_used / liveInfo.memory_total) * 100, 100)}%` }}></div>
                             </div>
                           </div>
-                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent đang offline' : undefined}>—</span>}
+                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : undefined}>—</span>}
                       </td>
                       <td className="py-4 px-6">
                         <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${server.status === 'online'
@@ -180,7 +179,7 @@ export default function ServersPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        {/* Đã xóa hiệu ứng hover ẩn hiện, nút luôn hiển thị */}
+                        {/* Keep actions visible without hover-dependent discovery. */}
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
                             <Eye className="w-4 h-4" />
@@ -194,7 +193,7 @@ export default function ServersPage() {
                             className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors" title="Edit Group & Tags">
                             <FileText className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Sắp ra mắt)">
+                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Coming soon)">
                             <TerminalSquare className="w-4 h-4" />
                           </button>
                           <button
@@ -237,7 +236,7 @@ export default function ServersPage() {
               {!generatedAgentToken ? (
                 <>
                   <p className="text-[var(--color-muted)] mb-6">
-                    Mỗi server sẽ được cấp một <strong>Agent Token</strong> riêng biệt để định danh. Vui lòng nhập tên gợi nhớ cho server này:
+                    Each server receives a unique <strong>Agent Token</strong>. Enter a recognizable name for this server:
                   </p>
                   <div className="mb-6">
                     <label htmlFor="new-server-name" className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Server Name</label>
@@ -262,9 +261,9 @@ export default function ServersPage() {
                         try {
                           const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
                           setGeneratedAgentToken(res.agent_token);
-                          toast.success('Tạo lệnh cài đặt thành công!');
+                          toast.success('Installation command created successfully!');
                         } catch (err: any) {
-                          toast.error(err.message || 'Lỗi khi tạo token cài đặt');
+                          toast.error(err.message || 'Unable to create installation token');
                         }
                       }}
                       disabled={!newServerName.trim()}
@@ -276,7 +275,7 @@ export default function ServersPage() {
               ) : (
                 <>
                   <p className="text-[var(--color-muted)] mb-4">
-                    Đã tạo thành công. Vui lòng chọn hệ điều hành và chạy lệnh (với quyền Admin/Root) để cài đặt Agent.
+                    Server created successfully. Select an operating system and run the command with Administrator or root privileges.
                   </p>
 
                   {/* OS Tabs */}
@@ -364,11 +363,11 @@ export default function ServersPage() {
                         method: 'POST',
                         data: { type: 'vps_reboot', payload: '{}' }
                       });
-                      toast.success(`Đã gửi lệnh khởi động lại đến ${serverToRestart.name}`);
+                      toast.success(`Restart command sent to ${serverToRestart.name}`);
                       setServerToRestart(null);
                       setConfirmRestartText('');
                     } catch (err: any) {
-                      toast.error(err.message || 'Lỗi khi gửi lệnh khởi động lại');
+                      toast.error(err.message || 'Unable to send restart command');
                     }
                   }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
@@ -421,11 +420,11 @@ export default function ServersPage() {
                     try {
                       await apiClient(`/servers/${serverToDelete.id}`, { method: 'DELETE' });
                       fetchServers();
-                      toast.success(`Đã xoá thành công máy chủ ${serverToDelete.name}`);
+                      toast.success(`Server ${serverToDelete.name} deleted successfully`);
                       setServerToDelete(null);
                       setConfirmDeleteText('');
                     } catch (err: any) {
-                      toast.error(err.message || 'Lỗi khi xoá máy chủ');
+                      toast.error(err.message || 'Unable to delete server');
                     }
                   }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
@@ -486,10 +485,10 @@ export default function ServersPage() {
                         data: { group_name: editGroupName.trim(), tags: tagsArray }
                       });
                       fetchServers();
-                      toast.success('Đã cập nhật thông tin máy chủ!');
+                      toast.success('Server information updated!');
                       setEditMetaServer(null);
                     } catch (err: any) {
-                      toast.error(err.message || 'Lỗi khi cập nhật thông tin máy chủ');
+                      toast.error(err.message || 'Unable to update server information');
                     }
                   }}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
@@ -527,7 +526,7 @@ export default function ServersPage() {
                         method: 'POST',
                         data: { type: 'agent_update', payload: '{}' }
                       });
-                      toast.success(`Đã gửi lệnh cập nhật đến ${serverToUpdate.name}`);
+                      toast.success(`Update command sent to ${serverToUpdate.name}`);
                       setServerToUpdate(null);
                     } catch (err: any) {
                       toast.error(err.message || 'Error updating agent');

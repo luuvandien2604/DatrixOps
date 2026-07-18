@@ -1,22 +1,24 @@
-# Hướng dẫn cài đặt Agent
+# Agent Installation Guide
 
-Agent là một phần mềm siêu nhẹ có nhiệm vụ thu thập thông số tài nguyên (CPU, RAM, Disk, Network) của máy chủ và gửi về Dashboard.
+The DatrixOps Agent is a lightweight service that collects CPU, memory, disk, and network telemetry and sends it to the dashboard.
 
-## 1. Yêu cầu hệ thống (Firewall)
-- **Tường lửa (Firewall):** Bạn **KHÔNG** cần phải mở bất kỳ Port nào trên máy chủ cần cài Agent. Agent hoạt động dựa trên cơ chế kết nối Outbound ra ngoài internet (Tới cổng 443/80 của máy chủ Dashboard).
-- **Hệ điều hành:** Hỗ trợ Linux (Ubuntu, CentOS, Debian...) và Windows Server.
+## 1. System and firewall requirements
 
-## 2. Các bước cài đặt
+- **Firewall:** You do not need to open an inbound port on the monitored server. The agent uses outbound internet access to reach the dashboard over port 443 or 80.
+- **Operating systems:** Linux distributions such as Ubuntu, CentOS, and Debian, plus Windows Server.
 
-**Bước 1:** Đăng nhập vào DatrixOps Dashboard.
-**Bước 2:** Chuyển đến menu **Quản lý Server**.
-**Bước 3:** Bấm nút **Thêm Server** và nhập tên gợi nhớ cho máy chủ của bạn.
-**Bước 4:** Một cửa sổ chứa lệnh cài đặt sẽ hiện ra. Chọn hệ điều hành tương ứng (Linux hoặc Windows).
-**Bước 5:** Copy toàn bộ đoạn lệnh đó, dán (paste) vào Terminal / PowerShell của máy chủ con và nhấn Enter. 
+## 2. Installation
 
-*(Đối với Linux, bạn cần quyền `root`. Đối với Windows, bạn cần chạy PowerShell bằng quyền `Administrator`)*.
+1. Sign in to the DatrixOps Dashboard.
+2. Open **Server Management**.
+3. Select **Add Server** and enter a recognizable server name.
+4. Choose the appropriate operating system in the installation dialog.
+5. Copy the generated command, paste it into the server's terminal or PowerShell session, and run it.
 
-## 3. Khởi động lại hoặc cập nhật
-Mã cài đặt đã tự động thiết lập Systemd (trên Linux) và Task Scheduler (trên Windows) để Agent tự động chạy ngầm và tự khởi động cùng hệ điều hành (Run on startup).
+Linux installation requires `root` privileges. On Windows, run PowerShell as `Administrator`.
 
-Nếu Dashboard ra mắt phiên bản mới và bạn cần cập nhật Agent, chỉ cần copy lại lệnh cài đặt cũ trên Dashboard và chạy lại một lần nữa. Mã cài đặt sẽ tự động tải file mới, đè lên bản cũ và khởi động lại dịch vụ một cách an toàn.
+## 3. Restarting or updating
+
+The installer configures systemd on Linux or Task Scheduler on Windows so the agent runs in the background and starts with the operating system.
+
+To update the agent, generate or copy the installation command again and run it on the server. The installer safely downloads the current binary, replaces the previous version, and restarts the service.

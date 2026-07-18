@@ -84,9 +84,9 @@ export default function ServerDetailsPage() {
   const handleDockerAction = async (action: string, containerId: string) => {
     try {
       if (action === 'docker_logs') {
-        setLogsModal({isOpen: true, containerId, logs: 'Đang gửi yêu cầu lấy logs...', loading: true});
+        setLogsModal({isOpen: true, containerId, logs: 'Requesting container logs...', loading: true});
       } else {
-        alert(`Đã gửi lệnh ${action} cho container ${containerId}. Sẽ mất khoảng 15s để thực thi.`);
+        alert(`${action} command sent to container ${containerId}. Execution may take about 15 seconds.`);
       }
 
       const task = await apiClient(`/servers/${params.id}/tasks`, {
@@ -103,33 +103,33 @@ export default function ServerDetailsPage() {
           try {
             const res = await apiClient(`/servers/${params.id}/tasks/${task.id}`);
             if (res.status === 'completed') {
-              setLogsModal({isOpen: true, containerId, logs: res.result || 'Không có logs.', loading: false});
+              setLogsModal({isOpen: true, containerId, logs: res.result || 'No logs available.', loading: false});
               clearInterval(pollLogs);
             } else if (res.status === 'failed') {
-              setLogsModal({isOpen: true, containerId, logs: `Lỗi khi lấy logs:\n${res.result}`, loading: false});
+              setLogsModal({isOpen: true, containerId, logs: `Unable to retrieve logs:\n${res.result}`, loading: false});
               clearInterval(pollLogs);
             }
           } catch (e) {
-             console.error("Lỗi poll logs", e);
+             console.error("Log polling failed", e);
              clearInterval(pollLogs);
           }
         }, 2000); // poll every 2s
       }
     } catch (err) {
       console.error(err);
-      alert('Có lỗi xảy ra khi gửi lệnh.');
+      alert('An error occurred while sending the command.');
       if (action === 'docker_logs') {
-        setLogsModal(prev => ({...prev, loading: false, logs: 'Có lỗi xảy ra khi gọi API.'}));
+        setLogsModal(prev => ({...prev, loading: false, logs: 'The API request failed.'}));
       }
     }
   };
 
   if (loading) {
-    return <div className="p-12 text-center text-[var(--color-muted)]">Đang tải thông tin máy chủ...</div>;
+    return <div className="p-12 text-center text-[var(--color-muted)]">Loading server information...</div>;
   }
 
   if (!server) {
-    return <div className="p-12 text-center text-[var(--color-muted)]">Không tìm thấy máy chủ.</div>;
+    return <div className="p-12 text-center text-[var(--color-muted)]">Server not found.</div>;
   }
 
   const formatUptime = (seconds: number) => {
@@ -159,43 +159,43 @@ export default function ServerDetailsPage() {
       </div>
 
       <div role="tablist" aria-label="Server detail views" className="flex gap-4 overflow-x-auto border-b border-[var(--border-color)]">
-        <button type="button" role="tab" aria-selected={activeTab === 'overview'} onClick={() => setActiveTab('overview')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tổng quan (Overview)</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'processes'} onClick={() => setActiveTab('processes')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'processes' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tiến trình (Processes)</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'services'} onClick={() => setActiveTab('services')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'services' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Dịch vụ (Services)</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'overview'} onClick={() => setActiveTab('overview')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Overview</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'processes'} onClick={() => setActiveTab('processes')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'processes' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Processes</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'services'} onClick={() => setActiveTab('services')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'services' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Services</button>
         <button type="button" role="tab" aria-selected={activeTab === 'docker'} onClick={() => setActiveTab('docker')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'docker' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Docker</button>
       </div>
 
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Cpu className="w-4 h-4" /> THÔNG TIN HỆ THỐNG</h3>
+            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Cpu className="w-4 h-4" /> SYSTEM INFORMATION</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Hệ điều hành</span>
+                <span className="text-sm text-[var(--color-muted)]">Operating System</span>
                 <span className="text-sm font-medium text-[var(--foreground)]">{server.os_info ? JSON.parse(server.os_info).os_name : 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Phiên bản Kernel</span>
+                <span className="text-sm text-[var(--color-muted)]">Kernel Version</span>
                 <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Nền tảng ảo hoá</span>
+                <span className="text-sm text-[var(--color-muted)]">Virtualization Platform</span>
                 <span className="text-sm font-medium text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-[var(--color-muted)]">Thời gian hoạt động (Uptime)</span>
+                <span className="text-sm text-[var(--color-muted)]">Uptime</span>
                 <span className="text-sm font-medium text-[var(--foreground)]">{snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : 'N/A'}</span>
               </div>
             </div>
           </div>
           <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Box className="w-4 h-4" /> BẢN CẬP NHẬT GÓI</h3>
+            <h3 className="text-sm font-medium text-[var(--color-muted)] mb-4 flex items-center gap-2"><Box className="w-4 h-4" /> PACKAGE UPDATES</h3>
             <div className="flex items-center gap-4">
               <div className="p-4 bg-blue-500/10 rounded-xl text-blue-500">
                 <ShieldCheck className="w-8 h-8" />
               </div>
               <div>
-                <p className="text-sm text-[var(--color-muted)]">Các gói (Packages) chờ nâng cấp</p>
+                <p className="text-sm text-[var(--color-muted)]">Packages awaiting upgrade</p>
                 <div className="text-2xl font-bold text-[var(--foreground)]">{snapshot?.package_update || 0} <span className="text-sm font-normal text-[var(--color-muted)]">packages</span></div>
               </div>
             </div>
@@ -206,14 +206,14 @@ export default function ServerDetailsPage() {
       {activeTab === 'processes' && (
         <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
           <div className="p-5 border-b border-[var(--border-color)]">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP TIẾN TRÌNH (NGỐN TÀI NGUYÊN)</h3>
+            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP RESOURCE-CONSUMING PROCESSES</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#0B0F14] text-[var(--color-muted)]">
                 <tr>
                   <th className="px-6 py-3 font-medium">PID</th>
-                  <th className="px-6 py-3 font-medium">Tên (Command)</th>
+                  <th className="px-6 py-3 font-medium">Command</th>
                   <th className="px-6 py-3 font-medium">User</th>
                   <th className="px-6 py-3 font-medium">CPU %</th>
                   <th className="px-6 py-3 font-medium">RAM %</th>
@@ -231,7 +231,7 @@ export default function ServerDetailsPage() {
                 ))}
                 {!snapshot?.top_processes?.length && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">Chưa có dữ liệu tiến trình</td>
+                    <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
                   </tr>
                 )}
               </tbody>
@@ -257,7 +257,7 @@ export default function ServerDetailsPage() {
           ))}
           {!snapshot?.services?.length && (
             <div className="col-span-full p-12 text-center text-[var(--color-muted)] bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl">
-              Chưa có dữ liệu dịch vụ.
+              No service data available.
             </div>
           )}
         </div>
@@ -266,18 +266,18 @@ export default function ServerDetailsPage() {
       {activeTab === 'docker' && (
         <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
           <div className="p-5 border-b border-[var(--border-color)]">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Box className="w-4 h-4" /> DANH SÁCH DOCKER CONTAINERS</h3>
+            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Box className="w-4 h-4" /> DOCKER CONTAINERS</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#0B0F14] text-[var(--color-muted)]">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Tên</th>
+                  <th className="px-6 py-3 font-medium">Name</th>
                   <th className="px-6 py-3 font-medium">Image</th>
-                  <th className="px-6 py-3 font-medium">Trạng thái</th>
+                  <th className="px-6 py-3 font-medium">Status</th>
                   <th className="px-6 py-3 font-medium">CPU %</th>
                   <th className="px-6 py-3 font-medium">RAM %</th>
-                  <th className="px-6 py-3 font-medium">Thao tác</th>
+                  <th className="px-6 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
@@ -308,7 +308,7 @@ export default function ServerDetailsPage() {
                 ))}
                 {!snapshot?.docker_containers?.length && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">Không tìm thấy Docker container nào.</td>
+                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">No Docker containers found.</td>
                   </tr>
                 )}
               </tbody>
@@ -323,7 +323,7 @@ export default function ServerDetailsPage() {
           <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="bg-[#0B0F14] border border-[var(--border-color)] rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
             <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)]">
               <h3 id="container-logs-title" className="font-semibold text-white">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
-              <button type="button" onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} aria-label="Đóng nhật ký container" className="text-[var(--color-muted)] hover:text-white transition-colors">
+              <button type="button" onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} aria-label="Close container logs" className="text-[var(--color-muted)] hover:text-white transition-colors">
                 ✕
               </button>
             </div>

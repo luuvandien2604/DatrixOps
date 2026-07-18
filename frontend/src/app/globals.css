@@ -17,8 +17,8 @@
   --ink-800: #12141a;
   --paper: #f7f7f4;
   --paper-soft: #d9dadd;
-  --paper-muted: #8c8d92;
-  --paper-faint: #5f6168;
+  --paper-muted: #a7a9b0;
+  --paper-faint: #777a84;
 
   --violet: #afbcff;
   --violet-strong: #3150ff;
@@ -36,8 +36,8 @@
   --color-muted: var(--paper-muted);
   --border-color: rgba(255, 255, 255, .085);
   --text-strong: rgba(255, 255, 255, .82);
-  --text-secondary: rgba(255, 255, 255, .52);
-  --text-tertiary: rgba(255, 255, 255, .3);
+  --text-secondary: rgba(255, 255, 255, .7);
+  --text-tertiary: rgba(255, 255, 255, .5);
   --surface-panel-start: rgba(14, 15, 19, .94);
   --surface-panel-end: rgba(4, 5, 7, .9);
   --surface-subtle: rgba(255, 255, 255, .035);
@@ -95,7 +95,7 @@ html.light {
   --ink-800: #dce1eb;
   --paper: #172033;
   --paper-soft: #334155;
-  --paper-muted: #647086;
+  --paper-muted: #536176;
   --paper-faint: #8a94a7;
 
   --violet: #5164c7;
@@ -110,12 +110,12 @@ html.light {
   --background: #f3f5fa;
   --background-card: rgba(255, 255, 255, .84);
   --foreground: #172033;
-  --foreground-muted: #647086;
-  --color-muted: #647086;
+  --foreground-muted: #536176;
+  --color-muted: #536176;
   --border-color: rgba(30, 41, 59, .12);
   --text-strong: rgba(23, 32, 51, .82);
-  --text-secondary: rgba(23, 32, 51, .58);
-  --text-tertiary: rgba(23, 32, 51, .38);
+  --text-secondary: rgba(23, 32, 51, .74);
+  --text-tertiary: rgba(23, 32, 51, .58);
   --surface-panel-start: rgba(255, 255, 255, .96);
   --surface-panel-end: rgba(246, 248, 252, .9);
   --surface-subtle: rgba(23, 32, 51, .045);
@@ -339,7 +339,7 @@ button:disabled {
 
 .section-eyebrow,
 .panel-kicker {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .2em;
@@ -421,7 +421,7 @@ button:disabled {
 .nav-eyebrow {
   margin: 0 10px 9px;
   color: var(--text-tertiary);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .21em;
@@ -437,7 +437,7 @@ button:disabled {
   border-radius: 12px;
   padding: 10px 11px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   transition: color var(--transition), background var(--transition), border-color var(--transition);
 }
 
@@ -503,7 +503,7 @@ button:disabled {
   background: var(--control-background);
   padding: 0 14px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
@@ -591,7 +591,7 @@ button:disabled {
 }
 
 .dashboard-stage main {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .dashboard-stage main > div {
@@ -634,6 +634,33 @@ button:disabled {
 
 .dashboard-stage main p {
   line-height: 1.65;
+}
+
+/* Normalize legacy low-opacity utilities to accessible dashboard text levels. */
+.dashboard-stage main :is(
+  [class~="text-white/18"],
+  [class~="text-white/20"],
+  [class~="text-white/25"],
+  [class~="text-white/28"],
+  [class~="text-white/30"],
+  [class~="text-white/35"],
+  [class~="text-white/38"],
+  [class~="text-white/40"],
+  [class~="text-white/42"],
+  [class~="text-white/45"],
+  [class~="text-white/50"],
+  [class~="text-white/60"]
+) {
+  color: var(--text-secondary) !important;
+}
+
+.dashboard-stage main :is(
+  [class~="text-white/70"],
+  [class~="text-white/75"],
+  [class~="text-white/80"],
+  [class~="text-white/84"]
+) {
+  color: var(--text-strong) !important;
 }
 
 .liquid-title {
@@ -700,7 +727,7 @@ button:disabled {
   background: transparent !important;
   padding: 5px 11px !important;
   color: var(--text-tertiary) !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   box-shadow: none !important;
 }
 
@@ -715,7 +742,7 @@ button:disabled {
   border: 1px solid;
   border-radius: var(--radius-pill);
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .status-pill.good { border-color: rgba(124, 231, 196, .17); background: var(--mint-wash); color: var(--mint); }
@@ -743,7 +770,7 @@ button:disabled {
   border-bottom: 1px solid var(--border-color);
   padding: 13px 20px;
   color: var(--text-tertiary) !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   font-weight: 700;
   text-align: left;
   text-transform: uppercase;
@@ -755,7 +782,7 @@ button:disabled {
   border-bottom: 1px solid var(--border-color);
   padding: 15px 20px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-stage main table thead {
@@ -861,7 +888,7 @@ button:disabled {
 
 .dashboard-stage main label {
   color: var(--text-secondary) !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 700;
   letter-spacing: .04em;
 }
@@ -1031,7 +1058,7 @@ button:disabled {
   background: transparent !important;
   padding: 0 38px 0 42px !important;
   color: var(--foreground) !important;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1054,7 +1081,7 @@ button:disabled {
   background: var(--surface-subtle);
   padding: 0 11px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
@@ -1102,8 +1129,8 @@ button:disabled {
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
   padding: 10px 14px;
-  color: var(--text-tertiary);
-  font-size: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .missing-data-legend {
@@ -1135,11 +1162,17 @@ button:disabled {
   background: color-mix(in srgb, var(--rose) 6%, transparent);
   padding: 12px 14px;
   color: var(--rose);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .monitoring-chart-card {
   min-width: 0;
+}
+
+.monitoring-chart-card header span {
+  color: var(--text-secondary) !important;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .monitoring-chart-loading {
@@ -1153,7 +1186,7 @@ button:disabled {
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 13px;
   backdrop-filter: blur(8px);
 }
 
@@ -1164,14 +1197,14 @@ button:disabled {
   background: var(--tooltip-background);
   padding: 10px 12px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 12px;
   box-shadow: var(--shadow-surface);
   backdrop-filter: blur(20px);
 }
 
 .monitoring-tooltip > p {
-  color: var(--text-tertiary);
-  font-size: 9px;
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .monitoring-tooltip i {
@@ -1183,7 +1216,7 @@ button:disabled {
 .monitoring-tooltip strong {
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 

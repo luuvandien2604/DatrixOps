@@ -233,7 +233,7 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRang
 	switch timeRange {
 	case "15m":
 		interval = "15 minutes"
-		bucketSeconds = 5 // Preserve the agent's default real-time cadence
+		bucketSeconds = 10 // Match the production heartbeat cadence without false gaps
 	case "1h":
 		interval = "1 hour"
 		bucketSeconds = 15
@@ -254,7 +254,7 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRang
 		bucketSeconds = 1800
 	default:
 		interval = "15 minutes" // Default to 15m
-		bucketSeconds = 5
+		bucketSeconds = 10
 	}
 
 	query := fmt.Sprintf(`

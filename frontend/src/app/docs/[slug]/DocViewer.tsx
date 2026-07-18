@@ -32,10 +32,10 @@ export default function DocViewer({ meta, content }: { meta: DocMeta, content: s
     return (
       <div className="docs-locked glass-card">
         <div className="docs-card-icon"><LockKeyhole className="h-5 w-5" /></div>
-        <h1>Bạn không có quyền truy cập</h1>
-        <p className="text-foreground-muted mb-8">Vui lòng đăng nhập để xem tài liệu này.</p>
+        <h1>Access denied</h1>
+        <p className="text-foreground-muted mb-8">Please sign in to view this documentation.</p>
         <Link href="/login" className="landing-cta primary">
-          Đăng nhập ngay
+          Sign in
         </Link>
       </div>
     );
@@ -47,7 +47,7 @@ export default function DocViewer({ meta, content }: { meta: DocMeta, content: s
         <div className="sticky top-24">
           <Link href="/docs" className="doc-back">
             <ArrowLeft className="h-4 w-4" />
-            Quay lại danh sách
+            Back to documentation
           </Link>
           <span className="docs-role">{meta.role}</span>
         </div>
