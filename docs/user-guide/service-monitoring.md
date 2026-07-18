@@ -37,6 +37,25 @@ default set:
 Services that are not installed remain visible so an expected but missing
 dependency is distinguishable from a stopped service.
 
+## Control services
+
+Each installed service exposes Start, Stop, Restart, and Reload controls when
+the agent is online. Every action requires confirmation and is queued as an
+audited remote task. The backend only accepts native service identifiers that
+are present in the latest agent-reported service inventory; arbitrary commands
+are never accepted. The DatrixOps Agent service itself is protected from these
+controls so an operator cannot accidentally disconnect the agent.
+
+- Linux uses `systemctl`.
+- macOS uses `launchctl`; Reload unloads and bootstraps the discovered plist.
+- Windows uses `sc.exe`. Start, Stop, and Restart are supported. Reload is
+  disabled because Windows Service Control Manager has no generic reload
+  operation.
+
+The dashboard waits for the task result and updates the displayed native
+service status when the agent confirms completion. Offline agents cannot be
+controlled from the service cards. These controls require Agent 1.3.0 or newer.
+
 ## Customize an agent
 
 Set `DATRIXOPS_SERVICES` to a comma-separated list of native service identifiers.

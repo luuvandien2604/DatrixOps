@@ -29,7 +29,10 @@ var (
 	BuildTime = "unknown"
 )
 
-var containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+var (
+	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
+)
 
 func main() {
 	log.Println("Starting DatrixOps Agent...")
@@ -317,10 +320,30 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	var payload map[string]string
 	_ = json.Unmarshal([]byte(task.Payload), &payload)
 	containerID := payload["container_id"]
+	serviceName := payload["service_name"]
+	serviceManager := payload["service_manager"]
 	isDockerTask := task.Type == "docker_start" || task.Type == "docker_stop" || task.Type == "docker_restart" || task.Type == "docker_logs"
+	serviceActions := map[string]string{
+		"service_start":   "start",
+		"service_stop":    "stop",
+		"service_restart": "restart",
+		"service_reload":  "reload",
+	}
+	serviceAction, isServiceTask := serviceActions[task.Type]
 	if isDockerTask && !containerIdentifierPattern.MatchString(containerID) {
 		statusStr = "failed"
 		resultStr = "Invalid or missing container identifier"
+	} else if isServiceTask && !serviceIdentifierPattern.MatchString(serviceName) {
+		statusStr = "failed"
+		resultStr = "Invalid or missing service identifier"
+	} else if isServiceTask {
+		log.Printf("Received %s task for %s (%s)", task.Type, serviceName, serviceManager)
+		serviceResult, serviceErr := executeServiceAction(taskContext, serviceAction, serviceName, serviceManager)
+		resultStr = serviceResult
+		if serviceErr != nil {
+			statusStr = "failed"
+			resultStr = serviceErr.Error()
+		}
 	} else {
 
 		switch task.Type {

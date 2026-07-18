@@ -48,18 +48,25 @@ func collectServices(configured []string) []ServiceStatus {
 			limit <- struct{}{}
 			defer func() { <-limit }()
 
-			switch runtime.GOOS {
-			case "darwin":
-				results[index] = inspectLaunchdService(name)
-			case "windows":
-				results[index] = inspectWindowsService(name)
-			default:
-				results[index] = inspectSystemdService(name)
-			}
+			results[index] = InspectService(name)
 		}(index, serviceName)
 	}
 	waitGroup.Wait()
 	return results
+}
+
+// InspectService returns the current state from the native service manager.
+// Service-control tasks use the same inspector so their result and the next
+// monitoring snapshot share one status model.
+func InspectService(name string) ServiceStatus {
+	switch runtime.GOOS {
+	case "darwin":
+		return inspectLaunchdService(name)
+	case "windows":
+		return inspectWindowsService(name)
+	default:
+		return inspectSystemdService(name)
+	}
 }
 
 func inspectSystemdService(name string) ServiceStatus {

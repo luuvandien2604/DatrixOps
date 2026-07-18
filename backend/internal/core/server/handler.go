@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
@@ -15,13 +17,24 @@ type Handler struct {
 }
 
 var allowedTaskTypes = map[string]struct{}{
-	"docker_start":   {},
-	"docker_stop":    {},
-	"docker_restart": {},
-	"docker_logs":    {},
-	"agent_update":   {},
-	"agent_restart":  {},
-	"vps_reboot":     {},
+	"docker_start":    {},
+	"docker_stop":     {},
+	"docker_restart":  {},
+	"docker_logs":     {},
+	"service_start":   {},
+	"service_stop":    {},
+	"service_restart": {},
+	"service_reload":  {},
+	"agent_update":    {},
+	"agent_restart":   {},
+	"vps_reboot":      {},
+}
+
+var serviceTaskTypes = map[string]struct{}{
+	"service_start":   {},
+	"service_stop":    {},
+	"service_restart": {},
+	"service_reload":  {},
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -223,10 +236,16 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Make sure user owns server
-	_, err := h.svc.GetServer(r.Context(), serverID, userID)
+	ownedServer, err := h.svc.GetServer(r.Context(), serverID, userID)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
 		return
+	}
+	if _, isServiceTask := serviceTaskTypes[req.Type]; isServiceTask {
+		if err := validateServiceTask(ownedServer, req.Type, req.Payload); err != nil {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
 	}
 
 	// Direct DB call for task since it's lightweight (better to put in service, but okay here for now)
@@ -264,6 +283,55 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		"type":    req.Type,
 	})
 	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": taskStatus})
+}
+
+type serviceTaskPayload struct {
+	ServiceName    string `json:"service_name"`
+	ServiceManager string `json:"service_manager"`
+}
+
+func validateServiceTask(server *Server, taskType, rawPayload string) error {
+	var payload serviceTaskPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return fmt.Errorf("invalid service task payload")
+	}
+	if payload.ServiceName == "" || payload.ServiceManager == "" {
+		return fmt.Errorf("service_name and service_manager are required")
+	}
+	switch strings.ToLower(payload.ServiceName) {
+	case "datrixops-agent", "datrixops-agent.service", "com.datrixops.agent", "datrixopsagent":
+		return fmt.Errorf("the DatrixOps Agent cannot control its own service")
+	}
+	if payload.ServiceManager != "systemd" && payload.ServiceManager != "launchd" && payload.ServiceManager != "windows-scm" {
+		return fmt.Errorf("unsupported service manager")
+	}
+	if taskType == "service_reload" && payload.ServiceManager == "windows-scm" {
+		return fmt.Errorf("Windows services do not support a generic reload action")
+	}
+	if server.Snapshot == nil || *server.Snapshot == "" {
+		return fmt.Errorf("service inventory is unavailable for this server")
+	}
+
+	var snapshot struct {
+		Services []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Source string `json:"source"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal([]byte(*server.Snapshot), &snapshot); err != nil {
+		return fmt.Errorf("service inventory is invalid")
+	}
+	for _, service := range snapshot.Services {
+		if service.Name != payload.ServiceName || service.Source != payload.ServiceManager {
+			continue
+		}
+		if service.Status == "not_installed" {
+			return fmt.Errorf("service is not installed")
+		}
+		return nil
+	}
+	return fmt.Errorf("service is not present in the agent-reported inventory")
 }
 
 func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {

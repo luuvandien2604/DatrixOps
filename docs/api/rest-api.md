@@ -277,6 +277,21 @@ Queues an allowlisted remote task. Arbitrary shell commands are not accepted.
 `timeout_seconds` must be between 10 and 900 seconds. Reusing an idempotency key
 for the same server returns the existing task instead of dispatching it twice.
 
+Native service-control task types are `service_start`, `service_stop`,
+`service_restart`, and `service_reload`. Their payload must identify a service
+present in the latest agent-reported inventory:
+
+```json
+{
+  "type": "service_restart",
+  "payload": "{\"service_name\":\"nginx\",\"service_manager\":\"systemd\"}",
+  "timeout_seconds": 90
+}
+```
+
+Supported managers are `systemd`, `launchd`, and `windows-scm`. Generic reload
+is unavailable for `windows-scm`.
+
 ### `POST /api/v1/servers/actions/update-agents`
 
 Queues an `agent_update` task for every server owned by the authenticated user.

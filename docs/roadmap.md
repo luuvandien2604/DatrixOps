@@ -32,6 +32,7 @@
 - [x] **Top Processes:** Giám sát các tiến trình đang ngốn CPU/RAM nhất (Gồm PID, Owner, Search).
 - [x] **Service Status:** Giám sát các dịch vụ như Nginx, MySQL, Redis, Docker (Running/Stopped).
 - [x] **Cross-platform Service Monitoring:** systemd trên Linux, launchd trên macOS, Windows Service Control Manager và danh sách service tuỳ biến theo agent.
+- [x] **Native Service Controls:** Start, Stop, Restart và Reload có xác nhận, task status và allowlist service do agent báo cáo.
 - [x] **Package Updates:** Hiển thị số lượng Package hệ thống cần cập nhật và nút Update 1-click.
 - [x] **Cron Discovery:** Agent phát hiện user crontab, `/etc/crontab` và `/etc/cron.d` mà nó có quyền đọc.
 - [ ] **Cron Execution Telemetry:** Ghi nhận lịch sử chạy thực tế, Last run, Next run và exit status (không suy diễn dữ liệu khi chưa có telemetry).

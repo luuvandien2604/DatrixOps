@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
+import toast from 'react-hot-toast';
 
 interface TopProcess {
   pid: number;
@@ -103,6 +104,20 @@ interface ServerDetails {
   environment?: string;
 }
 
+type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
+
+const versionAtLeast = (current: string | undefined, minimum: string) => {
+  if (!current) return false;
+  const parse = (value: string) => value.split('.').map(part => Number.parseInt(part, 10) || 0);
+  const currentParts = parse(current);
+  const minimumParts = parse(minimum);
+  for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
+    if ((currentParts[index] || 0) > (minimumParts[index] || 0)) return true;
+    if ((currentParts[index] || 0) < (minimumParts[index] || 0)) return false;
+  }
+  return true;
+};
+
 export default function ServerDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -115,6 +130,8 @@ export default function ServerDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
+  const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
+  const [serviceActionBusy, setServiceActionBusy] = useState(false);
 
   useEffect(() => {
     fetchServer();
@@ -187,6 +204,57 @@ export default function ServerDetailsPage() {
       if (action === 'docker_logs') {
         setLogsModal(prev => ({...prev, loading: false, logs: 'The API request failed.'}));
       }
+    }
+  };
+
+  const handleServiceAction = async () => {
+    if (!serviceActionRequest?.service.source) return;
+
+    const { action, service } = serviceActionRequest;
+    setServiceActionBusy(true);
+    try {
+      const task = await apiClient(`/servers/${params.id}/tasks`, {
+        method: 'POST',
+        data: {
+          type: `service_${action}`,
+          payload: JSON.stringify({
+            service_name: service.name,
+            service_manager: service.source,
+          }),
+          timeout_seconds: 90,
+        },
+      });
+
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 2000));
+        const result = await apiClient(`/servers/${params.id}/tasks/${task.id}`);
+        if (result.status === 'completed') {
+          try {
+            const actionResult = JSON.parse(result.result || '{}') as { service?: ServiceStatus };
+            if (actionResult.service) {
+              setSnapshot(current => current ? {
+                ...current,
+                services: current.services?.map(item => item.name === service.name && item.source === service.source
+                  ? actionResult.service as ServiceStatus
+                  : item),
+              } : current);
+            }
+          } catch {
+            // Successful responses from older compatible agents may be plain text.
+          }
+          toast.success(`${service.display_name || service.name}: ${action} completed`);
+          setServiceActionRequest(null);
+          return;
+        }
+        if (['failed', 'expired', 'timed_out'].includes(result.status)) {
+          throw new Error(result.result || `Service task ${result.status}`);
+        }
+      }
+      throw new Error('Timed out waiting for the agent response');
+    } catch (error: any) {
+      toast.error(error.message || `Unable to ${action} service`);
+    } finally {
+      setServiceActionBusy(false);
     }
   };
 
@@ -280,6 +348,7 @@ export default function ServerDetailsPage() {
       || service.source === serviceManager,
   );
   const hasIncompatibleLegacyServices = reportedServices.length > services.length;
+  const supportsServiceControls = versionAtLeast(inventory?.agent_version, '1.3.0');
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -510,6 +579,17 @@ export default function ServerDetailsPage() {
 
       {activeTab === 'services' && (
         <div className="space-y-5">
+          {!supportsServiceControls && (
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 text-sm text-[var(--foreground)]">
+              <div className="flex items-start gap-3">
+                <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
+                <div>
+                  <p className="font-semibold">Agent 1.3.0 or newer is required for service controls.</p>
+                  <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {inventory?.agent_version || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
+                </div>
+              </div>
+            </div>
+          )}
           {hasIncompatibleLegacyServices && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-[var(--foreground)]">
               <div className="flex items-start gap-3">
@@ -574,6 +654,41 @@ export default function ServerDetailsPage() {
                     : service.status === 'unknown'
                       ? 'border-amber-500/30 bg-amber-500/10 text-amber-500'
                       : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--color-muted)]';
+                const serviceIsControllable = server.status === 'online'
+                  && supportsServiceControls
+                  && ['running', 'stopped'].includes(service.status)
+                  && service.source === serviceManager;
+                const serviceActions: Array<{action: ServiceAction, label: string, icon: typeof Play, tone: string, disabled: boolean, unavailableReason?: string}> = [
+                  {
+                    action: 'start',
+                    label: 'Start',
+                    icon: Play,
+                    tone: 'text-emerald-500 hover:border-emerald-500/50 hover:bg-emerald-500/10',
+                    disabled: !serviceIsControllable || service.status === 'running',
+                  },
+                  {
+                    action: 'stop',
+                    label: 'Stop',
+                    icon: Square,
+                    tone: 'text-rose-500 hover:border-rose-500/50 hover:bg-rose-500/10',
+                    disabled: !serviceIsControllable || service.status !== 'running',
+                  },
+                  {
+                    action: 'restart',
+                    label: 'Restart',
+                    icon: RotateCw,
+                    tone: 'text-amber-500 hover:border-amber-500/50 hover:bg-amber-500/10',
+                    disabled: !serviceIsControllable,
+                  },
+                  {
+                    action: 'reload',
+                    label: 'Reload',
+                    icon: RefreshCw,
+                    tone: 'text-blue-500 hover:border-blue-500/50 hover:bg-blue-500/10',
+                    disabled: !serviceIsControllable || service.status !== 'running' || service.source === 'windows-scm',
+                    unavailableReason: service.source === 'windows-scm' ? 'Windows SCM does not provide a generic reload action.' : undefined,
+                  },
+                ];
                 return (
                   <article key={service.name} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
                     <div className="flex items-start justify-between gap-4">
@@ -590,6 +705,21 @@ export default function ServerDetailsPage() {
                       <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'launchd state' : 'Native state'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
                       <div><dt className="text-[var(--color-muted)]">Checked</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{formatTimestamp(service.last_checked_at)}</dd></div>
                     </dl>
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border-color)] pt-4">
+                      {serviceActions.map(({ action, label, icon: Icon, tone, disabled, unavailableReason }) => (
+                        <button
+                          key={action}
+                          type="button"
+                          disabled={disabled}
+                          title={unavailableReason || (!supportsServiceControls ? 'Update the agent to version 1.3.0 or newer.' : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
+                          onClick={() => setServiceActionRequest({ action, service })}
+                          className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold transition-colors ${tone} disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--border-color)] disabled:hover:bg-transparent`}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </article>
                 );
               })}
@@ -658,6 +788,33 @@ export default function ServerDetailsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {serviceActionRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="service-action-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-[var(--border-color)] p-6">
+              <RotateCw className="h-5 w-5 text-blue-500" />
+              <h2 id="service-action-title" className="text-xl font-semibold capitalize text-[var(--foreground)]">{serviceActionRequest.action} service?</h2>
+            </div>
+            <div className="p-6">
+              <p className="leading-6 text-[var(--color-muted)]">
+                Send <strong className="text-[var(--foreground)]">{serviceActionRequest.action}</strong> to{' '}
+                <strong className="text-[var(--foreground)]">{serviceActionRequest.service.display_name || serviceActionRequest.service.name}</strong> through {serviceActionRequest.service.source}.
+              </p>
+              <p className="mt-3 font-mono text-xs text-[var(--color-muted)]">{serviceActionRequest.service.name}</p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" disabled={serviceActionBusy} onClick={() => setServiceActionRequest(null)} className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--background)] disabled:opacity-50">
+                  Cancel
+                </button>
+                <button type="button" disabled={serviceActionBusy} onClick={handleServiceAction} className="liquid-button disabled:cursor-not-allowed disabled:opacity-50">
+                  {serviceActionBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  <span className="capitalize">{serviceActionBusy ? 'Waiting for agent…' : `${serviceActionRequest.action} service`}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
