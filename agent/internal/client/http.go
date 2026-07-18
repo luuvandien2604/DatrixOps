@@ -27,9 +27,10 @@ func New(cfg *config.Config) *DatrixClient {
 }
 
 type Task struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	Payload        string `json:"payload"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 type HeartbeatResponse struct {

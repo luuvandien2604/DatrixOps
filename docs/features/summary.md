@@ -141,15 +141,17 @@ SELECT id, type, status, result FROM server_tasks WHERE server_id = '<id>' ORDER
 
 ---
 
-## 10. Admin (quản lý user — superadmin only)
+## 10. Admin (quản lý user và fleet — superadmin only)
 
 | Lớp | File |
 |---|---|
-| Backend routes | `backend/internal/core/admin/routes.go` (`GET /api/v1/admin/users`, yêu cầu role `superadmin`) |
+| Frontend users | `frontend/src/app/dashboard/manage/users/page.tsx` |
+| Frontend fleet | `frontend/src/app/dashboard/manage/servers/page.tsx` |
+| Backend routes | `backend/internal/core/admin/routes.go` (`GET /api/v1/admin/users`, `GET /api/v1/admin/servers`, `POST /api/v1/admin/servers/{id}/tasks`; yêu cầu role `superadmin`) |
 | Backend logic | `admin/handler.go`, `repository.go` |
 | DB | cột `users.role` (`20260715_008_multi_tenant.sql`) |
 
-**Ghi chú:** Chưa có trang Frontend tương ứng — hiện chỉ có API, `frontend/src/app/dashboard/manage/users/page.tsx` vẫn là "Under Construction".
+**Ghi chú:** Team Access là read-only. Fleet Admin queue các task đã allowlist (`agent_update`, `agent_restart`, `vps_reboot`) cho nhiều server; không mở arbitrary shell.
 
 ---
 

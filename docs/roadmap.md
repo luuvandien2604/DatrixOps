@@ -32,12 +32,14 @@
 - [x] **Top Processes:** Giám sát các tiến trình đang ngốn CPU/RAM nhất (Gồm PID, Owner, Search).
 - [x] **Service Status:** Giám sát các dịch vụ như Nginx, MySQL, Redis, Docker (Running/Stopped).
 - [x] **Package Updates:** Hiển thị số lượng Package hệ thống cần cập nhật và nút Update 1-click.
-- [ ] **Cron Monitoring:** Giám sát lịch sử chạy Cronjob (Last run, Next run).
+- [x] **Cron Discovery:** Agent phát hiện user crontab, `/etc/crontab` và `/etc/cron.d` mà nó có quyền đọc.
+- [ ] **Cron Execution Telemetry:** Ghi nhận lịch sử chạy thực tế, Last run, Next run và exit status (không suy diễn dữ liệu khi chưa có telemetry).
 
 **Sprint 6: Docker Ecosystem**
 - [x] Auto Discovery: Tự phát hiện Docker Container đang chạy.
 - [x] Container Metrics: CPU, RAM của từng Container.
-- [x] Container Controls: Start, Stop, Restart, Pull, Exec.
+- [x] Container Controls: Start, Stop, Restart.
+- [ ] Container Pull & Exec (cần policy lệnh và kiểm soát quyền rõ ràng).
 - [x] Xem Logs trực tiếp (Docker logs).
 
 ---
@@ -46,17 +48,23 @@
 
 **Sprint 7: Alerting & Webhooks**
 - [x] Rule Engine: Đặt ngưỡng cảnh báo (vd: CPU > 90%, Server Offline, Service Down).
-- [x] Notification Channels: Gửi cảnh báo qua Telegram, Discord, Slack, Email.
-- [x] System Webhooks: Gắn webhook để tích hợp hệ thống bên ngoài.
+- [x] Notification Channels: Telegram và Discord.
+- [ ] Notification Channels: Slack và Email.
+- [ ] System Webhooks: Webhook tổng quát cho hệ thống bên ngoài.
 
 **Sprint 8: Quản trị viên & SaaS (Multi-Tenant & Audit)**
 - [x] Multi-Tenant SaaS & Roles: Hỗ trợ nhiều người dùng đăng ký, tạo Workspace độc lập. Roles: SuperAdmin, User.
-- [ ] Nhóm Server (Group) & Gắn Tag (Production, Vietnam, DB).
-- [ ] Audit Log: Ghi log mọi thao tác (Ai đã restart VPS, xoá file, chạy lệnh).
-- [ ] Public REST API Key: Cấp API Token cho bên thứ 3 gọi vào DatrixOps.
+- [x] Nhóm Server (Group) & Gắn Tag (Production, Vietnam, DB).
+- [x] Team Access UI cho SuperAdmin (danh sách user, role và số server sở hữu).
+- [x] Audit Log nền tảng cho lifecycle server, metadata và remote task.
+- [ ] Mở rộng Audit Log sang Alerts, Websites và API Keys.
+- [x] Public REST API Key: Cấp API Token cho bên thứ 3 gọi vào DatrixOps.
 
 **Sprint 9: Quản lý hạ tầng (Inventory & Scripts)**
-- [ ] Inventory: Ghi nhận thông tin Provider, Region, Spec phần cứng của VPS.
+- [x] Fleet Administration: chọn nhiều server và queue Agent Update/Restart/VPS Reboot.
+- [x] Technical Inventory: Agent ghi nhận hostname, OS/kernel, architecture, CPU, RAM, disk, private IP và agent version.
+- [x] Inventory Metadata: Provider, Region và Environment do operator quản lý.
+- [x] Remote Task Foundation: Allowlist, audit actor, idempotency, timeout, expiry và atomic task claiming.
 - [ ] Script Library: Thư viện kịch bản (Clean log, Restart Nginx, Backup DB) để chạy nhanh (One-click).
 - [ ] Remote Command & Batch Execute: Gửi 1 lệnh (như `apt update`) xuống 1 hoặc 100 VPS cùng lúc và nhận kết quả realtime.
 - [ ] Config Management: Đẩy file config (vd: `nginx.conf`) xuống hàng loạt Server.
@@ -73,7 +81,7 @@
 **Sprint 11: Thông minh & Tự động (Smart & Auto)**
 - [ ] **Timeline Sự kiện:** Liệt kê mọi thay đổi của VPS trên 1 trục thời gian (vd: Lúc 12h CPU tăng, 12h05 Service Restart).
 - [ ] **Auto Discovery (Nâng cao):** Tự phát hiện Database, Web Server và tự động load dashboard tương ứng.
-- [ ] **Agent Auto Update:** Server đẩy phiên bản Agent mới xuống VPS và tự động cập nhật không gây gián đoạn.
+- [x] **Agent Auto Update:** Server đẩy phiên bản Agent mới xuống VPS và agent tự cập nhật qua service manager.
 
 **Sprint 12: Tối ưu hiệu năng & Bảo mật (Performance & Security)**
 - [ ] Chuyển giao tiếp Agent-Server sang gRPC/WebSocket (Streaming) thay vì HTTP REST để xử lý hàng vạn Agent.

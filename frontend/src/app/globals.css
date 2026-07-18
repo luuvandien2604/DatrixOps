@@ -867,6 +867,15 @@ button:disabled {
   transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
 }
 
+.dashboard-stage main input.fleet-checkbox {
+  width: 17px;
+  height: 17px;
+  min-height: 17px;
+  border-radius: 5px !important;
+  padding: 0;
+  accent-color: var(--violet-strong);
+}
+
 .dashboard-stage main select {
   padding-right: 34px;
 }

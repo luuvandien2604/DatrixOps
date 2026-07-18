@@ -49,12 +49,24 @@ type DockerContainer struct {
 	RAM    string `json:"ram"`
 }
 
+type CronJob struct {
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	Owner    string `json:"owner"`
+	Schedule string `json:"schedule"`
+	Command  string `json:"command"`
+	Enabled  bool   `json:"enabled"`
+}
+
 type Snapshot struct {
-	SystemInfo       *SystemInfo       `json:"system_info,omitempty"`
-	TopProcesses     []TopProcess      `json:"top_processes,omitempty"`
-	Services         []ServiceStatus   `json:"services,omitempty"`
-	DockerContainers []DockerContainer `json:"docker_containers,omitempty"`
-	PackageUpdate    int               `json:"package_update"`
+	SystemInfo            *SystemInfo       `json:"system_info,omitempty"`
+	Inventory             map[string]any    `json:"inventory,omitempty"`
+	CronJobs              []CronJob         `json:"cron_jobs"`
+	CronDiscoveryComplete bool              `json:"cron_discovery_complete"`
+	TopProcesses          []TopProcess      `json:"top_processes,omitempty"`
+	Services              []ServiceStatus   `json:"services,omitempty"`
+	DockerContainers      []DockerContainer `json:"docker_containers,omitempty"`
+	PackageUpdate         int               `json:"package_update"`
 }
 
 type HeartbeatRequest struct {
@@ -72,9 +84,10 @@ type HeartbeatRequest struct {
 }
 
 type ServerTask struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Payload string `json:"payload"` // JSON string
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	Payload        string `json:"payload"` // JSON string
+	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
@@ -106,9 +119,14 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	osInfoStr := string(osInfoBytes)
 
 	var snapshotStr string
+	inventoryStr := "{}"
 	if req.Snapshot != nil {
 		snapshotBytes, _ := json.Marshal(req.Snapshot)
 		snapshotStr = string(snapshotBytes)
+		if req.Snapshot.Inventory != nil {
+			inventoryBytes, _ := json.Marshal(req.Snapshot.Inventory)
+			inventoryStr = string(inventoryBytes)
+		}
 	} else {
 		snapshotStr = "{}"
 	}
@@ -122,11 +140,13 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		 SET status = 'online', 
 		     os_info = $1, 
 		     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
+		     inventory = CASE WHEN $4 = '{}' THEN inventory ELSE $4::jsonb END,
+		     inventory_updated_at = CASE WHEN $4 = '{}' THEN inventory_updated_at ELSE NOW() END,
 		     last_seen_at = NOW(),
 		     updated_at = NOW() 
 		 WHERE agent_token = $2
 		 RETURNING id`,
-		osInfoStr, agentToken, snapshotStr,
+		osInfoStr, agentToken, snapshotStr, inventoryStr,
 	).Scan(&serverID)
 
 	if err != nil {
@@ -136,6 +156,10 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update server status")
 		}
 		return
+	}
+
+	if req.Snapshot != nil && req.Snapshot.CronDiscoveryComplete {
+		_ = h.persistCronJobs(ctx, serverID, req.Snapshot.CronJobs)
 	}
 
 	// Insert into server_metrics
@@ -154,11 +178,40 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		updateRequired = true
 	}
 
-	// Fetch pending tasks
+	// Expire tasks that were never claimed before their deadline.
+	_, _ = h.db.Pool.Exec(ctx,
+		`UPDATE server_tasks
+		 SET status = 'expired', completed_at = NOW(), updated_at = NOW()
+		 WHERE server_id = $1 AND status = 'pending' AND expires_at <= NOW()`,
+		serverID,
+	)
+	_, _ = h.db.Pool.Exec(ctx,
+		`UPDATE server_tasks
+		 SET status = 'timed_out', completed_at = NOW(), updated_at = NOW()
+		 WHERE server_id = $1
+		   AND status = 'processing'
+		   AND started_at + make_interval(secs => timeout_seconds) <= NOW()`,
+		serverID,
+	)
+
+	// Atomically claim a small batch so concurrent heartbeats cannot dispatch
+	// the same command twice.
 	rows, err := h.db.Pool.Query(ctx,
-		`UPDATE server_tasks SET status = 'processing', updated_at = NOW() 
-		 WHERE server_id = $1 AND status = 'pending' 
-		 RETURNING id, type, payload::text`,
+		`WITH claimable AS (
+			SELECT id
+			FROM server_tasks
+			WHERE server_id = $1
+			  AND status = 'pending'
+			  AND (expires_at IS NULL OR expires_at > NOW())
+			ORDER BY created_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT 5
+		 )
+		 UPDATE server_tasks AS task
+		 SET status = 'processing', started_at = NOW(), updated_at = NOW()
+		 FROM claimable
+		 WHERE task.id = claimable.id
+		 RETURNING task.id, task.type, task.payload::text, task.timeout_seconds`,
 		serverID,
 	)
 	var tasks []ServerTask
@@ -166,7 +219,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var t ServerTask
-			if err := rows.Scan(&t.ID, &t.Type, &t.Payload); err == nil {
+			if err := rows.Scan(&t.ID, &t.Type, &t.Payload, &t.TimeoutSeconds); err == nil {
 				tasks = append(tasks, t)
 			}
 		}
@@ -181,6 +234,40 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"update_required": updateRequired,
 		"tasks":           tasks,
 	})
+}
+
+func (h *Handler) persistCronJobs(ctx context.Context, serverID string, jobs []CronJob) error {
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE cron_jobs SET enabled = FALSE, updated_at = NOW() WHERE server_id = $1`,
+		serverID,
+	); err != nil {
+		return err
+	}
+	for _, job := range jobs {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO cron_jobs
+				(server_id, external_id, source, owner, schedule, command, enabled, discovered_at, updated_at)
+			 VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, NOW(), NOW())
+			 ON CONFLICT (server_id, external_id) DO UPDATE SET
+				source = EXCLUDED.source,
+				owner = EXCLUDED.owner,
+				schedule = EXCLUDED.schedule,
+				command = EXCLUDED.command,
+				enabled = EXCLUDED.enabled,
+				discovered_at = NOW(),
+				updated_at = NOW()`,
+			serverID, job.ID, job.Source, job.Owner, job.Schedule, job.Command, job.Enabled,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 type ReportTaskRequest struct {
@@ -208,13 +295,24 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
+	if req.Status != "completed" && req.Status != "failed" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Status must be completed or failed")
+		return
+	}
 
 	// Verify server owns the task
 	var taskID string
 	err := h.db.Pool.QueryRow(r.Context(),
-		`UPDATE server_tasks SET status = $1, result = $2::jsonb, updated_at = NOW()
+		`UPDATE server_tasks
+		 SET status = $1,
+		     result = jsonb_build_object('output', $2::text),
+		     completed_at = NOW(),
+		     updated_at = NOW()
 		 FROM servers 
-		 WHERE server_tasks.id = $3 AND servers.id = server_tasks.server_id AND servers.agent_token = $4
+		 WHERE server_tasks.id = $3
+		   AND server_tasks.status = 'processing'
+		   AND servers.id = server_tasks.server_id
+		   AND servers.agent_token = $4
 		 RETURNING server_tasks.id`,
 		req.Status, req.Result, req.TaskID, agentToken,
 	).Scan(&taskID)

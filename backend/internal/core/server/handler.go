@@ -13,6 +13,16 @@ type Handler struct {
 	svc *Service
 }
 
+var allowedTaskTypes = map[string]struct{}{
+	"docker_start":   {},
+	"docker_stop":    {},
+	"docker_restart": {},
+	"docker_logs":    {},
+	"agent_update":   {},
+	"agent_restart":  {},
+	"vps_reboot":     {},
+}
+
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
@@ -46,6 +56,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r.Context(), userID, "CREATE", "SERVER", server.ID, map[string]interface{}{"name": server.Name})
 	response.Success(w, http.StatusCreated, server)
 }
 
@@ -121,6 +132,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r.Context(), userID, "DELETE", "SERVER", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"id": id, "status": "deleted"})
 }
 
@@ -146,9 +158,26 @@ func (h *Handler) ListMetrics(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, metrics)
 }
 
+func (h *Handler) ListCronJobs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	jobs, err := h.svc.ListCronJobs(r.Context(), r.PathValue("id"), userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or cron jobs unavailable")
+		return
+	}
+	response.Success(w, http.StatusOK, jobs)
+}
+
 type CreateTaskRequest struct {
-	Type    string `json:"type"`
-	Payload string `json:"payload"`
+	Type           string `json:"type"`
+	Payload        string `json:"payload"`
+	IdempotencyKey string `json:"idempotency_key"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +198,28 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
+	if _, allowed := allowedTaskTypes[req.Type]; !allowed {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Unsupported task type")
+		return
+	}
+	if req.Payload == "" {
+		req.Payload = "{}"
+	}
+	if !json.Valid([]byte(req.Payload)) {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Payload must be valid JSON")
+		return
+	}
+	if req.TimeoutSeconds == 0 {
+		req.TimeoutSeconds = 60
+	}
+	if req.TimeoutSeconds < 10 || req.TimeoutSeconds > 900 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Timeout must be between 10 and 900 seconds")
+		return
+	}
+	if len(req.IdempotencyKey) > 120 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Idempotency key must not exceed 120 characters")
+		return
+	}
 
 	// Make sure user owns server
 	_, err := h.svc.GetServer(r.Context(), serverID, userID)
@@ -179,17 +230,27 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	// Direct DB call for task since it's lightweight (better to put in service, but okay here for now)
 	var taskID string
+	var taskStatus string
 	err = h.svc.repo.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO server_tasks (server_id, type, payload) VALUES ($1, $2, $3) RETURNING id`,
-		serverID, req.Type, req.Payload,
-	).Scan(&taskID)
+		`INSERT INTO server_tasks
+			(server_id, type, payload, requested_by, idempotency_key, timeout_seconds, expires_at)
+		 VALUES ($1, $2, $3::jsonb, $4, NULLIF($5, ''), $6, NOW() + make_interval(secs => $6))
+		 ON CONFLICT (server_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+		 DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+		 RETURNING id, status`,
+		serverID, req.Type, req.Payload, userID, req.IdempotencyKey, req.TimeoutSeconds,
+	).Scan(&taskID, &taskStatus)
 
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create task")
 		return
 	}
 
-	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": "pending"})
+	h.recordAudit(r.Context(), userID, "QUEUE_TASK", "SERVER", serverID, map[string]interface{}{
+		"task_id": taskID,
+		"type":    req.Type,
+	})
+	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": taskStatus})
 }
 
 func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +273,8 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 	var status string
 	var result *string
 	err = h.svc.repo.db.Pool.QueryRow(r.Context(),
-		`SELECT status, result::text FROM server_tasks WHERE id = $1 AND server_id = $2`,
+		`SELECT status, COALESCE(result->>'output', result::text)
+		 FROM server_tasks WHERE id = $1 AND server_id = $2`,
 		taskID, serverID,
 	).Scan(&status, &result)
 
@@ -230,8 +292,11 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateMetaRequest struct {
-	GroupName string   `json:"group_name"`
-	Tags      []string `json:"tags"`
+	GroupName   string   `json:"group_name"`
+	Tags        []string `json:"tags"`
+	Provider    string   `json:"provider"`
+	Region      string   `json:"region"`
+	Environment string   `json:"environment"`
 }
 
 func (h *Handler) UpdateMeta(w http.ResponseWriter, r *http.Request) {
@@ -248,18 +313,27 @@ func (h *Handler) UpdateMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.UpdateServerMeta(r.Context(), id, userID, req.GroupName, req.Tags); err != nil {
+	if err := h.svc.UpdateServerMeta(r.Context(), id, userID, req.GroupName, req.Tags, req.Provider, req.Region, req.Environment); err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update server meta")
 		return
 	}
 
-	// Simple inline audit log
-	go func() {
-		details, _ := json.Marshal(map[string]interface{}{"group_name": req.GroupName, "tags": req.Tags})
-		_, _ = h.svc.repo.db.Pool.Exec(context.Background(),
-			`INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details) VALUES ($1, $2, $3, $4, $5)`,
-			userID, "UPDATE_META", "SERVER", id, details)
-	}()
+	h.recordAudit(r.Context(), userID, "UPDATE_META", "SERVER", id, map[string]interface{}{
+		"group_name":  req.GroupName,
+		"tags":        req.Tags,
+		"provider":    req.Provider,
+		"region":      req.Region,
+		"environment": req.Environment,
+	})
 
 	response.Success(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *Handler) recordAudit(ctx context.Context, userID, action, resourceType, resourceID string, details map[string]interface{}) {
+	detailsJSON, _ := json.Marshal(details)
+	_, _ = h.svc.repo.db.Pool.Exec(ctx,
+		`INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		userID, action, resourceType, resourceID, detailsJSON,
+	)
 }

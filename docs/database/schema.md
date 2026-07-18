@@ -77,6 +77,20 @@ Một bảng duy nhất cho tất cả system metrics. Tối ưu sau khi cần.
 CREATE INDEX idx_metrics_server_time ON metrics (server_id, collected_at DESC);
 ```
 
+## Inventory, Cron, and Task Lifecycle
+
+The `servers.inventory` JSONB column stores the latest agent-reported technical
+inventory with `inventory_updated_at` recording its collection time. Operator
+metadata is stored separately in `provider`, `region`, and `environment`.
+
+`cron_jobs` stores the latest discovered schedule for each stable
+`(server_id, external_id)` pair. `cron_executions` is reserved for real execution
+events; the system does not manufacture last-run or next-run values.
+
+`server_tasks` records the requesting user, idempotency key, timeout, expiry,
+start, and completion timestamps. Agents atomically claim pending tasks and only
+receive explicitly allowlisted task types.
+
 ---
 
 ## Future Tables (Chỉ tạo khi implement module)

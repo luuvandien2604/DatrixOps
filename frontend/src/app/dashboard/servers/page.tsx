@@ -30,6 +30,9 @@ export default function ServersPage() {
   const [editMetaServer, setEditMetaServer] = useState<any>(null);
   const [editGroupName, setEditGroupName] = useState('');
   const [editTags, setEditTags] = useState('');
+  const [editProvider, setEditProvider] = useState('');
+  const [editRegion, setEditRegion] = useState('');
+  const [editEnvironment, setEditEnvironment] = useState('');
 
   // Update Agent
   const [serverToUpdate, setServerToUpdate] = useState<{ id: string, name: string } | null>(null);
@@ -189,6 +192,9 @@ export default function ServersPage() {
                               setEditMetaServer(server);
                               setEditGroupName(server.group_name || '');
                               setEditTags((server.tags || []).join(', '));
+                              setEditProvider(server.provider || '');
+                              setEditRegion(server.region || '');
+                              setEditEnvironment(server.environment || '');
                             }}
                             className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors" title="Edit Group & Tags">
                             <FileText className="w-4 h-4" />
@@ -439,7 +445,7 @@ export default function ServersPage() {
       {/* Edit Meta Confirm Dialog */}
       {editMetaServer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/30 overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-card w-full max-w-2xl bg-[var(--background-card)] border-amber-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/5">
               <FileText className="w-6 h-6 text-amber-500" />
               <h2 id="edit-server-title" className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
@@ -469,6 +475,20 @@ export default function ServersPage() {
                   placeholder="e.g. web, database, vietnam"
                 />
               </div>
+              <div className="mb-6 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="server-provider" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Provider</label>
+                  <input id="server-provider" value={editProvider} onChange={(event) => setEditProvider(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="AWS" />
+                </div>
+                <div>
+                  <label htmlFor="server-region" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Region</label>
+                  <input id="server-region" value={editRegion} onChange={(event) => setEditRegion(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="ap-southeast-1" />
+                </div>
+                <div>
+                  <label htmlFor="server-environment" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Environment</label>
+                  <input id="server-environment" value={editEnvironment} onChange={(event) => setEditEnvironment(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="Production" />
+                </div>
+              </div>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setEditMetaServer(null)}
@@ -482,7 +502,13 @@ export default function ServersPage() {
                     try {
                       await apiClient(`/servers/${editMetaServer.id}/meta`, {
                         method: 'PUT',
-                        data: { group_name: editGroupName.trim(), tags: tagsArray }
+                        data: {
+                          group_name: editGroupName.trim(),
+                          tags: tagsArray,
+                          provider: editProvider.trim(),
+                          region: editRegion.trim(),
+                          environment: editEnvironment.trim(),
+                        }
                       });
                       fetchServers();
                       toast.success('Server information updated!');

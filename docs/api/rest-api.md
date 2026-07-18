@@ -255,6 +255,28 @@ Lấy thông tin chi tiết một server.
 
 Xóa server (và toàn bộ metrics liên quan).
 
+### `GET /api/v1/servers/{id}/cron-jobs`
+
+Returns cron jobs discovered by the agent for a user-owned server. `last_run_at`,
+`next_run_at`, and `last_status` remain absent until real execution telemetry is
+available.
+
+### `POST /api/v1/servers/{id}/tasks`
+
+Queues an allowlisted remote task. Arbitrary shell commands are not accepted.
+
+```json
+{
+  "type": "docker_logs",
+  "payload": "{\"container_id\":\"api\"}",
+  "idempotency_key": "logs-api-20260718T101600Z",
+  "timeout_seconds": 60
+}
+```
+
+`timeout_seconds` must be between 10 and 900 seconds. Reusing an idempotency key
+for the same server returns the existing task instead of dispatching it twice.
+
 ---
 
 ## Agent Ingestion API

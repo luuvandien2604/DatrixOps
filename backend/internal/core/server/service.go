@@ -46,11 +46,15 @@ func (s *Service) ListMetrics(ctx context.Context, serverID, userID, timeRange s
 	return s.repo.ListMetrics(ctx, serverID, userID, timeRange)
 }
 
+func (s *Service) ListCronJobs(ctx context.Context, serverID, userID string) ([]CronJob, error) {
+	return s.repo.ListCronJobs(ctx, serverID, userID)
+}
+
 func (s *Service) GetDashboardOverview(ctx context.Context, userID, timeRange string) (*DashboardOverview, error) {
 	return s.repo.GetDashboardOverview(ctx, userID, timeRange)
 }
 
 // UpdateServerMeta updates group name and tags
-func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, groupName string, tags []string) error {
-	return s.repo.UpdateServerMeta(ctx, id, userID, groupName, tags)
+func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, groupName string, tags []string, provider, region, environment string) error {
+	return s.repo.UpdateServerMeta(ctx, id, userID, groupName, tags, provider, region, environment)
 }

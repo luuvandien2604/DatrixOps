@@ -81,9 +81,9 @@ Migration mới → thêm file `backend/migrations/YYYYMMDD_NNN_*.sql`, tự ch�
 | Websites & SSL | `dashboard/websites/page.tsx` | `core/website/routes.go` | `website/handler.go` + `scheduler/website_job.go` | `websites` |
 | API Keys | `dashboard/manage/api/page.tsx` | `core/apikey/routes.go` | `apikey/handler.go` | `api_keys` |
 | Audit Log | `dashboard/manage/audit/page.tsx` | `core/audit/routes.go` | `audit/handler.go` | `audit_logs` |
-| Admin (superadmin) | chưa có UI | `core/admin/routes.go` | `admin/handler.go` | `users.role` |
+| Admin (superadmin) | `dashboard/manage/users/page.tsx`, `dashboard/manage/servers/page.tsx` | `core/admin/routes.go`, `core/server/routes.go` | `admin/handler.go`, `server/handler.go` | `users.role`, `servers`, `server_tasks` |
 
-**Chưa hoạt động (chỉ là `<Construction />` placeholder trong frontend, KHÔNG code backend tương ứng):** Network, Performance, Security, Logs, Manage → Backup, Manage → Config, Manage → Users, Manage → Servers.
+**Chưa hoạt động (chỉ là `<Construction />` placeholder trong frontend, KHÔNG code backend tương ứng):** Network, Performance, Security, Logs, Manage → Backup, Manage → Config.
 
 ## 6. Agent — vòng lặp chi tiết (`agent/cmd/agent/main.go`)
 

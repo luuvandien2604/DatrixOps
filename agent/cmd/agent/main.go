@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"runtime"
 	"syscall"
 	"time"
@@ -21,6 +22,8 @@ var (
 	Commit    = "none"
 	BuildTime = "unknown"
 )
+
+var containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 
 func main() {
 	log.Println("Starting DatrixOps Agent...")
@@ -72,7 +75,7 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	metrics.Version = Version
 
 	if includeSnapshot {
-		metrics.Snapshot = collector.CollectSnapshot()
+		metrics.Snapshot = collector.CollectSnapshot(Version)
 	}
 
 	response, err := apiClient.SendHeartbeat(ctx, metrics)
@@ -158,6 +161,13 @@ func triggerReboot() {
 }
 
 func processTask(ctx context.Context, apiClient *client.DatrixClient, task client.Task) {
+	timeout := time.Duration(task.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	taskContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	// Execute the command based on type
 	var cmd *exec.Cmd
 	var resultStr string
@@ -170,45 +180,55 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	var payload map[string]string
 	_ = json.Unmarshal([]byte(task.Payload), &payload)
 	containerID := payload["container_id"]
-
-	switch task.Type {
-	case "docker_start":
-		cmd = exec.Command("docker", "start", containerID)
-	case "docker_stop":
-		cmd = exec.Command("docker", "stop", containerID)
-	case "docker_restart":
-		cmd = exec.Command("docker", "restart", containerID)
-	case "docker_logs":
-		cmd = exec.Command("docker", "logs", "--tail", "100", containerID)
-
-	case "agent_update":
-		log.Println("Received agent_update task. Initiating auto-update...")
-		postAction = "update" // Đánh dấu lại, CHƯA CHẠY NGAY
-		statusStr = "completed"
-		resultStr = "Auto update initiated"
-
-	case "agent_restart":
-		log.Println("Received agent_restart task. Restarting agent process...")
-		postAction = "restart" // Đánh dấu lại, CHƯA CHẠY NGAY
-		statusStr = "completed"
-		resultStr = "Agent restart initiated"
-
-	case "vps_reboot":
-		log.Println("Received vps_reboot task. Rebooting host...")
-		postAction = "reboot" // Đánh dấu lại, CHƯA CHẠY NGAY
-		statusStr = "completed"
-		resultStr = "Reboot initiated"
-
-	default:
+	isDockerTask := task.Type == "docker_start" || task.Type == "docker_stop" || task.Type == "docker_restart" || task.Type == "docker_logs"
+	if isDockerTask && !containerIdentifierPattern.MatchString(containerID) {
 		statusStr = "failed"
-		resultStr = "Unknown task type: " + task.Type
+		resultStr = "Invalid or missing container identifier"
+	} else {
+
+		switch task.Type {
+		case "docker_start":
+			cmd = exec.CommandContext(taskContext, "docker", "start", containerID)
+		case "docker_stop":
+			cmd = exec.CommandContext(taskContext, "docker", "stop", containerID)
+		case "docker_restart":
+			cmd = exec.CommandContext(taskContext, "docker", "restart", containerID)
+		case "docker_logs":
+			cmd = exec.CommandContext(taskContext, "docker", "logs", "--tail", "100", containerID)
+
+		case "agent_update":
+			log.Println("Received agent_update task. Initiating auto-update...")
+			postAction = "update" // Đánh dấu lại, CHƯA CHẠY NGAY
+			statusStr = "completed"
+			resultStr = "Auto update initiated"
+
+		case "agent_restart":
+			log.Println("Received agent_restart task. Restarting agent process...")
+			postAction = "restart" // Đánh dấu lại, CHƯA CHẠY NGAY
+			statusStr = "completed"
+			resultStr = "Agent restart initiated"
+
+		case "vps_reboot":
+			log.Println("Received vps_reboot task. Rebooting host...")
+			postAction = "reboot" // Đánh dấu lại, CHƯA CHẠY NGAY
+			statusStr = "completed"
+			resultStr = "Reboot initiated"
+
+		default:
+			statusStr = "failed"
+			resultStr = "Unknown task type: " + task.Type
+		}
 	}
 
 	if cmd != nil {
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			statusStr = "failed"
-			resultStr = string(out) + " Error: " + err.Error()
+			if taskContext.Err() == context.DeadlineExceeded {
+				resultStr = string(out) + " Error: task timed out"
+			} else {
+				resultStr = string(out) + " Error: " + err.Error()
+			}
 		} else {
 			resultStr = string(out)
 		}
@@ -218,6 +238,10 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	err := apiClient.ReportTaskResult(ctx, task.ID, statusStr, resultStr)
 	if err != nil {
 		log.Printf("Failed to report task %s result: %v", task.ID, err)
+		if postAction != "" {
+			log.Printf("Skipping post-task action %q because acknowledgement failed", postAction)
+			return
+		}
 	}
 
 	// 2. THỰC THI HÀNH ĐỘNG SAU: Lúc này tắt máy/app là an toàn tuyệt đối

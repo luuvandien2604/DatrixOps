@@ -18,19 +18,38 @@ func NewRepository(db *database.DB) *Repository {
 }
 
 type Server struct {
-	ID         string     `json:"id"`
-	UserID     string     `json:"user_id"`
-	Name       string     `json:"name"`
-	IPAddress  *string    `json:"ip_address,omitempty"`
-	GroupName  *string    `json:"group_name,omitempty"`
-	Tags       []string   `json:"tags"`
-	AgentToken string     `json:"agent_token,omitempty"` // only shown on creation
-	Status     string     `json:"status"`
-	OSInfo     *string    `json:"os_info,omitempty"`  // JSON raw message or string
-	Snapshot   *string    `json:"snapshot,omitempty"` // JSONB raw message
-	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID                 string     `json:"id"`
+	UserID             string     `json:"user_id"`
+	Name               string     `json:"name"`
+	IPAddress          *string    `json:"ip_address,omitempty"`
+	GroupName          *string    `json:"group_name,omitempty"`
+	Tags               []string   `json:"tags"`
+	AgentToken         string     `json:"agent_token,omitempty"` // only shown on creation
+	Status             string     `json:"status"`
+	OSInfo             *string    `json:"os_info,omitempty"`  // JSON raw message or string
+	Snapshot           *string    `json:"snapshot,omitempty"` // JSONB raw message
+	Inventory          *string    `json:"inventory,omitempty"`
+	InventoryUpdatedAt *time.Time `json:"inventory_updated_at,omitempty"`
+	Provider           *string    `json:"provider,omitempty"`
+	Region             *string    `json:"region,omitempty"`
+	Environment        *string    `json:"environment,omitempty"`
+	LastSeenAt         *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+}
+
+type CronJob struct {
+	ID           string     `json:"id"`
+	ExternalID   string     `json:"external_id"`
+	Source       string     `json:"source"`
+	Owner        *string    `json:"owner,omitempty"`
+	Schedule     string     `json:"schedule"`
+	Command      string     `json:"command"`
+	Enabled      bool       `json:"enabled"`
+	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt    *time.Time `json:"next_run_at,omitempty"`
+	LastStatus   *string    `json:"last_status,omitempty"`
+	DiscoveredAt time.Time  `json:"discovered_at"`
 }
 
 type ServerMetric struct {
@@ -129,7 +148,8 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	query := `
 		SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
-			os_info, snapshot, last_seen_at, created_at, updated_at
+			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
+			last_seen_at, created_at, updated_at
 		FROM servers
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -146,7 +166,9 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 		var tagsBytes []byte
 		err := rows.Scan(
 			&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
-			&s.Status, &s.OSInfo, &s.Snapshot, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+			&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
+			&s.Provider, &s.Region, &s.Environment,
+			&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
@@ -170,14 +192,21 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 }
 
 // UpdateServerMeta updates the group_name and tags of a server.
-func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, groupName string, tags []string) error {
+func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, groupName string, tags []string, provider, region, environment string) error {
 	tagsJSON, err := json.Marshal(tags)
 	if err != nil {
 		return fmt.Errorf("marshal tags: %w", err)
 	}
 	tag, err := r.db.Pool.Exec(ctx,
-		"UPDATE servers SET group_name = $1, tags = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4",
-		groupName, tagsJSON, id, userID,
+		`UPDATE servers
+		 SET group_name = NULLIF($1, ''),
+		     tags = $2,
+		     provider = NULLIF($3, ''),
+		     region = NULLIF($4, ''),
+		     environment = NULLIF($5, ''),
+		     updated_at = NOW()
+		 WHERE id = $6 AND user_id = $7`,
+		groupName, tagsJSON, provider, region, environment, id, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server meta: %w", err)
@@ -191,18 +220,64 @@ func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, gr
 // GetByID returns a single server by ID and UserID.
 func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, error) {
 	var s Server
-	err := r.db.Pool.QueryRow(ctx,
-		`SELECT id, user_id, name, ip_address,
+	row := r.db.Pool.QueryRow(ctx,
+		`SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
-			os_info, snapshot, last_seen_at, created_at, updated_at
+			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
+			last_seen_at, created_at, updated_at
 		 FROM servers WHERE id = $1 AND user_id = $2`,
 		id, userID,
-	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt)
+	)
+	var tagsBytes []byte
+	err := row.Scan(
+		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
+		&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
+		&s.Provider, &s.Region, &s.Environment,
+		&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("get server by id: %w", err)
 	}
+	s.Tags = make([]string, 0)
+	if len(tagsBytes) > 0 {
+		if err := json.Unmarshal(tagsBytes, &s.Tags); err != nil {
+			return nil, fmt.Errorf("unmarshal tags: %w", err)
+		}
+	}
 	return &s, nil
+}
+
+// ListCronJobs returns discovered cron jobs for a user-owned server.
+func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) ([]CronJob, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT job.id, job.external_id, job.source, job.owner, job.schedule,
+		        job.command, job.enabled, job.last_run_at, job.next_run_at,
+		        job.last_status, job.discovered_at
+		 FROM cron_jobs job
+		 JOIN servers server ON server.id = job.server_id
+		 WHERE job.server_id = $1 AND server.user_id = $2
+		 ORDER BY job.enabled DESC, job.source, job.schedule, job.command`,
+		serverID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list cron jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]CronJob, 0)
+	for rows.Next() {
+		var job CronJob
+		if err := rows.Scan(
+			&job.ID, &job.ExternalID, &job.Source, &job.Owner, &job.Schedule,
+			&job.Command, &job.Enabled, &job.LastRunAt, &job.NextRunAt,
+			&job.LastStatus, &job.DiscoveredAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan cron job: %w", err)
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, rows.Err()
 }
 
 // Delete removes a server by ID and UserID.
