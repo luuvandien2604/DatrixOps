@@ -51,6 +51,11 @@ type MissingInterval = {
   end: number;
 };
 
+type GapAnalysis = {
+  intervals: MissingInterval[];
+  sustainedMissingTimestamps: Set<number>;
+};
+
 type TimeRange = '15m' | '1h' | '3h' | '6h' | '12h' | '24h' | '7d';
 
 type RangeOption = {
@@ -203,9 +208,18 @@ export default function MonitoringPage() {
     () => buildTimeline(rawMetrics, timelineConfig, now),
     [now, rawMetrics, timelineConfig],
   );
-  const missingIntervals = useMemo(
-    () => buildMissingIntervals(timeline, effectiveBucketSeconds * 1_000, now),
+  const gapAnalysis = useMemo(
+    () => analyzeTimelineGaps(timeline, effectiveBucketSeconds * 1_000, now),
     [effectiveBucketSeconds, now, timeline],
+  );
+  const chartTimeline = useMemo(
+    () => timeline.filter(
+      (point) =>
+        point.hasData ||
+        !point.isConfirmedMissing ||
+        gapAnalysis.sustainedMissingTimestamps.has(point.timestamp),
+    ),
+    [gapAnalysis.sustainedMissingTimestamps, timeline],
   );
   const selectedServer = servers.find((server) => server.id === selectedServerId);
   const serverOnline = selectedServer?.status === 'online';
@@ -218,10 +232,10 @@ export default function MonitoringPage() {
   const lastMetricAt = getLastMetricTimestamp(rawMetrics);
   const xDomain: [number, number] = [now - rangeConfig.durationMs, now];
   const chartContext = {
-    data: timeline,
+    data: chartTimeline,
     domain: xDomain,
     range: timeRange,
-    missingIntervals,
+    missingIntervals: gapAnalysis.intervals,
   };
 
   return (
@@ -306,7 +320,7 @@ export default function MonitoringPage() {
             <span>Data coverage: {coverage}%</span>
           </div>
           <div className="ml-auto flex items-center gap-4">
-            <span className="missing-data-legend"><i />No data / Offline</span>
+            <span className="missing-data-legend"><i />Sustained no data / Offline</span>
             {refreshing && <span>Syncing…</span>}
             {metricsError && <span className="text-[var(--rose)]">Sync error: {metricsError}</span>}
           </div>
@@ -601,30 +615,42 @@ function resolveBucketSeconds(metrics: MetricApiPoint[], fallback: number) {
   return Math.max(fallback, Math.round(Math.min(...intervals) / 1_000));
 }
 
-function buildMissingIntervals(
+function analyzeTimelineGaps(
   timeline: TimelinePoint[],
   bucketMs: number,
   now: number,
-): MissingInterval[] {
+): GapAnalysis {
   const intervals: MissingInterval[] = [];
-  let start: number | null = null;
+  const sustainedMissingTimestamps = new Set<number>();
+  const minimumOfflineGapMs = Math.max(30_000, bucketMs * 3);
+  let runStartIndex: number | null = null;
 
-  for (const point of timeline) {
-    if (point.isConfirmedMissing && start == null) {
-      start = point.timestamp;
+  const commitRun = (endIndex: number, endTimestamp: number) => {
+    if (runStartIndex == null) return;
+    const startTimestamp = timeline[runStartIndex].timestamp;
+    if (endTimestamp - startTimestamp >= minimumOfflineGapMs) {
+      intervals.push({ start: startTimestamp, end: endTimestamp });
+      for (let index = runStartIndex; index < endIndex; index += 1) {
+        sustainedMissingTimestamps.add(timeline[index].timestamp);
+      }
     }
-    if (!point.isConfirmedMissing && start != null) {
-      intervals.push({ start, end: point.timestamp });
-      start = null;
+    runStartIndex = null;
+  };
+
+  timeline.forEach((point, index) => {
+    if (point.isConfirmedMissing) {
+      if (runStartIndex == null) runStartIndex = index;
+      return;
     }
+    commitRun(index, point.timestamp);
+  });
+
+  if (runStartIndex != null) {
+    const endTimestamp = Math.min(now, (timeline.at(-1)?.timestamp ?? now) + bucketMs);
+    commitRun(timeline.length, endTimestamp);
   }
 
-  if (start != null) {
-    const lastTimestamp = timeline.at(-1)?.timestamp ?? now;
-    intervals.push({ start, end: Math.min(now, lastTimestamp + bucketMs) });
-  }
-
-  return intervals;
+  return { intervals, sustainedMissingTimestamps };
 }
 
 function getMetricTimestamp(metric: MetricApiPoint): number | null {
