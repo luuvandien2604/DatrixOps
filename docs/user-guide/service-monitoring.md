@@ -56,6 +56,19 @@ The dashboard waits for the task result and updates the displayed native
 service status when the agent confirms completion. Offline agents cannot be
 controlled from the service cards. These controls require Agent 1.3.0 or newer.
 
+The server header and System Information card show the version reported by the
+latest heartbeat. This heartbeat value is authoritative for the binary that is
+currently running; the less frequently collected inventory value is used only
+as a fallback. After requesting an update, the dashboard distinguishes task
+acknowledgement from successful installation and keeps the controls locked
+until a new heartbeat reports Agent 1.3.0 or newer.
+
+Agents older than 1.3.0 may acknowledge an update before their legacy
+background installer has replaced the binary. If the reported version does not
+change after the service reconnects, perform a one-time manual binary
+replacement on the host. Subsequent updates use the hardened updater included
+in Agent 1.3.0.
+
 ## Customize an agent
 
 Set `DATRIXOPS_SERVICES` to a comma-separated list of native service identifiers.

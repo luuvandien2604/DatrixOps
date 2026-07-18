@@ -105,6 +105,10 @@ interface ServerDetails {
 }
 
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
+type AgentUpdateState = {
+  phase: 'idle' | 'waiting' | 'failed';
+  message?: string;
+};
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
@@ -133,6 +137,7 @@ export default function ServerDetailsPage() {
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
+  const [agentUpdateState, setAgentUpdateState] = useState<AgentUpdateState>({ phase: 'idle' });
 
   useEffect(() => {
     fetchServer();
@@ -261,13 +266,33 @@ export default function ServerDetailsPage() {
 
   const queueAgentUpdate = async () => {
     setQueueingAgentUpdate(true);
+    setAgentUpdateState({ phase: 'waiting', message: 'Sending the update command to the running agent…' });
     try {
-      await apiClient(`/servers/${params.id}/tasks`, {
+      const task = await apiClient(`/servers/${params.id}/tasks`, {
         method: 'POST',
         data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 },
       });
-      toast.success('Agent update queued. Controls will unlock after the agent reconnects.');
+
+      setAgentUpdateState({ phase: 'waiting', message: 'Update queued. Waiting for the agent to acknowledge the task…' });
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 2000));
+        const result = await apiClient(`/servers/${params.id}/tasks/${task.id}`);
+        if (result.status === 'completed') {
+          setAgentUpdateState({
+            phase: 'waiting',
+            message: 'The agent acknowledged the update. Waiting for it to restart and report version 1.3.0 or newer…',
+          });
+          toast.success('Update acknowledged. Verifying the running agent version…');
+          await fetchServer();
+          return;
+        }
+        if (['failed', 'expired', 'timed_out'].includes(result.status)) {
+          throw new Error(result.result || `Agent update task ${result.status}`);
+        }
+      }
+      throw new Error('The agent did not acknowledge the update within two minutes');
     } catch (error: any) {
+      setAgentUpdateState({ phase: 'failed', message: error.message || 'Unable to update the agent' });
       toast.error(error.message || 'Unable to queue agent update');
     } finally {
       setQueueingAgentUpdate(false);
@@ -364,7 +389,9 @@ export default function ServerDetailsPage() {
       || service.source === serviceManager,
   );
   const hasIncompatibleLegacyServices = reportedServices.length > services.length;
-  const reportedAgentVersion = inventory?.agent_version || parsedOSInfo.version;
+  // Heartbeat version is authoritative for the binary that is running now.
+  // Inventory is only a fallback because it refreshes less frequently.
+  const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, '1.3.0');
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
@@ -393,6 +420,8 @@ export default function ServerDetailsPage() {
           </h1>
           <p className="text-[var(--color-muted)] text-sm mt-1 flex items-center gap-2">
             <ServerIcon className="w-4 h-4" /> {server.ip_address || (snapshot?.system_info?.public_ip) || 'Unknown IP'}
+            <span aria-hidden="true">•</span>
+            <span className="font-semibold text-[var(--foreground)]">Agent {reportedAgentVersion || 'Unknown'}</span>
           </p>
         </div>
       </div>
@@ -413,6 +442,12 @@ export default function ServerDetailsPage() {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-[var(--color-muted)]">Operating System</span>
                 <span className="text-sm font-medium text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-[var(--color-muted)]">Running Agent Version</span>
+                <span className={`text-sm font-semibold ${reportedAgentVersion ? 'text-[var(--foreground)]' : 'text-amber-500'}`}>
+                  {reportedAgentVersion || 'Not reported'}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-[var(--color-muted)]">Kernel Version</span>
@@ -460,7 +495,7 @@ export default function ServerDetailsPage() {
                   { label: 'Provider', value: server.provider || 'Unassigned', icon: Box },
                   { label: 'Region', value: server.region || 'Unassigned', icon: Network },
                   { label: 'Environment', value: server.environment || 'Unassigned', icon: Activity },
-                  { label: 'Agent version', value: inventory.agent_version || 'Unknown', icon: ShieldCheck },
+                  { label: 'Running agent version', value: reportedAgentVersion || 'Unknown', icon: ShieldCheck },
                 ].map(({ label, value, icon: Icon }) => (
                   <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-muted)]"><Icon className="h-4 w-4" /> {label}</div>
@@ -477,7 +512,7 @@ export default function ServerDetailsPage() {
                       ['CPU model', inventory.cpu_model || 'Unknown'],
                       ['Architecture', inventory.architecture || 'Unknown'],
                       ['Kernel', inventory.kernel_version || 'Unknown'],
-                      ['Agent version', inventory.agent_version || 'Unknown'],
+                      ['Running agent version', reportedAgentVersion || 'Unknown'],
                       ['Collected at', formatTimestamp(inventory.collected_at)],
                     ].map(([label, value]) => (
                       <div key={label} className="flex flex-col justify-between gap-1 sm:flex-row sm:gap-4">
@@ -604,6 +639,16 @@ export default function ServerDetailsPage() {
                   <div>
                     <p className="font-semibold">Agent 1.3.0 or newer is required for service controls.</p>
                     <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {reportedAgentVersion || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
+                    {agentUpdateState.message && (
+                      <p className={`mt-2 font-medium leading-6 ${agentUpdateState.phase === 'failed' ? 'text-rose-500' : 'text-blue-500'}`}>
+                        {agentUpdateState.message}
+                      </p>
+                    )}
+                    {agentUpdateState.phase === 'waiting' && (
+                      <p className="mt-2 leading-6 text-[var(--color-muted)]">
+                        Task acknowledgement does not confirm that the binary was replaced. Controls unlock only after a heartbeat reports version 1.3.0 or newer.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <button type="button" disabled={queueingAgentUpdate || server.status !== 'online'} onClick={queueAgentUpdate} className="liquid-button shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
