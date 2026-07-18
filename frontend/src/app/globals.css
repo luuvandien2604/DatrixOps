@@ -649,6 +649,16 @@ button:disabled {
 .status-dot.online { background: var(--mint); box-shadow: 0 0 9px var(--mint); }
 .status-dot.offline { background: var(--rose); box-shadow: 0 0 9px var(--rose); }
 
+.live-data-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 10px var(--mint);
+  animation: live-bar 1.8s ease-in-out infinite;
+}
+
 .incident-row {
   display: flex;
   align-items: center;

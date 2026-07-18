@@ -1,160 +1,445 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Activity, ArrowUpRight, BellRing, Check, ChevronRight, CircleAlert, Cloud,
   Cpu, Database, MemoryStick, Plus, RefreshCw, Server, Wifi,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts';
 
-const chartData = [
-  { t: '10:00', cpu: 28, ram: 52 }, { t: '10:10', cpu: 34, ram: 48 },
-  { t: '10:20', cpu: 31, ram: 56 }, { t: '10:30', cpu: 48, ram: 59 },
-  { t: '10:40', cpu: 43, ram: 55 }, { t: '10:50', cpu: 58, ram: 64 },
-  { t: '11:00', cpu: 39, ram: 61 }, { t: '11:10', cpu: 44, ram: 58 },
-  { t: '11:20', cpu: 36, ram: 62 }, { t: '11:30', cpu: 52, ram: 65 },
-  { t: '11:40', cpu: 46, ram: 63 }, { t: 'Now', cpu: 41, ram: 60 },
-];
+type DashboardRange = '1H' | '2H' | '12H' | '24H';
 
-const fallbackServers = [
-  { id: '1', name: 'api-prod-01', ip: '10.10.0.21', status: 'online', cpu: 42, memory: 61 },
-  { id: '2', name: 'db-primary-01', ip: '10.10.0.12', status: 'online', cpu: 68, memory: 74 },
-  { id: '3', name: 'worker-sg-03', ip: '10.20.0.34', status: 'online', cpu: 29, memory: 46 },
-  { id: '4', name: 'legacy-edge-02', ip: '10.30.0.08', status: 'offline', cpu: 0, memory: 0 },
-];
+type DashboardServer = {
+  id: string;
+  name: string;
+  ip_address?: string;
+  status: 'online' | 'offline' | string;
+  cpu_usage: number;
+  memory_used: number;
+  memory_total: number;
+  has_metrics: boolean;
+  last_seen_at?: string;
+};
+
+type DashboardMetric = {
+  bucket_time: string;
+  cpu_usage: number;
+  memory_usage: number;
+};
+
+type DashboardIncident = {
+  rule_id: string;
+  server_id: string;
+  rule_name: string;
+  server_name: string;
+  metric: string;
+  operator: string;
+  threshold: number;
+  status: string;
+  last_triggered_at?: string;
+};
+
+type DashboardOverview = {
+  generated_at: string;
+  range: string;
+  summary: {
+    total_servers: number;
+    online_servers: number;
+    offline_servers: number;
+    warning_servers: number;
+    average_cpu: number;
+    average_memory: number;
+    memory_used: number;
+    memory_total: number;
+    open_incidents: number;
+  };
+  servers: DashboardServer[];
+  metrics: DashboardMetric[];
+  incidents: DashboardIncident[];
+};
+
+type ChartPoint = {
+  t: string;
+  cpu: number;
+  ram: number;
+};
+
+const POLL_INTERVAL_MS = 5_000;
 
 export default function OverviewDashboard() {
-  const [servers, setServers] = useState<any[]>([]);
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [range, setRange] = useState('2H');
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [range, setRange] = useState<DashboardRange>('2H');
+  const activeRequest = useRef<AbortController | null>(null);
+  const hasLoaded = useRef(false);
   const router = useRouter();
 
-  const fetchServers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiClient('/servers');
-      setServers(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      if (err?.message?.includes('token') || err?.message?.includes('UNAUTHORIZED')) router.push('/login');
-    } finally {
-      setLoading(false);
+  const fetchOverview = useCallback(async (replaceActiveRequest = false) => {
+    if (activeRequest.current) {
+      if (!replaceActiveRequest) return;
+      activeRequest.current.abort();
     }
-  }, [router]);
 
-  useEffect(() => { fetchServers(); }, [fetchServers]);
-  const visibleServers = servers.length ? servers.slice(0, 4) : fallbackServers;
-  const total = servers.length || 12;
-  const online = servers.length ? servers.filter((server) => server.status === 'online').length : 11;
-  const health = Math.round((online / total) * 100);
-  const avgCpu = useMemo(() => {
-    const values = servers.map((s) => Number(s.cpu_usage ?? s.cpu ?? 0)).filter(Boolean);
-    return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 41;
-  }, [servers]);
+    const controller = new AbortController();
+    activeRequest.current = controller;
+
+    if (hasLoaded.current) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const data = await apiClient(`/dashboard/overview?range=${range.toLowerCase()}`, {
+        signal: controller.signal,
+      });
+      if (activeRequest.current !== controller) return;
+      setOverview(data as DashboardOverview);
+      setError('');
+      hasLoaded.current = true;
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      const message = err instanceof Error ? err.message : 'Không thể tải dữ liệu dashboard';
+      if (message.includes('token') || message.includes('UNAUTHORIZED')) {
+        router.push('/login');
+        return;
+      }
+      setError(message);
+    } finally {
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [range, router]);
+
+  useEffect(() => {
+    void fetchOverview(true);
+    const interval = window.setInterval(() => void fetchOverview(), POLL_INTERVAL_MS);
+    return () => {
+      window.clearInterval(interval);
+      activeRequest.current?.abort();
+      activeRequest.current = null;
+    };
+  }, [fetchOverview]);
+
+  const summary = overview?.summary;
+  const servers = overview?.servers ?? [];
+  const incidents = overview?.incidents ?? [];
+  const total = summary?.total_servers ?? 0;
+  const online = summary?.online_servers ?? 0;
+  const offline = summary?.offline_servers ?? 0;
+  const warning = summary?.warning_servers ?? 0;
+  const health = total > 0 ? Math.round((online / total) * 100) : 0;
+  const hasLiveMetrics = servers.some((server) => server.status === 'online' && server.has_metrics);
+  const hasLiveMemory = (summary?.memory_total ?? 0) > 0;
+
+  const chartData = useMemo<ChartPoint[]>(() => {
+    return (overview?.metrics ?? []).map((metric) => ({
+      t: formatChartTime(metric.bucket_time, range),
+      cpu: roundMetric(metric.cpu_usage),
+      ram: roundMetric(metric.memory_usage),
+    }));
+  }, [overview?.metrics, range]);
+
+  const latestMetric = chartData.at(-1);
+  const cpuBars = chartData.slice(-7).map((point) => point.cpu);
+  const memoryBars = chartData.slice(-7).map((point) => point.ram);
+  // Mini bars are also data-driven: binary heartbeat and active firing states.
+  const fleetBars = servers.slice(0, 7).map((server) => server.status === 'online' ? 100 : 0);
+  const incidentBars = incidents.slice(0, 7).map(() => 100);
+
+  if (loading && !overview) {
+    return <DashboardMessage title="Đang đồng bộ dữ liệu thật" description="Đang lấy heartbeat, metrics và alert state mới nhất từ hệ thống." loading />;
+  }
+
+  if (!overview && error) {
+    return (
+      <DashboardMessage
+        title="Không thể tải dữ liệu"
+        description={error}
+        action={<button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary"><RefreshCw className="h-4 w-4" />Thử lại</button>}
+      />
+    );
+  }
+
+  const fleetStatus = getFleetStatus(total, online, incidents.length);
 
   return (
     <div className="mx-auto max-w-[1540px] space-y-6">
       <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[#70f2be]"><Activity className="h-3 w-3" /> Live infrastructure</div>
-          <h1 className="liquid-title">Everything is <em>under control.</em></h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-white/42">Real-time health and telemetry from every DatrixOps agent in your production fleet.</p>
+          <div className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[#8bd5c5]">
+            <Activity className="h-3 w-3" />
+            Live infrastructure
+            <span className="live-data-dot" aria-hidden="true" />
+          </div>
+          <h1 className="liquid-title">Infrastructure, <em>as it is now.</em></h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-white/42">
+            Dữ liệu thật từ heartbeat của DatrixOps Agent, tự động làm mới mỗi {POLL_INTERVAL_MS / 1000} giây.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-white/35" aria-live="polite">
+            <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{refreshing ? 'Đang nhận dữ liệu mới…' : 'Auto-refresh đang bật'}</span>
+            {error && <span className="text-[#ff8da1]">Lần cập nhật gần nhất lỗi: {error}</span>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchServers} className="liquid-button secondary"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Sync agents</button>
-          <Link href="/dashboard/servers" className="liquid-button primary"><Plus className="h-4 w-4" />Add server</Link>
+          <button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary" disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Đồng bộ ngay
+          </button>
+          <Link href="/dashboard/servers" className="liquid-button primary"><Plus className="h-4 w-4" />Thêm server</Link>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={Server} label="Fleet online" value={`${online}/${total}`} note={`${health}% healthy`} color="#70f2be" bars={[35,55,44,72,64,80,74]} />
-        <MetricCard icon={Cpu} label="Average CPU" value={`${avgCpu}%`} note="8% below threshold" color="#8fa2ff" bars={[40,48,33,61,48,65,52]} />
-        <MetricCard icon={MemoryStick} label="Memory used" value="60%" note="7.2 TB available" color="#64c7ff" bars={[38,46,52,49,58,62,60]} />
-        <MetricCard icon={BellRing} label="Open incidents" value="2" note="1 needs attention" color="#ff879c" bars={[18,22,16,34,25,48,31]} />
+        <MetricCard
+          icon={Server}
+          label="Fleet online"
+          value={`${online}/${total}`}
+          note={total > 0 ? `${health}% heartbeat hợp lệ` : 'Chưa có server'}
+          color="#8bd5c5"
+          bars={fleetBars}
+        />
+        <MetricCard
+          icon={Cpu}
+          label="Average CPU"
+          value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
+          note={hasLiveMetrics ? 'Trung bình server online' : 'Chưa có metrics'}
+          color="#8fa2ff"
+          bars={cpuBars}
+        />
+        <MetricCard
+          icon={MemoryStick}
+          label="Memory used"
+          value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
+          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'Chưa có metrics'}
+          color="#79c9f4"
+          bars={memoryBars}
+        />
+        <MetricCard
+          icon={BellRing}
+          label="Open incidents"
+          value={String(summary?.open_incidents ?? 0)}
+          note={warning > 0 ? `${warning} server bị ảnh hưởng` : 'Không có alert firing'}
+          color="#ff8da1"
+          bars={incidentBars}
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.65fr_.75fr]">
         <div className="liquid-panel min-h-[390px] p-5 sm:p-6">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
-            <div className="range-picker">{['1H','2H','12H','24H'].map((item) => <button key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''}>{item}</button>)}</div>
+            <div className="range-picker" aria-label="Khoảng thời gian biểu đồ">
+              {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
+                <button type="button" key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''} aria-pressed={range === item}>
+                  {item}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="mb-4 flex gap-6 text-xs">
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#9a8cff]" />CPU <b className="font-mono text-white">41%</b></span>
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#65d6c1]" />Memory <b className="font-mono text-white">60%</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#8fa2ff]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[#8bd5c5]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
           </div>
           <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="cpuLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8778ff" stopOpacity=".42" /><stop offset="1" stopColor="#8778ff" stopOpacity="0" /></linearGradient>
-                  <linearGradient id="ramLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#53d7bd" stopOpacity=".28" /><stop offset="1" stopColor="#53d7bd" stopOpacity="0" /></linearGradient>
-                </defs>
-                <Tooltip contentStyle={{ background: '#12151c', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, fontSize: 11 }} />
-                <Area type="monotone" dataKey="ram" stroke="#53d7bd" strokeWidth={2} fill="url(#ramLiquid)" />
-                <Area type="monotone" dataKey="cpu" stroke="#8778ff" strokeWidth={2} fill="url(#cpuLiquid)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="cpuLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3150ff" stopOpacity=".42" /><stop offset="1" stopColor="#3150ff" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="ramLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8bd5c5" stopOpacity=".28" /><stop offset="1" stopColor="#8bd5c5" stopOpacity="0" /></linearGradient>
+                  </defs>
+                  <Tooltip contentStyle={{ background: '#0b0c10', border: '1px solid rgba(255,255,255,.1)', borderRadius: 12, fontSize: 11 }} />
+                  <Area type="monotone" dataKey="ram" name="Memory" stroke="#8bd5c5" strokeWidth={2} fill="url(#ramLiquid)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="#8fa2ff" strokeWidth={2} fill="url(#cpuLiquid)" isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyPanel icon={Activity} title="Chưa có telemetry trong khoảng này" description="Biểu đồ sẽ xuất hiện khi agent gửi metrics." />
+            )}
           </div>
         </div>
 
         <div className="liquid-panel overflow-hidden p-6">
-          <div className="flex items-start justify-between"><div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div><span className="status-pill good">Operational</span></div>
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div>
+            <span className={`status-pill ${fleetStatus.tone}`}>{fleetStatus.label}</span>
+          </div>
           <div className="relative mx-auto my-7 grid h-44 w-44 place-items-center">
             <div className="health-ring" style={{ '--health': `${health * 3.6}deg` } as React.CSSProperties} />
-            <div className="text-center"><p className="font-mono text-4xl font-medium">{health}%</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">health score</p></div>
+            <div className="text-center"><p className="font-mono text-4xl font-medium">{total > 0 ? `${health}%` : '—'}</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">heartbeat score</p></div>
           </div>
           <div className="grid grid-cols-3 gap-2 border-t border-white/[.06] pt-5 text-center">
-            <HealthStat label="Online" value={online} color="text-[#70f2be]" />
-            <HealthStat label="Warning" value="1" color="text-[#ffd27a]" />
-            <HealthStat label="Offline" value={total - online} color="text-[#ff879c]" />
+            <HealthStat label="Online" value={online} color="text-[#8bd5c5]" />
+            <HealthStat label="Alerted" value={warning} color="text-[#ffd27a]" />
+            <HealthStat label="Offline" value={offline} color="text-[#ff879c]" />
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
         <div className="liquid-panel overflow-hidden">
-          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
-          <div className="overflow-x-auto">
-            <table className="server-table">
-              <thead><tr><th>Server</th><th>Status</th><th>CPU</th><th>Memory</th><th></th></tr></thead>
-              <tbody>{visibleServers.map((server, index) => <ServerRow key={server.id ?? index} server={server} index={index} />)}</tbody>
-            </table>
-          </div>
+          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">Xem tất cả <ChevronRight className="inline h-3 w-3" /></Link></div>
+          {servers.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="server-table">
+                <thead><tr><th>Server</th><th>Status</th><th>CPU</th><th>Memory</th><th>Heartbeat</th><th></th></tr></thead>
+                <tbody>{servers.slice(0, 6).map((server) => <ServerRow key={server.id} server={server} />)}</tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="Chưa có server" description="Kết nối agent đầu tiên để bắt đầu nhận dữ liệu thật." /></div>
+          )}
         </div>
 
         <div className="liquid-panel p-6">
-          <div className="flex items-start justify-between"><div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Recent incidents</h2></div><Link href="/dashboard/alerts" className="status-pill warning">2 open</Link></div>
-          <div className="mt-5 space-y-3">
-            <Incident icon={Database} title="Memory threshold exceeded" detail="db-primary-01 · 4m ago" tone="critical" />
-            <Incident icon={Wifi} title="Packet loss detected" detail="edge-sg-02 · 18m ago" tone="warning" />
-            <Incident icon={Check} title="CPU load recovered" detail="api-prod-02 · 46m ago" tone="resolved" />
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Active incidents</h2></div>
+            <Link href="/dashboard/alerts" className={incidents.length > 0 ? 'status-pill warning' : 'status-pill good'}>{incidents.length} open</Link>
           </div>
-          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Open incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+          {incidents.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              {incidents.slice(0, 4).map((incident) => <Incident key={`${incident.rule_id}-${incident.server_id}`} incident={incident} />)}
+            </div>
+          ) : (
+            <div className="mt-5"><EmptyPanel icon={Check} title="Không có incident đang firing" description="Alert state hiện tại của fleet đang ổn định." /></div>
+          )}
+          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Mở incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
         </div>
       </section>
     </div>
   );
 }
 
-function MetricCard({ icon: Icon, label, value, note, color, bars }: any) {
-  return <div className="metric-card"><div className="flex items-start justify-between"><div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div><div className="mini-bars">{bars.map((height: number, i: number) => <i key={i} style={{ height: `${height}%`, background: color }} />)}</div></div><p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p><div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 text-[10px]" style={{ color }}>{note}</p></div></div>;
+function MetricCard({ icon: Icon, label, value, note, color, bars }: { icon: LucideIcon; label: string; value: string; note: string; color: string; bars: number[] }) {
+  return (
+    <div className="metric-card">
+      <div className="flex items-start justify-between">
+        <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
+        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-white/25">NO DATA</span>}
+      </div>
+      <p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p>
+      <div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 max-w-[130px] text-right text-[10px]" style={{ color }}>{note}</p></div>
+    </div>
+  );
 }
 
-function HealthStat({ label, value, color }: any) { return <div><p className={`font-mono text-lg ${color}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-[.16em] text-white/30">{label}</p></div>; }
+function HealthStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return <div><p className={`font-mono text-lg ${color}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-[.16em] text-white/30">{label}</p></div>;
+}
 
-function ServerRow({ server, index }: any) {
+function ServerRow({ server }: { server: DashboardServer }) {
   const online = server.status === 'online';
-  const cpu = Number(server.cpu_usage ?? server.cpu ?? [42,68,29,0][index] ?? 0);
-  const ram = Number(server.memory_usage ?? server.memory ?? [61,74,46,0][index] ?? 0);
-  return <tr><td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name ?? server.hostname ?? `server-${index + 1}`}</p><p className="mt-1 text-[9px] text-white/25">{server.ip ?? server.ip_address ?? 'Private network'}</p></div></div></td><td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td><td><LoadBar value={cpu} /></td><td><LoadBar value={ram} /></td><td><Link href={`/dashboard/servers/${server.id}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td></tr>;
+  const memoryPercent = server.memory_total > 0 ? server.memory_used * 100 / server.memory_total : 0;
+  const canShowMetrics = online && server.has_metrics;
+
+  return (
+    <tr>
+      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[9px] text-white/25">{server.ip_address ?? 'Chưa có IP'}</p></div></div></td>
+      <td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td>
+      <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
+      <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
+      <td><span className="text-[10px] text-white/38">{formatRelativeTime(server.last_seen_at)}</span></td>
+      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Xem ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
+    </tr>
+  );
 }
 
-function LoadBar({ value }: { value: number }) { return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full bg-gradient-to-r from-[#7568ff] to-[#64dbc2]" style={{ width: `${Math.min(value, 100)}%` }} /></span><span className="font-mono text-[10px] text-white/45">{value}%</span></div>; }
+function LoadBar({ value }: { value: number }) {
+  const normalized = Math.max(0, Math.min(value, 100));
+  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full bg-gradient-to-r from-[#3150ff] to-[#8bd5c5]" style={{ width: `${normalized}%` }} /></span><span className="font-mono text-[10px] text-white/45">{roundMetric(value)}%</span></div>;
+}
 
-function Incident({ icon: Icon, title, detail, tone }: any) {
-  return <div className="incident-row"><span className={`incident-icon ${tone}`}><Icon className="h-4 w-4" /></span><div className="min-w-0"><p className="truncate text-xs text-white/80">{title}</p><p className="mt-1 text-[10px] text-white/30">{detail}</p></div>{tone === 'critical' ? <CircleAlert className="ml-auto h-4 w-4 text-[#ff879c]" /> : <ChevronRight className="ml-auto h-4 w-4 text-white/20" />}</div>;
+function Incident({ incident }: { incident: DashboardIncident }) {
+  const Icon = getIncidentIcon(incident.metric);
+  const valueDescription = incident.metric === 'status'
+    ? 'Heartbeat quá 60 giây'
+    : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
+
+  return (
+    <div className="incident-row">
+      <span className="incident-icon critical"><Icon className="h-4 w-4" /></span>
+      <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
+      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[#ff879c]" />
+    </div>
+  );
+}
+
+function EmptyPanel({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return <div className="grid h-full min-h-36 place-items-center rounded-xl border border-dashed border-white/[.07] bg-white/[.012] p-5 text-center"><div><Icon className="mx-auto h-5 w-5 text-white/25" /><p className="mt-3 text-xs text-white/60">{title}</p><p className="mt-1 text-[10px] text-white/28">{description}</p></div></div>;
+}
+
+function DashboardMessage({ title, description, loading = false, action }: { title: string; description: string; loading?: boolean; action?: React.ReactNode }) {
+  return <div className="feature-preview"><section className="glass-card"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
+}
+
+function getIncidentIcon(metric: string): LucideIcon {
+  if (metric === 'ram') return Database;
+  if (metric === 'cpu') return Cpu;
+  if (metric === 'status') return Wifi;
+  return CircleAlert;
+}
+
+function getFleetStatus(total: number, online: number, incidents: number): { label: string; tone: 'good' | 'warning' } {
+  if (total === 0) return { label: 'No data', tone: 'warning' };
+  if (incidents > 0 || online < total) return { label: 'Attention', tone: 'warning' };
+  return { label: 'Operational', tone: 'good' };
+}
+
+function roundMetric(value: number | undefined): number {
+  return Number(Number(value ?? 0).toFixed(1));
+}
+
+function formatPercent(value: number | undefined): string {
+  return `${roundMetric(value)}%`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function formatChartTime(value: string, range: DashboardRange): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(range === '1H' || range === '2H' ? { second: '2-digit' } : {}),
+  });
+}
+
+function formatSnapshotTime(value?: string): string {
+  if (!value) return 'Chưa có dữ liệu';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không xác định';
+  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatRelativeTime(value?: string): string {
+  if (!value) return 'Chưa từng';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không xác định';
+
+  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const formatter = new Intl.RelativeTimeFormat('vi', { numeric: 'auto' });
+  if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
+  const minutes = Math.round(seconds / 60);
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour');
+  return formatter.format(Math.round(hours / 24), 'day');
 }

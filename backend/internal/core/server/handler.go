@@ -65,6 +65,22 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, servers)
 }
 
+func (h *Handler) DashboardOverview(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	overview, err := h.svc.GetDashboardOverview(r.Context(), userID, r.URL.Query().Get("range"))
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load dashboard overview")
+		return
+	}
+
+	response.Success(w, http.StatusOK, overview)
+}
+
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -185,7 +201,7 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 
 	serverID := r.PathValue("id")
 	taskID := r.PathValue("taskId")
-	
+
 	// Check ownership
 	_, err := h.svc.GetServer(r.Context(), serverID, userID)
 	if err != nil {

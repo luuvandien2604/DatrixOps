@@ -11,7 +11,7 @@ import {
   Users, X, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { getUserRole } from '@/lib/apiClient';
+import { apiClient, getUserRole } from '@/lib/apiClient';
 
 type NavDefinition = {
   label: string;
@@ -25,7 +25,7 @@ const primaryNav: NavDefinition[] = [
   { label: 'Servers', href: '/dashboard/servers', icon: Server },
   { label: 'Uptime', href: '/dashboard/websites', icon: Globe2 },
   { label: 'Metrics', href: '/dashboard/monitoring', icon: Activity },
-  { label: 'Alerts', href: '/dashboard/alerts', icon: Bell, count: 2 },
+  { label: 'Alerts', href: '/dashboard/alerts', icon: Bell },
   { label: 'Logs', href: '/dashboard/logs', icon: FileText },
 ];
 
@@ -50,8 +50,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
+  const [fleetSummary, setFleetSummary] = useState<{
+    total_servers: number;
+    online_servers: number;
+    open_incidents: number;
+  } | null>(null);
+  const [fleetSyncFailed, setFleetSyncFailed] = useState(false);
 
   useEffect(() => setRole(getUserRole()), []);
+  useEffect(() => {
+    let active = true;
+    let requestInFlight = false;
+
+    const fetchFleetSummary = async () => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const overview = await apiClient('/dashboard/overview?range=1h');
+        if (!active) return;
+        setFleetSummary(overview.summary);
+        setFleetSyncFailed(false);
+      } catch {
+        if (active) setFleetSyncFailed(true);
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    void fetchFleetSummary();
+    const interval = window.setInterval(() => void fetchFleetSummary(), 10_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const logout = () => {
     ['access_token', 'refresh_token'].forEach((key) => {
@@ -64,6 +96,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavItem = ({ item }: { item: NavDefinition }) => {
     const active = item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href);
     const Icon = item.icon;
+    const count = item.href === '/dashboard/alerts' ? fleetSummary?.open_incidents : item.count;
     return (
       <Link
         href={item.href}
@@ -74,7 +107,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         <Icon className="h-[18px] w-[18px] shrink-0" />
         {!collapsed && <span>{item.label}</span>}
-        {!collapsed && item.count && <span className="ml-auto rounded-full bg-[#ff7a90]/15 px-2 py-0.5 text-[10px] text-[#ff98aa]">{item.count}</span>}
+        {!collapsed && Boolean(count) && <span className="ml-auto rounded-full bg-[#ff7a90]/15 px-2 py-0.5 text-[10px] text-[#ff98aa]">{count}</span>}
       </Link>
     );
   };
@@ -111,10 +144,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="px-3">
           <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#70f2be] opacity-50" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#70f2be]" />
+              {!fleetSyncFailed && (fleetSummary?.online_servers ?? 0) > 0 && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#70f2be] opacity-50" />}
+              <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${fleetSyncFailed ? 'bg-[#ffcf70]' : (fleetSummary?.online_servers ?? 0) > 0 ? 'bg-[#70f2be]' : 'bg-white/25'}`} />
             </span>
-            {!collapsed && <div><p className="text-xs font-medium">Agent network</p><p className="text-[10px] text-white/40">12 of 12 connected</p></div>}
+            {!collapsed && (
+              <div>
+                <p className="text-xs font-medium">Agent network</p>
+                <p className="text-[10px] text-white/40">
+                  {fleetSyncFailed
+                    ? 'Live data unavailable'
+                    : fleetSummary
+                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} connected`
+                      : 'Syncing live status…'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -146,10 +190,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button type="button" className="topbar-action hidden sm:flex" aria-label="Search dashboard"><Search className="h-4 w-4" /><span>Search</span><kbd>⌘ K</kbd></button>
-            <Link href="/dashboard/alerts" aria-label="Open alerts" className="topbar-icon relative"><Bell className="h-4 w-4" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff7a90]" /></Link>
+            <Link href="/dashboard/alerts" aria-label="Open alerts" className="topbar-icon relative">
+              <Bell className="h-4 w-4" />
+              {(fleetSummary?.open_incidents ?? 0) > 0 && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff7a90]" />}
+            </Link>
             <div className="ml-1 flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] py-1.5 pl-1.5 pr-3">
-              <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-[#dfe4ff] via-[#3150ff] to-[#090b12] text-[10px] font-bold">DA</div>
-              <div className="hidden sm:block"><p className="text-[11px] font-medium">DevOps Admin</p><p className="text-[9px] text-[#70f2be]">● Online</p></div>
+              <div className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-[#dfe4ff] via-[#3150ff] to-[#090b12] text-[10px] font-bold">{role === 'superadmin' ? 'SA' : 'OP'}</div>
+              <div className="hidden sm:block"><p className="text-[11px] font-medium">{role === 'superadmin' ? 'Superadmin' : 'Operator'}</p><p className="text-[9px] text-[#70f2be]">● Authenticated</p></div>
             </div>
           </div>
         </header>

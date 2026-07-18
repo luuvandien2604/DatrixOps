@@ -18,18 +18,19 @@ func NewRepository(db *database.DB) *Repository {
 }
 
 type Server struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Name       string    `json:"name"`
-	IPAddress  *string   `json:"ip_address,omitempty"`
-	GroupName  *string   `json:"group_name,omitempty"`
-	Tags       []string  `json:"tags"`
-	AgentToken string    `json:"agent_token,omitempty"` // only shown on creation
-	Status     string    `json:"status"`
-	OSInfo     *string   `json:"os_info,omitempty"`  // JSON raw message or string
-	Snapshot   *string   `json:"snapshot,omitempty"` // JSONB raw message
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	Name       string     `json:"name"`
+	IPAddress  *string    `json:"ip_address,omitempty"`
+	GroupName  *string    `json:"group_name,omitempty"`
+	Tags       []string   `json:"tags"`
+	AgentToken string     `json:"agent_token,omitempty"` // only shown on creation
+	Status     string     `json:"status"`
+	OSInfo     *string    `json:"os_info,omitempty"`  // JSON raw message or string
+	Snapshot   *string    `json:"snapshot,omitempty"` // JSONB raw message
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type ServerMetric struct {
@@ -45,6 +46,59 @@ type ServerMetric struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// DashboardServer is a server enriched with the latest metric received from its agent.
+// HasMetrics distinguishes a real zero value from a server that has never reported data.
+type DashboardServer struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	IPAddress   *string    `json:"ip_address,omitempty"`
+	Status      string     `json:"status"`
+	CPUUsage    float64    `json:"cpu_usage"`
+	MemoryUsed  int64      `json:"memory_used"`
+	MemoryTotal int64      `json:"memory_total"`
+	HasMetrics  bool       `json:"has_metrics"`
+	LastSeenAt  *time.Time `json:"last_seen_at,omitempty"`
+}
+
+type DashboardMetric struct {
+	BucketTime  time.Time `json:"bucket_time"`
+	CPUUsage    float64   `json:"cpu_usage"`
+	MemoryUsage float64   `json:"memory_usage"`
+}
+
+type DashboardIncident struct {
+	RuleID          string     `json:"rule_id"`
+	ServerID        string     `json:"server_id"`
+	RuleName        string     `json:"rule_name"`
+	ServerName      string     `json:"server_name"`
+	Metric          string     `json:"metric"`
+	Operator        string     `json:"operator"`
+	Threshold       float64    `json:"threshold"`
+	Status          string     `json:"status"`
+	LastTriggeredAt *time.Time `json:"last_triggered_at,omitempty"`
+}
+
+type DashboardSummary struct {
+	TotalServers   int     `json:"total_servers"`
+	OnlineServers  int     `json:"online_servers"`
+	OfflineServers int     `json:"offline_servers"`
+	WarningServers int     `json:"warning_servers"`
+	AverageCPU     float64 `json:"average_cpu"`
+	AverageMemory  float64 `json:"average_memory"`
+	MemoryUsed     int64   `json:"memory_used"`
+	MemoryTotal    int64   `json:"memory_total"`
+	OpenIncidents  int     `json:"open_incidents"`
+}
+
+type DashboardOverview struct {
+	GeneratedAt time.Time           `json:"generated_at"`
+	Range       string              `json:"range"`
+	Summary     DashboardSummary    `json:"summary"`
+	Servers     []DashboardServer   `json:"servers"`
+	Metrics     []DashboardMetric   `json:"metrics"`
+	Incidents   []DashboardIncident `json:"incidents"`
+}
+
 // Create inserts a new server and returns it.
 func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentToken string) (*Server, error) {
 	var s Server
@@ -56,9 +110,9 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 	err := r.db.Pool.QueryRow(ctx,
 		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags) 
 		 VALUES ($1, $2, $3, $4, '[]'::jsonb) 
-		 RETURNING id, user_id, name, ip_address, group_name, agent_token, status, created_at, updated_at`,
+		 RETURNING id, user_id, name, ip_address, group_name, agent_token, status, last_seen_at, created_at, updated_at`,
 		userID, name, ip, agentToken,
-	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken, &s.Status, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("create server: %w", err)
@@ -69,15 +123,14 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 
 // ListByUser returns all servers for a given user.
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, error) {
-	// status được tính động: nếu > 1 phút không có heartbeat mới (updated_at) thì coi là
-	// offline bất kể cột status lưu gì — cột status chỉ được Heartbeat handler set = 'online',
-	// không có nơi nào set lại 'offline' khi mất kết nối, nên không thể tin trực tiếp cột này.
+	// Status is derived exclusively from the agent heartbeat. Administrative
+	// updates use updated_at and must never make an offline server appear online.
 	query := `
 		SELECT id, user_id, name, ip_address, group_name, tags,
-			CASE WHEN updated_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
-			os_info, snapshot, created_at, updated_at 
-		FROM servers 
-		WHERE user_id = $1 
+			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
+			os_info, snapshot, last_seen_at, created_at, updated_at
+		FROM servers
+		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
 	rows, err := r.db.Pool.Query(ctx, query, userID)
@@ -92,7 +145,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 		var tagsBytes []byte
 		err := rows.Scan(
 			&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
-			&s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt,
+			&s.Status, &s.OSInfo, &s.Snapshot, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
@@ -139,11 +192,11 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 	var s Server
 	err := r.db.Pool.QueryRow(ctx,
 		`SELECT id, user_id, name, ip_address,
-			CASE WHEN updated_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
-			os_info, snapshot, created_at, updated_at 
+			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
+			os_info, snapshot, last_seen_at, created_at, updated_at
 		 FROM servers WHERE id = $1 AND user_id = $2`,
 		id, userID,
-	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.Status, &s.OSInfo, &s.Snapshot, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("get server by id: %w", err)
@@ -245,4 +298,197 @@ func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRang
 		metrics = make([]*ServerMetric, 0)
 	}
 	return metrics, nil
+}
+
+// GetDashboardOverview returns one consistent, user-scoped snapshot for the dashboard.
+// Every value comes from servers, the latest agent metric, or active alert state.
+func (r *Repository) GetDashboardOverview(ctx context.Context, userID, timeRange string) (*DashboardOverview, error) {
+	rangeKey := "2h"
+	interval := "2 hours"
+	bucketSeconds := 120
+
+	switch timeRange {
+	case "1h":
+		rangeKey, interval, bucketSeconds = "1h", "1 hour", 60
+	case "12h":
+		rangeKey, interval, bucketSeconds = "12h", "12 hours", 600
+	case "24h":
+		rangeKey, interval, bucketSeconds = "24h", "24 hours", 900
+	}
+
+	overview := &DashboardOverview{
+		Range:     rangeKey,
+		Servers:   make([]DashboardServer, 0),
+		Metrics:   make([]DashboardMetric, 0),
+		Incidents: make([]DashboardIncident, 0),
+	}
+
+	serverRows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			s.id,
+			s.name,
+			s.ip_address,
+			CASE WHEN s.last_seen_at IS NULL OR s.last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE s.status END AS status,
+			COALESCE(lm.cpu_usage, 0),
+			COALESCE(lm.memory_used, 0),
+			COALESCE(lm.memory_total, 0),
+			lm.server_id IS NOT NULL AS has_metrics,
+			s.last_seen_at
+		FROM servers s
+		LEFT JOIN LATERAL (
+			SELECT server_id, cpu_usage, memory_used, memory_total
+			FROM server_metrics
+			WHERE server_id = s.id
+			ORDER BY created_at DESC
+			LIMIT 1
+		) lm ON true
+		WHERE s.user_id = $1
+		ORDER BY s.created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard servers query: %w", err)
+	}
+
+	for serverRows.Next() {
+		var server DashboardServer
+		if err := serverRows.Scan(
+			&server.ID,
+			&server.Name,
+			&server.IPAddress,
+			&server.Status,
+			&server.CPUUsage,
+			&server.MemoryUsed,
+			&server.MemoryTotal,
+			&server.HasMetrics,
+			&server.LastSeenAt,
+		); err != nil {
+			serverRows.Close()
+			return nil, fmt.Errorf("dashboard server scan: %w", err)
+		}
+		overview.Servers = append(overview.Servers, server)
+	}
+	if err := serverRows.Err(); err != nil {
+		serverRows.Close()
+		return nil, fmt.Errorf("dashboard servers rows: %w", err)
+	}
+	serverRows.Close()
+
+	metricQuery := fmt.Sprintf(`
+		SELECT
+			to_timestamp(floor(extract(epoch from sm.created_at) / %d) * %d) AS bucket_time,
+			COALESCE(AVG(sm.cpu_usage), 0) AS cpu_usage,
+			COALESCE(SUM(sm.memory_used) * 100.0 / NULLIF(SUM(sm.memory_total), 0), 0) AS memory_usage
+		FROM server_metrics sm
+		JOIN servers s ON s.id = sm.server_id
+		WHERE s.user_id = $1
+		  AND sm.created_at >= NOW() - INTERVAL '%s'
+		GROUP BY bucket_time
+		ORDER BY bucket_time ASC
+	`, bucketSeconds, bucketSeconds, interval)
+
+	metricRows, err := r.db.Pool.Query(ctx, metricQuery, userID)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard metrics query: %w", err)
+	}
+	for metricRows.Next() {
+		var metric DashboardMetric
+		if err := metricRows.Scan(&metric.BucketTime, &metric.CPUUsage, &metric.MemoryUsage); err != nil {
+			metricRows.Close()
+			return nil, fmt.Errorf("dashboard metric scan: %w", err)
+		}
+		overview.Metrics = append(overview.Metrics, metric)
+	}
+	if err := metricRows.Err(); err != nil {
+		metricRows.Close()
+		return nil, fmt.Errorf("dashboard metrics rows: %w", err)
+	}
+	metricRows.Close()
+
+	incidentRows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			state.rule_id,
+			state.server_id,
+			rule.name,
+			server.name,
+			rule.metric,
+			rule.operator,
+			rule.threshold,
+			state.status,
+			state.last_triggered_at
+		FROM alert_state state
+		JOIN alert_rules rule ON rule.id = state.rule_id
+		JOIN servers server ON server.id = state.server_id
+		WHERE rule.user_id = $1
+		  AND server.user_id = $1
+		  AND rule.enabled = true
+		  AND state.status = 'firing'
+		ORDER BY state.last_triggered_at DESC NULLS LAST
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard incidents query: %w", err)
+	}
+	for incidentRows.Next() {
+		var incident DashboardIncident
+		if err := incidentRows.Scan(
+			&incident.RuleID,
+			&incident.ServerID,
+			&incident.RuleName,
+			&incident.ServerName,
+			&incident.Metric,
+			&incident.Operator,
+			&incident.Threshold,
+			&incident.Status,
+			&incident.LastTriggeredAt,
+		); err != nil {
+			incidentRows.Close()
+			return nil, fmt.Errorf("dashboard incident scan: %w", err)
+		}
+		overview.Incidents = append(overview.Incidents, incident)
+	}
+	if err := incidentRows.Err(); err != nil {
+		incidentRows.Close()
+		return nil, fmt.Errorf("dashboard incidents rows: %w", err)
+	}
+	incidentRows.Close()
+
+	warningServerIDs := make(map[string]struct{})
+	var cpuTotal float64
+	var memoryPercentTotal float64
+	var reportingOnlineServers int
+	var reportingMemoryServers int
+
+	for _, server := range overview.Servers {
+		overview.Summary.TotalServers++
+		if server.Status == "online" {
+			overview.Summary.OnlineServers++
+			if server.HasMetrics {
+				reportingOnlineServers++
+				cpuTotal += server.CPUUsage
+				if server.MemoryTotal > 0 {
+					reportingMemoryServers++
+					memoryPercentTotal += float64(server.MemoryUsed) * 100 / float64(server.MemoryTotal)
+					overview.Summary.MemoryUsed += server.MemoryUsed
+					overview.Summary.MemoryTotal += server.MemoryTotal
+				}
+			}
+		} else {
+			overview.Summary.OfflineServers++
+		}
+	}
+
+	for _, incident := range overview.Incidents {
+		warningServerIDs[incident.ServerID] = struct{}{}
+	}
+
+	if reportingOnlineServers > 0 {
+		overview.Summary.AverageCPU = cpuTotal / float64(reportingOnlineServers)
+	}
+	if reportingMemoryServers > 0 {
+		overview.Summary.AverageMemory = memoryPercentTotal / float64(reportingMemoryServers)
+	}
+	overview.Summary.WarningServers = len(warningServerIDs)
+	overview.Summary.OpenIncidents = len(overview.Incidents)
+	overview.GeneratedAt = time.Now().UTC()
+
+	return overview, nil
 }

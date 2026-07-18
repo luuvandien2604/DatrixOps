@@ -58,16 +58,16 @@ type Snapshot struct {
 }
 
 type HeartbeatRequest struct {
-	Version     string  `json:"version"`
-	OSName      string  `json:"os_name"`
-	CPUCores    int     `json:"cpu_cores"`
-	CPUUsage    float64 `json:"cpu_usage"`
-	MemoryTotal uint64  `json:"memory_total"`
-	MemoryUsed  uint64  `json:"memory_used"`
-	NetIn       uint64  `json:"net_in"`
-	NetOut      uint64  `json:"net_out"`
-	DiskRead    uint64  `json:"disk_read"`
-	DiskWrite   uint64  `json:"disk_write"`
+	Version     string    `json:"version"`
+	OSName      string    `json:"os_name"`
+	CPUCores    int       `json:"cpu_cores"`
+	CPUUsage    float64   `json:"cpu_usage"`
+	MemoryTotal uint64    `json:"memory_total"`
+	MemoryUsed  uint64    `json:"memory_used"`
+	NetIn       uint64    `json:"net_in"`
+	NetOut      uint64    `json:"net_out"`
+	DiskRead    uint64    `json:"disk_read"`
+	DiskWrite   uint64    `json:"disk_write"`
 	Snapshot    *Snapshot `json:"snapshot,omitempty"`
 }
 
@@ -122,6 +122,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		 SET status = 'online', 
 		     os_info = $1, 
 		     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
+		     last_seen_at = NOW(),
 		     updated_at = NOW() 
 		 WHERE agent_token = $2
 		 RETURNING id`,

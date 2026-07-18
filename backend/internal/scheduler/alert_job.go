@@ -28,7 +28,7 @@ func NewAlertJob(db *database.DB, logger *slog.Logger) *AlertJob {
 
 func (j *AlertJob) Start() {
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
 		j.logger.Info("AlertJob started")
@@ -94,18 +94,15 @@ func (j *AlertJob) run() {
 
 	for _, rule := range rules {
 		userChannels := channelsByUser[rule.UserID]
-		if len(userChannels) > 0 {
-			j.evaluateRule(ctx, rule, userChannels)
-		}
+		// Alert state is part of the dashboard source of truth and must be
+		// evaluated even when the user has not configured a notification channel.
+		j.evaluateRule(ctx, rule, userChannels)
 	}
 }
 
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
 	// 1. Fetch servers matching rule AND user
-	// LƯU Ý: bảng servers KHÔNG có cột "last_seen" — trước đây query sai tên cột này
-	// khiến câu query lỗi ngay lập tức mỗi lần chạy (lỗi bị nuốt âm thầm ở dưới), nghĩa
-	// là rule loại "status" (Offline) chưa từng thật sự đánh giá được. Dùng "updated_at".
-	query := `SELECT id, name, updated_at FROM servers WHERE user_id = $1`
+	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1`
 	var args []interface{}
 	args = append(args, rule.UserID)
 
@@ -149,9 +146,9 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 			var val float64
 			metricCol := "cpu_usage"
 			if rule.Metric == "ram" {
-				metricCol = "memory_used * 100.0 / memory_total"
+				metricCol = "memory_used * 100.0 / NULLIF(memory_total, 0)"
 			}
-			err := j.db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM server_metrics WHERE server_id = $1 ORDER BY timestamp DESC LIMIT 1`, metricCol), s.ID).Scan(&val)
+			err := j.db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM server_metrics WHERE server_id = $1 ORDER BY created_at DESC LIMIT 1`, metricCol), s.ID).Scan(&val)
 			if err == nil {
 				currentValue = val
 				if rule.Operator == ">" && val > rule.Threshold {
