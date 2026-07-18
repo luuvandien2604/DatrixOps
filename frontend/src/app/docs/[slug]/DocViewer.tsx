@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
+import { ArrowLeft, LockKeyhole } from 'lucide-react';
 
 interface DocMeta {
   slug: string;
@@ -29,8 +30,9 @@ export default function DocViewer({ meta, content }: { meta: DocMeta, content: s
 
   if (!canView) {
     return (
-      <div className="container mx-auto px-4 py-12 max-w-3xl text-center">
-        <h1 className="text-3xl font-bold mb-4">Bạn không có quyền truy cập</h1>
+      <div className="docs-locked glass-card">
+        <div className="docs-card-icon"><LockKeyhole className="h-5 w-5" /></div>
+        <h1>Bạn không có quyền truy cập</h1>
         <p className="text-foreground-muted mb-8">Vui lòng đăng nhập để xem tài liệu này.</p>
         <Link href="/login" className="landing-cta primary">
           Đăng nhập ngay
@@ -40,26 +42,22 @@ export default function DocViewer({ meta, content }: { meta: DocMeta, content: s
   }
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl flex flex-col md:flex-row gap-8">
-      <div className="w-full md:w-1/4">
-        <div className="sticky top-24 glass-card p-4">
-          <Link href="/docs" className="text-sm text-foreground-muted hover:text-white flex items-center mb-4 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
+    <div className="doc-viewer">
+      <aside className="doc-viewer-meta">
+        <div className="sticky top-24">
+          <Link href="/docs" className="doc-back">
+            <ArrowLeft className="h-4 w-4" />
             Quay lại danh sách
           </Link>
-          <div className="mt-4">
-            <span className="text-xs px-2 py-1 bg-white/10 rounded-full">{meta.role}</span>
-          </div>
+          <span className="docs-role">{meta.role}</span>
         </div>
-      </div>
+      </aside>
       
-      <div className="w-full md:w-3/4">
-        <div className="glass-card p-8 prose prose-invert max-w-none prose-a:text-accent-blue hover:prose-a:text-blue-400">
+      <article className="doc-article">
+        <div className="glass-card prose prose-invert max-w-none">
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
-      </div>
+      </article>
     </div>
   );
 }

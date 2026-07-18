@@ -116,8 +116,6 @@ export default function MonitoringPage() {
     }
   };
 
-  const selectedServerName = servers.find(s => s.id === selectedServerId)?.name || 'Unknown Server';
-
   const timeRangeOptions = [
     { value: '15m', label: 'Last 15 minutes' },
     { value: '1h', label: 'Last 1 hour' },
@@ -141,7 +139,10 @@ export default function MonitoringPage() {
         <div className="flex items-center gap-3">
           <div className="relative">
             <ServerIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+            <label htmlFor="monitoring-server" className="sr-only">Select server</label>
             <select
+              id="monitoring-server"
+              name="monitoring-server"
               value={selectedServerId}
               onChange={(e) => setSelectedServerId(e.target.value)}
               className="pl-9 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
@@ -153,7 +154,10 @@ export default function MonitoringPage() {
             </select>
           </div>
           <div className="relative">
+            <label htmlFor="monitoring-range" className="sr-only">Select time range</label>
             <select
+              id="monitoring-range"
+              name="monitoring-range"
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
               className="pl-4 pr-8 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
@@ -165,9 +169,11 @@ export default function MonitoringPage() {
           </div>
 
           <button
+            type="button"
             onClick={() => fetchMetrics(false)}
             className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-colors text-[var(--color-muted)]"
             title="Làm mới"
+            aria-label="Làm mới biểu đồ"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
           </button>
@@ -197,13 +203,13 @@ export default function MonitoringPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={metrics}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8B96A5" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8B96A5" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 'dataMax + 10']} />
+                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
+                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 'dataMax + 10']} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#0B0F14', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px' }}
-                    itemStyle={{ color: '#E6EAF0' }}
+                    contentStyle={{ backgroundColor: '#0d0e12', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                    itemStyle={{ color: '#f6f3ec' }}
                   />
-                  <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#3B82F6" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#3B82F6' }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#a397ff" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#a397ff' }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -222,15 +228,15 @@ export default function MonitoringPage() {
                 <AreaChart data={metrics}>
                   <defs>
                     <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#7ce7c4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#7ce7c4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8B96A5" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8B96A5" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0B0F14', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px' }} />
-                  <Area type="monotone" dataKey="ram" name="RAM Usage" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={false} />
+                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
+                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Area type="monotone" dataKey="ram" name="RAM Usage" stroke="#7ce7c4" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -248,11 +254,11 @@ export default function MonitoringPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={metrics}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8B96A5" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8B96A5" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0B0F14', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px' }} />
-                  <Line type="monotone" dataKey="netIn" name="Recv (KB/s)" stroke="#8B5CF6" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="netOut" name="Sent (KB/s)" stroke="#C084FC" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
+                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Line type="monotone" dataKey="netIn" name="Recv (KB/s)" stroke="#a397ff" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="netOut" name="Sent (KB/s)" stroke="#79c9f4" strokeWidth={2} dot={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -270,11 +276,11 @@ export default function MonitoringPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={metrics}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="time" stroke="#8B96A5" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
-                  <YAxis stroke="#8B96A5" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0B0F14', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '10px' }} />
-                  <Line type="monotone" dataKey="diskRead" name="Read (KB/s)" stroke="#F59E0B" strokeWidth={2} dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="diskWrite" name="Write (KB/s)" stroke="#fbbf24" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
+                  <XAxis dataKey="time" stroke="#8c8d92" fontSize={10} tickLine={false} axisLine={false} minTickGap={30} />
+                  <YAxis stroke="#8c8d92" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0d0e12', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Line type="monotone" dataKey="diskRead" name="Read (KB/s)" stroke="#f1ca7b" strokeWidth={2} dot={false} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="diskWrite" name="Write (KB/s)" stroke="#d9a746" strokeWidth={2} strokeDasharray="5 5" dot={false} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

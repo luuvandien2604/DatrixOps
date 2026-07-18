@@ -32,8 +32,6 @@ export default async function DocPage({
 }) {
   const { slug } = await params;
 
-  console.log('slug =', slug);
-
   const doc = getDocBySlug(slug);
 
   if (!doc) {

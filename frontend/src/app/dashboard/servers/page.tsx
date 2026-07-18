@@ -226,10 +226,10 @@ export default function ServersPage() {
       {/* Add Server Modal */}
       {isAddServerModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
             <div className="flex justify-between items-center p-6 border-b border-white/5">
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
-              <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+              <h2 id="add-server-title" className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
+              <button type="button" aria-label="Close add server dialog" onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
                 <XCircle className="w-6 h-6" />
               </button>
             </div>
@@ -240,8 +240,10 @@ export default function ServersPage() {
                     Mỗi server sẽ được cấp một <strong>Agent Token</strong> riêng biệt để định danh. Vui lòng nhập tên gợi nhớ cho server này:
                   </p>
                   <div className="mb-6">
-                    <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Server Name</label>
+                    <label htmlFor="new-server-name" className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Server Name</label>
                     <input
+                      id="new-server-name"
+                      name="new-server-name"
                       type="text"
                       value={newServerName}
                       onChange={(e) => setNewServerName(e.target.value)}
@@ -321,20 +323,22 @@ export default function ServersPage() {
       {/* Restart Confirm Dialog */}
       {serverToRestart && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="restart-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <AlertTriangle className="w-6 h-6 text-rose-500" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Restart Server?</h2>
+              <h2 id="restart-server-title" className="text-xl font-bold text-[var(--foreground)]">Restart Server?</h2>
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
                 You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart.name}</strong>. This action may cause downtime.
               </p>
               <div className="mb-6">
-                <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
+                <label htmlFor="restart-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
                   Type "{serverToRestart.name}" to confirm
                 </label>
                 <input
+                  id="restart-server-confirmation"
+                  name="restart-server-confirmation"
                   type="text"
                   value={confirmRestartText}
                   onChange={(e) => setConfirmRestartText(e.target.value)}
@@ -379,20 +383,22 @@ export default function ServersPage() {
       {/* Delete Confirm Dialog */}
       {serverToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <Trash2 className="w-6 h-6 text-rose-500" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Delete Server?</h2>
+              <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Delete Server?</h2>
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
                 You are about to permanently delete the server <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong>. All associated metrics and data will be lost.
               </p>
               <div className="mb-6">
-                <label className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
+                <label htmlFor="delete-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
                   Type "{serverToDelete.name}" to confirm
                 </label>
                 <input
+                  id="delete-server-confirmation"
+                  name="delete-server-confirmation"
                   type="text"
                   value={confirmDeleteText}
                   onChange={(e) => setConfirmDeleteText(e.target.value)}
@@ -434,15 +440,17 @@ export default function ServersPage() {
       {/* Edit Meta Confirm Dialog */}
       {editMetaServer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/30 overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/5">
               <FileText className="w-6 h-6 text-amber-500" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
+              <h2 id="edit-server-title" className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
             </div>
             <div className="p-6">
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
+                <label htmlFor="server-group-name" className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
                 <input
+                  id="server-group-name"
+                  name="server-group-name"
                   type="text"
                   value={editGroupName}
                   onChange={(e) => setEditGroupName(e.target.value)}
@@ -451,8 +459,10 @@ export default function ServersPage() {
                 />
               </div>
               <div className="mb-6">
-                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
+                <label htmlFor="server-tags" className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
                 <input
+                  id="server-tags"
+                  name="server-tags"
                   type="text"
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
@@ -495,10 +505,10 @@ export default function ServersPage() {
       {/* Update Agent Confirm Dialog */}
       {serverToUpdate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="glass-card w-full max-w-md bg-[#0B0F14] border-emerald-500/30 overflow-hidden flex flex-col">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="update-agent-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-emerald-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-emerald-500/5">
               <RefreshCw className="w-6 h-6 text-emerald-500" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
+              <h2 id="update-agent-title" className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-6">

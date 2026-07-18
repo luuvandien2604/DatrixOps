@@ -136,9 +136,9 @@ export default function AlertsPage() {
         <h1 className="text-2xl font-bold text-[var(--foreground)] tracking-tight">Cảnh báo (Alerts)</h1>
       </div>
 
-      <div className="flex gap-4 border-b border-[var(--border-color)]">
-        <button onClick={() => setActiveTab('rules')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'rules' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Quy tắc (Rules)</button>
-        <button onClick={() => setActiveTab('channels')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'channels' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Kênh nhận (Channels)</button>
+      <div role="tablist" aria-label="Alert configuration" className="flex gap-4 border-b border-[var(--border-color)]">
+        <button type="button" role="tab" aria-selected={activeTab === 'rules'} onClick={() => setActiveTab('rules')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'rules' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Quy tắc (Rules)</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'channels'} onClick={() => setActiveTab('channels')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'channels' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Kênh nhận (Channels)</button>
       </div>
 
       {activeTab === 'rules' && (
@@ -149,12 +149,12 @@ export default function AlertsPage() {
             </h3>
             <form onSubmit={createRule} className="space-y-4">
               <div>
-                <label className="block text-sm text-[var(--color-muted)] mb-1">Tên cảnh báo</label>
-                <input required value={ruleName} onChange={e => setRuleName(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" placeholder="VD: CPU quá tải" />
+                <label htmlFor="rule-name" className="block text-sm text-[var(--color-muted)] mb-1">Tên cảnh báo</label>
+                <input id="rule-name" name="rule-name" required value={ruleName} onChange={e => setRuleName(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" placeholder="VD: CPU quá tải" />
               </div>
               <div>
-                <label className="block text-sm text-[var(--color-muted)] mb-1">Chỉ số</label>
-                <select value={ruleMetric} onChange={e => setRuleMetric(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
+                <label htmlFor="rule-metric" className="block text-sm text-[var(--color-muted)] mb-1">Chỉ số</label>
+                <select id="rule-metric" name="rule-metric" value={ruleMetric} onChange={e => setRuleMetric(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
                   <option value="cpu" className="bg-[#0B0F14]">CPU Usage</option>
                   <option value="ram" className="bg-[#0B0F14]">RAM Usage</option>
                   <option value="status" className="bg-[#0B0F14]">Trạng thái Offline</option>
@@ -163,15 +163,15 @@ export default function AlertsPage() {
               {ruleMetric !== 'status' && (
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="block text-sm text-[var(--color-muted)] mb-1">Điều kiện</label>
-                    <select value={ruleOperator} onChange={e => setRuleOperator(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
+                    <label htmlFor="rule-operator" className="block text-sm text-[var(--color-muted)] mb-1">Điều kiện</label>
+                    <select id="rule-operator" name="rule-operator" value={ruleOperator} onChange={e => setRuleOperator(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
                       <option value=">" className="bg-[#0B0F14]">Lớn hơn (&gt;)</option>
                       <option value="<" className="bg-[#0B0F14]">Nhỏ hơn (&lt;)</option>
                     </select>
                   </div>
                   <div className="flex-1">
-                    <label className="block text-sm text-[var(--color-muted)] mb-1">Ngưỡng (%)</label>
-                    <input required value={ruleThreshold} onChange={e => setRuleThreshold(e.target.value)} type="number" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
+                    <label htmlFor="rule-threshold" className="block text-sm text-[var(--color-muted)] mb-1">Ngưỡng (%)</label>
+                    <input id="rule-threshold" name="rule-threshold" required value={ruleThreshold} onChange={e => setRuleThreshold(e.target.value)} type="number" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
                   </div>
                 </div>
               )}
@@ -190,7 +190,7 @@ export default function AlertsPage() {
                     {rule.metric === 'status' ? 'Cảnh báo khi Server Offline' : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
                   </p>
                 </div>
-                <button onClick={() => deleteRule(rule.id)} className="text-rose-500 hover:text-rose-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                <button type="button" aria-label={`Xoá quy tắc ${rule.name}`} onClick={() => deleteRule(rule.id)} className="text-rose-500 hover:text-rose-400 p-2"><Trash2 className="w-5 h-5"/></button>
               </div>
             ))}
             {rules.length === 0 && <div className="p-8 text-center text-[var(--color-muted)] border border-[var(--border-color)] rounded-xl border-dashed">Chưa có quy tắc nào.</div>}
@@ -206,12 +206,12 @@ export default function AlertsPage() {
             </h3>
             <form onSubmit={createChannel} className="space-y-4">
               <div>
-                <label className="block text-sm text-[var(--color-muted)] mb-1">Tên kênh</label>
-                <input required value={channelName} onChange={e => setChannelName(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" placeholder="VD: Kênh IT Support" />
+                <label htmlFor="channel-name" className="block text-sm text-[var(--color-muted)] mb-1">Tên kênh</label>
+                <input id="channel-name" name="channel-name" required value={channelName} onChange={e => setChannelName(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" placeholder="VD: Kênh IT Support" />
               </div>
               <div>
-                <label className="block text-sm text-[var(--color-muted)] mb-1">Nền tảng</label>
-                <select value={channelType} onChange={e => setChannelType(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
+                <label htmlFor="channel-type" className="block text-sm text-[var(--color-muted)] mb-1">Nền tảng</label>
+                <select id="channel-type" name="channel-type" value={channelType} onChange={e => setChannelType(e.target.value)} className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white">
                   <option value="telegram" className="bg-[#0B0F14]">Telegram Bot</option>
                   <option value="discord" className="bg-[#0B0F14]">Discord Webhook</option>
                 </select>
@@ -219,18 +219,18 @@ export default function AlertsPage() {
               {channelType === 'telegram' ? (
                 <>
                   <div>
-                    <label className="block text-sm text-[var(--color-muted)] mb-1">Bot Token</label>
-                    <input required value={channelToken} onChange={e => setChannelToken(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
+                    <label htmlFor="channel-token" className="block text-sm text-[var(--color-muted)] mb-1">Bot Token</label>
+                    <input id="channel-token" name="channel-token" required value={channelToken} onChange={e => setChannelToken(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
                   </div>
                   <div>
-                    <label className="block text-sm text-[var(--color-muted)] mb-1">Chat ID</label>
-                    <input required value={channelChatId} onChange={e => setChannelChatId(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
+                    <label htmlFor="channel-chat-id" className="block text-sm text-[var(--color-muted)] mb-1">Chat ID</label>
+                    <input id="channel-chat-id" name="channel-chat-id" required value={channelChatId} onChange={e => setChannelChatId(e.target.value)} type="text" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
                   </div>
                 </>
               ) : (
                 <div>
-                  <label className="block text-sm text-[var(--color-muted)] mb-1">Webhook URL</label>
-                  <input required value={channelWebhook} onChange={e => setChannelWebhook(e.target.value)} type="url" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
+                  <label htmlFor="channel-webhook" className="block text-sm text-[var(--color-muted)] mb-1">Webhook URL</label>
+                  <input id="channel-webhook" name="channel-webhook" required value={channelWebhook} onChange={e => setChannelWebhook(e.target.value)} type="url" className="w-full bg-transparent border border-[var(--border-color)] rounded-lg p-2 text-sm text-white" />
                 </div>
               )}
               
@@ -251,7 +251,7 @@ export default function AlertsPage() {
                     {ch.type}
                   </p>
                 </div>
-                <button onClick={() => deleteChannel(ch.id)} className="text-rose-500 hover:text-rose-400 p-2"><Trash2 className="w-5 h-5"/></button>
+                <button type="button" aria-label={`Xoá kênh ${ch.name}`} onClick={() => deleteChannel(ch.id)} className="text-rose-500 hover:text-rose-400 p-2"><Trash2 className="w-5 h-5"/></button>
               </div>
             ))}
             {channels.length === 0 && <div className="p-8 text-center text-[var(--color-muted)] border border-[var(--border-color)] rounded-xl border-dashed">Chưa có kênh nào.</div>}

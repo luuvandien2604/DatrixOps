@@ -14,6 +14,7 @@ const signal = [34, 46, 39, 54, 49, 68, 52, 73, 59, 65, 48, 57, 41, 63, 52, 70, 
 export default function LandingPage() {
   const [liveSignal, setLiveSignal] = useState(signal);
   const [activeFeed, setActiveFeed] = useState(0);
+  const [copied, setCopied] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,17 +33,25 @@ export default function LandingPage() {
   };
 
   const currentCpu = liveSignal[liveSignal.length - 1];
+  const installCommand = 'curl -sSL datrixops.io/install.sh | sudo bash';
+
+  const copyInstallCommand = async () => {
+    await navigator.clipboard.writeText(installCommand);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
 
   return (
     <div ref={pageRef} onPointerMove={handlePointerMove} className="landing-liquid min-h-screen overflow-hidden text-[#f5f7fb]">
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <div className="landing-noise" aria-hidden="true" />
 
       <header className="landing-header">
         <Link href="/" className="flex items-center gap-3">
           <span className="brand-orbit"><Command className="h-4 w-4" /></span>
-          <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#86f2cf]">OPS</span></span>
+          <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#aebdff]">OPS</span></span>
         </Link>
-        <nav className="hidden items-center gap-7 text-[11px] text-white/45 md:flex">
+        <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-[11px] text-white/45 md:flex">
           <a href="#platform" className="transition hover:text-white">Platform</a>
           <a href="#workflow" className="transition hover:text-white">Workflow</a>
           <a href="#agents" className="transition hover:text-white">Agent</a>
@@ -54,9 +63,9 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main>
+      <main id="main-content">
         <section className="landing-hero">
-          <div className="hero-liquid-orb" aria-hidden="true" />
+          <div className="hero-liquid-field" aria-hidden="true" />
           <div className="relative z-10 mx-auto max-w-4xl text-center">
             <div className="landing-badge"><Radio className="h-3 w-3" />Agent network is operational</div>
             <h1>See every signal.<br /><em>Control every server.</em></h1>
@@ -67,31 +76,32 @@ export default function LandingPage() {
             </div>
           </div>
 
+          {/* Product-native observability visual framed with liquid chrome. */}
           <div className="hero-console-wrap">
             <div className="hero-console">
               <div className="console-topbar">
                 <div className="flex gap-1.5"><i /><i /><i /></div>
-                <div className="console-address"><ShieldCheck className="h-2.5 w-2.5 text-[#7af0c9]" />app.datrixops.io / production</div>
-                <span className="text-[11px] text-[#7af0c9]">● LIVE</span>
+                <div className="console-address"><ShieldCheck className="h-2.5 w-2.5 text-[#8bd5c5]" />app.datrixops.io / production</div>
+                <span className="text-[10px] text-[#8bd5c5]">● LIVE</span>
               </div>
               <div className="console-body">
-                <aside className="console-rail">
+                <aside className="console-rail" aria-label="Monitoring modules">
                   <Command className="h-4 w-4 text-white/70" />
                   {[Activity, Server, BellRing, Globe2].map((Icon, index) => <span className={index === 0 ? 'active' : ''} key={index}><Icon className="h-3.5 w-3.5" /></span>)}
                 </aside>
                 <div className="min-w-0 flex-1 p-4 sm:p-5">
                   <div className="mb-5 flex items-end justify-between">
-                    <div><p className="text-[10px] uppercase tracking-[.2em] text-[#7af0c9]">Live infrastructure</p><h2 className="mt-1 text-base font-medium">Production overview</h2></div>
-                    <span className="console-button"><span className="h-1.5 w-1.5 rounded-full bg-[#7af0c9]" />12 agents</span>
+                    <div><p className="text-[9px] uppercase tracking-[.2em] text-[#8bd5c5]">Live infrastructure</p><h2 className="mt-1 text-base font-medium">Production overview</h2></div>
+                    <span className="console-button"><span className="h-1.5 w-1.5 rounded-full bg-[#8bd5c5]" />12 agents</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <ConsoleMetric icon={Server} label="Online" value="11/12" tint="#7af0c9" />
-                    <ConsoleMetric icon={Cpu} label="Live CPU" value={`${currentCpu}%`} tint="#a99cff" pulse />
+                    <ConsoleMetric icon={Server} label="Online" value="11/12" tint="#8bd5c5" />
+                    <ConsoleMetric icon={Cpu} label="Live CPU" value={`${currentCpu}%`} tint="#aebdff" pulse />
                     <ConsoleMetric icon={BellRing} label="Incidents" value={activeFeed === 2 ? '01' : '02'} tint="#ff91a4" />
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-[1.55fr_.8fr]">
                     <div className="console-chart">
-                      <div className="flex items-center justify-between"><span>Resource load</span><span className="font-mono text-[10px] text-white/35">LAST 2 HOURS</span></div>
+                      <div className="flex items-center justify-between"><span>Resource load</span><span className="font-mono text-[9px] text-white/35">LAST 2 HOURS</span></div>
                       <div className="signal-bars">{liveSignal.map((height, index) => <i key={index} className={index === liveSignal.length - 1 ? 'is-live' : ''} style={{ height: `${height}%` }} />)}</div>
                     </div>
                     <div className="console-health">
@@ -103,7 +113,9 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-          <p className="mt-8 text-center text-[9px] uppercase tracking-[.22em] text-white/22">Built for physical servers · VPS · cloud instances · containers</p>
+          <div className="hero-disciplines" aria-label="Platform capabilities">
+            <span>Observe</span><span>Protect</span><span>Automate</span><span>Resolve</span><span>Scale</span>
+          </div>
         </section>
 
         <section className="landing-proof">
@@ -131,9 +143,9 @@ export default function LandingPage() {
               <div className="demo-toolbar"><Activity className="h-3.5 w-3.5" /><span>Fleet telemetry</span><i>LIVE</i></div>
               <div className="demo-wave">
                 <svg viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
-                  <defs><linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8f80ff" stopOpacity=".6" /><stop offset="1" stopColor="#8f80ff" stopOpacity="0" /></linearGradient></defs>
+                  <defs><linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3150ff" stopOpacity=".62" /><stop offset="1" stopColor="#3150ff" stopOpacity="0" /></linearGradient></defs>
                   <path d="M0 145 C50 130,60 95,110 110 S170 155,210 100 S275 60,315 96 S380 140,425 73 S500 42,540 83 S580 110,600 38 L600 180 L0 180Z" fill="url(#waveFill)" />
-                  <path d="M0 145 C50 130,60 95,110 110 S170 155,210 100 S275 60,315 96 S380 140,425 73 S500 42,540 83 S580 110,600 38" fill="none" stroke="#a99cff" strokeWidth="3" />
+                  <path d="M0 145 C50 130,60 95,110 110 S170 155,210 100 S275 60,315 96 S380 140,425 73 S500 42,540 83 S580 110,600 38" fill="none" stroke="#aebdff" strokeWidth="3" />
                 </svg>
               </div>
               <div className="demo-metrics"><span><b>41%</b> CPU</span><span><b>60%</b> Memory</span><span><b>2.4 Gb/s</b> Network</span></div>
@@ -164,7 +176,12 @@ export default function LandingPage() {
             <span className="landing-badge"><Terminal className="h-3 w-3" />Native Go agent</span>
             <h2>Light on every server.<br /><em>Heavy on insight.</em></h2>
             <p>A small, dependency-free agent reports the signals that matter without becoming another workload you need to babysit.</p>
-            <div className="install-command"><code><span>$</span> curl -sSL datrixops.io/install.sh | sudo bash</code><button aria-label="Copy command">Copy</button></div>
+            <div className="install-command">
+              <code><span>$</span> {installCommand}</code>
+              <button type="button" onClick={copyInstallCommand} aria-live="polite">
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
             <Link href="/docs" className="landing-cta secondary mt-5">Read installation guide <ArrowRight className="h-4 w-4" /></Link>
           </div>
         </section>
@@ -211,5 +228,5 @@ function DemoAlert({ icon: Icon, title, server, tone, active }: { icon: LucideIc
 }
 
 function WorkflowItem({ number, icon: Icon, title, text }: { number: string; icon: LucideIcon; title: string; text: string }) {
-  return <div className="workflow-item"><div className="flex items-start justify-between"><span>{number}</span><Icon className="h-5 w-5 text-[#998cff]" /></div><h3>{title}</h3><p>{text}</p></div>;
+  return <div className="workflow-item"><div className="flex items-start justify-between"><span>{number}</span><Icon className="h-5 w-5 text-[#8fa2ff]" /></div><h3>{title}</h3><p>{text}</p></div>;
 }

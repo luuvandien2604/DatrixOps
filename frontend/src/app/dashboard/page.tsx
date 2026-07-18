@@ -71,7 +71,7 @@ export default function OverviewDashboard() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={Server} label="Fleet online" value={`${online}/${total}`} note={`${health}% healthy`} color="#70f2be" bars={[35,55,44,72,64,80,74]} />
-        <MetricCard icon={Cpu} label="Average CPU" value={`${avgCpu}%`} note="8% below threshold" color="#a99cff" bars={[40,48,33,61,48,65,52]} />
+        <MetricCard icon={Cpu} label="Average CPU" value={`${avgCpu}%`} note="8% below threshold" color="#8fa2ff" bars={[40,48,33,61,48,65,52]} />
         <MetricCard icon={MemoryStick} label="Memory used" value="60%" note="7.2 TB available" color="#64c7ff" bars={[38,46,52,49,58,62,60]} />
         <MetricCard icon={BellRing} label="Open incidents" value="2" note="1 needs attention" color="#ff879c" bars={[18,22,16,34,25,48,31]} />
       </section>

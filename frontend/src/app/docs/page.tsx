@@ -12,8 +12,10 @@ export default function DocsPage() {
   const docs = getAllDocs();
   
   return (
-    <div className="container mx-auto px-4 py-12 max-w-5xl">
-      <h1 className="text-4xl font-bold mb-8">Tài liệu hướng dẫn</h1>
+    <div className="docs-index">
+      <span className="section-eyebrow">DatrixOps knowledge base</span>
+      <h1>Tài liệu <em>hướng dẫn.</em></h1>
+      <p className="docs-index-lede">Từ lần kết nối agent đầu tiên đến vận hành một hạ tầng hoàn chỉnh—mọi hướng dẫn đều được tổ chức để bạn tìm thấy câu trả lời nhanh.</p>
       <DocsList docs={docs} />
     </div>
   );

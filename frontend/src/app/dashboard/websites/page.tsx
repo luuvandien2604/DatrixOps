@@ -116,7 +116,7 @@ export default function WebsitesPage() {
                     <a href={w.url} target="_blank" rel="noreferrer" className="text-sm text-blue-400 hover:underline">{w.url}</a>
                   </div>
                 </div>
-                <button onClick={() => handleDelete(w.id)} className="text-[var(--color-muted)] hover:text-rose-500 transition-colors">
+                <button type="button" onClick={() => handleDelete(w.id)} aria-label={`Xoá ${w.name}`} className="text-[var(--color-muted)] hover:text-rose-500 transition-colors">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -151,22 +151,22 @@ export default function WebsitesPage() {
       {/* Modal Thêm */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="p-4 border-b border-[var(--border-color)] flex justify-between items-center">
-              <h3 className="font-bold text-[var(--foreground)]">Thêm Website giám sát</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-[var(--color-muted)] hover:text-[var(--foreground)]">
+              <h3 id="website-dialog-title" className="font-bold text-[var(--foreground)]">Thêm Website giám sát</h3>
+              <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Đóng hộp thoại" className="text-[var(--color-muted)] hover:text-[var(--foreground)]">
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleAddWebsite} className="p-4 space-y-4">
               {error && <div className="p-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-lg text-sm">{error}</div>}
               <div>
-                <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Tên gợi nhớ</label>
-                <input required type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-[#0B0F14] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--foreground)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="VD: Trang chủ Cty" />
+                <label htmlFor="website-name" className="block text-sm font-medium text-[var(--foreground)] mb-1">Tên gợi nhớ</label>
+                <input id="website-name" name="website-name" required type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full bg-[#0B0F14] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--foreground)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="VD: Trang chủ Cty" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[var(--foreground)] mb-1">URL (Bao gồm https://)</label>
-                <input required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-[#0B0F14] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--foreground)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="https://example.com" />
+                <label htmlFor="website-url" className="block text-sm font-medium text-[var(--foreground)] mb-1">URL (Bao gồm https://)</label>
+                <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-[#0B0F14] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--foreground)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="https://example.com" />
               </div>
               <div className="pt-2 flex justify-end gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-[var(--color-muted)] hover:text-[var(--foreground)]">Huỷ</button>

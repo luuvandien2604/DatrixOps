@@ -114,9 +114,11 @@ export default function APIKeyPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button 
+                      type="button"
                       onClick={() => deleteKey(k.id)}
                       className="text-rose-400 hover:text-rose-300 p-2 hover:bg-white/5 rounded-lg transition-colors"
                       title="Revoke Key"
+                      aria-label={`Revoke ${k.name}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -130,8 +132,8 @@ export default function APIKeyPage() {
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="glass-card w-full max-w-md p-6 rounded-2xl border border-white/10 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">Generate API Key</h3>
+          <div role="dialog" aria-modal="true" aria-labelledby="api-key-dialog-title" className="glass-card w-full max-w-md p-6 rounded-2xl border border-white/10 shadow-2xl">
+            <h3 id="api-key-dialog-title" className="text-xl font-bold mb-4">Generate API Key</h3>
             
             {generatedKey ? (
               <div className="space-y-4">
@@ -143,7 +145,9 @@ export default function APIKeyPage() {
                 <div className="flex items-center gap-2 p-3 bg-black/20 rounded-lg border border-white/5">
                   <code className="text-emerald-400 text-sm flex-1 truncate">{generatedKey}</code>
                   <button 
+                    type="button"
                     onClick={copyToClipboard}
+                    aria-label="Copy generated API key"
                     className="p-2 hover:bg-white/10 rounded transition-colors"
                   >
                     {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-[var(--color-muted)]" />}
@@ -162,8 +166,10 @@ export default function APIKeyPage() {
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Key Name</label>
+                  <label htmlFor="api-key-name" className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Key Name</label>
                   <input
+                    id="api-key-name"
+                    name="api-key-name"
                     type="text"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}

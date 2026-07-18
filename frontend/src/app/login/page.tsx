@@ -35,15 +35,15 @@ export default function LoginPage() {
       
       // Redirect to dashboard
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Invalid credentials');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Invalid credentials');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-shell">
+    <main id="main-content" className="auth-shell">
       <Link href="/" className="auth-back"><ArrowLeft className="h-4 w-4" /> Back to home</Link>
       <div className="auth-liquid auth-liquid-one" />
       <div className="auth-liquid auth-liquid-two" />
@@ -54,12 +54,12 @@ export default function LoginPage() {
             <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#86f2cf]">OPS</span></span>
           </Link>
           <div className="auth-icon"><LockKeyhole className="h-5 w-5" /></div>
-          <h1>Welcome back.</h1>
+          <h1>Welcome <em>back.</em></h1>
           <p>Sign in to your infrastructure control plane.</p>
         </div>
 
         {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg mb-6 text-sm text-center flex items-center justify-center gap-2">
+          <div role="alert" aria-live="polite" className="auth-message is-error">
              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
             {error}
           </div>
@@ -67,24 +67,30 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label className="auth-label">Email address</label>
+            <label htmlFor="login-email" className="auth-label">Email address</label>
             <input
+              id="login-email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               className="auth-input"
               placeholder="admin@example.com"
             />
           </div>
 
           <div>
-            <label className="auth-label">Password</label>
+            <label htmlFor="login-password" className="auth-label">Password</label>
             <input
+              id="login-password"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
               className="auth-input"
               placeholder="••••••••"
             />
@@ -94,9 +100,10 @@ export default function LoginPage() {
             <input
               type="checkbox"
               id="remember"
+              name="remember"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 rounded border-white/10 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+              className="auth-checkbox"
             />
             <label htmlFor="remember" className="text-sm text-[var(--color-muted)] cursor-pointer select-none">
               Remember me for 30 days
@@ -114,13 +121,13 @@ export default function LoginPage() {
           <div className="text-center pt-4">
             <p className="text-[var(--color-muted)] text-sm">
               Don't have an account?{' '}
-              <a href="/register" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
+              <Link href="/register" className="auth-link">
                 Register here
-              </a>
+              </Link>
             </p>
           </div>
         </form>
       </div>
-    </div>
+    </main>
   );
 }

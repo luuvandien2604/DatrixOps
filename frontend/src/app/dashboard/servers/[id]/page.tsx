@@ -158,11 +158,11 @@ export default function ServerDetailsPage() {
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-[var(--border-color)]">
-        <button onClick={() => setActiveTab('overview')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tổng quan (Overview)</button>
-        <button onClick={() => setActiveTab('processes')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'processes' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tiến trình (Processes)</button>
-        <button onClick={() => setActiveTab('services')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'services' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Dịch vụ (Services)</button>
-        <button onClick={() => setActiveTab('docker')} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'docker' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Docker</button>
+      <div role="tablist" aria-label="Server detail views" className="flex gap-4 overflow-x-auto border-b border-[var(--border-color)]">
+        <button type="button" role="tab" aria-selected={activeTab === 'overview'} onClick={() => setActiveTab('overview')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tổng quan (Overview)</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'processes'} onClick={() => setActiveTab('processes')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'processes' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Tiến trình (Processes)</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'services'} onClick={() => setActiveTab('services')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'services' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Dịch vụ (Services)</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'docker'} onClick={() => setActiveTab('docker')} className={`whitespace-nowrap pb-3 text-sm font-medium transition-colors ${activeTab === 'docker' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>Docker</button>
       </div>
 
       {activeTab === 'overview' && (
@@ -320,10 +320,10 @@ export default function ServerDetailsPage() {
       {/* Logs Modal */}
       {logsModal.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="bg-[#0B0F14] border border-[var(--border-color)] rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="bg-[#0B0F14] border border-[var(--border-color)] rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
             <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)]">
-              <h3 className="font-semibold text-white">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
-              <button onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} className="text-[var(--color-muted)] hover:text-white transition-colors">
+              <h3 id="container-logs-title" className="font-semibold text-white">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
+              <button type="button" onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} aria-label="Đóng nhật ký container" className="text-[var(--color-muted)] hover:text-white transition-colors">
                 ✕
               </button>
             </div>

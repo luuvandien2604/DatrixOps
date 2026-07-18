@@ -24,15 +24,15 @@ export default function RegisterPage() {
       });
       // After successful registration, redirect to login
       router.push('/login');
-    } catch (err: any) {
-      setError(err.message || 'Failed to register');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to register');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-shell">
+    <main id="main-content" className="auth-shell">
       <Link href="/" className="auth-back"><ArrowLeft className="h-4 w-4" /> Back to home</Link>
       <div className="auth-liquid auth-liquid-one" />
       <div className="auth-liquid auth-liquid-two" />
@@ -43,12 +43,12 @@ export default function RegisterPage() {
             <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[#86f2cf]">OPS</span></span>
           </Link>
           <div className="auth-icon"><Server className="h-5 w-5" /></div>
-          <h1>Create workspace.</h1>
+          <h1>Create <em>workspace.</em></h1>
           <p>Initialize your server monitoring control plane.</p>
         </div>
 
         {error && (
-          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg mb-6 text-sm text-center flex items-center justify-center gap-2">
+          <div role="alert" aria-live="polite" className="auth-message is-error">
              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
             {error}
           </div>
@@ -56,25 +56,31 @@ export default function RegisterPage() {
 
         <form onSubmit={handleRegister} className="space-y-5">
           <div>
-            <label className="auth-label">Email address</label>
+            <label htmlFor="register-email" className="auth-label">Email address</label>
             <input
+              id="register-email"
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               className="auth-input"
               placeholder="admin@example.com"
             />
           </div>
 
           <div>
-            <label className="auth-label">Password</label>
+            <label htmlFor="register-password" className="auth-label">Password</label>
             <input
+              id="register-password"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+              autoComplete="new-password"
               className="auth-input"
               placeholder="••••••••"
             />
@@ -91,13 +97,13 @@ export default function RegisterPage() {
           <div className="text-center pt-4">
             <p className="text-[var(--color-muted)] text-sm">
               Already initialized?{' '}
-              <a href="/login" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
+              <Link href="/login" className="auth-link">
                 Login here
-              </a>
+              </Link>
             </p>
           </div>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
