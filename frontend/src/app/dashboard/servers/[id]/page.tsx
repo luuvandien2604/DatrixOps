@@ -95,7 +95,15 @@ interface ServerDetails {
   name: string;
   status: string;
   ip_address: string;
-  os_info?: string | { os_name?: string; os_family?: string; platform?: string; version?: string };
+  os_info?: string | {
+    os_name?: string;
+    os_family?: string;
+    platform?: string;
+    version?: string;
+    cpu_usage?: number;
+    memory_used?: number;
+    memory_total?: number;
+  };
   snapshot?: string;
   inventory?: string;
   inventory_updated_at?: string;
@@ -304,7 +312,15 @@ export default function ServerDetailsPage() {
     if (!server.os_info) return {};
     if (typeof server.os_info === 'object') return server.os_info;
     try {
-      return JSON.parse(server.os_info) as { os_name?: string; os_family?: string; platform?: string; version?: string };
+      return JSON.parse(server.os_info) as {
+        os_name?: string;
+        os_family?: string;
+        platform?: string;
+        version?: string;
+        cpu_usage?: number;
+        memory_used?: number;
+        memory_total?: number;
+      };
     } catch {
       return {};
     }
@@ -366,6 +382,10 @@ export default function ServerDetailsPage() {
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
+  const totalCPUUsage = parsedOSInfo.cpu_usage;
+  const totalMemoryUsage = parsedOSInfo.memory_total && parsedOSInfo.memory_total > 0
+    ? (Number(parsedOSInfo.memory_used || 0) / Number(parsedOSInfo.memory_total)) * 100
+    : undefined;
   const manualUpdateCommand = osFamily === 'windows'
     ? 'irm https://datrixops.vandien.space/update-agent.ps1 | iex'
     : 'curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh';
@@ -629,38 +649,68 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'processes' && (
-        <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
-          <div className="p-5 border-b border-[var(--border-color)]">
-            <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP RESOURCE-CONSUMING PROCESSES</h3>
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                label: 'Total CPU usage',
+                value: totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : 'Unavailable',
+                detail: 'Current system-wide usage',
+                tone: 'text-[var(--rose)]',
+              },
+              {
+                label: 'Total RAM usage',
+                value: totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : 'Unavailable',
+                detail: parsedOSInfo.memory_total ? `${formatBytes(parsedOSInfo.memory_used)} of ${formatBytes(parsedOSInfo.memory_total)}` : 'Current system-wide usage',
+                tone: 'text-[var(--violet)]',
+              },
+              {
+                label: 'Processes shown',
+                value: String(snapshot?.top_processes?.length || 0),
+                detail: 'Highest resource consumers',
+                tone: 'text-[var(--mint)]',
+              },
+            ].map(item => (
+              <div key={item.label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                <p className="text-sm font-semibold text-[var(--color-muted)]">{item.label}</p>
+                <p className={`mt-2 text-2xl font-bold ${item.tone}`}>{item.value}</p>
+                <p className="mt-1 text-xs font-medium text-[var(--color-muted)]">{item.detail}</p>
+              </div>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                <tr>
-                  <th className="px-6 py-3 font-medium">PID</th>
-                  <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
-                  <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
-                  <th className="px-6 py-3 font-medium">CPU %</th>
-                  <th className="px-6 py-3 font-medium">RAM %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-color)]">
-                {snapshot?.top_processes?.map(p => (
-                  <tr key={p.pid} className="hover:bg-[var(--background)] transition-colors">
-                    <td className="px-6 py-3 text-[var(--color-muted)]">{p.pid}</td>
-                    <td className="px-6 py-3 font-medium text-[var(--foreground)]">{p.name}</td>
-                    <td className="px-6 py-3 text-[var(--color-muted)]">{p.user}</td>
-                    <td className="px-6 py-3 text-rose-400">{p.cpu.toFixed(1)}%</td>
-                    <td className="px-6 py-3 text-blue-400">{p.ram.toFixed(1)}%</td>
-                  </tr>
-                ))}
-                {!snapshot?.top_processes?.length && (
+          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
+            <div className="p-5 border-b border-[var(--border-color)]">
+              <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP RESOURCE-CONSUMING PROCESSES</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[var(--background)] text-[var(--color-muted)]">
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
+                    <th className="px-6 py-3 font-medium">PID</th>
+                    <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
+                    <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
+                    <th className="px-6 py-3 font-medium">CPU %</th>
+                    <th className="px-6 py-3 font-medium">RAM %</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-color)]">
+                  {snapshot?.top_processes?.map(p => (
+                    <tr key={p.pid} className="hover:bg-[var(--background)] transition-colors">
+                      <td className="px-6 py-3 text-[var(--color-muted)]">{p.pid}</td>
+                      <td className="px-6 py-3 font-medium text-[var(--foreground)]">{p.name}</td>
+                      <td className="px-6 py-3 text-[var(--color-muted)]">{p.user}</td>
+                      <td className="px-6 py-3 text-rose-400">{p.cpu.toFixed(1)}%</td>
+                      <td className="px-6 py-3 text-blue-400">{p.ram.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                  {!snapshot?.top_processes?.length && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

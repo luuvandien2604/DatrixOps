@@ -145,9 +145,16 @@ export default function ServersPage() {
               ) : (
                 servers.map((server) => {
                   let osInfo = null;
+                  let serverSnapshot = null;
                   try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+                  try {
+                    if (server.snapshot) {
+                      serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
+                    }
+                  } catch (e) { }
 
                   const isOffline = server.status !== 'online';
+                  const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
                   // os_info remains available after an agent disconnects.
                   // Do not present stale CPU or RAM values as live telemetry.
                   const liveInfo = isOffline ? null : osInfo;
@@ -182,7 +189,7 @@ export default function ServersPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
-                        {server.ip_address || '—'}
+                        {agentIPAddress || '—'}
                       </td>
                       <td className="py-4 px-6 text-sm">
                         <div className="text-[var(--foreground)]">{osInfo ? osInfo.os_name : 'Unknown'}</div>
@@ -235,16 +242,16 @@ export default function ServersPage() {
                             <FileText className="w-4 h-4" />
                           </button>
                           <button
-                            disabled={!server.ip_address}
+                            disabled={!agentIPAddress}
                             onClick={event => {
                               event.stopPropagation();
-                              if (!server.ip_address) return;
+                              if (!agentIPAddress) return;
                               setSSHUsername('root');
                               setSSHPort('22');
-                              setSSHServer({ name: server.name, ipAddress: server.ip_address });
+                              setSSHServer({ name: server.name, ipAddress: agentIPAddress });
                             }}
                             className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-35"
-                            title={server.ip_address ? 'Connect with SSH' : 'IP address is unavailable'}
+                            title={agentIPAddress ? 'Open local SSH connection' : 'IP address is unavailable'}
                           >
                             <TerminalSquare className="w-4 h-4" />
                           </button>
@@ -300,7 +307,7 @@ export default function ServersPage() {
             </div>
             <div className="space-y-5 p-6">
               <p className="text-sm leading-6 text-[var(--color-muted)]">
-                DatrixOps will hand this connection to your local SSH client. Credentials and private keys remain on your device.
+                This opens your operating system&apos;s local SSH application; it is not an embedded browser terminal. The command is copied automatically as a fallback, and credentials and private keys remain on your device.
               </p>
               <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
                 <label>
@@ -339,14 +346,20 @@ export default function ServersPage() {
                 <button
                   type="button"
                   disabled={!sshUsername || !sshPort || Number(sshPort) < 1 || Number(sshPort) > 65535}
-                  onClick={() => {
+                  onClick={async () => {
                     const host = sshServer.ipAddress.includes(':') ? `[${sshServer.ipAddress}]` : sshServer.ipAddress;
+                    try {
+                      await navigator.clipboard.writeText(getSSHCommand());
+                      toast.success('SSH command copied; opening your local SSH application');
+                    } catch {
+                      toast('Opening your local SSH application');
+                    }
                     window.location.href = `ssh://${encodeURIComponent(sshUsername)}@${host}:${sshPort}`;
                   }}
                   className="liquid-button disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <TerminalSquare className="h-4 w-4" />
-                  Open SSH client
+                  Open local SSH app
                 </button>
               </div>
             </div>

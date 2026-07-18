@@ -146,6 +146,10 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	} else {
 		snapshotStr = "{}"
 	}
+	publicIP := ""
+	if req.Snapshot != nil && req.Snapshot.SystemInfo != nil {
+		publicIP = strings.TrimSpace(req.Snapshot.SystemInfo.PublicIP)
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -155,6 +159,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		`UPDATE servers 
 		 SET status = 'online', 
 		     os_info = $1, 
+		     ip_address = COALESCE(NULLIF($5, ''), ip_address),
 		     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
 		     inventory = CASE WHEN $4 = '{}' THEN inventory ELSE $4::jsonb END,
 		     inventory_updated_at = CASE WHEN $4 = '{}' THEN inventory_updated_at ELSE NOW() END,
@@ -162,7 +167,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		     updated_at = NOW() 
 		 WHERE agent_token = $2
 		 RETURNING id`,
-		osInfoStr, agentToken, snapshotStr, inventoryStr,
+		osInfoStr, agentToken, snapshotStr, inventoryStr, publicIP,
 	).Scan(&serverID)
 
 	if err != nil {
