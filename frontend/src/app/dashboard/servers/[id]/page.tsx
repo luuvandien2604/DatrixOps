@@ -95,7 +95,7 @@ interface ServerDetails {
   name: string;
   status: string;
   ip_address: string;
-  os_info?: string | { os_name?: string; os_family?: string; platform?: string };
+  os_info?: string | { os_name?: string; os_family?: string; platform?: string; version?: string };
   snapshot?: string;
   inventory?: string;
   inventory_updated_at?: string;
@@ -132,6 +132,7 @@ export default function ServerDetailsPage() {
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
+  const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
 
   useEffect(() => {
     fetchServer();
@@ -258,6 +259,21 @@ export default function ServerDetailsPage() {
     }
   };
 
+  const queueAgentUpdate = async () => {
+    setQueueingAgentUpdate(true);
+    try {
+      await apiClient(`/servers/${params.id}/tasks`, {
+        method: 'POST',
+        data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 },
+      });
+      toast.success('Agent update queued. Controls will unlock after the agent reconnects.');
+    } catch (error: any) {
+      toast.error(error.message || 'Unable to queue agent update');
+    } finally {
+      setQueueingAgentUpdate(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-12 text-center text-[var(--color-muted)]">Loading server information...</div>;
   }
@@ -290,7 +306,7 @@ export default function ServerDetailsPage() {
     if (!server.os_info) return {};
     if (typeof server.os_info === 'object') return server.os_info;
     try {
-      return JSON.parse(server.os_info) as { os_name?: string; os_family?: string; platform?: string };
+      return JSON.parse(server.os_info) as { os_name?: string; os_family?: string; platform?: string; version?: string };
     } catch {
       return {};
     }
@@ -348,7 +364,8 @@ export default function ServerDetailsPage() {
       || service.source === serviceManager,
   );
   const hasIncompatibleLegacyServices = reportedServices.length > services.length;
-  const supportsServiceControls = versionAtLeast(inventory?.agent_version, '1.3.0');
+  const reportedAgentVersion = inventory?.agent_version || parsedOSInfo.version;
+  const supportsServiceControls = versionAtLeast(reportedAgentVersion, '1.3.0');
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -581,12 +598,18 @@ export default function ServerDetailsPage() {
         <div className="space-y-5">
           {!supportsServiceControls && (
             <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 text-sm text-[var(--foreground)]">
-              <div className="flex items-start gap-3">
-                <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
-                <div>
-                  <p className="font-semibold">Agent 1.3.0 or newer is required for service controls.</p>
-                  <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {inventory?.agent_version || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
+                  <div>
+                    <p className="font-semibold">Agent 1.3.0 or newer is required for service controls.</p>
+                    <p className="mt-1 leading-6 text-[var(--color-muted)]">This agent reports version {reportedAgentVersion || 'unknown'}. Update the agent before using Start, Stop, Restart, or Reload.</p>
+                  </div>
                 </div>
+                <button type="button" disabled={queueingAgentUpdate || server.status !== 'online'} onClick={queueAgentUpdate} className="liquid-button shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
+                  {queueingAgentUpdate ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {queueingAgentUpdate ? 'Queueing…' : 'Update agent now'}
+                </button>
               </div>
             </div>
           )}
@@ -624,8 +647,8 @@ export default function ServerDetailsPage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <label className="relative">
                   <span className="sr-only">Search services</span>
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[var(--color-muted)]" />
-                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 pl-9 pr-4 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder={serviceContent.search} />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
+                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder={serviceContent.search} />
                 </label>
                 <label>
                   <span className="sr-only">Filter service status</span>
@@ -700,7 +723,7 @@ export default function ServerDetailsPage() {
                     </div>
                     {service.description && <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">{service.description}</p>}
                     <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-color)] pt-4 text-sm">
-                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source === 'windows-scm' ? 'Windows SCM' : service.source || 'Unknown'}</dd></div>
+                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source === 'windows-scm' ? 'Windows SCM' : service.source || `${serviceManager} (legacy snapshot)`}</dd></div>
                       <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'Loading model' : 'Startup'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.startup_type || 'Unknown'}</dd></div>
                       <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'launchd state' : 'Native state'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
                       <div><dt className="text-[var(--color-muted)]">Checked</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{formatTimestamp(service.last_checked_at)}</dd></div>

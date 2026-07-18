@@ -64,6 +64,7 @@
 
 **Sprint 9: Quản lý hạ tầng (Inventory & Scripts)**
 - [x] Fleet Administration: chọn nhiều server và queue Agent Update/Restart/VPS Reboot.
+- [x] Local SSH Handoff: tạo/copy lệnh SSH và mở SSH client cục bộ mà không lưu credential trên DatrixOps.
 - [x] Technical Inventory: Agent ghi nhận hostname, OS/kernel, architecture, CPU, RAM, disk, private IP và agent version.
 - [x] Inventory Metadata: Provider, Region và Environment do operator quản lý.
 - [x] Remote Task Foundation: Allowlist, audit actor, idempotency, timeout, expiry và atomic task claiming.
@@ -76,7 +77,7 @@
 ## 🔴 Tính năng đột phá (Phase 5: "Killer" Features)
 
 **Sprint 10: Tương tác trực tiếp (Interactive Tools)**
-- [ ] **Web Terminal (SSH Browser):** Truy cập SSH trực tiếp ngay trên Dashboard qua WebSocket/Reverse Tunnel (Không cần mở Port 22 ra Internet).
+- [ ] **Web Terminal (SSH Browser):** Truy cập SSH trực tiếp ngay trên Dashboard qua WebSocket/Reverse Tunnel (khác Local SSH Handoff; cần thiết kế tunnel, auth và audit trước).
 - [ ] **File Manager:** Duyệt thư mục `/etc`, `/var`, `/home`, Upload/Download/Edit/Chmod file trực tiếp qua Web.
 - [ ] **Realtime Log Viewer:** `journalctl` streaming, xem log Nginx/MySQL realtime.
 

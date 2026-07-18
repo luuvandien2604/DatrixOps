@@ -4,9 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, Eye, UploadCloud
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud
 } from 'lucide-react';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
 
 export default function ServersPage() {
@@ -40,6 +39,12 @@ export default function ServersPage() {
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
+
+  // Safe hand-off to the operator's local SSH client. Browser terminal/tunnel
+  // support remains a separate architecture item.
+  const [sshServer, setSSHServer] = useState<{name: string, ipAddress: string} | null>(null);
+  const [sshUsername, setSSHUsername] = useState('root');
+  const [sshPort, setSSHPort] = useState('22');
 
   const router = useRouter();
 
@@ -80,6 +85,10 @@ export default function ServersPage() {
         return '';
     }
   };
+
+  const getSSHCommand = () => sshServer
+    ? `ssh -p ${sshPort || '22'} ${sshUsername || 'root'}@${sshServer.ipAddress}`
+    : '';
 
   return (
     <div className="space-y-6 pb-20">
@@ -146,11 +155,23 @@ export default function ServersPage() {
                   const isCritical = liveInfo && liveInfo.cpu_usage > 90;
 
                   return (
-                    <tr key={server.id} className="hover:bg-white/[0.02] transition-colors group">
+                    <tr
+                      key={server.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Open ${server.name}`}
+                      onClick={() => router.push(`/dashboard/servers/${server.id}`)}
+                      onKeyDown={event => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          router.push(`/dashboard/servers/${server.id}`);
+                        }
+                      }}
+                      className="group cursor-pointer transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none"
+                    >
                       <td className="py-4 px-6">
-                        <Link href={`/dashboard/servers/${server.id}`} className="font-medium text-[var(--foreground)] hover:text-blue-400 transition-colors">
-                          {server.name}
-                        </Link>
+                        <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
                         {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {server.tags && server.tags.map((t: string) => (
@@ -200,11 +221,9 @@ export default function ServersPage() {
                       <td className="py-4 px-6 text-right">
                         {/* Keep actions visible without hover-dependent discovery. */}
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => router.push(`/dashboard/servers/${server.id}`)} className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-colors" title="View Details">
-                            <Eye className="w-4 h-4" />
-                          </button>
                           <button
-                            onClick={() => {
+                            onClick={event => {
+                              event.stopPropagation();
                               setEditMetaServer(server);
                               setEditGroupName(server.group_name || '');
                               setEditTags((server.tags || []).join(', '));
@@ -215,21 +234,41 @@ export default function ServersPage() {
                             className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors" title="Edit Group & Tags">
                             <FileText className="w-4 h-4" />
                           </button>
-                          <button className="p-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-[var(--color-muted)] opacity-50 cursor-not-allowed transition-colors" title="SSH (Coming soon)">
+                          <button
+                            disabled={!server.ip_address}
+                            onClick={event => {
+                              event.stopPropagation();
+                              if (!server.ip_address) return;
+                              setSSHUsername('root');
+                              setSSHPort('22');
+                              setSSHServer({ name: server.name, ipAddress: server.ip_address });
+                            }}
+                            className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-35"
+                            title={server.ip_address ? 'Connect with SSH' : 'IP address is unavailable'}
+                          >
                             <TerminalSquare className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => setServerToUpdate({ id: server.id, name: server.name })}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setServerToUpdate({ id: server.id, name: server.name });
+                            }}
                             className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors" title="Update Agent">
                             <RefreshCw className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => setServerToRestart({ id: server.id, name: server.name })}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setServerToRestart({ id: server.id, name: server.name });
+                            }}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
                             <Play className="w-4 h-4 rotate-180" />
                           </button>
                           <button
-                            onClick={() => setServerToDelete({ id: server.id, name: server.name })}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setServerToDelete({ id: server.id, name: server.name });
+                            }}
                             className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -243,6 +282,77 @@ export default function ServersPage() {
           </table>
         </div>
       </div>
+
+      {sshServer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-labelledby="ssh-connect-title" className="glass-card w-full max-w-lg overflow-hidden border-blue-500/30 bg-[var(--background-card)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] p-6">
+              <div className="flex items-center gap-3">
+                <TerminalSquare className="h-6 w-6 text-blue-500" />
+                <div>
+                  <h2 id="ssh-connect-title" className="text-xl font-bold text-[var(--foreground)]">Connect with SSH</h2>
+                  <p className="mt-1 text-sm text-[var(--color-muted)]">{sshServer.name}</p>
+                </div>
+              </div>
+              <button type="button" aria-label="Close SSH connection dialog" onClick={() => setSSHServer(null)} className="text-[var(--color-muted)] transition-colors hover:text-[var(--foreground)]">
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="space-y-5 p-6">
+              <p className="text-sm leading-6 text-[var(--color-muted)]">
+                DatrixOps will hand this connection to your local SSH client. Credentials and private keys remain on your device.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+                <label>
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Username</span>
+                  <input value={sshUsername} onChange={event => setSSHUsername(event.target.value.replace(/[^A-Za-z0-9._-]/g, ''))} className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-[var(--foreground)] outline-none focus:border-blue-500" />
+                </label>
+                <label>
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Port</span>
+                  <input inputMode="numeric" value={sshPort} onChange={event => setSSHPort(event.target.value.replace(/\D/g, '').slice(0, 5))} className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-[var(--foreground)] outline-none focus:border-blue-500" />
+                </label>
+              </div>
+              <div>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Host</span>
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] px-4 py-3 font-mono text-sm text-[var(--foreground)]">{sshServer.ipAddress}</div>
+              </div>
+              <div className="rounded-xl border border-[var(--border-color)] bg-black/25 px-4 py-3 font-mono text-sm text-emerald-500">
+                {getSSHCommand()}
+              </div>
+              <div className="flex flex-wrap justify-end gap-3">
+                <button type="button" onClick={() => setSSHServer(null)} className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--background)]">Cancel</button>
+                <button
+                  type="button"
+                  disabled={!sshUsername || !sshPort}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(getSSHCommand());
+                      toast.success('SSH command copied');
+                    } catch {
+                      toast.error('Clipboard access was denied');
+                    }
+                  }}
+                  className="liquid-button secondary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Copy command
+                </button>
+                <button
+                  type="button"
+                  disabled={!sshUsername || !sshPort || Number(sshPort) < 1 || Number(sshPort) > 65535}
+                  onClick={() => {
+                    const host = sshServer.ipAddress.includes(':') ? `[${sshServer.ipAddress}]` : sshServer.ipAddress;
+                    window.location.href = `ssh://${encodeURIComponent(sshUsername)}@${host}:${sshPort}`;
+                  }}
+                  className="liquid-button disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <TerminalSquare className="h-4 w-4" />
+                  Open SSH client
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Server Modal */}
       {isAddServerModalOpen && (
