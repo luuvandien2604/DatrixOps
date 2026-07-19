@@ -135,7 +135,6 @@ validate_required_commands() {
         mktemp
         sha256sum
         stat
-        strings
     )
 
     local command_name
@@ -274,8 +273,13 @@ verify_embedded_agent_version() {
 
     marker="datrixops-agent-version=${AGENT_VERSION}"
 
-    if ! strings "$binary_path" | grep -Fq "$marker"; then
-        strings "$binary_path" | grep -F "datrixops-agent-version=" || true
+    # Read the binary directly instead of using `strings | grep -q`.
+    # With `set -o pipefail`, grep -q can close the pipe early after a match,
+    # causing strings to receive SIGPIPE and the whole pipeline to look failed
+    # even though the version marker is present in the binary.
+    if ! grep -aFq -- "$marker" "$binary_path"; then
+        grep -ao 'datrixops-agent-version=[0-9A-Za-z][0-9A-Za-z.+-]*' \
+            "$binary_path" | sort -u || true
         go version -m "$binary_path" || true
         die "binary $(basename "$binary_path") không embed marker $marker"
     fi
