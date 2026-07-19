@@ -26,6 +26,9 @@ type Server struct {
 	Tags               []string   `json:"tags"`
 	AgentToken         string     `json:"agent_token,omitempty"` // only shown on creation
 	Status             string     `json:"status"`
+	LatestAgentVersion string     `json:"latest_agent_version"`
+	UpdateAvailable    bool       `json:"update_available"`
+	Status             string     `json:"status"`
 	OSInfo             *string    `json:"os_info,omitempty"`  // JSON raw message or string
 	Snapshot           *string    `json:"snapshot,omitempty"` // JSONB raw message
 	Inventory          *string    `json:"inventory,omitempty"`

@@ -144,6 +144,12 @@ export default function ServersPage() {
                     }
                   } catch (e) { }
 
+                  const updateAvailable = Boolean(server.update_available);
+                  const latestAgentVersion =
+                    typeof server.latest_agent_version === 'string'
+                      ? server.latest_agent_version
+                      : '';
+
                   const isOffline = server.status !== 'online';
                   const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
                   // os_info remains available after an agent disconnects.
@@ -170,6 +176,12 @@ export default function ServersPage() {
                     >
                       <td className="py-4 px-6">
                         <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
+                        {updateAvailable && latestAgentVersion && (
+                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400">
+                            <UploadCloud className="h-3 w-3" />
+                            Update available: {latestAgentVersion}
+                          </div>
+                        )}
                         {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {server.tags && server.tags.map((t: string) => (
@@ -258,10 +270,22 @@ export default function ServersPage() {
                           <button
                             onClick={event => {
                               event.stopPropagation();
-                              setServerToUpdate({ id: server.id, name: server.name });
+                              setServerToUpdate({
+                                id: server.id,
+                                name: server.name,
+                              });
                             }}
-                            className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors" title="Update Agent">
-                            <RefreshCw className="w-4 h-4" />
+                            className={`rounded border p-1.5 transition-colors ${updateAvailable
+                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300'
+                              : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
+                              }`}
+                            title={
+                              updateAvailable && latestAgentVersion
+                                ? `Update Agent to ${latestAgentVersion}`
+                                : 'Reinstall current Agent release'
+                            }
+                          >
+                            <RefreshCw className="h-4 w-4" />
                           </button>
                           <button
                             onClick={event => {
