@@ -341,64 +341,56 @@ func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var total int
-	if err := h.svc.repo.db.Pool.QueryRow(r.Context(),
-		`SELECT COUNT(*) FROM servers WHERE user_id = $1`,
-		userID,
-	).Scan(&total); err != nil {
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to count agents")
-		return
-	}
-
-	rows, err := h.svc.repo.db.Pool.Query(r.Context(),
-		`INSERT INTO server_tasks
-			(server_id, type, payload, requested_by, timeout_seconds, expires_at)
-		 SELECT server.id, 'agent_update', '{}'::jsonb, $1, 300, NOW() + INTERVAL '24 hours'
-		 FROM servers AS server
-		 WHERE server.user_id = $1
-		   AND NOT EXISTS (
-			 SELECT 1 FROM server_tasks AS existing
-			 WHERE existing.server_id = server.id
-			   AND existing.type = 'agent_update'
-			   AND existing.status IN ('pending', 'processing')
-		   )
-		 ON CONFLICT DO NOTHING
-		 RETURNING server_id, id`,
-		userID,
-	)
+	servers, err := h.svc.ListServers(r.Context(), userID)
 	if err != nil {
-		slog.Error("failed to queue bulk agent update", "error", err, "user_id", userID)
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue agent updates")
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list agents")
 		return
 	}
-	defer rows.Close()
 
 	taskIDs := make([]string, 0)
 	serverIDs := make([]string, 0)
-	for rows.Next() {
-		var serverID, taskID string
-		if err := rows.Scan(&serverID, &taskID); err != nil {
-			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to read queued agent updates")
+	for _, server := range servers {
+		if !server.UpdateAvailable {
+			continue
+		}
+		var taskID string
+		err := h.svc.repo.db.Pool.QueryRow(r.Context(),
+			`WITH inserted AS (
+				INSERT INTO server_tasks
+					(server_id, type, payload, requested_by, timeout_seconds, expires_at)
+				 VALUES ($1, 'agent_update', '{}'::jsonb, $2, 300, NOW() + INTERVAL '24 hours')
+				 ON CONFLICT DO NOTHING
+				 RETURNING id
+			 )
+			 SELECT id FROM inserted
+			 UNION
+			 SELECT existing.id
+			 FROM server_tasks AS existing
+			 WHERE existing.server_id = $1
+			   AND existing.type = 'agent_update'
+			   AND existing.status IN ('pending', 'processing')
+			 LIMIT 1`,
+			server.ID, userID,
+		).Scan(&taskID)
+		if err != nil {
+			slog.Error("failed to queue agent update", "error", err, "server_id", server.ID)
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue agent updates")
 			return
 		}
-		serverIDs = append(serverIDs, serverID)
+		serverIDs = append(serverIDs, server.ID)
 		taskIDs = append(taskIDs, taskID)
-	}
-	if err := rows.Err(); err != nil {
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue all agent updates")
-		return
 	}
 
 	h.recordAudit(r.Context(), userID, "QUEUE_AGENT_UPDATE_ALL", "SERVER_FLEET", userID, map[string]interface{}{
 		"queued":     len(taskIDs),
-		"skipped":    total - len(taskIDs),
+		"skipped":    len(servers) - len(taskIDs),
 		"server_ids": serverIDs,
 		"task_ids":   taskIDs,
 	})
 	response.Success(w, http.StatusCreated, map[string]interface{}{
-		"total":   total,
+		"total":   len(servers),
 		"queued":  len(taskIDs),
-		"skipped": total - len(taskIDs),
+		"skipped": len(servers) - len(taskIDs),
 		"tasks":   taskIDs,
 	})
 }

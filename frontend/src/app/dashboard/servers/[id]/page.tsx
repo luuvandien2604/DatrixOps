@@ -96,6 +96,8 @@ interface ServerDetails {
   name: string;
   status: string;
   ip_address: string;
+  latest_agent_version?: string;
+  update_available?: boolean;
   os_info?: string | {
     os_name?: string;
     os_family?: string;
@@ -148,6 +150,7 @@ export default function ServerDetailsPage() {
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
+  const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
@@ -288,6 +291,23 @@ export default function ServerDetailsPage() {
     }
   };
 
+  const queueAgentUpdate = async () => {
+    if (!server) return;
+    setQueueingAgentUpdate(true);
+    try {
+      await apiClient(`/servers/${server.id}/tasks`, {
+        method: 'POST',
+        data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 },
+      });
+      toast.success(`Agent update queued for ${server.name}`);
+      await fetchServer();
+    } catch (err: any) {
+      toast.error(err.message || 'Unable to queue agent update');
+    } finally {
+      setQueueingAgentUpdate(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-12 text-center text-[var(--color-muted)]">Loading server information...</div>;
   }
@@ -394,6 +414,8 @@ export default function ServerDetailsPage() {
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
+  const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
+  const updateAvailable = Boolean(server.update_available && latestAgentVersion);
   const totalCPUUsage = parsedOSInfo.cpu_usage;
   const totalMemoryUsage = parsedOSInfo.memory_total && parsedOSInfo.memory_total > 0
     ? (Number(parsedOSInfo.memory_used || 0) / Number(parsedOSInfo.memory_total)) * 100
@@ -448,6 +470,12 @@ export default function ServerDetailsPage() {
                 Update required
               </span>
             )}
+            {supportsServiceControls && updateAvailable && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 font-semibold text-amber-700 dark:text-amber-400">
+                <RefreshCw className="h-3.5 w-3.5" />
+                Update available: {latestAgentVersion}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -499,6 +527,34 @@ export default function ServerDetailsPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </section>
+          )}
+          {supportsServiceControls && updateAvailable && (
+            <section aria-labelledby="agent-update-available-title" className="rounded-2xl border border-amber-500/35 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="rounded-full border border-amber-500/30 bg-amber-500/15 p-2 text-amber-600 dark:text-amber-400">
+                    <RefreshCw className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 id="agent-update-available-title" className="text-base font-bold text-[var(--foreground)]">
+                      Agent update available
+                    </h2>
+                    <p className="mt-2 text-sm font-medium leading-6 text-[var(--color-muted)]">
+                      This server is running Agent {reportedAgentVersion || 'Unknown'}. The current release is Agent {latestAgentVersion}.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={queueingAgentUpdate || server.status !== 'online'}
+                  onClick={queueAgentUpdate}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-300"
+                >
+                  <RefreshCw className={`h-4 w-4 ${queueingAgentUpdate ? 'animate-spin' : ''}`} />
+                  {queueingAgentUpdate ? 'Queueing update...' : 'Update agent'}
+                </button>
               </div>
             </section>
           )}
