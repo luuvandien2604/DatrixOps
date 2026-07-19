@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud, LoaderCircle, CircleCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -39,6 +39,7 @@ export default function ServersPage() {
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
+  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, {id: string, status: string, result?: string}>>({});
 
   const router = useRouter();
 
@@ -49,6 +50,32 @@ export default function ServersPage() {
     const interval = setInterval(() => fetchServers(true), 10000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const activeEntries = Object.entries(agentUpdateTasks).filter(([, task]) => ['pending', 'processing'].includes(task.status));
+    if (!activeEntries.length) return;
+
+    const interval = window.setInterval(async () => {
+      const nextTasks = { ...agentUpdateTasks };
+      await Promise.all(activeEntries.map(async ([serverId, task]) => {
+        try {
+          const updatedTask = await apiClient(`/servers/${serverId}/tasks/${task.id}`);
+          nextTasks[serverId] = updatedTask;
+          if (updatedTask.status === 'completed') {
+            toast.success('Agent update completed and confirmed');
+          } else if (['failed', 'expired', 'timed_out'].includes(updatedTask.status)) {
+            toast.error(updatedTask.result || `Agent update ${updatedTask.status}`);
+          }
+        } catch (error: any) {
+          toast.error(error.message || 'Unable to refresh agent update status');
+        }
+      }));
+      setAgentUpdateTasks(nextTasks);
+      fetchServers(true);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [agentUpdateTasks]);
 
   const fetchServers = async (silent = false) => {
     try {
@@ -152,6 +179,10 @@ export default function ServersPage() {
 
                   const isOffline = server.status !== 'online';
                   const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
+                  const updateTask = agentUpdateTasks[server.id];
+                  const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
+                  const updateConfirmed = Boolean(updateTask?.status === 'completed' || (updateTask && !updateAvailable));
+                  const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
                   // os_info remains available after an agent disconnects.
                   // Do not present stale CPU or RAM values as live telemetry.
                   const liveInfo = isOffline ? null : osInfo;
@@ -275,17 +306,22 @@ export default function ServersPage() {
                                 name: server.name,
                               });
                             }}
-                            className={`rounded border p-1.5 transition-colors ${updateAvailable
+                            disabled={updateInProgress}
+                            className={`rounded border p-1.5 transition-colors disabled:cursor-wait disabled:opacity-70 ${updateAvailable
                               ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300'
                               : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
                               }`}
                             title={
-                              updateAvailable && latestAgentVersion
+                              updateInProgress
+                                ? updateTask?.status === 'processing' ? 'Updating agent; waiting for heartbeat confirmation' : 'Agent update queued'
+                                : updateConfirmed
+                                  ? 'Agent update confirmed'
+                                  : updateAvailable && latestAgentVersion
                                 ? `Update Agent to ${latestAgentVersion}`
                                 : 'Reinstall current Agent release'
                             }
                           >
-                            <RefreshCw className="h-4 w-4" />
+                            <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
                           </button>
                           <button
                             onClick={event => {
@@ -648,11 +684,12 @@ export default function ServersPage() {
                   onClick={async () => {
                     setIsUpdatingAgent(true);
                     try {
-                      await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
+                      const task = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
                         method: 'POST',
                         data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
                       });
-                      toast.success(`Update command sent to ${serverToUpdate.name}`);
+                      setAgentUpdateTasks(current => ({ ...current, [serverToUpdate.id]: task }));
+                      toast.success(`Update queued for ${serverToUpdate.name}`);
                       setServerToUpdate(null);
                     } catch (err: any) {
                       toast.error(err.message || 'Error updating agent');

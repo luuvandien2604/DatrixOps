@@ -202,6 +202,20 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		updateAvailable = true
 	}
 
+	if req.Version != "" && h.desiredAgentVersion != "" && req.Version == h.desiredAgentVersion {
+		_, _ = h.db.Pool.Exec(ctx,
+			`UPDATE server_tasks
+			 SET status = 'completed',
+			     result = jsonb_build_object('output', $2::text),
+			     completed_at = NOW(),
+			     updated_at = NOW()
+			 WHERE server_id = $1
+			   AND type = 'agent_update'
+			   AND status = 'processing'`,
+			serverID, "Agent heartbeat confirmed the new version: "+req.Version,
+		)
+	}
+
 	// Expire tasks that were never claimed before their deadline.
 	_, _ = h.db.Pool.Exec(ctx,
 		`UPDATE server_tasks
@@ -374,13 +388,20 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify server owns the task
+	// Verify server owns the task. Agent updates are only truly complete after
+	// a later heartbeat confirms that the replacement binary is running.
 	var taskID string
 	err := h.db.Pool.QueryRow(r.Context(),
 		`UPDATE server_tasks
-		 SET status = $1,
+		 SET status = CASE
+		              WHEN server_tasks.type = 'agent_update' AND $1 = 'completed' THEN 'processing'
+		              ELSE $1
+		             END,
 		     result = jsonb_build_object('output', $2::text),
-		     completed_at = NOW(),
+		     completed_at = CASE
+		                    WHEN server_tasks.type = 'agent_update' AND $1 = 'completed' THEN NULL
+		                    ELSE NOW()
+		                   END,
 		     updated_at = NOW()
 		 FROM servers 
 		 WHERE server_tasks.id = $3

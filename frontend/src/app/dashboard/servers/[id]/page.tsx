@@ -121,7 +121,7 @@ interface ServerDetails {
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
-const MIN_TERMINAL_AGENT_VERSION = '1.5.0';
+const MIN_TERMINAL_AGENT_VERSION = '1.4.0';
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
@@ -151,6 +151,7 @@ export default function ServerDetailsPage() {
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
+  const [agentUpdateTask, setAgentUpdateTask] = useState<{id: string, status: string, result?: string} | null>(null);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
@@ -160,6 +161,29 @@ export default function ServerDetailsPage() {
     const interval = setInterval(fetchServer, 15000); // refresh every 15s
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!agentUpdateTask || ['completed', 'failed', 'expired', 'timed_out'].includes(agentUpdateTask.status)) {
+      return;
+    }
+    const interval = window.setInterval(async () => {
+      try {
+        const [task] = await Promise.all([
+          apiClient(`/servers/${params.id}/tasks/${agentUpdateTask.id}`),
+          fetchServer(),
+        ]);
+        setAgentUpdateTask(task);
+        if (task.status === 'completed') {
+          toast.success('Agent update completed and confirmed by heartbeat');
+        } else if (['failed', 'expired', 'timed_out'].includes(task.status)) {
+          toast.error(task.result || `Agent update ${task.status}`);
+        }
+      } catch (error: any) {
+        toast.error(error.message || 'Unable to refresh agent update status');
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [agentUpdateTask, params.id]);
 
   const fetchServer = async () => {
     try {
@@ -298,6 +322,8 @@ export default function ServerDetailsPage() {
       await apiClient(`/servers/${server.id}/tasks`, {
         method: 'POST',
         data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 },
+      }).then(task => {
+        setAgentUpdateTask(task);
       });
       toast.success(`Agent update queued for ${server.name}`);
       await fetchServer();
@@ -416,6 +442,17 @@ export default function ServerDetailsPage() {
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
   const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
   const updateAvailable = Boolean(server.update_available && latestAgentVersion);
+  const agentUpdateInProgress = Boolean(agentUpdateTask && ['pending', 'processing'].includes(agentUpdateTask.status));
+  const agentUpdateFailed = Boolean(agentUpdateTask && ['failed', 'expired', 'timed_out'].includes(agentUpdateTask.status));
+  const agentUpdateCompleted = Boolean(agentUpdateTask?.status === 'completed' || (agentUpdateTask && !updateAvailable));
+  const AgentUpdateIcon = agentUpdateInProgress ? LoaderCircle : agentUpdateCompleted ? CircleCheck : agentUpdateFailed ? CircleX : RefreshCw;
+  const agentUpdateLabel = agentUpdateInProgress
+    ? agentUpdateTask?.status === 'processing' ? 'Updating agent...' : 'Queued...'
+    : agentUpdateCompleted
+      ? 'Update confirmed'
+      : agentUpdateFailed
+        ? 'Retry update'
+        : 'Update agent';
   const totalCPUUsage = parsedOSInfo.cpu_usage;
   const totalMemoryUsage = parsedOSInfo.memory_total && parsedOSInfo.memory_total > 0
     ? (Number(parsedOSInfo.memory_used || 0) / Number(parsedOSInfo.memory_total)) * 100
@@ -544,16 +581,27 @@ export default function ServerDetailsPage() {
                     <p className="mt-2 text-sm font-medium leading-6 text-[var(--color-muted)]">
                       This server is running Agent {reportedAgentVersion || 'Unknown'}. The current release is Agent {latestAgentVersion}.
                     </p>
+                    {agentUpdateTask && (
+                      <p className={`mt-2 text-sm font-semibold ${agentUpdateFailed ? 'text-rose-500' : agentUpdateCompleted ? 'text-emerald-500' : 'text-amber-600 dark:text-amber-300'}`}>
+                        {agentUpdateCompleted
+                          ? 'Update confirmed by the latest heartbeat.'
+                          : agentUpdateFailed
+                            ? agentUpdateTask.result || `Update task ${agentUpdateTask.status}.`
+                            : agentUpdateTask.status === 'processing'
+                              ? 'The agent has claimed the task. Waiting for restart and version confirmation.'
+                              : 'Update task is queued. Waiting for the next agent heartbeat.'}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <button
                   type="button"
-                  disabled={queueingAgentUpdate || server.status !== 'online'}
+                  disabled={queueingAgentUpdate || agentUpdateInProgress || server.status !== 'online'}
                   onClick={queueAgentUpdate}
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-300"
                 >
-                  <RefreshCw className={`h-4 w-4 ${queueingAgentUpdate ? 'animate-spin' : ''}`} />
-                  {queueingAgentUpdate ? 'Queueing update...' : 'Update agent'}
+                  <AgentUpdateIcon className={`h-4 w-4 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
+                  {queueingAgentUpdate ? 'Queueing update...' : agentUpdateLabel}
                 </button>
               </div>
             </section>
