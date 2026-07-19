@@ -22,12 +22,14 @@ stop beyond the configured health window.
 - **Processes:** Current system-wide CPU and RAM totals plus the processes
   consuming the most resources.
 - **Services:** OS-native service states, startup mode, manager, search, and status filters.
-- **Web Terminal:** Open an interactive Linux, macOS, or Windows shell through
+- **Web Terminal:** Open an interactive shell for Linux server agents through
   the agent's outbound reverse WebSocket channel. No inbound SSH port,
   credential, or private key is required. Starting a shell always requires an
   explicit confirmation; tickets are single-use, sessions expire after 30
-  minutes, and operator/server/session traffic metadata is audited. Agent
-  version 1.5.0 or newer is required.
+  minutes, and operator/server/session traffic metadata is audited. macOS,
+  Windows, and desktop/personal Linux agents are intentionally disabled because
+  service accounts do not represent the signed-in desktop user session. Agent
+  version 1.4.1 or newer is required.
 - **Docker:** Container state, image, and actions for start, stop, restart, and logs.
 
 Docker actions are queued for the agent and normally run on its next heartbeat. Detailed snapshots update less frequently than core CPU and memory telemetry.

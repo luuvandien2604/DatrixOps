@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { Maximize2, Play, Power, ShieldAlert, TerminalSquare } from 'lucide-react';
+import { Maximize2, Play, Power, ShieldAlert, TerminalSquare, WifiOff } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'closed' | 'error';
@@ -21,6 +21,20 @@ interface TerminalMessage {
   data?: string;
   reason?: string;
 }
+
+const friendlyTerminalError = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('agent_unavailable') || normalized.includes('agent terminal channel is unavailable')) {
+    return 'The agent is online, but its reverse terminal channel is not connected. Restart or update the agent, then check that the proxy forwards WebSocket upgrades for /api/v1/agent/terminal.';
+  }
+  if (normalized.includes('terminal_busy') || normalized.includes('session is already active')) {
+    return 'A terminal session is already active for this server. Close the existing session before opening a new one.';
+  }
+  if (normalized.includes('invalid_origin')) {
+    return 'The terminal request was blocked by origin validation. Check the public dashboard host and reverse proxy headers.';
+  }
+  return message || 'Unable to start terminal';
+};
 
 const bytesToBase64 = (bytes: Uint8Array) => {
   let binary = '';
@@ -169,9 +183,10 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
       observer.observe(containerRef.current);
       resizeObserverRef.current = observer;
     } catch (caught: any) {
-      setError(caught.message || 'Unable to start terminal');
+      const message = friendlyTerminalError(caught.message || 'Unable to start terminal');
+      setError(message);
       setState('error');
-      terminalRef.current?.writeln(`\r\n\x1b[31m${caught.message || 'Unable to start terminal'}\x1b[0m`);
+      terminalRef.current?.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
       socketRef.current?.close();
       socketRef.current = null;
     }
@@ -210,7 +225,7 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
 
       {!enabled && (
         <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm text-amber-100">
-          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />
           <p className="font-semibold">{disabledReason || 'Terminal is unavailable for this agent.'}</p>
         </div>
       )}

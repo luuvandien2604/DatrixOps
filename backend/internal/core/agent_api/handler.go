@@ -78,21 +78,22 @@ type Snapshot struct {
 }
 
 type HeartbeatRequest struct {
-	Version     string    `json:"version"`
-	OSFamily    string    `json:"os_family"`
-	OSName      string    `json:"os_name"`
-	CPUCores    int       `json:"cpu_cores"`
-	CPUUsage    float64   `json:"cpu_usage"`
-	MemoryTotal uint64    `json:"memory_total"`
-	MemoryUsed  uint64    `json:"memory_used"`
-	NetIn       uint64    `json:"net_in"`
-	NetOut      uint64    `json:"net_out"`
-	DiskRead    uint64    `json:"disk_read"`
-	DiskWrite   uint64    `json:"disk_write"`
-	DiskTotal   uint64    `json:"disk_total"`
-	DiskUsed    uint64    `json:"disk_used"`
-	DiskUsage   float64   `json:"disk_usage"`
-	Snapshot    *Snapshot `json:"snapshot,omitempty"`
+	Version                  string    `json:"version"`
+	OSFamily                 string    `json:"os_family"`
+	OSName                   string    `json:"os_name"`
+	CPUCores                 int       `json:"cpu_cores"`
+	CPUUsage                 float64   `json:"cpu_usage"`
+	MemoryTotal              uint64    `json:"memory_total"`
+	MemoryUsed               uint64    `json:"memory_used"`
+	NetIn                    uint64    `json:"net_in"`
+	NetOut                   uint64    `json:"net_out"`
+	DiskRead                 uint64    `json:"disk_read"`
+	DiskWrite                uint64    `json:"disk_write"`
+	DiskTotal                uint64    `json:"disk_total"`
+	DiskUsed                 uint64    `json:"disk_used"`
+	DiskUsage                float64   `json:"disk_usage"`
+	TerminalChannelConnected bool      `json:"terminal_channel_connected"`
+	Snapshot                 *Snapshot `json:"snapshot,omitempty"`
 }
 
 type ServerTask struct {

@@ -84,6 +84,7 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	}
 
 	metrics.Version = Version
+	metrics.TerminalChannelConnected = terminal.Connected()
 
 	if includeSnapshot {
 		metrics.Snapshot = collector.CollectSnapshot(Version, monitoredServices)

@@ -109,6 +109,7 @@ interface ServerDetails {
     disk_used?: number;
     disk_total?: number;
     disk_usage?: number;
+    terminal_channel_connected?: boolean;
   };
   snapshot?: string;
   inventory?: string;
@@ -121,7 +122,7 @@ interface ServerDetails {
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
-const MIN_TERMINAL_AGENT_VERSION = '1.4.0';
+const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
@@ -377,6 +378,7 @@ export default function ServerDetailsPage() {
         disk_used?: number;
         disk_total?: number;
         disk_usage?: number;
+        terminal_channel_connected?: boolean;
       };
     } catch {
       return {};
@@ -392,6 +394,26 @@ export default function ServerDetailsPage() {
       : explicitOSFamily === 'linux' || normalizedOS.includes('linux') || reportedServiceManager === 'systemd' || ['ubuntu', 'debian', 'centos', 'fedora', 'alpine'].some(name => normalizedOS.includes(name))
         ? 'linux'
         : 'unknown';
+  const linuxDesktopIndicators = [
+    'linuxmint',
+    'linux mint',
+    'desktop',
+    'workstation',
+    'pop!_os',
+    'pop os',
+    'elementary',
+    'zorin',
+    'manjaro',
+    'endeavouros',
+    'kubuntu',
+    'xubuntu',
+    'ubuntu desktop',
+    'fedora workstation',
+  ];
+  const isDesktopLinux = osFamily === 'linux' && linuxDesktopIndicators.some(indicator => normalizedOS.includes(indicator));
+  const supportsTerminalEnvironment = osFamily === 'linux' && !isDesktopLinux;
+  const terminalChannelConnected = parsedOSInfo.terminal_channel_connected === true;
+  const terminalChannelReported = typeof parsedOSInfo.terminal_channel_connected === 'boolean';
   const serviceManager = osFamily === 'macos' ? 'launchd' : osFamily === 'windows' ? 'windows-scm' : 'systemd';
   const serviceContent = osFamily === 'macos'
     ? {
@@ -460,6 +482,33 @@ export default function ServerDetailsPage() {
   const manualUpdateCommand = osFamily === 'windows'
     ? 'irm https://datrixops.vandien.space/update-agent.ps1 | iex'
     : 'curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh';
+  const terminalDisabledReason = (() => {
+    if (server.status !== 'online') {
+      return 'The agent must be online before a terminal session can start.';
+    }
+    if (!versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION)) {
+      return `Agent ${MIN_TERMINAL_AGENT_VERSION} or newer is required for reverse terminal support.`;
+    }
+    if (osFamily === 'windows') {
+      return 'Web Terminal is disabled for Windows agents. Windows services run in a non-interactive session, so browser terminal access is not equivalent to the signed-in desktop user.';
+    }
+    if (osFamily === 'macos') {
+      return 'Web Terminal is disabled for macOS agents. launchd agents run outside the interactive user session, so shell access would not match the logged-in desktop environment.';
+    }
+    if (isDesktopLinux) {
+      return `Web Terminal is disabled for ${monitoredOS}. Desktop or personal Linux machines use interactive user sessions that DatrixOps does not control from the agent service.`;
+    }
+    if (osFamily !== 'linux') {
+      return 'Web Terminal is only available for Linux server agents.';
+    }
+    if (!terminalChannelReported) {
+      return 'This agent version does not report reverse terminal channel health. Update the agent to the latest patch release before opening Web Terminal.';
+    }
+    if (!terminalChannelConnected) {
+      return 'The agent is online, but its reverse terminal channel is not connected. Restart or update the agent, then check that WebSocket upgrade is forwarded for /api/v1/agent/terminal.';
+    }
+    return undefined;
+  })();
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -1006,12 +1055,8 @@ export default function ServerDetailsPage() {
         <WebTerminal
           serverId={server.id}
           serverName={server.name}
-          enabled={server.status === 'online' && versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION)}
-          disabledReason={
-            server.status !== 'online'
-              ? 'The agent must be online before a terminal session can start.'
-              : `Agent ${MIN_TERMINAL_AGENT_VERSION} or newer is required for reverse terminal support.`
-          }
+          enabled={server.status === 'online' && versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION) && supportsTerminalEnvironment && terminalChannelConnected}
+          disabledReason={terminalDisabledReason}
         />
       )}
 

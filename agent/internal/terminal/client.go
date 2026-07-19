@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -21,6 +22,12 @@ const (
 type socket struct {
 	conn *websocket.Conn
 	mu   sync.Mutex
+}
+
+var connected atomic.Bool
+
+func Connected() bool {
+	return connected.Load()
 }
 
 func (s *socket) write(value any) error {
@@ -69,6 +76,8 @@ func connect(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	defer conn.Close()
+	connected.Store(true)
+	defer connected.Store(false)
 	conn.SetReadLimit(maxMessageBytes)
 	channel := &socket{conn: conn}
 	manager := newSessionManager(channel)
