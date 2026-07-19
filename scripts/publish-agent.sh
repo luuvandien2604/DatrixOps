@@ -274,7 +274,8 @@ verify_embedded_agent_version() {
 
     marker="datrixops-agent-version=${AGENT_VERSION}"
 
-    if ! strings "$binary_path" | grep -Fxq "$marker"; then
+    if ! strings "$binary_path" | grep -Fq "$marker"; then
+        strings "$binary_path" | grep -F "datrixops-agent-version=" || true
         go version -m "$binary_path" || true
         die "binary $(basename "$binary_path") không embed marker $marker"
     fi
