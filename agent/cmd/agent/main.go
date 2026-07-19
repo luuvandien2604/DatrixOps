@@ -25,9 +25,10 @@ import (
 )
 
 var (
-	Version   = "dev"
-	Commit    = "none"
-	BuildTime = "unknown"
+	Version       = "dev"
+	VersionMarker = "datrixops-agent-version=dev"
+	Commit        = "none"
+	BuildTime     = "unknown"
 )
 
 var (

@@ -135,6 +135,7 @@ validate_required_commands() {
         mktemp
         sha256sum
         stat
+        strings
     )
 
     local command_name
@@ -252,7 +253,7 @@ build_agent() {
         go build \
         -trimpath \
         -buildvcs=false \
-        -ldflags="-s -w -X main.Version=${AGENT_VERSION}" \
+        -ldflags="-s -w -X main.Version=${AGENT_VERSION} -X main.VersionMarker=datrixops-agent-version=${AGENT_VERSION}" \
         -o "$output_path" \
         ./cmd/agent
 
@@ -269,15 +270,13 @@ build_agent() {
 
 verify_embedded_agent_version() {
     local binary_path="$1"
-    local metadata
+    local marker
 
-    metadata="$(
-        go version -m "$binary_path"
-    )"
+    marker="datrixops-agent-version=${AGENT_VERSION}"
 
-    if ! grep -Fq -- "-X main.Version=${AGENT_VERSION}" <<<"$metadata"; then
-        echo "$metadata"
-        die "binary $(basename "$binary_path") không embed main.Version=${AGENT_VERSION}"
+    if ! strings "$binary_path" | grep -Fxq "$marker"; then
+        go version -m "$binary_path" || true
+        die "binary $(basename "$binary_path") không embed marker $marker"
     fi
 }
 
