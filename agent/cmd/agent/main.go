@@ -37,7 +37,7 @@ var (
 )
 
 func main() {
-	log.Println("Starting DatrixOps Agent...")
+	log.Printf("Starting DatrixOps Agent %s (%s)...", Version, VersionMarker)
 
 	cfg, err := config.Load()
 	if err != nil {
