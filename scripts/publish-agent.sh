@@ -36,7 +36,11 @@ ENV_FILE="$PROJECT_ROOT/.env.release"
 AGENT_DIR="$PROJECT_ROOT/agent"
 PUBLIC_DIR="$PROJECT_ROOT/frontend/public"
 RELEASE_ROOT="$PUBLIC_DIR/releases"
+COMPOSE_FILE="$PROJECT_ROOT/docker-compose.prod.yml"
+BACKEND_ENV_FILE="$PROJECT_ROOT/.env"
 
+# Đặt AUTO_UPDATE_BACKEND=0 nếu chỉ muốn publish mà không restart backend.
+AUTO_UPDATE_BACKEND="${AUTO_UPDATE_BACKEND:-1}"
 MIN_SELF_UPDATING_VERSION="1.3.0"
 
 STAGING_DIR=""
@@ -386,7 +390,102 @@ print_release_summary() {
     sha256sum "$release_dir"/*
 
     echo
-    echo "Set backend AGENT_VERSION=${AGENT_VERSION} for version reporting."
+    if [[ "$AUTO_UPDATE_BACKEND" == "1" ]]; then
+        echo "Backend   : AGENT_VERSION=${AGENT_VERSION}"
+    else
+        echo "Backend   : not updated (AUTO_UPDATE_BACKEND=$AUTO_UPDATE_BACKEND)"
+    fi
+}
+
+set_env_value() {
+    local env_file="$1"
+    local key="$2"
+    local value="$3"
+    local temp_file
+
+    touch "$env_file"
+    chmod 600 "$env_file"
+
+    temp_file="$(mktemp "${env_file}.tmp.XXXXXX")"
+
+    awk \
+        -v key="$key" \
+        -v value="$value" '
+        BEGIN {
+            updated = 0
+        }
+
+        $0 ~ "^[[:space:]]*" key "=" {
+            print key "=" value
+            updated = 1
+            next
+        }
+
+        {
+            print
+        }
+
+        END {
+            if (!updated) {
+                print key "=" value
+            }
+        }
+    ' "$env_file" >"$temp_file"
+
+    chmod 600 "$temp_file"
+    mv -- "$temp_file" "$env_file"
+}
+
+update_backend_agent_version() {
+    if [[ "$AUTO_UPDATE_BACKEND" != "1" ]]; then
+        echo "Skipping backend version update because AUTO_UPDATE_BACKEND=$AUTO_UPDATE_BACKEND"
+        return
+    fi
+
+    if [[ ! -f "$COMPOSE_FILE" ]]; then
+        die "không tìm thấy Compose file: $COMPOSE_FILE"
+    fi
+
+    if ! command -v docker >/dev/null 2>&1; then
+        die "không tìm thấy docker command"
+    fi
+
+    echo
+    echo "Updating backend AGENT_VERSION to ${AGENT_VERSION}..."
+
+    set_env_value \
+        "$BACKEND_ENV_FILE" \
+        "AGENT_VERSION" \
+        "$AGENT_VERSION"
+
+    (
+        cd "$PROJECT_ROOT"
+
+        docker compose \
+            --env-file "$BACKEND_ENV_FILE" \
+            -f "$COMPOSE_FILE" \
+            up -d \
+            --force-recreate \
+            backend
+    )
+
+    local backend_version
+
+    backend_version="$(
+        cd "$PROJECT_ROOT"
+
+        docker compose \
+            --env-file "$BACKEND_ENV_FILE" \
+            -f "$COMPOSE_FILE" \
+            exec -T backend \
+            sh -c 'printf "%s" "$AGENT_VERSION"'
+    )"
+
+    if [[ "$backend_version" != "$AGENT_VERSION" ]]; then
+        die "backend đang dùng AGENT_VERSION='$backend_version', mong đợi '$AGENT_VERSION'"
+    fi
+
+    echo "Backend now reports AGENT_VERSION=${backend_version}"
 }
 
 main() {
@@ -452,6 +551,7 @@ main() {
     verify_release_files
     publish_release_directory
     copy_latest_binaries
+    update_backend_agent_version
 
     unset AGENT_SIGNING_PRIVATE_KEY
 
