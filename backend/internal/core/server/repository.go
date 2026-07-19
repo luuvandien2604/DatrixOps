@@ -179,7 +179,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			             AND task.type = 'agent_update'
 			             AND (
 			                 task.status IN ('pending', 'processing')
-			                 OR (task.status IN ('failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
+			                 OR (task.status IN ('completed', 'failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
 			             )
 			           ORDER BY CASE WHEN task.status IN ('pending', 'processing') THEN 0 ELSE 1 END,
 			                    task.created_at DESC
@@ -279,7 +279,7 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 				  AND task.type = 'agent_update'
 				  AND (
 				      task.status IN ('pending', 'processing')
-				      OR (task.status IN ('failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
+				      OR (task.status IN ('completed', 'failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
 				  )
 				ORDER BY CASE WHEN task.status IN ('pending', 'processing') THEN 0 ELSE 1 END,
 				         task.created_at DESC

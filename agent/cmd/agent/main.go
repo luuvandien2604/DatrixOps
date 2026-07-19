@@ -258,7 +258,36 @@ func activatePreparedAgentUpdate() {
 			return
 		}
 	}
-	log.Println("Agent update staged successfully. Restarting into the new binary...")
+	if runtime.GOOS == "linux" {
+		unitName := fmt.Sprintf("datrixops-agent-update-%d", os.Getpid())
+		if path, err := exec.LookPath("systemd-run"); err == nil {
+			systemctlPath, systemctlErr := exec.LookPath("systemctl")
+			if systemctlErr != nil {
+				systemctlPath = "/bin/systemctl"
+			}
+			cmd := exec.Command(
+				path,
+				"--unit", unitName,
+				"--on-active=1s",
+				"--property=Type=oneshot",
+				systemctlPath, "restart", "datrixops-agent",
+			)
+			if output, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("Failed to schedule systemd restart helper: %v | output: %s", err, string(output))
+			} else {
+				log.Printf("Scheduled systemd restart helper %s", unitName)
+			}
+		} else {
+			log.Printf("systemd-run not found; falling back to process exit restart: %v", err)
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("launchctl", "kickstart", "-k", "system/com.datrixops.agent")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("Failed to request launchd agent restart: %v | output: %s", err, string(output))
+		}
+	}
+	log.Println("Agent update staged successfully. Exiting so the service manager starts the new binary...")
 	os.Exit(1)
 }
 
@@ -367,7 +396,7 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 			} else {
 				postAction = "update"
 				statusStr = "completed"
-				resultStr = "Agent update staged and ready to activate"
+				resultStr = "Agent update staged; activation requested. Waiting for the new version heartbeat."
 			}
 
 		case "agent_restart":

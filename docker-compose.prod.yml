@@ -23,7 +23,7 @@ services:
       - DATABASE_URL=postgres://datrixops:secretpassword@db:5432/datrixops?sslmode=disable
       - PORT=8080
       - JWT_SECRET=super-secret-key-change-in-production
-      - AGENT_VERSION=${AGENT_VERSION:-1.4.1}
+      - AGENT_VERSION=${AGENT_VERSION:-1.4.3}
     ports:
       - "8080:8080"
     

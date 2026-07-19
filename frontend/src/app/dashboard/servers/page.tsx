@@ -192,13 +192,14 @@ export default function ServersPage() {
                   const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
                   const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
                   const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
-                  const updateConfirmed = Boolean(updateTask?.status === 'completed' || (updateTask && !updateAvailable));
-                  const updateFailed = Boolean(updateTask && ['failed', 'expired', 'timed_out'].includes(updateTask.status));
+                  const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
+                  const updateConfirmed = Boolean(updateTask && !updateAvailable);
+                  const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
                   const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
                   const updateBadgeLabel = updateInProgress
                     ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
                     : updateFailed
-                      ? `Update ${updateTask?.status}`
+                      ? updateStalled ? 'Update needs retry' : `Update ${updateTask?.status}`
                       : latestAgentVersion
                         ? `Update available: ${latestAgentVersion}`
                         : 'Update available';

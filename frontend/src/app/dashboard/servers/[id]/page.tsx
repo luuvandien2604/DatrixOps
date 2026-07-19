@@ -476,8 +476,9 @@ export default function ServerDetailsPage() {
   const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
   const updateAvailable = Boolean(server.update_available && latestAgentVersion);
   const agentUpdateInProgress = Boolean(agentUpdateTask && ['pending', 'processing'].includes(agentUpdateTask.status));
-  const agentUpdateFailed = Boolean(agentUpdateTask && ['failed', 'expired', 'timed_out'].includes(agentUpdateTask.status));
-  const agentUpdateCompleted = Boolean(agentUpdateTask?.status === 'completed' || (agentUpdateTask && !updateAvailable));
+  const agentUpdateStalled = Boolean(agentUpdateTask?.status === 'completed' && updateAvailable);
+  const agentUpdateFailed = Boolean(agentUpdateTask && (['failed', 'expired', 'timed_out'].includes(agentUpdateTask.status) || agentUpdateStalled));
+  const agentUpdateCompleted = Boolean(agentUpdateTask && !updateAvailable);
   const AgentUpdateIcon = agentUpdateInProgress ? LoaderCircle : agentUpdateCompleted ? CircleCheck : agentUpdateFailed ? CircleX : RefreshCw;
   const agentUpdateLabel = agentUpdateInProgress
     ? agentUpdateTask?.status === 'processing' ? 'Updating agent...' : 'Queued...'
@@ -646,7 +647,9 @@ export default function ServerDetailsPage() {
                         {agentUpdateCompleted
                           ? 'Update confirmed by the latest heartbeat.'
                           : agentUpdateFailed
-                            ? agentUpdateTask.result || `Update task ${agentUpdateTask.status}.`
+                            ? agentUpdateStalled
+                              ? 'The update was staged, but the agent is still reporting the old version. Retry the update to restart the service with the new binary.'
+                              : agentUpdateTask.result || `Update task ${agentUpdateTask.status}.`
                             : agentUpdateTask.status === 'processing'
                               ? 'The agent has claimed the task. Waiting for restart and version confirmation.'
                               : 'Update task is queued. Waiting for the next agent heartbeat.'}

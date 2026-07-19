@@ -263,6 +263,22 @@ build_agent() {
     if [[ "$goos" != "windows" ]]; then
         chmod 0755 "$output_path"
     fi
+
+    verify_embedded_agent_version "$output_path"
+}
+
+verify_embedded_agent_version() {
+    local binary_path="$1"
+    local metadata
+
+    metadata="$(
+        go version -m "$binary_path"
+    )"
+
+    if ! grep -Fq -- "-X main.Version=${AGENT_VERSION}" <<<"$metadata"; then
+        echo "$metadata"
+        die "binary $(basename "$binary_path") không embed main.Version=${AGENT_VERSION}"
+    fi
 }
 
 verify_release_files() {
@@ -368,6 +384,12 @@ copy_latest_binaries() {
     if [[ -f "$PUBLIC_DIR/install-mac.sh" ]]; then
         chmod 0755 "$PUBLIC_DIR/install-mac.sh"
     fi
+
+    verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-linux-amd64"
+    verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-linux-arm64"
+    verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-darwin-amd64"
+    verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-darwin-arm64"
+    verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-windows-amd64.exe"
 }
 
 print_release_summary() {
