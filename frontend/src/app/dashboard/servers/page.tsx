@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud, LoaderCircle, CircleCheck
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud, LoaderCircle, CircleCheck, CircleX
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -82,6 +82,17 @@ export default function ServersPage() {
       if (!silent) setLoading(true);
       const data = await apiClient('/servers');
       setServers(data);
+      setAgentUpdateTasks(current => {
+        const next = { ...current };
+        for (const server of Array.isArray(data) ? data : []) {
+          if (server.active_agent_update_task) {
+            next[server.id] = server.active_agent_update_task;
+          } else if (next[server.id] && !['pending', 'processing'].includes(next[server.id].status)) {
+            delete next[server.id];
+          }
+        }
+        return next;
+      });
     } catch (err: any) {
       if (err.message.includes('token') || err.message.includes('UNAUTHORIZED')) {
         router.push('/login');
@@ -179,10 +190,19 @@ export default function ServersPage() {
 
                   const isOffline = server.status !== 'online';
                   const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
-                  const updateTask = agentUpdateTasks[server.id];
+                  const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
                   const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
                   const updateConfirmed = Boolean(updateTask?.status === 'completed' || (updateTask && !updateAvailable));
+                  const updateFailed = Boolean(updateTask && ['failed', 'expired', 'timed_out'].includes(updateTask.status));
                   const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
+                  const updateBadgeLabel = updateInProgress
+                    ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
+                    : updateFailed
+                      ? `Update ${updateTask?.status}`
+                      : latestAgentVersion
+                        ? `Update available: ${latestAgentVersion}`
+                        : 'Update available';
+                  const UpdateBadgeIcon = updateInProgress ? LoaderCircle : updateFailed ? CircleX : UploadCloud;
                   // os_info remains available after an agent disconnects.
                   // Do not present stale CPU or RAM values as live telemetry.
                   const liveInfo = isOffline ? null : osInfo;
@@ -207,10 +227,14 @@ export default function ServersPage() {
                     >
                       <td className="py-4 px-6">
                         <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
-                        {updateAvailable && latestAgentVersion && (
-                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400">
-                            <UploadCloud className="h-3 w-3" />
-                            Update available: {latestAgentVersion}
+                        {(updateAvailable || updateInProgress || updateFailed) && (
+                          <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                            updateFailed
+                              ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
+                              : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                          }`}>
+                            <UpdateBadgeIcon className={`h-3 w-3 ${updateInProgress ? 'animate-spin' : ''}`} />
+                            {updateBadgeLabel}
                           </div>
                         )}
                         {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
@@ -307,8 +331,8 @@ export default function ServersPage() {
                               });
                             }}
                             disabled={updateInProgress}
-                            className={`rounded border p-1.5 transition-colors disabled:cursor-wait disabled:opacity-70 ${updateAvailable
-                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300'
+                            className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${updateAvailable || updateInProgress || updateFailed
+                              ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-amber-500/15 disabled:text-amber-600 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300'
                               : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
                               }`}
                             title={
@@ -664,9 +688,9 @@ export default function ServersPage() {
       {/* Update Agent Confirm Dialog */}
       {serverToUpdate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="update-agent-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-emerald-500/30 overflow-hidden flex flex-col">
-            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-emerald-500/5">
-              <RefreshCw className="w-6 h-6 text-emerald-500" />
+          <div role="alertdialog" aria-modal="true" aria-labelledby="update-agent-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/35 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/10">
+              <RefreshCw className="w-6 h-6 text-amber-400" />
               <h2 id="update-agent-title" className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
             </div>
             <div className="p-6">
@@ -697,7 +721,7 @@ export default function ServersPage() {
                       setIsUpdatingAgent(false);
                     }
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
+                  className="px-4 py-2 bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70 rounded-lg font-bold transition-colors">
                   {isUpdatingAgent ? 'Queueing…' : 'Start Update'}
                 </button>
               </div>

@@ -98,6 +98,7 @@ interface ServerDetails {
   ip_address: string;
   latest_agent_version?: string;
   update_available?: boolean;
+  active_agent_update_task?: AgentUpdateTask;
   os_info?: string | {
     os_name?: string;
     os_family?: string;
@@ -117,6 +118,15 @@ interface ServerDetails {
   provider?: string;
   region?: string;
   environment?: string;
+}
+
+interface AgentUpdateTask {
+  id: string;
+  status: string;
+  result?: string;
+  created_at?: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
@@ -152,7 +162,7 @@ export default function ServerDetailsPage() {
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
-  const [agentUpdateTask, setAgentUpdateTask] = useState<{id: string, status: string, result?: string} | null>(null);
+  const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
@@ -190,6 +200,7 @@ export default function ServerDetailsPage() {
     try {
       const data = await apiClient(`/servers/${params.id}`);
       setServer(data);
+      setAgentUpdateTask(data.active_agent_update_task || null);
       if (data.snapshot && data.snapshot !== '{}') {
         const nextSnapshot = JSON.parse(data.snapshot) as Snapshot;
         setSnapshot(nextSnapshot);
@@ -647,7 +658,7 @@ export default function ServerDetailsPage() {
                   type="button"
                   disabled={queueingAgentUpdate || agentUpdateInProgress || server.status !== 'online'}
                   onClick={queueAgentUpdate}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-amber-300"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/45 bg-amber-500/15 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:bg-amber-500/15 disabled:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300"
                 >
                   <AgentUpdateIcon className={`h-4 w-4 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
                   {queueingAgentUpdate ? 'Queueing update...' : agentUpdateLabel}

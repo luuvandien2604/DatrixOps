@@ -18,26 +18,36 @@ func NewRepository(db *database.DB) *Repository {
 }
 
 type Server struct {
-	ID                 string     `json:"id"`
-	UserID             string     `json:"user_id"`
-	Name               string     `json:"name"`
-	IPAddress          *string    `json:"ip_address,omitempty"`
-	GroupName          *string    `json:"group_name,omitempty"`
-	Tags               []string   `json:"tags"`
-	AgentToken         string     `json:"agent_token,omitempty"` // only shown on creation
-	LatestAgentVersion string     `json:"latest_agent_version"`
-	UpdateAvailable    bool       `json:"update_available"`
-	Status             string     `json:"status"`
-	OSInfo             *string    `json:"os_info,omitempty"`  // JSON raw message or string
-	Snapshot           *string    `json:"snapshot,omitempty"` // JSONB raw message
-	Inventory          *string    `json:"inventory,omitempty"`
-	InventoryUpdatedAt *time.Time `json:"inventory_updated_at,omitempty"`
-	Provider           *string    `json:"provider,omitempty"`
-	Region             *string    `json:"region,omitempty"`
-	Environment        *string    `json:"environment,omitempty"`
-	LastSeenAt         *time.Time `json:"last_seen_at,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                    string           `json:"id"`
+	UserID                string           `json:"user_id"`
+	Name                  string           `json:"name"`
+	IPAddress             *string          `json:"ip_address,omitempty"`
+	GroupName             *string          `json:"group_name,omitempty"`
+	Tags                  []string         `json:"tags"`
+	AgentToken            string           `json:"agent_token,omitempty"` // only shown on creation
+	LatestAgentVersion    string           `json:"latest_agent_version"`
+	UpdateAvailable       bool             `json:"update_available"`
+	ActiveAgentUpdateTask *AgentUpdateTask `json:"active_agent_update_task,omitempty"`
+	Status                string           `json:"status"`
+	OSInfo                *string          `json:"os_info,omitempty"`  // JSON raw message or string
+	Snapshot              *string          `json:"snapshot,omitempty"` // JSONB raw message
+	Inventory             *string          `json:"inventory,omitempty"`
+	InventoryUpdatedAt    *time.Time       `json:"inventory_updated_at,omitempty"`
+	Provider              *string          `json:"provider,omitempty"`
+	Region                *string          `json:"region,omitempty"`
+	Environment           *string          `json:"environment,omitempty"`
+	LastSeenAt            *time.Time       `json:"last_seen_at,omitempty"`
+	CreatedAt             time.Time        `json:"created_at"`
+	UpdatedAt             time.Time        `json:"updated_at"`
+}
+
+type AgentUpdateTask struct {
+	ID          string     `json:"id"`
+	Status      string     `json:"status"`
+	Result      *string    `json:"result,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 type CronJob struct {
@@ -151,9 +161,33 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 		SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
-			last_seen_at, created_at, updated_at
-		FROM servers
-		WHERE user_id = $1
+			last_seen_at, created_at, updated_at,
+			active_agent_update_task
+		FROM (
+			SELECT servers.*,
+			       (
+			           SELECT jsonb_build_object(
+			               'id', task.id,
+			               'status', task.status,
+			               'result', COALESCE(task.result->>'output', task.result::text),
+			               'created_at', task.created_at,
+			               'started_at', task.started_at,
+			               'completed_at', task.completed_at
+			           )::text
+			           FROM server_tasks task
+			           WHERE task.server_id = servers.id
+			             AND task.type = 'agent_update'
+			             AND (
+			                 task.status IN ('pending', 'processing')
+			                 OR (task.status IN ('failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
+			             )
+			           ORDER BY CASE WHEN task.status IN ('pending', 'processing') THEN 0 ELSE 1 END,
+			                    task.created_at DESC
+			           LIMIT 1
+			       ) AS active_agent_update_task
+			FROM servers
+			WHERE user_id = $1
+		) servers
 		ORDER BY created_at DESC
 	`
 	rows, err := r.db.Pool.Query(ctx, query, userID)
@@ -166,11 +200,12 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	for rows.Next() {
 		var s Server
 		var tagsBytes []byte
+		var activeTaskJSON *string
 		err := rows.Scan(
 			&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
 			&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 			&s.Provider, &s.Region, &s.Environment,
-			&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+			&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
@@ -181,6 +216,9 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			if err := json.Unmarshal(tagsBytes, &s.Tags); err != nil {
 				return nil, fmt.Errorf("unmarshal tags: %w", err)
 			}
+		}
+		if err := assignAgentUpdateTask(&s, activeTaskJSON); err != nil {
+			return nil, err
 		}
 
 		servers = append(servers, &s)
@@ -226,16 +264,37 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 		`SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
-			last_seen_at, created_at, updated_at
+			last_seen_at, created_at, updated_at,
+			(
+				SELECT jsonb_build_object(
+					'id', task.id,
+					'status', task.status,
+					'result', COALESCE(task.result->>'output', task.result::text),
+					'created_at', task.created_at,
+					'started_at', task.started_at,
+					'completed_at', task.completed_at
+				)::text
+				FROM server_tasks task
+				WHERE task.server_id = servers.id
+				  AND task.type = 'agent_update'
+				  AND (
+				      task.status IN ('pending', 'processing')
+				      OR (task.status IN ('failed', 'expired', 'timed_out') AND task.updated_at >= NOW() - INTERVAL '30 minutes')
+				  )
+				ORDER BY CASE WHEN task.status IN ('pending', 'processing') THEN 0 ELSE 1 END,
+				         task.created_at DESC
+				LIMIT 1
+			) AS active_agent_update_task
 		 FROM servers WHERE id = $1 AND user_id = $2`,
 		id, userID,
 	)
 	var tagsBytes []byte
+	var activeTaskJSON *string
 	err := row.Scan(
 		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
 		&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 		&s.Provider, &s.Region, &s.Environment,
-		&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+		&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 	)
 
 	if err != nil {
@@ -247,7 +306,22 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 			return nil, fmt.Errorf("unmarshal tags: %w", err)
 		}
 	}
+	if err := assignAgentUpdateTask(&s, activeTaskJSON); err != nil {
+		return nil, err
+	}
 	return &s, nil
+}
+
+func assignAgentUpdateTask(server *Server, raw *string) error {
+	if raw == nil || *raw == "" {
+		return nil
+	}
+	var task AgentUpdateTask
+	if err := json.Unmarshal([]byte(*raw), &task); err != nil {
+		return fmt.Errorf("unmarshal active agent update task: %w", err)
+	}
+	server.ActiveAgentUpdateTask = &task
+	return nil
 }
 
 // ListCronJobs returns discovered cron jobs for a user-owned server.
