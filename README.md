@@ -38,6 +38,8 @@ Thay vì SSH vào từng máy để kiểm tra CPU, RAM, Disk, Docker containers
 
 ## Tài liệu
 
+- [Public Documentation](docs/public/)
+- [Technical Administration Documentation](docs/technical/README.md)
 - [System Overview](docs/architecture/system-overview.md)
 - [Database Schema](docs/database/schema.md)
 - [REST API](docs/api/rest-api.md)
