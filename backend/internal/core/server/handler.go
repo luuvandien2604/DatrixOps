@@ -12,6 +12,8 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
+const agentReleaseBaseURL = "https://datrixops.vandien.space/releases"
+
 type Handler struct {
 	svc *Service
 }
@@ -194,6 +196,57 @@ type CreateTaskRequest struct {
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
+func (h *Handler) normalizedTaskPayload(taskType, rawPayload string) (string, error) {
+	if rawPayload == "" {
+		rawPayload = "{}"
+	}
+	if !json.Valid([]byte(rawPayload)) {
+		return "", fmt.Errorf("Payload must be valid JSON")
+	}
+	if taskType != "agent_update" {
+		return rawPayload, nil
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return "", fmt.Errorf("Payload must be valid JSON")
+	}
+	if payload == nil {
+		payload = make(map[string]any)
+	}
+	if strings.TrimSpace(h.svc.desiredAgentVersion) != "" {
+		payload["target_version"] = strings.TrimSpace(h.svc.desiredAgentVersion)
+		payload["release_base_url"] = agentReleaseBaseURL
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode update payload: %w", err)
+	}
+	return string(payloadBytes), nil
+}
+
+func (h *Handler) expireStaleAgentUpdateTasks(ctx context.Context, serverID string) {
+	_, _ = h.svc.repo.db.Pool.Exec(ctx,
+		`UPDATE server_tasks
+		 SET status = 'expired', completed_at = NOW(), updated_at = NOW()
+		 WHERE server_id = $1
+		   AND type = 'agent_update'
+		   AND status = 'pending'
+		   AND expires_at <= NOW()`,
+		serverID,
+	)
+	_, _ = h.svc.repo.db.Pool.Exec(ctx,
+		`UPDATE server_tasks
+		 SET status = 'timed_out', completed_at = NOW(), updated_at = NOW()
+		 WHERE server_id = $1
+		   AND type = 'agent_update'
+		   AND status = 'processing'
+		   AND started_at + make_interval(secs => timeout_seconds) <= NOW()`,
+		serverID,
+	)
+}
+
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -216,13 +269,12 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Unsupported task type")
 		return
 	}
-	if req.Payload == "" {
-		req.Payload = "{}"
-	}
-	if !json.Valid([]byte(req.Payload)) {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Payload must be valid JSON")
+	normalizedPayload, err := h.normalizedTaskPayload(req.Type, req.Payload)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
+	req.Payload = normalizedPayload
 	if req.TimeoutSeconds == 0 {
 		req.TimeoutSeconds = 60
 	}
@@ -246,6 +298,9 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			return
 		}
+	}
+	if req.Type == "agent_update" {
+		h.expireStaleAgentUpdateTasks(r.Context(), serverID)
 	}
 
 	// Direct DB call for task since it's lightweight (better to put in service, but okay here for now)
@@ -353,12 +408,18 @@ func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
 		if !server.UpdateAvailable {
 			continue
 		}
+		h.expireStaleAgentUpdateTasks(r.Context(), server.ID)
+		payload, err := h.normalizedTaskPayload("agent_update", "{}")
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to prepare update payload")
+			return
+		}
 		var taskID string
-		err := h.svc.repo.db.Pool.QueryRow(r.Context(),
+		err = h.svc.repo.db.Pool.QueryRow(r.Context(),
 			`WITH inserted AS (
 				INSERT INTO server_tasks
 					(server_id, type, payload, requested_by, timeout_seconds, expires_at)
-				 VALUES ($1, 'agent_update', '{}'::jsonb, $2, 300, NOW() + INTERVAL '24 hours')
+				 VALUES ($1, 'agent_update', $3::jsonb, $2, 300, NOW() + INTERVAL '24 hours')
 				 ON CONFLICT DO NOTHING
 				 RETURNING id
 			 )
@@ -370,7 +431,7 @@ func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
 			   AND existing.type = 'agent_update'
 			   AND existing.status IN ('pending', 'processing')
 			 LIMIT 1`,
-			server.ID, userID,
+			server.ID, userID, payload,
 		).Scan(&taskID)
 		if err != nil {
 			slog.Error("failed to queue agent update", "error", err, "server_id", server.ID)

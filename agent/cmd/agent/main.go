@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/agent/internal/collector"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/config"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/terminal"
+	agentupdate "github.com/luuvandien2604/DatrixOps/agent/internal/update"
 )
 
 var (
@@ -35,6 +38,8 @@ var (
 	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
 )
+
+const defaultAgentReleaseBaseURL = "https://datrixops.vandien.space/releases"
 
 func main() {
 	log.Printf("Starting DatrixOps Agent %s (%s)...", Version, VersionMarker)
@@ -110,8 +115,13 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	}
 }
 
-func prepareAgentUpdate(ctx context.Context) error {
-	binaryURL, err := agentBinaryURL()
+type agentUpdatePayload struct {
+	TargetVersion  string `json:"target_version"`
+	ReleaseBaseURL string `json:"release_base_url"`
+}
+
+func prepareAgentUpdate(ctx context.Context, payload agentUpdatePayload) error {
+	binaryURL, expectedSHA256, expectedSize, err := agentBinaryURL(ctx, payload)
 	if err != nil {
 		return err
 	}
@@ -156,9 +166,25 @@ func prepareAgentUpdate(ctx context.Context) error {
 		_ = os.Remove(updatePath)
 		return fmt.Errorf("downloaded update is empty")
 	}
+	if expectedSize > 0 && written != expectedSize {
+		_ = os.Remove(updatePath)
+		return fmt.Errorf("downloaded update size mismatch: got %d bytes, expected %d", written, expectedSize)
+	}
+	if expectedSHA256 != "" {
+		if err := validateFileSHA256(updatePath, expectedSHA256); err != nil {
+			_ = os.Remove(updatePath)
+			return err
+		}
+	}
 	if err := validateStagedBinary(updatePath); err != nil {
 		_ = os.Remove(updatePath)
 		return err
+	}
+	if strings.TrimSpace(payload.TargetVersion) != "" {
+		if err := validateEmbeddedAgentVersion(updatePath, payload.TargetVersion); err != nil {
+			_ = os.Remove(updatePath)
+			return err
+		}
 	}
 
 	if runtime.GOOS == "windows" {
@@ -171,6 +197,36 @@ func prepareAgentUpdate(ctx context.Context) error {
 	if err := os.Rename(updatePath, executablePath); err != nil {
 		_ = os.Remove(updatePath)
 		return fmt.Errorf("replace agent binary: %w", err)
+	}
+	return nil
+}
+
+func validateFileSHA256(path, expected string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open staged update for checksum: %w", err)
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return fmt.Errorf("hash staged update: %w", err)
+	}
+	actual := hex.EncodeToString(hasher.Sum(nil))
+	if !strings.EqualFold(actual, strings.TrimSpace(expected)) {
+		return fmt.Errorf("downloaded update checksum mismatch: got %s, expected %s", actual, expected)
+	}
+	return nil
+}
+
+func validateEmbeddedAgentVersion(path, targetVersion string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read staged update for version validation: %w", err)
+	}
+	marker := "datrixops-agent-version=" + strings.TrimSpace(targetVersion)
+	if !bytes.Contains(content, []byte(marker)) {
+		return fmt.Errorf("downloaded update does not contain expected version marker %s", marker)
 	}
 	return nil
 }
@@ -205,26 +261,53 @@ func validateStagedBinary(path string) error {
 	return nil
 }
 
-func agentBinaryURL() (string, error) {
+func agentBinaryURL(ctx context.Context, payload agentUpdatePayload) (string, string, int64, error) {
+	targetVersion := strings.TrimSpace(payload.TargetVersion)
+	if targetVersion != "" {
+		baseURL := strings.TrimRight(strings.TrimSpace(payload.ReleaseBaseURL), "/")
+		if baseURL == "" {
+			baseURL = defaultAgentReleaseBaseURL
+		}
+		publicKey, err := agentupdate.ReleasePublicKey()
+		if err != nil {
+			return "", "", 0, err
+		}
+		updateClient := agentupdate.NewClient(publicKey)
+		manifestURL := fmt.Sprintf("%s/%s/manifest.json", baseURL, targetVersion)
+		signatureURL := fmt.Sprintf("%s/%s/manifest.sig", baseURL, targetVersion)
+		manifest, err := updateClient.FetchManifest(ctx, manifestURL, signatureURL)
+		if err != nil {
+			return "", "", 0, err
+		}
+		if manifest.Version != targetVersion {
+			return "", "", 0, fmt.Errorf("release manifest version mismatch: got %s, expected %s", manifest.Version, targetVersion)
+		}
+		artifact, err := manifest.ArtifactFor(runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return "", "", 0, err
+		}
+		return artifact.URL, artifact.SHA256, artifact.Size, nil
+	}
+
 	baseURL := "https://datrixops.vandien.space"
 	switch runtime.GOOS {
 	case "linux":
 		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-			return "", fmt.Errorf("unsupported Linux architecture %s", runtime.GOARCH)
+			return "", "", 0, fmt.Errorf("unsupported Linux architecture %s", runtime.GOARCH)
 		}
-		return fmt.Sprintf("%s/datrixops-agent-linux-%s", baseURL, runtime.GOARCH), nil
+		return fmt.Sprintf("%s/datrixops-agent-linux-%s", baseURL, runtime.GOARCH), "", 0, nil
 	case "darwin":
 		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-			return "", fmt.Errorf("unsupported macOS architecture %s", runtime.GOARCH)
+			return "", "", 0, fmt.Errorf("unsupported macOS architecture %s", runtime.GOARCH)
 		}
-		return fmt.Sprintf("%s/datrixops-agent-darwin-%s", baseURL, runtime.GOARCH), nil
+		return fmt.Sprintf("%s/datrixops-agent-darwin-%s", baseURL, runtime.GOARCH), "", 0, nil
 	case "windows":
 		if runtime.GOARCH != "amd64" {
-			return "", fmt.Errorf("unsupported Windows architecture %s", runtime.GOARCH)
+			return "", "", 0, fmt.Errorf("unsupported Windows architecture %s", runtime.GOARCH)
 		}
-		return baseURL + "/datrixops-agent-windows-amd64.exe", nil
+		return baseURL + "/datrixops-agent-windows-amd64.exe", "", 0, nil
 	default:
-		return "", fmt.Errorf("unsupported operating system %s", runtime.GOOS)
+		return "", "", 0, fmt.Errorf("unsupported operating system %s", runtime.GOOS)
 	}
 }
 
@@ -256,7 +339,8 @@ func activatePreparedAgentUpdate() {
 		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 		if err := cmd.Start(); err != nil {
 			log.Printf("Failed to launch Windows update helper: %v", err)
-			return
+		} else {
+			log.Printf("Launched Windows update helper %s", scriptPath)
 		}
 	}
 	if runtime.GOOS == "linux" {
@@ -391,7 +475,11 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 
 		case "agent_update":
 			log.Println("Received agent_update task. Downloading the current release...")
-			if err := prepareAgentUpdate(taskContext); err != nil {
+			updatePayload := agentUpdatePayload{
+				TargetVersion:  payload["target_version"],
+				ReleaseBaseURL: payload["release_base_url"],
+			}
+			if err := prepareAgentUpdate(taskContext, updatePayload); err != nil {
 				statusStr = "failed"
 				resultStr = "Unable to stage agent update: " + err.Error()
 			} else {
