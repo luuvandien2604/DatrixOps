@@ -1,6 +1,6 @@
 # DatrixOps Technical Administration Documentation
 
-Tài liệu này dành cho người vận hành, maintainer và developer có quyền truy cập repository. Nội dung không được render bởi route public `/docs`: frontend chỉ đọc `docs/public/`.
+Tài liệu này dành cho người vận hành, maintainer và developer có quyền truy cập repository. Nội dung không được render bởi route public `/docs`: frontend chỉ đọc nội dung tiếng Việt trong `docs/public/` và tiếng Anh trong `docs/public/en/`.
 
 ## Mục lục
 
@@ -36,4 +36,3 @@ Khi tài liệu cũ mâu thuẫn migration hoặc source, ưu tiên migration/so
 | Chống downgrade bằng so sánh semantic version trong Agent | Chưa có enforcement đầy đủ |
 | Network, Performance, Security, Logs chuyên sâu | Frontend còn placeholder/không có backend đầy đủ |
 | Backup manager, arbitrary shell library, file manager, gRPC/mTLS | Chưa có |
-

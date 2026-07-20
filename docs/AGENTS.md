@@ -37,7 +37,7 @@ frontend/
   src/lib/apiClient.ts         # HTTP client gọi backend
   src/lib/docs.ts              # catalog + loader chỉ đọc Markdown public trong docs/public/
 
-docs/public/                   # public docs tiếng Việt, route phân cấp /docs/*
+docs/public/                   # public docs tiếng Việt (/docs/*) và bản tiếng Anh trong en/ (/docs/en/*)
 docs/technical/                # tài liệu vận hành/developer, không được public
 docs/user-guide/               # tài liệu legacy để tham khảo, không còn được frontend đọc
 ```
@@ -134,7 +134,7 @@ cd agent && DATRIXOPS_AGENT_TOKEN=<token> \
 3. **Agent thu thập thêm field** → sửa `agent/internal/collector/`, và field JSON phải khớp CHÍNH XÁC ở cả agent (`agent/internal/client/http.go`) lẫn backend (`backend/internal/core/agent_api/handler.go`) — 2 struct riêng biệt, không dùng chung type.
 4. **Agent chạy hành động mới** → thêm `case` trong `processTask()` (`agent/cmd/agent/main.go`), và đảm bảo phía tạo task cho phép `type` đó.
 5. **Route Frontend đã có nhưng chưa code** → các trang "Under Construction" liệt kê ở mục 5, chỉ cần xoá `<Construction />` và viết logic thật.
-6. **Docs cho người dùng** → thêm file `.md` với frontmatter `title/description` vào `docs/public/<group>/`, rồi thêm entry vào `docsNavigation` trong `frontend/src/lib/docs.ts`. Technical docs chỉ thêm vào `docs/technical/`.
+6. **Docs cho người dùng** → thêm file `.md` với frontmatter `title/description` vào cả `docs/public/<group>/` và `docs/public/en/<group>/`, rồi thêm entry cho hai locale trong `frontend/src/lib/docs.ts`. Technical docs chỉ thêm vào `docs/technical/`.
 
 ## 10. Điểm dễ gây nhầm lẫn khi đọc repo (đã xác minh thực tế, không phải giả định)
 

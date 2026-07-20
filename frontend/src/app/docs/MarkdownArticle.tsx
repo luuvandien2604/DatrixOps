@@ -4,6 +4,7 @@ import { Children, isValidElement, type ReactNode, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Check, Clipboard } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 
 function slugifyHeading(value: string) {
   return value.toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -17,7 +18,7 @@ function textFromChildren(children: ReactNode): string {
   }).join('');
 }
 
-function CodeBlock({ children }: { children: ReactNode }) {
+function CodeBlock({ children, english }: { children: ReactNode; english: boolean }) {
   const [copied, setCopied] = useState(false);
   const code = textFromChildren(children).replace(/\n$/, '');
   const copy = async () => {
@@ -27,13 +28,21 @@ function CodeBlock({ children }: { children: ReactNode }) {
   };
   return (
     <div className="docs-code">
-      <div><span>Command</span><button type="button" onClick={copy}>{copied ? <Check /> : <Clipboard />}{copied ? 'Đã sao chép' : 'Sao chép'}</button></div>
+      <div>
+        <span>Command</span>
+        <button type="button" onClick={copy}>
+          {copied ? <Check /> : <Clipboard />}
+          {copied ? (english ? 'Copied' : 'Đã sao chép') : (english ? 'Copy' : 'Sao chép')}
+        </button>
+      </div>
       <pre>{children}</pre>
     </div>
   );
 }
 
 export default function MarkdownArticle({ content }: { content: string }) {
+  const pathname = usePathname();
+  const english = pathname === '/docs/en' || pathname.startsWith('/docs/en/');
   return (
     <div className="docs-markdown">
       <ReactMarkdown
@@ -41,7 +50,7 @@ export default function MarkdownArticle({ content }: { content: string }) {
         components={{
           h2: ({ children }) => <h2 id={slugifyHeading(textFromChildren(children))}>{children}</h2>,
           h3: ({ children }) => <h3 id={slugifyHeading(textFromChildren(children))}>{children}</h3>,
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          pre: ({ children }) => <CodeBlock english={english}>{children}</CodeBlock>,
           blockquote: ({ children }) => {
             const value = textFromChildren(children).trim().toLocaleLowerCase('vi');
             const kind = value.startsWith('warning:') ? 'warning'

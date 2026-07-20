@@ -12,6 +12,8 @@ export interface DocEntry {
   searchText?: string;
 }
 
+export type DocLocale = 'vi' | 'en';
+
 export interface DocHeading {
   id: string;
   text: string;
@@ -23,11 +25,13 @@ export interface DocPage extends DocEntry {
   headings: DocHeading[];
 }
 
-export const docsNavigation: Array<{
+export type DocsNavigation = Array<{
   label: string;
   slug: string;
   items: Array<Omit<DocEntry, 'groupLabel'>>;
-}> = [
+}>;
+
+const viNavigation: DocsNavigation = [
   {
     label: 'Giới thiệu',
     slug: 'introduction',
@@ -81,16 +85,80 @@ export const docsNavigation: Array<{
   },
 ];
 
-const flatNavigation: DocEntry[] = docsNavigation
-  .flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label })))
-  .sort((a, b) => a.order - b.order);
+const enNavigation: DocsNavigation = [
+  {
+    label: 'Introduction',
+    slug: 'introduction',
+    items: [
+      { slug: 'introduction/what-is-datrixops', title: 'What is DatrixOps?', description: 'Architecture, components, supported platforms, and requirements.', group: 'introduction', order: 10 },
+    ],
+  },
+  {
+    label: 'Getting started',
+    slug: 'getting-started',
+    items: [
+      { slug: 'getting-started/account-and-first-server', title: 'Account and first server', description: 'Sign in, register a server, and protect its Agent Token.', group: 'getting-started', order: 20 },
+      { slug: 'getting-started/installation', title: 'Install the Agent', description: 'Install the Agent on Linux, macOS, and Windows.', group: 'getting-started', order: 30 },
+    ],
+  },
+  {
+    label: 'Dashboard',
+    slug: 'dashboard',
+    items: [
+      { slug: 'dashboard/overview', title: 'Read the Dashboard', description: 'Understand server state, CPU, memory, disk, and network.', group: 'dashboard', order: 40 },
+    ],
+  },
+  {
+    label: 'Server management',
+    slug: 'server-management',
+    items: [
+      { slug: 'server-management/servers', title: 'Servers and remote access', description: 'System information, services, Docker, and Web Terminal.', group: 'server-management', order: 50 },
+    ],
+  },
+  {
+    label: 'Agent management',
+    slug: 'agent-management',
+    items: [
+      { slug: 'agent-management/updates', title: 'Versions and updates', description: 'Self-update, Update all agents, and failure handling.', group: 'agent-management', order: 60 },
+    ],
+  },
+  {
+    label: 'Security',
+    slug: 'security',
+    items: [
+      { slug: 'security/agent-and-updates', title: 'Connections and signed updates', description: 'Agent Tokens, TLS, Ed25519, and SHA-256.', group: 'security', order: 70 },
+    ],
+  },
+  {
+    label: 'Help',
+    slug: 'help',
+    items: [
+      { slug: 'troubleshooting/common-issues', title: 'Troubleshooting', description: 'Diagnose offline Agents, updates, permissions, and networking.', group: 'help', order: 80 },
+      { slug: 'faq', title: 'Frequently asked questions', description: 'Answers based on capabilities implemented in DatrixOps today.', group: 'help', order: 90 },
+    ],
+  },
+];
 
-function getDocsDirectory() {
+export const docsNavigationByLocale: Record<DocLocale, DocsNavigation> = {
+  vi: viNavigation,
+  en: enNavigation,
+};
+
+export const docsNavigation = viNavigation;
+
+function flatNavigation(locale: DocLocale): DocEntry[] {
+  return docsNavigationByLocale[locale]
+    .flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label })))
+    .sort((a, b) => a.order - b.order);
+}
+
+function getDocsDirectory(locale: DocLocale) {
   const candidates = [
     path.join(process.cwd(), '../docs/public'),
     path.join(process.cwd(), 'docs/public'),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  const root = candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  return locale === 'en' ? path.join(root, 'en') : root;
 }
 
 function safeSlug(parts: string[]) {
@@ -99,9 +167,9 @@ function safeSlug(parts: string[]) {
   return slug;
 }
 
-export function getAllDocs(): DocEntry[] {
-  const docsDirectory = getDocsDirectory();
-  return flatNavigation.map((entry) => {
+export function getAllDocs(locale: DocLocale = 'vi'): DocEntry[] {
+  const docsDirectory = getDocsDirectory(locale);
+  return flatNavigation(locale).map((entry) => {
     const filePath = path.join(docsDirectory, `${entry.slug}.md`);
     if (!fs.existsSync(filePath)) return entry;
     const { content } = matter(fs.readFileSync(filePath, 'utf8'));
@@ -116,13 +184,13 @@ export function getAllDocs(): DocEntry[] {
   });
 }
 
-export function getDocBySlug(parts: string[]): DocPage | null {
+export function getDocBySlug(parts: string[], locale: DocLocale = 'vi'): DocPage | null {
   const slug = safeSlug(parts);
   if (!slug) return null;
-  const catalogEntry = flatNavigation.find((entry) => entry.slug === slug);
+  const catalogEntry = flatNavigation(locale).find((entry) => entry.slug === slug);
   if (!catalogEntry) return null;
 
-  const docsDirectory = getDocsDirectory();
+  const docsDirectory = getDocsDirectory(locale);
   const filePath = path.join(docsDirectory, `${slug}.md`);
   if (!fs.existsSync(filePath)) return null;
 
@@ -136,11 +204,12 @@ export function getDocBySlug(parts: string[]): DocPage | null {
   };
 }
 
-export function getAdjacentDocs(slug: string) {
-  const index = flatNavigation.findIndex((entry) => entry.slug === slug);
+export function getAdjacentDocs(slug: string, locale: DocLocale = 'vi') {
+  const entries = flatNavigation(locale);
+  const index = entries.findIndex((entry) => entry.slug === slug);
   return {
-    previous: index > 0 ? flatNavigation[index - 1] : null,
-    next: index >= 0 && index < flatNavigation.length - 1 ? flatNavigation[index + 1] : null,
+    previous: index > 0 ? entries[index - 1] : null,
+    next: index >= 0 && index < entries.length - 1 ? entries[index + 1] : null,
   };
 }
 
