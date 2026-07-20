@@ -29,6 +29,7 @@ type Metrics struct {
 	Snapshot                 *Snapshot `json:"snapshot,omitempty"`
 	Version                  string    `json:"version"`
 	TerminalChannelConnected bool      `json:"terminal_channel_connected"`
+	TerminalChannelError     string    `json:"terminal_channel_error,omitempty"`
 }
 
 var (

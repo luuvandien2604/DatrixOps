@@ -55,6 +55,18 @@ Installer cần root/Administrator. Kiểm tra owner và executable bit của bi
 
 Cho phép DNS và HTTPS outbound tới domain DatrixOps. Reverse terminal còn cần WebSocket upgrade qua reverse proxy. Kiểm tra proxy doanh nghiệp có chặn WebSocket hoặc thay chứng thư TLS hay không.
 
+## Agent online nhưng Terminal channel disconnected
+
+Từ bản Agent có terminal diagnostics, heartbeat gửi lỗi handshake gần nhất để Dashboard phân biệt `401`, `403`, `404/200`, `502/503`, TLS và timeout. Bạn vẫn có thể chọn **Start terminal**: Backend hub sẽ kiểm tra trạng thái kết nối thực tế thay vì UI khóa nút chỉ vì một heartbeat cũ.
+
+Kiểm tra log Agent:
+
+```bash
+sudo journalctl -u datrixops-agent -n 200 --no-pager | grep -i terminal
+```
+
+Endpoint `/api/v1/agent/terminal` phải được reverse proxy chuyển thẳng tới Backend với `Upgrade` và `Connection` headers. `401` khi không có token là phản hồi bình thường; `200` HTML hoặc `404` cho thấy request đang rơi vào Frontend/sai upstream.
+
 ## Dữ liệu biểu đồ bị đứt
 
 Khoảng đứt khi Agent offline là hành vi đúng: hệ thống không nối giả giữa hai điểm không có heartbeat. Nếu Agent vẫn online, kiểm tra log lỗi gửi heartbeat và thời gian hệ thống. Snapshot tiến trình/dịch vụ cập nhật chậm hơn metrics cơ bản.
@@ -70,4 +82,3 @@ Khi báo lỗi, cung cấp:
 - Đoạn log ngắn liên quan.
 
 Không gửi Agent Token, JWT, private signing key, database URL hoặc toàn bộ file environment.
-

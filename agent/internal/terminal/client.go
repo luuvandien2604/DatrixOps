@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -25,9 +27,29 @@ type socket struct {
 }
 
 var connected atomic.Bool
+var lastError atomic.Value
 
 func Connected() bool {
 	return connected.Load()
+}
+
+// LastError returns a short, credential-free diagnostic suitable for the
+// authenticated dashboard. Agent tokens are never included in this value.
+func LastError() string {
+	value, _ := lastError.Load().(string)
+	return value
+}
+
+func setLastError(err error) {
+	if err == nil {
+		lastError.Store("")
+		return
+	}
+	value := strings.Join(strings.Fields(err.Error()), " ")
+	if len(value) > 500 {
+		value = value[:500]
+	}
+	lastError.Store(value)
 }
 
 func (s *socket) write(value any) error {
@@ -45,8 +67,13 @@ func Run(ctx context.Context, cfg *config.Config) {
 		if ctx.Err() != nil {
 			return
 		}
+		attemptStarted := time.Now()
 		if err := connect(ctx, cfg); err != nil && ctx.Err() == nil {
+			setLastError(err)
 			log.Printf("Terminal channel disconnected: %v", err)
+		}
+		if time.Since(attemptStarted) >= time.Minute {
+			backoff = time.Second
 		}
 		timer := time.NewTimer(backoff)
 		select {
@@ -57,6 +84,9 @@ func Run(ctx context.Context, cfg *config.Config) {
 		}
 		if backoff < 30*time.Second {
 			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
 		}
 	}
 }
@@ -66,17 +96,20 @@ func connect(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Connecting terminal reverse channel to %s", endpoint)
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+cfg.AgentToken)
-	conn, _, err := (&websocket.Dialer{
+	header.Set("User-Agent", "DatrixOps-Agent-Terminal")
+	conn, response, err := (&websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 		Proxy:            http.ProxyFromEnvironment,
 	}).DialContext(ctx, endpoint, header)
 	if err != nil {
-		return err
+		return websocketHandshakeError(err, response)
 	}
 	defer conn.Close()
 	connected.Store(true)
+	setLastError(nil)
 	defer connected.Store(false)
 	conn.SetReadLimit(maxMessageBytes)
 	channel := &socket{conn: conn}
@@ -122,6 +155,19 @@ func connect(ctx context.Context, cfg *config.Config) error {
 	}
 }
 
+func websocketHandshakeError(dialErr error, response *http.Response) error {
+	if response == nil {
+		return fmt.Errorf("connect terminal WebSocket: %w", dialErr)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+	detail := strings.Join(strings.Fields(string(body)), " ")
+	if detail == "" {
+		detail = http.StatusText(response.StatusCode)
+	}
+	return fmt.Errorf("terminal WebSocket handshake returned HTTP %d: %s", response.StatusCode, detail)
+}
+
 func terminalURL(serverURL string) (string, error) {
 	parsed, err := url.Parse(strings.TrimRight(serverURL, "/"))
 	if err != nil {
@@ -132,6 +178,11 @@ func terminalURL(serverURL string) (string, error) {
 		parsed.Scheme = "wss"
 	case "http":
 		parsed.Scheme = "ws"
+	default:
+		return "", fmt.Errorf("terminal server URL must use HTTP or HTTPS")
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("terminal server URL is missing a host")
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/agent/terminal"
 	parsed.RawQuery = ""

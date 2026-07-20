@@ -111,6 +111,7 @@ interface ServerDetails {
     disk_total?: number;
     disk_usage?: number;
     terminal_channel_connected?: boolean;
+    terminal_channel_error?: string;
   };
   snapshot?: string;
   inventory?: string;
@@ -390,6 +391,7 @@ export default function ServerDetailsPage() {
         disk_total?: number;
         disk_usage?: number;
         terminal_channel_connected?: boolean;
+        terminal_channel_error?: string;
       };
     } catch {
       return {};
@@ -425,6 +427,31 @@ export default function ServerDetailsPage() {
   const supportsTerminalEnvironment = osFamily === 'linux' && !isDesktopLinux;
   const terminalChannelConnected = parsedOSInfo.terminal_channel_connected === true;
   const terminalChannelReported = typeof parsedOSInfo.terminal_channel_connected === 'boolean';
+  const terminalChannelError = typeof parsedOSInfo.terminal_channel_error === 'string'
+    ? parsedOSInfo.terminal_channel_error.trim()
+    : '';
+  const terminalChannelDiagnostic = (() => {
+    const normalized = terminalChannelError.toLowerCase();
+    if (!normalized) {
+      return 'Retry the connection. If it still fails, inspect the Agent log for “Terminal channel disconnected”.';
+    }
+    if (normalized.includes('http 401')) {
+      return `The terminal endpoint rejected the Agent Token. Confirm that heartbeat and terminal use the same API host, then restart the Agent. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('http 403')) {
+      return `The WebSocket handshake was blocked. Check Cloudflare/WAF rules and the origin proxy. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('http 200') || normalized.includes('http 404')) {
+      return `The request did not reach the WebSocket upgrade handler. Route /api/v1/agent/terminal directly to the Backend with Upgrade headers. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('http 502') || normalized.includes('http 503')) {
+      return `The proxy could not reach the Backend terminal handler. Check Backend health and upstream routing. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('timeout') || normalized.includes('tls') || normalized.includes('certificate')) {
+      return `The Agent could not complete the secure WebSocket connection. Check DNS, time, CA certificates, firewall, and proxy timeout. Diagnostic: ${terminalChannelError}`;
+    }
+    return `Agent diagnostic: ${terminalChannelError}`;
+  })();
   const serviceManager = osFamily === 'macos' ? 'launchd' : osFamily === 'windows' ? 'windows-scm' : 'systemd';
   const serviceContent = osFamily === 'macos'
     ? {
@@ -516,11 +543,12 @@ export default function ServerDetailsPage() {
     if (!terminalChannelReported) {
       return 'This agent version does not report reverse terminal channel health. Update the agent to the latest patch release before opening Web Terminal.';
     }
-    if (!terminalChannelConnected) {
-      return 'The agent is online, but its reverse terminal channel is not connected. Restart or update the agent, then check that WebSocket upgrade is forwarded for /api/v1/agent/terminal.';
-    }
     return undefined;
   })();
+  const terminalCanAttempt = server.status === 'online'
+    && versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION)
+    && supportsTerminalEnvironment
+    && terminalChannelReported;
   const filteredServices = services.filter(service => {
     const matchesStatus = serviceFilter === 'all' || service.status === serviceFilter;
     const query = serviceSearch.trim().toLowerCase();
@@ -1069,8 +1097,10 @@ export default function ServerDetailsPage() {
         <WebTerminal
           serverId={server.id}
           serverName={server.name}
-          enabled={server.status === 'online' && versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION) && supportsTerminalEnvironment && terminalChannelConnected}
+          enabled={terminalCanAttempt}
           disabledReason={terminalDisabledReason}
+          channelConnected={terminalChannelConnected}
+          channelDiagnostic={terminalChannelDiagnostic}
         />
       )}
 

@@ -93,6 +93,7 @@ type HeartbeatRequest struct {
 	DiskUsed                 uint64    `json:"disk_used"`
 	DiskUsage                float64   `json:"disk_usage"`
 	TerminalChannelConnected bool      `json:"terminal_channel_connected"`
+	TerminalChannelError     string    `json:"terminal_channel_error,omitempty"`
 	Snapshot                 *Snapshot `json:"snapshot,omitempty"`
 }
 

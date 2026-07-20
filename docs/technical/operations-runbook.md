@@ -31,6 +31,22 @@ journalctl -u datrixops-agent -n 200 --no-pager
 4. `401` heartbeat: so Agent Token với server record; không debug JWT.
 5. Query `servers.last_seen_at` và metrics gần nhất.
 
+## Debug reverse terminal channel
+
+Agent heartbeat lưu `terminal_channel_connected` và lỗi handshake gần nhất trong `terminal_channel_error`. Phân loại:
+
+- `HTTP 401`: token/host terminal không khớp với heartbeat.
+- `HTTP 403`: WAF/Cloudflare/origin policy chặn.
+- `HTTP 200` hoặc `404`: route rơi vào Frontend hoặc proxy không upgrade.
+- `HTTP 502/503`: upstream Backend không sẵn sàng.
+- TLS/timeout: DNS, CA, clock, firewall hoặc proxy timeout.
+
+```bash
+journalctl -u datrixops-agent -n 200 --no-pager | grep -i terminal
+```
+
+Một request thường không có Agent Token tới `/api/v1/agent/terminal` phải trả JSON `401` từ Backend. Để kiểm tra phiên thật cần Agent Token hợp lệ; không đưa token vào shell history hoặc ticket.
+
 ## Debug update không hiển thị
 
 1. Xem `AGENT_VERSION` trong Backend container:
@@ -130,4 +146,3 @@ Deployment hoàn tất khi:
 - task/update UI đọc được trạng thái persisted;
 - release URL trả manifest/signature/artifact đúng nếu có release mới;
 - log không có migration loop, panic hoặc 5xx lặp lại.
-

@@ -13,6 +13,8 @@ interface WebTerminalProps {
   serverName: string;
   enabled: boolean;
   disabledReason?: string;
+  channelConnected?: boolean;
+  channelDiagnostic?: string;
 }
 
 interface TerminalMessage {
@@ -51,7 +53,14 @@ const base64ToBytes = (value: string) => {
   return bytes;
 };
 
-export default function WebTerminal({ serverId, serverName, enabled, disabledReason }: WebTerminalProps) {
+export default function WebTerminal({
+  serverId,
+  serverName,
+  enabled,
+  disabledReason,
+  channelConnected = false,
+  channelDiagnostic,
+}: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -227,6 +236,17 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
         <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm text-amber-100">
           <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />
           <p className="font-semibold">{disabledReason || 'Terminal is unavailable for this agent.'}</p>
+        </div>
+      )}
+      {enabled && !channelConnected && (
+        <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm leading-6 text-amber-100">
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-semibold">The last heartbeat reported that the reverse terminal channel was disconnected.</p>
+            <p className="mt-1 text-xs text-amber-100/75">
+              {channelDiagnostic || 'You can retry: the Backend terminal hub will perform the authoritative connection check.'}
+            </p>
+          </div>
         </div>
       )}
       {enabled && state === 'idle' && (

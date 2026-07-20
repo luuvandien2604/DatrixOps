@@ -55,6 +55,18 @@ The installer needs root/Administrator privileges. Check binary ownership and ex
 
 Allow outbound DNS and HTTPS to DatrixOps. Reverse terminal also requires WebSocket upgrade support through the reverse proxy. Check whether an enterprise proxy blocks WebSockets or replaces TLS certificates.
 
+## Agent online but terminal channel disconnected
+
+Agents with terminal diagnostics include the latest handshake failure in their heartbeat, allowing the Dashboard to distinguish `401`, `403`, `404/200`, `502/503`, TLS, and timeout failures. You can still select **Start terminal**: the Backend hub performs the authoritative connection check instead of the UI locking the button because of a stale heartbeat.
+
+Inspect Agent logs:
+
+```bash
+sudo journalctl -u datrixops-agent -n 200 --no-pager | grep -i terminal
+```
+
+The reverse proxy must route `/api/v1/agent/terminal` directly to the Backend with `Upgrade` and `Connection` headers. A `401` without a token is expected; HTML `200` or `404` indicates that the request reached the Frontend or a wrong upstream.
+
 ## Chart gaps
 
 Gaps while an Agent is offline are intentional: DatrixOps does not draw an invented line between missing samples. If the Agent is online, inspect heartbeat errors and system time. Process/service snapshots update less frequently than basic metrics.
@@ -62,4 +74,3 @@ Gaps while an Agent is offline are intentional: DatrixOps does not draw an inven
 ## Collect logs for a report
 
 Include OS/architecture, startup Agent version, time and timezone, redacted task state, and a short relevant log excerpt. Never include an Agent Token, JWT, private signing key, database URL, or complete environment file.
-
