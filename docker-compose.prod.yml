@@ -21,7 +21,8 @@ services:
       POSTGRES_PASSWORD: secretpassword
       POSTGRES_DB: datrixops
     ports:
-      - "5432:5432"
+      # Administrative access remains local to the control-plane host.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -38,7 +39,8 @@ services:
       - JWT_SECRET=super-secret-key-change-in-production
       - AGENT_VERSION=${AGENT_VERSION:-1.4.3}
     ports:
-      - "8080:8080"
+      # Public API traffic must enter through the WebSocket-aware gateway.
+      - "127.0.0.1:8080:8080"
     
   frontend:
     build:

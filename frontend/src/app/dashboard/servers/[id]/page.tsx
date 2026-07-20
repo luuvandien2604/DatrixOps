@@ -98,6 +98,7 @@ interface ServerDetails {
   ip_address: string;
   latest_agent_version?: string;
   update_available?: boolean;
+  auto_update_agent?: boolean;
   active_agent_update_task?: AgentUpdateTask;
   os_info?: string | {
     os_name?: string;
@@ -166,6 +167,7 @@ export default function ServerDetailsPage() {
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
+  const [savingAutoUpdate, setSavingAutoUpdate] = useState(false);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
@@ -346,6 +348,24 @@ export default function ServerDetailsPage() {
       toast.error(err.message || 'Unable to queue agent update');
     } finally {
       setQueueingAgentUpdate(false);
+    }
+  };
+
+  const setAgentAutoUpdate = async (enabled: boolean) => {
+    if (!server || savingAutoUpdate) return;
+    setSavingAutoUpdate(true);
+    try {
+      await apiClient(`/servers/${server.id}/agent-update-policy`, {
+        method: 'PUT',
+        data: { enabled },
+      });
+      setServer(current => current ? { ...current, auto_update_agent: enabled } : current);
+      toast.success(enabled ? 'Automatic Agent updates enabled' : 'Automatic Agent updates disabled');
+      await fetchServer();
+    } catch (error: any) {
+      toast.error(error.message || 'Unable to change the automatic update policy');
+    } finally {
+      setSavingAutoUpdate(false);
     }
   };
 
@@ -617,6 +637,49 @@ export default function ServerDetailsPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          <section aria-labelledby="agent-auto-update-title" className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={`rounded-full border p-2 ${server.auto_update_agent ? 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--color-muted)]'}`}>
+                  <RefreshCw className={`h-5 w-5 ${savingAutoUpdate ? 'animate-spin' : ''}`} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 id="agent-auto-update-title" className="text-base font-bold text-[var(--foreground)]">
+                      Automatic Agent updates
+                    </h2>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${server.auto_update_agent ? 'border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--color-muted)]'}`}>
+                      {server.auto_update_agent ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-[var(--color-muted)]">
+                    When enabled, this Agent installs the latest signed release automatically. Signature, checksum, restart, and heartbeat confirmation checks remain mandatory.
+                  </p>
+                  {!supportsServiceControls && (
+                    <p className="mt-2 text-sm font-semibold text-amber-600 dark:text-amber-300">
+                      Update to Agent {MIN_SERVICE_CONTROL_AGENT_VERSION} or newer before enabling automatic updates.
+                    </p>
+                  )}
+                  {server.auto_update_agent && updateAvailable && (
+                    <p className="mt-2 text-sm font-semibold text-amber-600 dark:text-amber-300">
+                      Version {latestAgentVersion} will be queued on the next Agent heartbeat.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(server.auto_update_agent)}
+                aria-label="Automatically update this Agent"
+                disabled={savingAutoUpdate || (!supportsServiceControls && !server.auto_update_agent)}
+                onClick={() => setAgentAutoUpdate(!server.auto_update_agent)}
+                className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] disabled:cursor-wait disabled:opacity-60 ${server.auto_update_agent ? 'border-amber-500 bg-amber-500' : 'border-[var(--border-color)] bg-[var(--background)]'}`}
+              >
+                <span className={`h-6 w-6 rounded-full bg-white shadow-md transition-transform ${server.auto_update_agent ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          </section>
           {!supportsServiceControls && (
             <section aria-labelledby="agent-update-required-title" className="rounded-2xl border border-amber-500/40 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
               <div className="flex items-start gap-3">

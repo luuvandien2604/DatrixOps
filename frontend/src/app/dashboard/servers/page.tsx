@@ -228,6 +228,12 @@ export default function ServersPage() {
                     >
                       <td className="py-4 px-6">
                         <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
+                        {server.auto_update_agent && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-600 dark:text-amber-300">
+                            <RefreshCw className="h-3 w-3" />
+                            Auto-update enabled
+                          </div>
+                        )}
                         {(updateAvailable || updateInProgress || updateFailed) && (
                           <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${
                             updateFailed

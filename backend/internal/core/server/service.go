@@ -80,6 +80,10 @@ func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, groupName st
 	return s.repo.UpdateServerMeta(ctx, id, userID, groupName, tags, provider, region, environment)
 }
 
+func (s *Service) SetAgentAutoUpdate(ctx context.Context, id, userID string, enabled bool) error {
+	return s.repo.SetAgentAutoUpdate(ctx, id, userID, enabled)
+}
+
 func (s *Service) decorateAgentRelease(server *Server) {
 	if server == nil || s.desiredAgentVersion == "" {
 		return

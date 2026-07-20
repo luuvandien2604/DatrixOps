@@ -74,13 +74,16 @@ func (h *Hub) CreateTicket(w http.ResponseWriter, r *http.Request) {
 	expires := time.Now().Add(ticketLifetime)
 	h.mu.Lock()
 	for key, current := range h.tickets {
-		if current.expires.Before(time.Now()) {
+		if current.expires.Before(time.Now()) ||
+			(current.serverID == serverID && current.userID == userID) {
 			delete(h.tickets, key)
 		}
 	}
 	h.tickets[value] = ticket{serverID: serverID, userID: userID, expires: expires}
 	h.mu.Unlock()
 
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	response.Success(w, http.StatusCreated, map[string]any{
 		"ticket":         value,
 		"expires_in":     int(ticketLifetime.Seconds()),
@@ -137,7 +140,6 @@ func (h *Hub) BrowserSocket(w http.ResponseWriter, r *http.Request) {
 	h.sessions[sessionID] = current
 	h.mu.Unlock()
 
-	_ = h.repo.auditOpen(context.Background(), current)
 	if err := agent.write(message{Type: messageSessionStart, SessionID: sessionID, Cols: 120, Rows: 32}); err != nil {
 		h.endSession(current, "agent_disconnected", "Unable to contact agent", false)
 		return
@@ -205,6 +207,14 @@ func (h *Hub) BrowserSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) AgentSocket(w http.ResponseWriter, r *http.Request) {
+	if !websocket.IsWebSocketUpgrade(r) {
+		message := "The public origin bypassed the DatrixOps WebSocket gateway"
+		if r.Header.Get("X-DatrixOps-Gateway") == "caddy" {
+			message = "The DatrixOps gateway received the request but did not preserve the WebSocket Upgrade headers"
+		}
+		response.Error(w, http.StatusUpgradeRequired, "WEBSOCKET_UPGRADE_REQUIRED", message)
+		return
+	}
 	auth := strings.Fields(r.Header.Get("Authorization"))
 	if len(auth) != 2 || !strings.EqualFold(auth[0], "Bearer") {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing agent authorization")
@@ -213,10 +223,6 @@ func (h *Hub) AgentSocket(w http.ResponseWriter, r *http.Request) {
 	serverID, err := h.repo.serverIDForAgentToken(r.Context(), auth[1])
 	if err != nil {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid agent token")
-		return
-	}
-	if !websocket.IsWebSocketUpgrade(r) {
-		response.Error(w, http.StatusUpgradeRequired, "WEBSOCKET_UPGRADE_REQUIRED", "The reverse proxy did not preserve the WebSocket Upgrade request")
 		return
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)

@@ -19,6 +19,14 @@ Backend đọc `AGENT_VERSION` làm phiên bản release hiện hành và so sá
 
 Nút update phải giữ trạng thái từ task lưu trong Backend, nên refresh hoặc chuyển trang không làm mất tiến trình thực.
 
+## Tự động cập nhật
+
+Mở **Overview** của server và bật **Automatic Agent updates**. Chính sách này được lưu riêng cho từng Agent và mặc định tắt; yêu cầu Agent 1.3.0 trở lên. Khi heartbeat của Agent đã bật chính sách báo phiên bản cũ hơn, Backend tạo cùng loại signed `agent_update` task đang dùng cho quy trình thủ công.
+
+Khi tắt, Backend hủy các automatic task vẫn còn queued. Task đã được Agent nhận sẽ không bị ngắt giữa chừng vì có thể làm hỏng quá trình thay binary. Nếu một target release thất bại, lần thử tự động kế tiếp được giới hạn sau một giờ; người vận hành vẫn có thể retry thủ công.
+
+Tự động cập nhật không bỏ qua bất kỳ bước kiểm tra manifest signature, SHA-256, định dạng executable, version marker, restart hoặc heartbeat confirmation nào.
+
 ## Update all agents
 
 Ở danh sách **Servers**, chọn **Update all agents**. Backend tạo task riêng cho từng Agent cần update và tránh tạo hai update active cho cùng server. Agent offline chỉ có thể nhận task khi kết nối lại, miễn task chưa hết hạn.

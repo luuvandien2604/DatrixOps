@@ -502,6 +502,47 @@ type UpdateMetaRequest struct {
 	Environment string   `json:"environment"`
 }
 
+type UpdateAgentUpdatePolicyRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
+func (h *Handler) UpdateAgentUpdatePolicy(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	var req UpdateAgentUpdatePolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Enabled == nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "enabled must be a boolean")
+		return
+	}
+
+	serverID := r.PathValue("id")
+	if *req.Enabled {
+		server, err := h.svc.GetServer(r.Context(), serverID, userID)
+		if err != nil {
+			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+			return
+		}
+		currentVersion := agentVersionFromOSInfo(server.OSInfo)
+		if currentVersion == "" || compareVersions(currentVersion, "1.3.0") < 0 {
+			response.Error(w, http.StatusConflict, "AGENT_UPDATE_REQUIRED", "Agent 1.3.0 or newer is required for automatic updates")
+			return
+		}
+	}
+	if err := h.svc.SetAgentAutoUpdate(r.Context(), serverID, userID, *req.Enabled); err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+
+	h.recordAudit(r.Context(), userID, "UPDATE_AGENT_AUTO_UPDATE_POLICY", "SERVER", serverID, map[string]interface{}{
+		"enabled": *req.Enabled,
+	})
+	response.Success(w, http.StatusOK, map[string]bool{"enabled": *req.Enabled})
+}
+
 func (h *Handler) UpdateMeta(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {

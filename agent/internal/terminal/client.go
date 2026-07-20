@@ -171,7 +171,11 @@ func websocketHandshakeError(dialErr error, response *http.Response) error {
 	if detail == "" {
 		detail = http.StatusText(response.StatusCode)
 	}
-	return fmt.Errorf("terminal WebSocket handshake returned HTTP %d: %s", response.StatusCode, detail)
+	gateway := strings.TrimSpace(response.Header.Get("X-DatrixOps-Gateway"))
+	if gateway == "" {
+		gateway = "not-reported"
+	}
+	return fmt.Errorf("terminal WebSocket handshake returned HTTP %d (gateway=%s): %s", response.StatusCode, gateway, detail)
 }
 
 func terminalURL(serverURL string) (string, error) {

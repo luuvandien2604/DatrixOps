@@ -19,6 +19,14 @@ The Backend uses `AGENT_VERSION` as the current release and compares it with the
 
 Update state is persisted in the Backend, so refreshing or navigating away should not erase actual progress.
 
+## Automatic updates
+
+Open the server **Overview** and enable **Automatic Agent updates**. This policy is stored per Agent and is disabled by default. Agent 1.3.0 or newer is required. When an opted-in Agent heartbeat reports an older version, the Backend creates the same signed `agent_update` task used by the manual workflow.
+
+Disabling the policy expires automatic tasks that are still queued. It does not interrupt a task already claimed by the Agent, because stopping a binary replacement midway would be unsafe. A failed target release is rate-limited for one hour before another automatic attempt; manual retry remains available.
+
+Automatic updates never bypass manifest signature, SHA-256, executable-format, version-marker, restart, or heartbeat-confirmation checks.
+
 ## Update all agents
 
 Select **Update all agents** on the Servers page. The Backend creates a separate task for each Agent that needs an update and prevents two active updates for the same server. An offline Agent can receive its task after reconnecting if the task has not expired.

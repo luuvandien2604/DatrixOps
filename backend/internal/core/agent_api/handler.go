@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
+)
+
+const (
+	agentReleaseBaseURL           = "https://datrixops.vandien.space/releases"
+	minimumAutomaticUpdateVersion = "1.3.0"
 )
 
 type Handler struct {
@@ -201,12 +207,13 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		println("Error inserting metric:", err.Error())
 	}
 
-	updateAvailable := false
-	if req.Version != "" && h.desiredAgentVersion != "" && req.Version != h.desiredAgentVersion {
-		updateAvailable = true
-	}
+	updateAvailable := req.Version != "" &&
+		h.desiredAgentVersion != "" &&
+		compareAgentVersions(req.Version, h.desiredAgentVersion) < 0
 
-	if req.Version != "" && h.desiredAgentVersion != "" && req.Version == h.desiredAgentVersion {
+	if req.Version != "" &&
+		h.desiredAgentVersion != "" &&
+		compareAgentVersions(req.Version, h.desiredAgentVersion) == 0 {
 		_, _ = h.db.Pool.Exec(ctx,
 			`UPDATE server_tasks
 			 SET status = 'completed',
@@ -218,6 +225,44 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			   AND status = 'processing'`,
 			serverID, "Agent heartbeat confirmed the new version: "+req.Version,
 		)
+	}
+
+	// Auto-update remains a normal signed agent_update task. The Agent never
+	// updates merely because update_available=true, and a failed release is
+	// rate-limited so heartbeats cannot create an endless retry loop.
+	if updateAvailable && compareAgentVersions(req.Version, minimumAutomaticUpdateVersion) >= 0 {
+		payload, payloadErr := json.Marshal(map[string]string{
+			"target_version":   strings.TrimSpace(h.desiredAgentVersion),
+			"release_base_url": agentReleaseBaseURL,
+			"trigger":          "automatic",
+		})
+		if payloadErr == nil {
+			if _, queueErr := h.db.Pool.Exec(ctx,
+				`INSERT INTO server_tasks
+					(server_id, type, payload, timeout_seconds, expires_at)
+				 SELECT servers.id, 'agent_update', $2::jsonb, 300, NOW() + INTERVAL '24 hours'
+				 FROM servers
+				 WHERE servers.id = $1
+				   AND servers.auto_update_agent = TRUE
+				   AND NOT EXISTS (
+				       SELECT 1
+				       FROM server_tasks recent
+				       WHERE recent.server_id = servers.id
+				         AND recent.type = 'agent_update'
+				         AND (
+				             recent.status IN ('pending', 'processing')
+				             OR (
+				                 recent.payload->>'target_version' = $3
+				                 AND recent.created_at >= NOW() - INTERVAL '1 hour'
+				             )
+				         )
+				   )
+				 ON CONFLICT DO NOTHING`,
+				serverID, string(payload), strings.TrimSpace(h.desiredAgentVersion),
+			); queueErr != nil {
+				println("Error queueing automatic Agent update:", queueErr.Error())
+			}
+		}
 	}
 
 	// Expire tasks that were never claimed before their deadline.
@@ -280,6 +325,46 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		"latest_version":   h.desiredAgentVersion,
 		"tasks":            tasks,
 	})
+}
+
+func compareAgentVersions(left, right string) int {
+	leftParts := agentVersionParts(left)
+	rightParts := agentVersionParts(right)
+	length := len(leftParts)
+	if len(rightParts) > length {
+		length = len(rightParts)
+	}
+	for index := 0; index < length; index++ {
+		var leftPart, rightPart int
+		if index < len(leftParts) {
+			leftPart = leftParts[index]
+		}
+		if index < len(rightParts) {
+			rightPart = rightParts[index]
+		}
+		if leftPart < rightPart {
+			return -1
+		}
+		if leftPart > rightPart {
+			return 1
+		}
+	}
+	return 0
+}
+
+func agentVersionParts(version string) []int {
+	core := strings.Split(strings.TrimSpace(version), "-")[0]
+	core = strings.Split(core, "+")[0]
+	rawParts := strings.Split(core, ".")
+	parts := make([]int, 0, len(rawParts))
+	for _, rawPart := range rawParts {
+		value, err := strconv.Atoi(rawPart)
+		if err != nil {
+			value = 0
+		}
+		parts = append(parts, value)
+	}
+	return parts
 }
 
 func servicesForOS(osName, osFamily string, services []ServiceStatus) []ServiceStatus {

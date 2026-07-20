@@ -27,6 +27,7 @@ type Server struct {
 	AgentToken            string           `json:"agent_token,omitempty"` // only shown on creation
 	LatestAgentVersion    string           `json:"latest_agent_version"`
 	UpdateAvailable       bool             `json:"update_available"`
+	AutoUpdateAgent       bool             `json:"auto_update_agent"`
 	ActiveAgentUpdateTask *AgentUpdateTask `json:"active_agent_update_task,omitempty"`
 	Status                string           `json:"status"`
 	OSInfo                *string          `json:"os_info,omitempty"`  // JSON raw message or string
@@ -140,11 +141,15 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 	}
 
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags) 
+		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags)
 		 VALUES ($1, $2, $3, $4, '[]'::jsonb) 
-		 RETURNING id, user_id, name, ip_address, group_name, agent_token, status, last_seen_at, created_at, updated_at`,
+		 RETURNING id, user_id, name, ip_address, group_name, agent_token,
+		           auto_update_agent, status, last_seen_at, created_at, updated_at`,
 		userID, name, ip, agentToken,
-	).Scan(&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken, &s.Status, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(
+		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken,
+		&s.AutoUpdateAgent, &s.Status, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+	)
 
 	if err != nil {
 		return nil, fmt.Errorf("create server: %w", err)
@@ -161,6 +166,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 		SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
+			auto_update_agent,
 			last_seen_at, created_at, updated_at,
 			active_agent_update_task
 		FROM (
@@ -205,6 +211,7 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
 			&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 			&s.Provider, &s.Region, &s.Environment,
+			&s.AutoUpdateAgent,
 			&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 		)
 		if err != nil {
@@ -257,6 +264,53 @@ func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, gr
 	return nil
 }
 
+// SetAgentAutoUpdate changes the opt-in update policy. Disabling the policy
+// expires only automatic tasks that have not yet been claimed; interrupting a
+// processing binary replacement would be unsafe.
+func (r *Repository) SetAgentAutoUpdate(ctx context.Context, id, userID string, enabled bool) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin auto-update policy transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE servers
+		 SET auto_update_agent = $1,
+		     updated_at = NOW()
+		 WHERE id = $2 AND user_id = $3`,
+		enabled, id, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update auto-update policy: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("server not found or no permission")
+	}
+
+	if !enabled {
+		if _, err := tx.Exec(ctx,
+			`UPDATE server_tasks
+			 SET status = 'expired',
+			     result = jsonb_build_object('output', 'Automatic Agent updates were disabled before this task was claimed.'),
+			     completed_at = NOW(),
+			     updated_at = NOW()
+			 WHERE server_id = $1
+			   AND type = 'agent_update'
+			   AND status = 'pending'
+			   AND payload->>'trigger' = 'automatic'`,
+			id,
+		); err != nil {
+			return fmt.Errorf("expire pending automatic updates: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit auto-update policy: %w", err)
+	}
+	return nil
+}
+
 // GetByID returns a single server by ID and UserID.
 func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, error) {
 	var s Server
@@ -264,6 +318,7 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 		`SELECT id, user_id, name, ip_address, group_name, tags,
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
+			auto_update_agent,
 			last_seen_at, created_at, updated_at,
 			(
 				SELECT jsonb_build_object(
@@ -294,6 +349,7 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &tagsBytes,
 		&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 		&s.Provider, &s.Region, &s.Environment,
+		&s.AutoUpdateAgent,
 		&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 	)
 

@@ -35,13 +35,32 @@ func (r *repository) serverIDForAgentToken(ctx context.Context, token string) (s
 }
 
 func (r *repository) createSession(ctx context.Context, serverID, userID, remoteAddress string) (string, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
 	var sessionID string
-	err := r.db.Pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`INSERT INTO terminal_sessions (server_id, user_id, remote_address)
 		 VALUES ($1, $2, $3) RETURNING id`,
 		serverID, userID, remoteAddress,
 	).Scan(&sessionID)
-	return sessionID, err
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
+		 VALUES ($1, 'OPEN_WEB_TERMINAL', 'SERVER', $2, $3::jsonb)`,
+		userID, serverID, jsonDetails(map[string]any{"session_id": sessionID}),
+	); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return sessionID, nil
 }
 
 func (r *repository) updateSize(ctx context.Context, sessionID string, cols, rows int) error {
@@ -62,15 +81,6 @@ func (r *repository) closeSession(ctx context.Context, sessionID, status, reason
 		     bytes_from_agent = $5
 		 WHERE id = $1 AND status = 'active'`,
 		sessionID, status, reason, bytesFromBrowser, bytesFromAgent,
-	)
-	return err
-}
-
-func (r *repository) auditOpen(ctx context.Context, current *session) error {
-	_, err := r.db.Pool.Exec(ctx,
-		`INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
-		 VALUES ($1, 'OPEN_WEB_TERMINAL', 'SERVER', $2, $3::jsonb)`,
-		current.userID, current.serverID, jsonDetails(map[string]any{"session_id": current.id}),
 	)
 	return err
 }
