@@ -27,22 +27,41 @@ cd frontend
 npm run dev
 ```
 
-## Production
+## Production gateway
 
-Chi tiết sẽ được bổ sung khi đến Sprint tương ứng.
+`docker-compose.prod.yml` exposes Caddy on host port `3000`. Frontend is
+internal-only on `frontend:3000`; Caddy sends `/api/v1/*` directly to
+`backend:8080` and sends all other requests to Frontend. Keep the existing
+Cloudflare Tunnel or external TLS proxy pointed at `http://127.0.0.1:3000`.
 
-Dự kiến:
-- Docker Compose cho tất cả services (backend, frontend, PostgreSQL, Caddy).
-- Caddy reverse proxy + auto SSL (Let's Encrypt).
-- GitHub Actions CI/CD: push to main → build images → deploy.
+When upgrading a deployment that previously exposed Frontend directly on port
+3000, stop that old container before starting the new gateway:
+
+```bash
+docker compose -f docker-compose.prod.yml stop frontend
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+This one-time port handoff prevents a bind conflict. Future deployments can use
+the normal `up -d --build` command.
 
 ## Web Terminal proxy requirement
 
-The reverse proxy in front of DatrixOps must forward HTTP Upgrade requests for
-both `/api/v1/terminal/browser` and `/api/v1/agent/terminal`, preserve the
-public `Host` through `X-Forwarded-Host`, and use a read timeout longer than the
-30-minute terminal limit. TLS termination is required in production so both
-channels use `wss://`.
+The bundled Caddy gateway forwards HTTP Upgrade requests for both
+`/api/v1/terminal/browser` and `/api/v1/agent/terminal`, preserves the public
+host, and keeps WebSocket streams open. TLS must still terminate at Cloudflare
+or another public proxy so both channels use `wss://`.
+
+Do not point the public origin directly at the Next.js Frontend. Next rewrites
+remain a development fallback for ordinary HTTP API calls; they are not the
+production WebSocket gateway.
+
+Web Terminal is supported only for Linux server Agents. Windows, macOS, and
+Linux desktop/personal-workstation Agents report an explicit unsupported state;
+the dashboard disables Start Terminal and explains why. On an intentionally
+headless Linux host whose default target is incorrectly set to
+`graphical.target`, set `DATRIXOPS_TERMINAL_MODE=server` in the Agent service
+environment to opt in.
 
 The current terminal hub is in-memory and targets the single-backend deployment
 in `docker-compose.prod.yml`. A multi-replica backend must add sticky routing or

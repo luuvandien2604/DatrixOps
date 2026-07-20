@@ -1,5 +1,18 @@
 
 services:
+  gateway:
+    image: caddy:2-alpine
+    restart: always
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      # Keep the existing public origin port. The gateway now owns it and
+      # forwards WebSocket upgrades directly to the Backend.
+      - "3000:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+
   db:
     image: postgres:16-alpine
     restart: always
@@ -36,10 +49,14 @@ services:
     restart: always
     depends_on:
       - backend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     volumes:
       - ./docs:/app/docs:ro
+      # Agent releases are published after the frontend image is built.
+      # Keep them runtime-mounted so a release is downloadable before the
+      # backend advertises its AGENT_VERSION.
+      - ./frontend/public:/app/public:ro
     # To make this work properly across networks, you might need to rebuild 
     # the frontend with the correct NEXT_PUBLIC_API_URL pointing to your VPS IP if not using a reverse proxy.
 

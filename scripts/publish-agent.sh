@@ -41,10 +41,13 @@ BACKEND_ENV_FILE="$PROJECT_ROOT/.env"
 
 # Đặt AUTO_UPDATE_BACKEND=0 nếu chỉ muốn publish mà không restart backend.
 AUTO_UPDATE_BACKEND="${AUTO_UPDATE_BACKEND:-1}"
+VERIFY_PUBLIC_RELEASE="${VERIFY_PUBLIC_RELEASE:-1}"
+RELEASE_VISIBILITY_TIMEOUT_SECONDS="${RELEASE_VISIBILITY_TIMEOUT_SECONDS:-120}"
 MIN_SELF_UPDATING_VERSION="1.3.0"
 
 STAGING_DIR=""
 BACKUP_DIR=""
+VERIFICATION_DIR=""
 
 die() {
     echo "ERROR: $*" >&2
@@ -64,6 +67,10 @@ cleanup() {
 
     if [[ -n "${BACKUP_DIR:-}" && -d "$BACKUP_DIR" ]]; then
         rm -rf -- "$BACKUP_DIR"
+    fi
+
+    if [[ -n "${VERIFICATION_DIR:-}" && -d "$VERIFICATION_DIR" ]]; then
+        rm -rf -- "$VERIFICATION_DIR"
     fi
 }
 
@@ -144,9 +151,29 @@ validate_required_commands() {
             die "không tìm thấy command bắt buộc: $command_name"
         fi
     done
+
+    if [[ "$AUTO_UPDATE_BACKEND" == "1" ]]; then
+        for command_name in cmp curl docker; do
+            if ! command -v "$command_name" >/dev/null 2>&1; then
+                die "không tìm thấy command bắt buộc để publish production: $command_name"
+            fi
+        done
+    fi
 }
 
 validate_configuration() {
+    if [[ "$AUTO_UPDATE_BACKEND" != "0" && "$AUTO_UPDATE_BACKEND" != "1" ]]; then
+        die "AUTO_UPDATE_BACKEND chỉ nhận 0 hoặc 1"
+    fi
+
+    if [[ "$VERIFY_PUBLIC_RELEASE" != "0" && "$VERIFY_PUBLIC_RELEASE" != "1" ]]; then
+        die "VERIFY_PUBLIC_RELEASE chỉ nhận 0 hoặc 1"
+    fi
+
+    if ! [[ "$RELEASE_VISIBILITY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+        die "RELEASE_VISIBILITY_TIMEOUT_SECONDS phải là số nguyên dương"
+    fi
+
     if [[ -z "$AGENT_VERSION" ]]; then
         die "chưa chỉ định version. Ví dụ: ./scripts/publish-agent.sh 1.6.0"
     fi
@@ -396,6 +423,147 @@ copy_latest_binaries() {
     verify_embedded_agent_version "$PUBLIC_DIR/datrixops-agent-windows-amd64.exe"
 }
 
+release_filenames() {
+    printf '%s\n' \
+        "datrixops-agent-linux-amd64" \
+        "datrixops-agent-linux-arm64" \
+        "datrixops-agent-darwin-amd64" \
+        "datrixops-agent-darwin-arm64" \
+        "datrixops-agent-windows-amd64.exe" \
+        "manifest.json" \
+        "manifest.sig"
+}
+
+activate_frontend_release_mount() {
+    if [[ "$AUTO_UPDATE_BACKEND" != "1" ]]; then
+        return
+    fi
+
+    echo
+    echo "Making Agent ${AGENT_VERSION} available to the running frontend..."
+
+    (
+        cd "$PROJECT_ROOT"
+
+        # Recreate without rebuilding. The production Compose file runtime-mounts
+        # frontend/public, so newly signed releases become visible immediately.
+        docker compose \
+            --env-file "$BACKEND_ENV_FILE" \
+            -f "$COMPOSE_FILE" \
+            up -d \
+            --no-deps \
+            --force-recreate \
+            frontend
+    )
+
+    local filename
+    while IFS= read -r filename; do
+        if ! (
+            cd "$PROJECT_ROOT"
+
+            docker compose \
+                --env-file "$BACKEND_ENV_FILE" \
+                -f "$COMPOSE_FILE" \
+                exec -T frontend \
+                test -s "/app/public/releases/${AGENT_VERSION}/${filename}"
+        ); then
+            die "frontend container không nhìn thấy release file: $filename"
+        fi
+    done < <(release_filenames)
+}
+
+cache_busted_url() {
+    local raw_url="$1"
+    local separator="?"
+
+    if [[ "$raw_url" == *"?"* ]]; then
+        separator="&"
+    fi
+
+    printf '%s%s%s\n' \
+        "$raw_url" \
+        "$separator" \
+        "datrixops_release_check=$(date +%s)"
+}
+
+wait_for_public_file_match() {
+    local local_path="$1"
+    local public_url="$2"
+    local downloaded_path="$3"
+    local deadline=$((SECONDS + RELEASE_VISIBILITY_TIMEOUT_SECONDS))
+
+    while ((SECONDS < deadline)); do
+        if curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 20 \
+            --output "$downloaded_path" \
+            "$(cache_busted_url "$public_url")" &&
+            cmp -s "$local_path" "$downloaded_path"; then
+            return
+        fi
+
+        sleep 2
+    done
+
+    die "public release file chưa đồng bộ sau ${RELEASE_VISIBILITY_TIMEOUT_SECONDS}s: $public_url"
+}
+
+verify_public_release() {
+    if [[ "$AUTO_UPDATE_BACKEND" != "1" || "$VERIFY_PUBLIC_RELEASE" != "1" ]]; then
+        if [[ "$AUTO_UPDATE_BACKEND" == "1" ]]; then
+            echo "WARNING: public release verification disabled (VERIFY_PUBLIC_RELEASE=0)"
+        fi
+        return
+    fi
+
+    local release_dir="$RELEASE_ROOT/$AGENT_VERSION"
+    VERIFICATION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/datrixops-release-check.XXXXXX")"
+
+    echo "Verifying signed release through the public HTTPS endpoint..."
+
+    # The updater needs these exact signed bytes. Do not advertise the Backend
+    # version until the public endpoint returns the same files.
+    wait_for_public_file_match \
+        "$release_dir/manifest.json" \
+        "$AGENT_RELEASE_BASE_URL/$AGENT_VERSION/manifest.json" \
+        "$VERIFICATION_DIR/manifest.json"
+
+    wait_for_public_file_match \
+        "$release_dir/manifest.sig" \
+        "$AGENT_RELEASE_BASE_URL/$AGENT_VERSION/manifest.sig" \
+        "$VERIFICATION_DIR/manifest.sig"
+
+    # Artifact paths are immutable per version. Checking every public URL here
+    # catches missing OS/architecture files before any Agent receives a task.
+    local filename
+    while IFS= read -r filename; do
+        case "$filename" in
+        manifest.json | manifest.sig)
+            continue
+            ;;
+        esac
+
+        if ! curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --head \
+            --max-time 20 \
+            "$(cache_busted_url "$AGENT_RELEASE_BASE_URL/$AGENT_VERSION/$filename")" \
+            >/dev/null; then
+            die "public Agent artifact không truy cập được: $filename"
+        fi
+    done < <(release_filenames)
+
+    rm -rf -- "$VERIFICATION_DIR"
+    VERIFICATION_DIR=""
+    echo "Public signed release verified successfully."
+}
+
 print_release_summary() {
     local release_dir="$RELEASE_ROOT/$AGENT_VERSION"
 
@@ -577,6 +745,8 @@ main() {
     verify_release_files
     publish_release_directory
     copy_latest_binaries
+    activate_frontend_release_mount
+    verify_public_release
     update_backend_agent_version
 
     unset AGENT_SIGNING_PRIVATE_KEY

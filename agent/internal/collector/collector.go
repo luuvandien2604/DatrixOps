@@ -13,23 +13,25 @@ import (
 )
 
 type Metrics struct {
-	OSFamily                 string    `json:"os_family"`
-	OSName                   string    `json:"os_name"`
-	CPUCores                 int       `json:"cpu_cores"`
-	CPUUsage                 float64   `json:"cpu_usage"`
-	MemoryTotal              uint64    `json:"memory_total"`
-	MemoryUsed               uint64    `json:"memory_used"`
-	NetIn                    uint64    `json:"net_in"`     // bytes per sec
-	NetOut                   uint64    `json:"net_out"`    // bytes per sec
-	DiskRead                 uint64    `json:"disk_read"`  // bytes per sec
-	DiskWrite                uint64    `json:"disk_write"` // bytes per sec
-	DiskTotal                uint64    `json:"disk_total"`
-	DiskUsed                 uint64    `json:"disk_used"`
-	DiskUsage                float64   `json:"disk_usage"`
-	Snapshot                 *Snapshot `json:"snapshot,omitempty"`
-	Version                  string    `json:"version"`
-	TerminalChannelConnected bool      `json:"terminal_channel_connected"`
-	TerminalChannelError     string    `json:"terminal_channel_error,omitempty"`
+	OSFamily                  string    `json:"os_family"`
+	OSName                    string    `json:"os_name"`
+	CPUCores                  int       `json:"cpu_cores"`
+	CPUUsage                  float64   `json:"cpu_usage"`
+	MemoryTotal               uint64    `json:"memory_total"`
+	MemoryUsed                uint64    `json:"memory_used"`
+	NetIn                     uint64    `json:"net_in"`     // bytes per sec
+	NetOut                    uint64    `json:"net_out"`    // bytes per sec
+	DiskRead                  uint64    `json:"disk_read"`  // bytes per sec
+	DiskWrite                 uint64    `json:"disk_write"` // bytes per sec
+	DiskTotal                 uint64    `json:"disk_total"`
+	DiskUsed                  uint64    `json:"disk_used"`
+	DiskUsage                 float64   `json:"disk_usage"`
+	Snapshot                  *Snapshot `json:"snapshot,omitempty"`
+	Version                   string    `json:"version"`
+	TerminalChannelConnected  bool      `json:"terminal_channel_connected"`
+	TerminalChannelError      string    `json:"terminal_channel_error,omitempty"`
+	TerminalSupported         bool      `json:"terminal_supported"`
+	TerminalUnsupportedReason string    `json:"terminal_unsupported_reason,omitempty"`
 }
 
 var (

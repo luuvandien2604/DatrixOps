@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { Maximize2, Play, Power, ShieldAlert, TerminalSquare, WifiOff } from 'lucide-react';
+import { Ban, Maximize2, Play, Power, ShieldAlert, TerminalSquare, WifiOff } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'closed' | 'error';
@@ -12,6 +12,7 @@ interface WebTerminalProps {
   serverId: string;
   serverName: string;
   enabled: boolean;
+  unsupported?: boolean;
   disabledReason?: string;
   channelConnected?: boolean;
   channelDiagnostic?: string;
@@ -57,6 +58,7 @@ export default function WebTerminal({
   serverId,
   serverName,
   enabled,
+  unsupported = false,
   disabledReason,
   channelConnected = false,
   channelDiagnostic,
@@ -209,6 +211,11 @@ export default function WebTerminal({
             <TerminalSquare className="h-4 w-4 text-[var(--mint)]" />
             Web Terminal
             <span className={`h-2 w-2 rounded-full ${state === 'connected' ? 'bg-emerald-400' : state === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-white/30'}`} />
+            {unsupported && (
+              <span className="ml-1 rounded-full border border-rose-300/30 bg-rose-300/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-200">
+                Not supported
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs font-medium text-white/65">
             Agent-native encrypted reverse session · maximum 30 minutes · audited
@@ -220,7 +227,11 @@ export default function WebTerminal({
               <Maximize2 className="h-4 w-4" /> Fit
             </button>
           )}
-          {state === 'connected' || state === 'connecting' ? (
+          {unsupported ? (
+            <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-rose-300/25 bg-rose-300/10 px-4 py-2 text-xs font-bold text-rose-200">
+              <Ban className="h-4 w-4" /> Not supported
+            </span>
+          ) : state === 'connected' || state === 'connecting' ? (
             <button type="button" onClick={() => closeTerminal(true)} className="inline-flex items-center gap-2 rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-300">
               <Power className="h-4 w-4" /> Close session
             </button>
@@ -233,9 +244,14 @@ export default function WebTerminal({
       </header>
 
       {!enabled && (
-        <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm text-amber-100">
-          <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />
-          <p className="font-semibold">{disabledReason || 'Terminal is unavailable for this agent.'}</p>
+        <div className={`flex items-start gap-3 border-b px-5 py-5 text-sm ${unsupported ? 'border-rose-300/25 bg-rose-300/10 text-rose-100' : 'border-amber-400/25 bg-amber-400/10 text-amber-100'}`}>
+          {unsupported ? <Ban className="mt-0.5 h-5 w-5 shrink-0" /> : <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />}
+          <div>
+            {unsupported && <p className="font-extrabold uppercase tracking-wide">Terminal is not supported on this device</p>}
+            <p className={unsupported ? 'mt-1 font-medium leading-6 text-rose-100/80' : 'font-semibold'}>
+              {disabledReason || 'Terminal is unavailable for this agent.'}
+            </p>
+          </div>
         </div>
       )}
       {enabled && !channelConnected && (
@@ -249,7 +265,7 @@ export default function WebTerminal({
           </div>
         </div>
       )}
-      {enabled && state === 'idle' && (
+      {enabled && !unsupported && state === 'idle' && (
         <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm leading-6 text-amber-100">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
           <p>
@@ -260,7 +276,9 @@ export default function WebTerminal({
       )}
       {error && <div className="border-b border-rose-400/20 bg-rose-400/10 px-5 py-3 text-sm font-semibold text-rose-200">{error}</div>}
 
-      <div ref={containerRef} className="h-[34rem] w-full p-3" aria-label={`Terminal session for ${serverName}`} />
+      {!unsupported && (
+        <div ref={containerRef} className="h-[34rem] w-full p-3" aria-label={`Terminal session for ${serverName}`} />
+      )}
     </section>
   );
 }

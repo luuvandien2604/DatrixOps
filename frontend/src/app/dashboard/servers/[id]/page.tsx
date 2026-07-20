@@ -112,6 +112,8 @@ interface ServerDetails {
     disk_usage?: number;
     terminal_channel_connected?: boolean;
     terminal_channel_error?: string;
+    terminal_supported?: boolean;
+    terminal_unsupported_reason?: string;
   };
   snapshot?: string;
   inventory?: string;
@@ -392,6 +394,8 @@ export default function ServerDetailsPage() {
         disk_usage?: number;
         terminal_channel_connected?: boolean;
         terminal_channel_error?: string;
+        terminal_supported?: boolean;
+        terminal_unsupported_reason?: string;
       };
     } catch {
       return {};
@@ -424,7 +428,14 @@ export default function ServerDetailsPage() {
     'fedora workstation',
   ];
   const isDesktopLinux = osFamily === 'linux' && linuxDesktopIndicators.some(indicator => normalizedOS.includes(indicator));
-  const supportsTerminalEnvironment = osFamily === 'linux' && !isDesktopLinux;
+  const terminalSupportReported = typeof parsedOSInfo.terminal_supported === 'boolean';
+  const terminalUnsupportedReasonReported = typeof parsedOSInfo.terminal_unsupported_reason === 'string'
+    ? parsedOSInfo.terminal_unsupported_reason.trim()
+    : '';
+  const terminalEnvironmentUnsupported = terminalSupportReported
+    ? parsedOSInfo.terminal_supported === false
+    : osFamily === 'windows' || osFamily === 'macos' || isDesktopLinux || osFamily !== 'linux';
+  const supportsTerminalEnvironment = !terminalEnvironmentUnsupported;
   const terminalChannelConnected = parsedOSInfo.terminal_channel_connected === true;
   const terminalChannelReported = typeof parsedOSInfo.terminal_channel_connected === 'boolean';
   const terminalChannelError = typeof parsedOSInfo.terminal_channel_error === 'string'
@@ -440,6 +451,12 @@ export default function ServerDetailsPage() {
     }
     if (normalized.includes('http 403')) {
       return `The WebSocket handshake was blocked. Check Cloudflare/WAF rules and the origin proxy. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('http 400')) {
+      return `The proxy reached the Backend but did not preserve the WebSocket Upgrade handshake. Deploy the DatrixOps gateway on port 3000, then restart the Agent. Diagnostic: ${terminalChannelError}`;
+    }
+    if (normalized.includes('http 426') || normalized.includes('websocket_upgrade_required')) {
+      return `The public origin bypassed the WebSocket gateway. Route it to the bundled Caddy service on port 3000, then restart the Agent. Diagnostic: ${terminalChannelError}`;
     }
     if (normalized.includes('http 200') || normalized.includes('http 404')) {
       return `The request did not reach the WebSocket upgrade handler. Route /api/v1/agent/terminal directly to the Backend with Upgrade headers. Diagnostic: ${terminalChannelError}`;
@@ -479,6 +496,7 @@ export default function ServerDetailsPage() {
           missing: 'Unit not found',
           search: 'Search systemd units',
         };
+  const terminalTabLabel = terminalEnvironmentUnsupported ? 'Terminal · Not supported' : 'Terminal';
   const tabs: Array<[string, string]> = [
     ['overview', 'Overview'],
     ['inventory', 'Inventory'],
@@ -486,7 +504,7 @@ export default function ServerDetailsPage() {
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
-    ['terminal', 'Terminal'],
+    ['terminal', terminalTabLabel],
   ];
   // Old agents sent a Linux-only list without a service manager. Do not show
   // those entries as valid launchd or Windows services.
@@ -522,23 +540,26 @@ export default function ServerDetailsPage() {
     ? 'irm https://datrixops.vandien.space/update-agent.ps1 | iex'
     : 'curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh';
   const terminalDisabledReason = (() => {
+    if (terminalEnvironmentUnsupported) {
+      if (terminalUnsupportedReasonReported) {
+        return terminalUnsupportedReasonReported;
+      }
+      if (osFamily === 'windows') {
+        return 'Web Terminal is not supported on Windows agents. The Agent service runs outside the signed-in desktop session.';
+      }
+      if (osFamily === 'macos') {
+        return 'Web Terminal is not supported on macOS agents. The launchd service runs outside the signed-in desktop session.';
+      }
+      if (isDesktopLinux) {
+        return `Web Terminal is not supported on ${monitoredOS}. Linux desktop and personal-workstation sessions are intentionally excluded.`;
+      }
+      return 'Web Terminal is supported only on Linux server agents.';
+    }
     if (server.status !== 'online') {
       return 'The agent must be online before a terminal session can start.';
     }
     if (!versionAtLeast(reportedAgentVersion, MIN_TERMINAL_AGENT_VERSION)) {
       return `Agent ${MIN_TERMINAL_AGENT_VERSION} or newer is required for reverse terminal support.`;
-    }
-    if (osFamily === 'windows') {
-      return 'Web Terminal is disabled for Windows agents. Windows services run in a non-interactive session, so browser terminal access is not equivalent to the signed-in desktop user.';
-    }
-    if (osFamily === 'macos') {
-      return 'Web Terminal is disabled for macOS agents. launchd agents run outside the interactive user session, so shell access would not match the logged-in desktop environment.';
-    }
-    if (isDesktopLinux) {
-      return `Web Terminal is disabled for ${monitoredOS}. Desktop or personal Linux machines use interactive user sessions that DatrixOps does not control from the agent service.`;
-    }
-    if (osFamily !== 'linux') {
-      return 'Web Terminal is only available for Linux server agents.';
     }
     if (!terminalChannelReported) {
       return 'This agent version does not report reverse terminal channel health. Update the agent to the latest patch release before opening Web Terminal.';
@@ -1098,6 +1119,7 @@ export default function ServerDetailsPage() {
           serverId={server.id}
           serverName={server.name}
           enabled={terminalCanAttempt}
+          unsupported={terminalEnvironmentUnsupported}
           disabledReason={terminalDisabledReason}
           channelConnected={terminalChannelConnected}
           channelDiagnostic={terminalChannelDiagnostic}

@@ -62,6 +62,12 @@ func (s *socket) write(value any) error {
 // Run maintains the outbound terminal control channel. It never opens a shell
 // until an authenticated browser session is approved by the control plane.
 func Run(ctx context.Context, cfg *config.Config) {
+	if current := EnvironmentSupport(); !current.Supported {
+		setLastError(nil)
+		log.Printf("Terminal reverse channel disabled: %s", current.Reason)
+		return
+	}
+
 	backoff := time.Second
 	for {
 		if ctx.Err() != nil {

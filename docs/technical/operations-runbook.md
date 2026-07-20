@@ -33,10 +33,24 @@ journalctl -u datrixops-agent -n 200 --no-pager
 
 ## Debug reverse terminal channel
 
+Production traffic must enter the bundled Caddy gateway on host port `3000`;
+do not route the public origin directly to the Frontend container. Caddy sends
+`/api/v1/*` to Backend and preserves WebSocket Upgrade for both terminal
+channels.
+
+One-time migration from the old direct-Frontend port mapping:
+
+```bash
+docker compose -f docker-compose.prod.yml stop frontend
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 Agent heartbeat lưu `terminal_channel_connected` và lỗi handshake gần nhất trong `terminal_channel_error`. Phân loại:
 
 - `HTTP 401`: token/host terminal không khớp với heartbeat.
 - `HTTP 403`: WAF/Cloudflare/origin policy chặn.
+- `HTTP 400`: request tới Backend nhưng tầng proxy trước đó làm mất WebSocket Upgrade; xác minh public origin đang trỏ vào Caddy port `3000`, không trỏ trực tiếp Frontend.
+- `HTTP 426`: Backend xác nhận public origin đang bypass gateway hoặc làm mất Upgrade header.
 - `HTTP 200` hoặc `404`: route rơi vào Frontend hoặc proxy không upgrade.
 - `HTTP 502/503`: upstream Backend không sẵn sàng.
 - TLS/timeout: DNS, CA, clock, firewall hoặc proxy timeout.
@@ -123,7 +137,16 @@ git pull --ff-only
 ./scripts/publish-agent.sh <NEW_SEMVER>
 ```
 
-Script mặc định recreate Backend. Nếu `AUTO_UPDATE_BACKEND=0`, operator phải đặt `AGENT_VERSION` và recreate Backend sau khi kiểm tra release.
+Script mặc định thực hiện release theo thứ tự an toàn:
+
+1. build, ký và chép release vào `frontend/public/releases/<VERSION>`;
+2. recreate Frontend để áp dụng runtime mount `frontend/public`;
+3. kiểm tra manifest/signature qua public HTTPS và kiểm tra URL của mọi artifact;
+4. chỉ sau khi các bước trên thành công mới đổi `AGENT_VERSION` và recreate Backend.
+
+Backend không được phép quảng bá version mới trước khi release có thể tải công khai. Nếu bước kiểm tra public thất bại, script dừng và giữ nguyên `AGENT_VERSION`; vì vậy dashboard sẽ không phát task trỏ tới artifact chưa tồn tại.
+
+Nếu `AUTO_UPDATE_BACKEND=0`, operator phải tự kiểm tra release URL, đặt `AGENT_VERSION` và recreate Backend. Chỉ dùng `VERIFY_PUBLIC_RELEASE=0` trong tình huống recovery có kiểm soát vì tùy chọn này bỏ qua release gate.
 
 ### Build không cache
 

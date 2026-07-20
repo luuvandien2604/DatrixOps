@@ -7,7 +7,7 @@ Phiên bản hiển thị ở header và **Running Agent Version** đến từ h
 
 ## Thông báo Update available
 
-Backend đọc `AGENT_VERSION` làm phiên bản release hiện hành và so sánh với phiên bản Agent báo cáo. Khi khác phiên bản, frontend hiển thị **Update available**. Backend và release artifact phải cùng version; nếu chỉ publish file nhưng không cập nhật/recreate Backend, thông báo có thể sai.
+Backend đọc `AGENT_VERSION` làm phiên bản release hiện hành và so sánh với phiên bản Agent báo cáo. Khi khác phiên bản, frontend hiển thị **Update available**. Backend và release artifact phải cùng version. Publisher production phải đưa signed release ra public HTTPS và xác minh lại trước khi đổi `AGENT_VERSION`, nhờ đó Agent không thể nhận task trỏ tới release mà Frontend chưa phục vụ.
 
 ## Cập nhật một Agent
 
@@ -60,7 +60,7 @@ Script này giữ Agent Token và service configuration hiện tại, nhưng upd
 - Mở task state trên Overview và đọc thông báo failed/timed out.
 - Kiểm tra Agent log để thấy lỗi manifest, signature, checksum, permission hoặc restart.
 - Xác nhận release URL trả đúng target version và Backend `AGENT_VERSION` trùng release.
+- Nếu mọi hệ điều hành cùng update thất bại, kiểm tra `/releases/<VERSION>/manifest.json` và `manifest.sig` có được Frontend container hiện tại phục vụ hay không. Sau khi triển khai runtime mount `frontend/public`, cần recreate Frontend một lần.
 - Đảm bảo service manager có chính sách tự khởi động lại Agent.
 
 > **Warning:** Source hiện chưa có rollback tự động hoàn chỉnh sau khi binary mới không gửi heartbeat. Giữ release cũ bất biến và chuẩn bị thay binary thủ công nếu bản mới không thể khởi động. Không ghi đè cùng một version bằng binary khác.
-

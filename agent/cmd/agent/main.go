@@ -54,7 +54,12 @@ func main() {
 	// Graceful shutdown context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go terminal.Run(ctx, cfg)
+	terminalSupport := terminal.EnvironmentSupport()
+	if terminalSupport.Supported {
+		go terminal.Run(ctx, cfg)
+	} else {
+		log.Printf("Terminal reverse channel disabled: %s", terminalSupport.Reason)
+	}
 
 	// Initial heartbeat immediately on startup with snapshot
 	sendHeartbeat(ctx, apiClient, true, cfg.MonitoredServices)
@@ -90,6 +95,9 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	}
 
 	metrics.Version = Version
+	terminalSupport := terminal.EnvironmentSupport()
+	metrics.TerminalSupported = terminalSupport.Supported
+	metrics.TerminalUnsupportedReason = terminalSupport.Reason
 	metrics.TerminalChannelConnected = terminal.Connected()
 	metrics.TerminalChannelError = terminal.LastError()
 

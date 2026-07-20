@@ -93,6 +93,10 @@ func (h *Hub) BrowserSocket(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusForbidden, "INVALID_ORIGIN", "Terminal connection origin is not allowed")
 		return
 	}
+	if !websocket.IsWebSocketUpgrade(r) {
+		response.Error(w, http.StatusUpgradeRequired, "WEBSOCKET_UPGRADE_REQUIRED", "The reverse proxy did not preserve the WebSocket Upgrade request")
+		return
+	}
 	value := r.URL.Query().Get("ticket")
 	h.mu.Lock()
 	currentTicket, ok := h.tickets[value]
@@ -209,6 +213,10 @@ func (h *Hub) AgentSocket(w http.ResponseWriter, r *http.Request) {
 	serverID, err := h.repo.serverIDForAgentToken(r.Context(), auth[1])
 	if err != nil {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid agent token")
+		return
+	}
+	if !websocket.IsWebSocketUpgrade(r) {
+		response.Error(w, http.StatusUpgradeRequired, "WEBSOCKET_UPGRADE_REQUIRED", "The reverse proxy did not preserve the WebSocket Upgrade request")
 		return
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)

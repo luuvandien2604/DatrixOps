@@ -7,7 +7,7 @@ The version in the server header and **Running Agent Version** comes from the he
 
 ## Update available
 
-The Backend uses `AGENT_VERSION` as the current release and compares it with the Agent-reported version. When they differ, the Frontend displays **Update available**. The Backend value and published release must match; publishing files without recreating the Backend can produce stale information.
+The Backend uses `AGENT_VERSION` as the current release and compares it with the Agent-reported version. When they differ, the Frontend displays **Update available**. The Backend value and published release must match. The production publisher exposes and verifies the signed release through public HTTPS before changing `AGENT_VERSION`, so Agents cannot be sent to a release that the Frontend does not serve yet.
 
 ## Update one Agent
 
@@ -60,7 +60,7 @@ These scripts preserve the existing token and service configuration. The install
 - Read the persisted task state in Overview.
 - Inspect Agent logs for manifest, signature, checksum, permission, or restart errors.
 - Confirm that release URLs serve the target version and Backend `AGENT_VERSION` matches it.
+- If every operating system fails at once, check whether `/releases/<VERSION>/manifest.json` and `manifest.sig` are served by the current Frontend container. Recreate Frontend once after deploying the runtime `frontend/public` mount.
 - Ensure the service manager is configured to restart the Agent.
 
 > **Warning:** Automatic rollback after a new binary fails to heartbeat is not complete. Keep immutable old releases and a manual binary-replacement procedure. Never publish different bytes under an existing version.
-
