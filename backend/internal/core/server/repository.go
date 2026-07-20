@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
 
@@ -38,6 +41,9 @@ type Server struct {
 	Region                *string          `json:"region,omitempty"`
 	Environment           *string          `json:"environment,omitempty"`
 	LastSeenAt            *time.Time       `json:"last_seen_at,omitempty"`
+	DeletionStatus        string           `json:"deletion_status"`
+	DeletionRequestedAt   *time.Time       `json:"deletion_requested_at,omitempty"`
+	DeletionError         *string          `json:"deletion_error,omitempty"`
 	CreatedAt             time.Time        `json:"created_at"`
 	UpdatedAt             time.Time        `json:"updated_at"`
 }
@@ -142,13 +148,17 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 
 	err := r.db.Pool.QueryRow(ctx,
 		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags)
-		 VALUES ($1, $2, $3, $4, '[]'::jsonb) 
+		 VALUES ($1, $2, $3, $4, '[]'::jsonb)
 		 RETURNING id, user_id, name, ip_address, group_name, agent_token,
-		           auto_update_agent, status, last_seen_at, created_at, updated_at`,
+		           auto_update_agent, status, last_seen_at,
+		           deletion_status, deletion_requested_at, deletion_error,
+		           created_at, updated_at`,
 		userID, name, ip, agentToken,
 	).Scan(
 		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken,
-		&s.AutoUpdateAgent, &s.Status, &s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt,
+		&s.AutoUpdateAgent, &s.Status, &s.LastSeenAt,
+		&s.DeletionStatus, &s.DeletionRequestedAt, &s.DeletionError,
+		&s.CreatedAt, &s.UpdatedAt,
 	)
 
 	if err != nil {
@@ -167,7 +177,8 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
 			auto_update_agent,
-			last_seen_at, created_at, updated_at,
+			last_seen_at, deletion_status, deletion_requested_at, deletion_error,
+			created_at, updated_at,
 			active_agent_update_task
 		FROM (
 			SELECT servers.*,
@@ -212,7 +223,8 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 			&s.Provider, &s.Region, &s.Environment,
 			&s.AutoUpdateAgent,
-			&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
+			&s.LastSeenAt, &s.DeletionStatus, &s.DeletionRequestedAt, &s.DeletionError,
+			&s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan server: %w", err)
@@ -236,6 +248,70 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 	}
 
 	return servers, nil
+}
+
+// ExpireStaleAgentUninstalls moves abandoned uninstall requests to failed so
+// the UI does not remain stuck forever when the Agent disappears or the helper
+// cannot call back. It is safe to call before every list/get operation.
+func (r *Repository) ExpireStaleAgentUninstalls(ctx context.Context, userID string) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin stale uninstall cleanup: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`WITH stale_tasks AS (
+		    UPDATE server_tasks AS task
+		    SET status = CASE
+		                 WHEN task.status = 'pending' THEN 'expired'
+		                 ELSE 'timed_out'
+		               END,
+		        completed_at = NOW(),
+		        updated_at = NOW()
+		    FROM servers
+		    WHERE task.server_id = servers.id
+		      AND servers.user_id = $1
+		      AND task.type = 'agent_uninstall'
+		      AND (
+		          (task.status = 'pending' AND task.expires_at <= NOW())
+		          OR
+		          (task.status = 'processing'
+		           AND task.started_at + make_interval(secs => task.timeout_seconds) <= NOW())
+		      )
+		    RETURNING task.server_id
+		)
+		UPDATE servers
+		SET deletion_status = 'failed',
+		    deletion_error = 'Agent uninstall task expired or timed out before completion.',
+		    uninstall_token_hash = NULL,
+		    uninstall_token_expires_at = NULL,
+		    updated_at = NOW()
+		WHERE id IN (SELECT server_id FROM stale_tasks)`,
+		userID,
+	); err != nil {
+		return fmt.Errorf("expire stale Agent uninstall tasks: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE servers
+		 SET deletion_status = 'failed',
+		     deletion_error = 'Agent uninstall confirmation expired. The Agent may require manual cleanup.',
+		     uninstall_token_hash = NULL,
+		     uninstall_token_expires_at = NULL,
+		     updated_at = NOW()
+		 WHERE user_id = $1
+		   AND deletion_status = 'uninstalling'
+		   AND uninstall_token_expires_at <= NOW()`,
+		userID,
+	); err != nil {
+		return fmt.Errorf("expire missing Agent uninstall confirmations: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit stale uninstall cleanup: %w", err)
+	}
+	return nil
 }
 
 // UpdateServerMeta updates the group_name and tags of a server.
@@ -319,7 +395,8 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 			CASE WHEN last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '1 minute' THEN 'offline' ELSE status END AS status,
 			os_info, snapshot, inventory, inventory_updated_at, provider, region, environment,
 			auto_update_agent,
-			last_seen_at, created_at, updated_at,
+			last_seen_at, deletion_status, deletion_requested_at, deletion_error,
+			created_at, updated_at,
 			(
 				SELECT jsonb_build_object(
 					'id', task.id,
@@ -350,7 +427,8 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 		&s.Status, &s.OSInfo, &s.Snapshot, &s.Inventory, &s.InventoryUpdatedAt,
 		&s.Provider, &s.Region, &s.Environment,
 		&s.AutoUpdateAgent,
-		&s.LastSeenAt, &s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
+		&s.LastSeenAt, &s.DeletionStatus, &s.DeletionRequestedAt, &s.DeletionError,
+		&s.CreatedAt, &s.UpdatedAt, &activeTaskJSON,
 	)
 
 	if err != nil {
@@ -412,16 +490,129 @@ func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) 
 	return jobs, rows.Err()
 }
 
-// Delete removes a server by ID and UserID.
+// RequestAgentUninstall atomically validates server ownership, online state,
+// Linux support, and deletion state before queueing a single destructive task.
+// The raw one-time token exists only inside taskPayload; only its hash is stored
+// on the server record for the later helper callback.
+func (r *Repository) RequestAgentUninstall(
+	ctx context.Context,
+	id string,
+	userID string,
+	taskPayload string,
+	tokenHash string,
+) (string, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin Agent uninstall transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var online bool
+	var osIdentity string
+	var remoteUninstallSupported bool
+	var deletionStatus string
+	err = tx.QueryRow(ctx,
+		`SELECT last_seen_at IS NOT NULL
+		        AND last_seen_at >= NOW() - INTERVAL '1 minute' AS online,
+		        LOWER(COALESCE(os_info->>'os_family', os_info->>'os_name', '')) AS os_identity,
+		        COALESCE(os_info->>'remote_uninstall_supported', 'false') = 'true' AS remote_uninstall_supported,
+		        COALESCE(deletion_status, 'active')
+		 FROM servers
+		 WHERE id = $1 AND user_id = $2
+		 FOR UPDATE`,
+		id, userID,
+	).Scan(&online, &osIdentity, &remoteUninstallSupported, &deletionStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrServerNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lock server for Agent uninstall: %w", err)
+	}
+	if !online {
+		return "", ErrAgentOffline
+	}
+	if !isLinuxOSIdentity(osIdentity) {
+		return "", ErrUnsupportedAgentOS
+	}
+	if !remoteUninstallSupported {
+		return "", ErrAgentUninstallUnsupported
+	}
+	if deletionStatus == "pending" || deletionStatus == "uninstalling" {
+		return "", ErrDeletionInProgress
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE servers
+		 SET deletion_status = 'pending',
+		     deletion_requested_at = NOW(),
+		     deletion_error = NULL,
+		     uninstall_token_hash = $3,
+		     uninstall_token_expires_at = NOW() + INTERVAL '15 minutes',
+		     updated_at = NOW()
+		 WHERE id = $1 AND user_id = $2`,
+		id, userID, tokenHash,
+	); err != nil {
+		return "", fmt.Errorf("mark server deletion pending: %w", err)
+	}
+
+	// Do not let non-destructive pending work run before an approved uninstall.
+	if _, err := tx.Exec(ctx,
+		`UPDATE server_tasks
+		 SET status = 'expired',
+		     result = jsonb_build_object('output', 'Expired because Agent uninstall was requested.'),
+		     completed_at = NOW(),
+		     updated_at = NOW()
+		 WHERE server_id = $1
+		   AND status = 'pending'`,
+		id,
+	); err != nil {
+		return "", fmt.Errorf("expire pending tasks before Agent uninstall: %w", err)
+	}
+
+	var taskID string
+	err = tx.QueryRow(ctx,
+		`INSERT INTO server_tasks
+		    (server_id, type, payload, requested_by, timeout_seconds, expires_at)
+		 VALUES ($1, 'agent_uninstall', $2::jsonb, $3, 300, NOW() + INTERVAL '15 minutes')
+		 RETURNING id`,
+		id, taskPayload, userID,
+	).Scan(&taskID)
+	if err != nil {
+		return "", fmt.Errorf("queue Agent uninstall task: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit Agent uninstall transaction: %w", err)
+	}
+	return taskID, nil
+}
+
+// Delete permanently removes a server and all ON DELETE CASCADE child data.
+// It intentionally does not contact the Agent and is reserved for force delete.
 func (r *Repository) Delete(ctx context.Context, id, userID string) error {
 	tag, err := r.db.Pool.Exec(ctx, "DELETE FROM servers WHERE id = $1 AND user_id = $2", id, userID)
 	if err != nil {
 		return fmt.Errorf("delete server: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("server not found or no permission")
+		return ErrServerNotFound
 	}
 	return nil
+}
+
+// isLinuxOSIdentity accepts both modern os_family=linux heartbeats and older
+// Linux distro names that may only be present in os_name.
+func isLinuxOSIdentity(identity string) bool {
+	identity = strings.ToLower(strings.TrimSpace(identity))
+	if identity == "linux" {
+		return true
+	}
+	for _, marker := range []string{"ubuntu", "debian", "centos", "rocky", "alma", "fedora", "alpine", "linux"} {
+		if strings.Contains(identity, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListMetrics returns historical metrics for a specific server downsampled based on the requested time range.

@@ -23,8 +23,15 @@ export default function ServersPage() {
   const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
 
-  const [serverToDelete, setServerToDelete] = useState<{ id: string, name: string } | null>(null);
+  const [serverToDelete, setServerToDelete] = useState<{
+    id: string;
+    name: string;
+    status: string;
+    deletionStatus?: string;
+    uninstallSupported: boolean;
+  } | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const [isDeletingServer, setIsDeletingServer] = useState(false);
 
   // Edit Meta
   const [editMetaServer, setEditMetaServer] = useState<any>(null);
@@ -39,7 +46,7 @@ export default function ServersPage() {
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
-  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, {id: string, status: string, result?: string}>>({});
+  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, { id: string, status: string, result?: string }>>({});
 
   const router = useRouter();
 
@@ -99,6 +106,40 @@ export default function ServersPage() {
       }
     } finally {
       if (!silent) setLoading(false);
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    if (isDeletingServer) return;
+    setServerToDelete(null);
+    setConfirmDeleteText('');
+  };
+
+  // requestServerDeletion chooses between the normal two-phase uninstall and
+  // an explicit database-only force delete for unreachable machines.
+  const requestServerDeletion = async (force: boolean) => {
+    if (!serverToDelete || confirmDeleteText !== serverToDelete.name) return;
+
+    try {
+      setIsDeletingServer(true);
+      const endpoint = force
+        ? `/servers/${serverToDelete.id}?force=true`
+        : `/servers/${serverToDelete.id}`;
+      const result = await apiClient(endpoint, { method: 'DELETE' });
+
+      if (force) {
+        toast.success(`Server ${serverToDelete.name} record deleted`);
+      } else {
+        toast.success(result?.message || `Agent uninstall queued for ${serverToDelete.name}`);
+      }
+
+      setServerToDelete(null);
+      setConfirmDeleteText('');
+      await fetchServers(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Unable to delete server');
+    } finally {
+      setIsDeletingServer(false);
     }
   };
 
@@ -234,12 +275,24 @@ export default function ServersPage() {
                             Auto-update enabled
                           </div>
                         )}
-                        {(updateAvailable || updateInProgress || updateFailed) && (
-                          <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${
-                            updateFailed
+                        {server.deletion_status && server.deletion_status !== 'active' && (
+                          <div className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${server.deletion_status === 'failed'
                               ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
                               : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
-                          }`}>
+                            }`}>
+                            <LoaderCircle className={`h-3 w-3 ${server.deletion_status !== 'failed' ? 'animate-spin' : ''}`} />
+                            {server.deletion_status === 'pending'
+                              ? 'Waiting for Agent uninstall'
+                              : server.deletion_status === 'uninstalling'
+                                ? 'Uninstalling Agent'
+                                : 'Agent uninstall failed'}
+                          </div>
+                        )}
+                        {(updateAvailable || updateInProgress || updateFailed) && (
+                          <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${updateFailed
+                              ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
+                              : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                            }`}>
                             <UpdateBadgeIcon className={`h-3 w-3 ${updateInProgress ? 'animate-spin' : ''}`} />
                             {updateBadgeLabel}
                           </div>
@@ -348,8 +401,8 @@ export default function ServersPage() {
                                 : updateConfirmed
                                   ? 'Agent update confirmed'
                                   : updateAvailable && latestAgentVersion
-                                ? `Update Agent to ${latestAgentVersion}`
-                                : 'Reinstall current Agent release'
+                                    ? `Update Agent to ${latestAgentVersion}`
+                                    : 'Reinstall current Agent release'
                             }
                           >
                             <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
@@ -365,9 +418,17 @@ export default function ServersPage() {
                           <button
                             onClick={event => {
                               event.stopPropagation();
-                              setServerToDelete({ id: server.id, name: server.name });
+                              setServerToDelete({
+                                id: server.id,
+                                name: server.name,
+                                status: server.status,
+                                deletionStatus: server.deletion_status,
+                                uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
+                              });
                             }}
-                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
+                            disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
+                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:cursor-wait disabled:opacity-50"
+                            title={['pending', 'uninstalling'].includes(server.deletion_status) ? 'Agent uninstall is already in progress' : 'Delete'}>
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -553,18 +614,37 @@ export default function ServersPage() {
       {/* Delete Confirm Dialog */}
       {serverToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-card w-full max-w-lg bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <Trash2 className="w-6 h-6 text-rose-500" />
-              <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Delete Server?</h2>
+              <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Uninstall Agent and Delete Server?</h2>
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
-                You are about to permanently delete the server <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong>. All associated metrics and data will be lost.
+                DatrixOps will ask the online Linux Agent on <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> to stop its service, remove its binary, and then permanently delete the server and related monitoring data.
               </p>
+
+              {serverToDelete.status !== 'online' && (
+                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                  The Agent is offline, so remote uninstall cannot be delivered. Use <strong>Delete Record Only</strong> only when the machine is gone or you will remove the Agent manually.
+                </div>
+              )}
+
+              {serverToDelete.status === 'online' && !serverToDelete.uninstallSupported && (
+                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                  This Agent version does not advertise safe remote uninstall support. Update the Agent first, or remove it manually before deleting only the record.
+                </div>
+              )}
+
+              {serverToDelete.deletionStatus === 'failed' && (
+                <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">
+                  The previous uninstall attempt failed. You may retry while the Agent is online or force-delete only the DatrixOps record.
+                </div>
+              )}
+
               <div className="mb-6">
                 <label htmlFor="delete-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
-                  Type "{serverToDelete.name}" to confirm
+                  Type &quot;{serverToDelete.name}&quot; to confirm
                 </label>
                 <input
                   id="delete-server-confirmation"
@@ -572,34 +652,36 @@ export default function ServersPage() {
                   type="text"
                   value={confirmDeleteText}
                   onChange={(e) => setConfirmDeleteText(e.target.value)}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
+                  disabled={isDeletingServer}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500 disabled:opacity-60"
                   placeholder={serverToDelete.name}
                 />
               </div>
-              <div className="flex justify-end gap-3">
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
-                  onClick={() => {
-                    setServerToDelete(null);
-                    setConfirmDeleteText('');
-                  }}
-                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  onClick={closeDeleteDialog}
+                  disabled={isDeletingServer}
+                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors disabled:opacity-50">
                   Cancel
                 </button>
                 <button
-                  disabled={confirmDeleteText !== serverToDelete.name}
-                  onClick={async () => {
-                    try {
-                      await apiClient(`/servers/${serverToDelete.id}`, { method: 'DELETE' });
-                      fetchServers();
-                      toast.success(`Server ${serverToDelete.name} deleted successfully`);
-                      setServerToDelete(null);
-                      setConfirmDeleteText('');
-                    } catch (err: any) {
-                      toast.error(err.message || 'Unable to delete server');
-                    }
-                  }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
-                  Delete Server
+                  disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer}
+                  onClick={() => requestServerDeletion(true)}
+                  className="px-4 py-2 border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-rose-300 rounded-lg font-medium transition-colors">
+                  Delete Record Only
+                </button>
+                <button
+                  disabled={
+                    confirmDeleteText !== serverToDelete.name ||
+                    isDeletingServer ||
+                    serverToDelete.status !== 'online' ||
+                    !serverToDelete.uninstallSupported
+                  }
+                  onClick={() => requestServerDeletion(false)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
+                  {isDeletingServer ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Uninstall Agent & Delete
                 </button>
               </div>
             </div>

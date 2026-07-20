@@ -24,6 +24,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/agent/internal/collector"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/config"
 	"github.com/luuvandien2604/DatrixOps/agent/internal/terminal"
+	"github.com/luuvandien2604/DatrixOps/agent/internal/uninstall"
 	agentupdate "github.com/luuvandien2604/DatrixOps/agent/internal/update"
 )
 
@@ -42,6 +43,15 @@ var (
 const defaultAgentReleaseBaseURL = "https://datrixops.vandien.space/releases"
 
 func main() {
+	// Detached uninstall helpers reuse the Agent binary but must bypass normal
+	// configuration, heartbeat, and terminal startup.
+	if handled, err := uninstall.RunHelperFromArgs(os.Args[1:]); handled {
+		if err != nil {
+			log.Fatalf("Agent uninstall helper failed: %v", err)
+		}
+		return
+	}
+
 	log.Printf("Starting DatrixOps Agent %s (%s)...", Version, VersionMarker)
 
 	cfg, err := config.Load()
@@ -100,6 +110,7 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	metrics.TerminalUnsupportedReason = terminalSupport.Reason
 	metrics.TerminalChannelConnected = terminal.Connected()
 	metrics.TerminalChannelError = terminal.LastError()
+	metrics.RemoteUninstallSupported = uninstall.Supported()
 
 	if includeSnapshot {
 		metrics.Snapshot = collector.CollectSnapshot(Version, monitoredServices)
@@ -439,8 +450,10 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	var resultStr string
 	var statusStr = "completed"
 
-	// Dùng biến này để "nhớ" hành động cần làm sau khi report xong
+	// postAction defers destructive/restart actions until the backend has
+	// acknowledged the task result.
 	var postAction string
+	var preparedUninstall *uninstall.Prepared
 
 	// payload depends on type
 	var payload map[string]string
@@ -497,6 +510,25 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 				resultStr = "Agent update staged; activation requested. Waiting for the new version heartbeat."
 			}
 
+		case "agent_uninstall":
+			log.Println("Received agent_uninstall task. Preparing detached Linux helper...")
+			uninstallRequest := uninstall.Request{
+				ServerID:     payload["server_id"],
+				TaskID:       task.ID,
+				ConfirmURL:   payload["confirm_url"],
+				ConfirmToken: payload["confirm_token"],
+			}
+			prepared, err := uninstall.Prepare(uninstallRequest)
+			if err != nil {
+				statusStr = "failed"
+				resultStr = "Unable to prepare Agent uninstall: " + err.Error()
+			} else {
+				preparedUninstall = prepared
+				postAction = "uninstall"
+				statusStr = "completed"
+				resultStr = "Detached Agent uninstall helper prepared"
+			}
+
 		case "agent_restart":
 			log.Println("Received agent_restart task. Restarting agent process...")
 			postAction = "restart" // Đánh dấu lại, CHƯA CHẠY NGAY
@@ -535,6 +567,9 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		log.Printf("Failed to report task %s result: %v", task.ID, err)
 		if postAction != "" {
 			log.Printf("Skipping post-task action %q because acknowledgement failed", postAction)
+			if postAction == "uninstall" {
+				uninstall.Cleanup(preparedUninstall)
+			}
 			return
 		}
 	}
@@ -547,5 +582,21 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		triggerRestart()
 	case "reboot":
 		triggerReboot()
+	case "uninstall":
+		if err := uninstall.Activate(preparedUninstall); err != nil {
+			log.Printf("Failed to activate Agent uninstall helper: %v", err)
+			if preparedUninstall != nil {
+				confirmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if confirmErr := uninstall.Confirm(
+					confirmCtx,
+					preparedUninstall.Request,
+					"failed",
+					err.Error(),
+				); confirmErr != nil {
+					log.Printf("Failed to report uninstall activation failure: %v", confirmErr)
+				}
+			}
+		}
 	}
 }

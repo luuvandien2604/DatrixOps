@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,7 +13,10 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
-const agentReleaseBaseURL = "https://datrixops.vandien.space/releases"
+const (
+	agentReleaseBaseURL      = "https://datrixops.vandien.space/releases"
+	agentUninstallConfirmURL = "https://datrixops.vandien.space/api/v1/agent/uninstall/confirm"
+)
 
 type Handler struct {
 	svc *Service
@@ -130,6 +134,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, server)
 }
 
+// Delete either queues a safe remote Linux Agent uninstall or, when
+// ?force=true is explicitly supplied, removes only the database record.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -143,13 +149,50 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.DeleteServer(r.Context(), id, userID); err != nil {
-		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or delete failed")
+	if r.URL.Query().Get("force") == "true" {
+		if err := h.svc.ForceDeleteServer(r.Context(), id, userID); err != nil {
+			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or force delete failed")
+			return
+		}
+		h.recordAudit(r.Context(), userID, "FORCE_DELETE", "SERVER", id, map[string]interface{}{
+			"agent_uninstalled": false,
+		})
+		response.Success(w, http.StatusOK, map[string]string{
+			"id":     id,
+			"status": "deleted",
+		})
 		return
 	}
 
-	h.recordAudit(r.Context(), userID, "DELETE", "SERVER", id, nil)
-	response.Success(w, http.StatusOK, map[string]string{"id": id, "status": "deleted"})
+	result, err := h.svc.RequestAgentUninstall(
+		r.Context(),
+		id,
+		userID,
+		agentUninstallConfirmURL,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrServerNotFound):
+			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		case errors.Is(err, ErrAgentOffline):
+			response.Error(w, http.StatusConflict, "AGENT_OFFLINE", "The Agent is offline. Use force delete only if the machine is no longer reachable.")
+		case errors.Is(err, ErrUnsupportedAgentOS):
+			response.Error(w, http.StatusConflict, "UNSUPPORTED_AGENT_OS", "Remote Agent uninstall is currently supported only on Linux.")
+		case errors.Is(err, ErrAgentUninstallUnsupported):
+			response.Error(w, http.StatusConflict, "AGENT_UNINSTALL_UNSUPPORTED", "Update this Linux Agent before using remote uninstall.")
+		case errors.Is(err, ErrDeletionInProgress):
+			response.Error(w, http.StatusConflict, "DELETION_IN_PROGRESS", "Agent uninstall is already pending or running.")
+		default:
+			slog.Error("failed to queue Agent uninstall", "error", err, "server_id", id)
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue Agent uninstall")
+		}
+		return
+	}
+
+	h.recordAudit(r.Context(), userID, "QUEUE_AGENT_UNINSTALL", "SERVER", id, map[string]interface{}{
+		"task_id": result.TaskID,
+	})
+	response.Success(w, http.StatusAccepted, result)
 }
 
 func (h *Handler) ListMetrics(w http.ResponseWriter, r *http.Request) {
@@ -293,6 +336,10 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
 		return
 	}
+	if ownedServer.DeletionStatus == "pending" || ownedServer.DeletionStatus == "uninstalling" {
+		response.Error(w, http.StatusConflict, "DELETION_IN_PROGRESS", "No new tasks can be queued while Agent uninstall is in progress")
+		return
+	}
 	if _, isServiceTask := serviceTaskTypes[req.Type]; isServiceTask {
 		if err := validateServiceTask(ownedServer, req.Type, req.Payload); err != nil {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
@@ -405,6 +452,9 @@ func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {
 	taskIDs := make([]string, 0)
 	serverIDs := make([]string, 0)
 	for _, server := range servers {
+		if server.DeletionStatus == "pending" || server.DeletionStatus == "uninstalling" {
+			continue
+		}
 		if !server.UpdateAvailable {
 			continue
 		}

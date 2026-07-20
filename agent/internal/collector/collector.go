@@ -32,6 +32,7 @@ type Metrics struct {
 	TerminalChannelError      string    `json:"terminal_channel_error,omitempty"`
 	TerminalSupported         bool      `json:"terminal_supported"`
 	TerminalUnsupportedReason string    `json:"terminal_unsupported_reason,omitempty"`
+	RemoteUninstallSupported  bool      `json:"remote_uninstall_supported"`
 }
 
 var (

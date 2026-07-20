@@ -2,6 +2,8 @@ package agent_api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -102,6 +104,7 @@ type HeartbeatRequest struct {
 	TerminalChannelError      string    `json:"terminal_channel_error,omitempty"`
 	TerminalSupported         *bool     `json:"terminal_supported,omitempty"`
 	TerminalUnsupportedReason string    `json:"terminal_unsupported_reason,omitempty"`
+	RemoteUninstallSupported  bool      `json:"remote_uninstall_supported"`
 	Snapshot                  *Snapshot `json:"snapshot,omitempty"`
 }
 
@@ -244,6 +247,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 				 FROM servers
 				 WHERE servers.id = $1
 				   AND servers.auto_update_agent = TRUE
+				   AND COALESCE(servers.deletion_status, 'active') = 'active'
 				   AND NOT EXISTS (
 				       SELECT 1
 				       FROM server_tasks recent
@@ -290,7 +294,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			WHERE server_id = $1
 			  AND status = 'pending'
 			  AND (expires_at IS NULL OR expires_at > NOW())
-			ORDER BY created_at
+			ORDER BY CASE WHEN type = 'agent_uninstall' THEN 0 ELSE 1 END, created_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 5
 		 )
@@ -453,6 +457,9 @@ type ReportTaskRequest struct {
 	Result string `json:"result"`
 }
 
+// ReportTaskResult records an Agent task result. Agent updates remain in
+// processing until a new-version heartbeat arrives. Agent uninstall completion
+// moves the server into uninstalling while the detached helper removes files.
 func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -477,10 +484,15 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify server owns the task. Agent updates are only truly complete after
-	// a later heartbeat confirms that the replacement binary is running.
-	var taskID string
-	err := h.db.Pool.QueryRow(r.Context(),
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to begin task result transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var taskID, taskType, serverID string
+	err = tx.QueryRow(r.Context(),
 		`UPDATE server_tasks
 		 SET status = CASE
 		              WHEN server_tasks.type = 'agent_update' AND $1 = 'completed' THEN 'processing'
@@ -492,19 +504,144 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		                    ELSE NOW()
 		                   END,
 		     updated_at = NOW()
-		 FROM servers 
+		 FROM servers
 		 WHERE server_tasks.id = $3
 		   AND server_tasks.status = 'processing'
 		   AND servers.id = server_tasks.server_id
 		   AND servers.agent_token = $4
-		 RETURNING server_tasks.id`,
+		 RETURNING server_tasks.id, server_tasks.type, server_tasks.server_id`,
 		req.Status, req.Result, req.TaskID, agentToken,
-	).Scan(&taskID)
-
+	).Scan(&taskID, &taskType, &serverID)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Task not found or permission denied")
 		return
 	}
 
-	response.Success(w, http.StatusOK, map[string]string{"status": "recorded"})
+	if taskType == "agent_uninstall" {
+		if req.Status == "completed" {
+			_, err = tx.Exec(r.Context(),
+				`UPDATE servers
+				 SET deletion_status = 'uninstalling',
+				     deletion_error = NULL,
+				     updated_at = NOW()
+				 WHERE id = $1`,
+				serverID,
+			)
+		} else {
+			_, err = tx.Exec(r.Context(),
+				`UPDATE servers
+				 SET deletion_status = 'failed',
+				     deletion_error = $2,
+				     uninstall_token_hash = NULL,
+				     uninstall_token_expires_at = NULL,
+				     updated_at = NOW()
+				 WHERE id = $1`,
+				serverID, req.Result,
+			)
+		}
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update Agent uninstall state")
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to commit task result")
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{"status": "recorded", "task_id": taskID})
+}
+
+// ConfirmUninstallRequest is sent by the detached helper after the Agent
+// service and binary have been removed or when cleanup fails.
+type ConfirmUninstallRequest struct {
+	ServerID string `json:"server_id"`
+	TaskID   string `json:"task_id"`
+	Token    string `json:"token"`
+	Status   string `json:"status"`
+	Error    string `json:"error"`
+}
+
+// ConfirmUninstall validates the one-time token and then hard-deletes the
+// server on success. On failure it preserves the record for operator recovery.
+func (h *Handler) ConfirmUninstall(w http.ResponseWriter, r *http.Request) {
+	var req ConfirmUninstallRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.ServerID) == "" || strings.TrimSpace(req.TaskID) == "" || strings.TrimSpace(req.Token) == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "server_id, task_id, and token are required")
+		return
+	}
+	if req.Status != "completed" && req.Status != "failed" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Status must be completed or failed")
+		return
+	}
+
+	tokenSum := sha256.Sum256([]byte(req.Token))
+	tokenHash := hex.EncodeToString(tokenSum[:])
+
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to begin uninstall confirmation")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var serverID string
+	err = tx.QueryRow(r.Context(),
+		`SELECT servers.id
+		 FROM servers
+		 JOIN server_tasks ON server_tasks.server_id = servers.id
+		 WHERE servers.id = $1
+		   AND server_tasks.id = $2
+		   AND server_tasks.type = 'agent_uninstall'
+		   AND servers.uninstall_token_hash = $3
+		   AND servers.uninstall_token_expires_at > NOW()
+		   AND servers.deletion_status IN ('pending', 'uninstalling')
+		 FOR UPDATE`,
+		req.ServerID, req.TaskID, tokenHash,
+	).Scan(&serverID)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, "INVALID_UNINSTALL_TOKEN", "Uninstall confirmation is invalid or expired")
+		return
+	}
+
+	if req.Status == "completed" {
+		if _, err := tx.Exec(r.Context(), `DELETE FROM servers WHERE id = $1`, serverID); err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete confirmed server")
+			return
+		}
+	} else {
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE servers
+			 SET deletion_status = 'failed',
+			     deletion_error = NULLIF($2, ''),
+			     uninstall_token_hash = NULL,
+			     uninstall_token_expires_at = NULL,
+			     updated_at = NOW()
+			 WHERE id = $1`,
+			serverID, req.Error,
+		); err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to record uninstall failure")
+			return
+		}
+		_, _ = tx.Exec(r.Context(),
+			`UPDATE server_tasks
+			 SET status = 'failed',
+			     result = jsonb_build_object('output', $2::text),
+			     completed_at = NOW(),
+			     updated_at = NOW()
+			 WHERE id = $1`,
+			req.TaskID, req.Error,
+		)
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to commit uninstall confirmation")
+		return
+	}
+	response.Success(w, http.StatusOK, map[string]string{"status": req.Status})
 }
