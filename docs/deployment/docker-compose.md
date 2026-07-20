@@ -56,12 +56,14 @@ Do not point the public origin directly at the Next.js Frontend. Next rewrites
 remain a development fallback for ordinary HTTP API calls; they are not the
 production WebSocket gateway.
 
-Web Terminal is supported only for Linux server Agents. Windows, macOS, and
-Linux desktop/personal-workstation Agents report an explicit unsupported state;
-the dashboard disables Start Terminal and explains why. On an intentionally
-headless Linux host whose default target is incorrectly set to
-`graphical.target`, set `DATRIXOPS_TERMINAL_MODE=server` in the Agent service
-environment to opt in.
+Web Terminal is supported for Linux server Agents, including headless Linux
+hosts whose default systemd target happens to be `graphical.target`. Linux is
+classified as desktop only when an active display manager or an active
+X11/Wayland login session is detected. Windows, macOS, and detected Linux
+desktop/personal-workstation Agents report an explicit unsupported state; the
+dashboard disables Start Terminal and explains why. A Linux operator can still
+override detection with `DATRIXOPS_TERMINAL_MODE=server` or disable it with
+`DATRIXOPS_TERMINAL_MODE=disabled`.
 
 The current terminal hub is in-memory and targets the single-backend deployment
 in `docker-compose.prod.yml`. A multi-replica backend must add sticky routing or

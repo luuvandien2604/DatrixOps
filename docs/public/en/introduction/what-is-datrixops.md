@@ -35,7 +35,7 @@ Current releases produce artifacts for:
 - macOS Intel (`amd64`) and Apple Silicon (`arm64`).
 - Windows `amd64`.
 
-Features vary by operating system. Linux uses systemd, macOS uses launchd, and Windows uses Service Control Manager. The Dashboard currently enables Web Terminal only for eligible Linux servers; macOS, Windows, and desktop/personal Linux machines are disabled by policy.
+Features vary by operating system. Linux uses systemd, macOS uses launchd, and Windows uses Service Control Manager. Web Terminal is enabled by default for headless Linux servers. macOS, Windows, and Linux hosts with an active display manager or X11/Wayland session are disabled by policy.
 
 ## System requirements
 
@@ -49,4 +49,3 @@ The Agent host needs:
 The Dashboard requires a modern browser with JavaScript and local storage. Docker data requires an available Docker CLI/daemon. Native service data depends on the operating system service manager.
 
 > **Note:** Some Network, Performance, Security, and Logs areas remain in development. Public documentation does not describe placeholder screens as completed features.
-

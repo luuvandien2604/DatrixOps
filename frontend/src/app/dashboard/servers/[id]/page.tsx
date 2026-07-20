@@ -411,30 +411,13 @@ export default function ServerDetailsPage() {
       : explicitOSFamily === 'linux' || normalizedOS.includes('linux') || reportedServiceManager === 'systemd' || ['ubuntu', 'debian', 'centos', 'fedora', 'alpine'].some(name => normalizedOS.includes(name))
         ? 'linux'
         : 'unknown';
-  const linuxDesktopIndicators = [
-    'linuxmint',
-    'linux mint',
-    'desktop',
-    'workstation',
-    'pop!_os',
-    'pop os',
-    'elementary',
-    'zorin',
-    'manjaro',
-    'endeavouros',
-    'kubuntu',
-    'xubuntu',
-    'ubuntu desktop',
-    'fedora workstation',
-  ];
-  const isDesktopLinux = osFamily === 'linux' && linuxDesktopIndicators.some(indicator => normalizedOS.includes(indicator));
   const terminalSupportReported = typeof parsedOSInfo.terminal_supported === 'boolean';
   const terminalUnsupportedReasonReported = typeof parsedOSInfo.terminal_unsupported_reason === 'string'
     ? parsedOSInfo.terminal_unsupported_reason.trim()
     : '';
   const terminalEnvironmentUnsupported = terminalSupportReported
     ? parsedOSInfo.terminal_supported === false
-    : osFamily === 'windows' || osFamily === 'macos' || isDesktopLinux || osFamily !== 'linux';
+    : osFamily !== 'linux';
   const supportsTerminalEnvironment = !terminalEnvironmentUnsupported;
   const terminalChannelConnected = parsedOSInfo.terminal_channel_connected === true;
   const terminalChannelReported = typeof parsedOSInfo.terminal_channel_connected === 'boolean';
@@ -549,9 +532,6 @@ export default function ServerDetailsPage() {
       }
       if (osFamily === 'macos') {
         return 'Web Terminal is not supported on macOS agents. The launchd service runs outside the signed-in desktop session.';
-      }
-      if (isDesktopLinux) {
-        return `Web Terminal is not supported on ${monitoredOS}. Linux desktop and personal-workstation sessions are intentionally excluded.`;
       }
       return 'Web Terminal is supported only on Linux server agents.';
     }

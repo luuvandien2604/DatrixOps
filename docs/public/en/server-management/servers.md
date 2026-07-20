@@ -34,9 +34,8 @@ When Docker is available, the Dashboard can queue start, stop, restart, and rece
 
 Web Terminal uses an outbound Agent WebSocket. DatrixOps does not require an SSH password/private key or an inbound SSH port. A user must explicitly confirm the session; tickets are single-use, only one session may be active for a server, and a session is limited to 30 minutes.
 
-The Dashboard currently enables Web Terminal only for eligible Linux servers. macOS, Windows, and desktop/personal Linux machines are disabled because the service account does not represent the signed-in desktop user.
+The Dashboard enables Web Terminal for headless Linux servers, even when the host retains `graphical.target` without an active desktop session. macOS, Windows, and Linux hosts with an active display manager or X11/Wayland session are disabled because the service account does not represent the signed-in desktop user.
 
 > **Warning:** The shell runs with the identity of the Agent service—commonly `root` on Linux. Commands can change the whole system. Restrict DatrixOps access and close the session immediately after use.
 
 For `AGENT_UNAVAILABLE`, verify Agent presence, the minimum Agent version, terminal-channel state, and reverse-proxy WebSocket upgrades. See [Troubleshooting](/docs/en/troubleshooting/common-issues).
-

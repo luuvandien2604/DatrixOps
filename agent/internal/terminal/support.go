@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/shirou/gopsutil/v4/host"
 )
 
 type SupportStatus struct {
@@ -68,23 +66,57 @@ func detectEnvironmentSupport() SupportStatus {
 }
 
 func linuxDesktopEnvironment() bool {
-	if info, err := host.Info(); err == nil {
-		platform := strings.ToLower(strings.TrimSpace(info.Platform))
-		for _, desktopPlatform := range []string{
-			"linuxmint", "pop", "elementary", "zorin", "manjaro", "endeavouros",
-		} {
-			if strings.Contains(platform, desktopPlatform) {
-				return true
-			}
-		}
-	}
-
-	// A graphical default target is a stronger signal than package presence:
-	// server installations may contain GUI libraries without running a desktop.
+	// A default graphical.target is not enough: headless servers can retain it
+	// after image provisioning or package installation. Only classify the host
+	// as desktop when a display manager or active graphical login actually
+	// exists.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, "systemctl", "get-default").Output(); err == nil {
-		return strings.TrimSpace(string(output)) == "graphical.target"
+	if err := exec.CommandContext(
+		ctx,
+		"systemctl",
+		"is-active",
+		"--quiet",
+		"display-manager.service",
+	).Run(); err == nil {
+		return true
+	}
+
+	sessions, err := exec.CommandContext(
+		ctx,
+		"loginctl",
+		"list-sessions",
+		"--no-legend",
+		"--no-pager",
+	).Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(sessions), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		sessionContext, sessionCancel := context.WithTimeout(context.Background(), time.Second)
+		properties, propertyErr := exec.CommandContext(
+			sessionContext,
+			"loginctl",
+			"show-session",
+			fields[0],
+			"--property=Type",
+			"--property=Active",
+			"--no-pager",
+		).Output()
+		sessionCancel()
+		if propertyErr != nil {
+			continue
+		}
+		values := strings.ToLower(string(properties))
+		active := strings.Contains(values, "active=yes")
+		graphical := strings.Contains(values, "type=x11") || strings.Contains(values, "type=wayland")
+		if active && graphical {
+			return true
+		}
 	}
 	return false
 }

@@ -34,9 +34,8 @@ Khi Docker có mặt, dashboard có thể xếp hàng task start, stop, restart 
 
 Reverse terminal dùng WebSocket outbound từ Agent tới Backend; không yêu cầu nhập SSH password/private key vào DatrixOps và không cần mở cổng SSH inbound. Người dùng phải xác nhận mở phiên; ticket là single-use, một server chỉ có một phiên active, và phiên tối đa 30 phút.
 
-Hiện dashboard chỉ cho phép Web Terminal với Linux server phù hợp. macOS, Windows và Linux desktop/personal bị chặn theo chính sách vì Agent chạy dưới service account/root, không đại diện cho phiên desktop đang đăng nhập.
+Dashboard cho phép Web Terminal với Linux headless/server, kể cả khi máy vẫn đặt `graphical.target` nhưng không có desktop session hoạt động. macOS, Windows và Linux có display manager hoặc phiên X11/Wayland đang hoạt động bị chặn vì Agent chạy dưới service account/root, không đại diện cho phiên desktop đang đăng nhập.
 
 > **Warning:** Shell chạy với quyền của service Agent—thường là `root` trên Linux. Mọi lệnh có thể thay đổi hệ thống. Chỉ cấp tài khoản DatrixOps cho người vận hành được tin cậy và đóng terminal ngay khi xong.
 
 Nếu thấy `AGENT_UNAVAILABLE`, kiểm tra Agent online, phiên bản tối thiểu, trạng thái terminal channel và reverse-proxy WebSocket. Xem thêm [Xử lý sự cố](/docs/troubleshooting/common-issues).
-

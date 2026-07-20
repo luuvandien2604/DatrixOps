@@ -35,7 +35,7 @@ Release hiện tại tạo artifact cho:
 - macOS Intel (`amd64`) và Apple Silicon (`arm64`).
 - Windows `amd64`.
 
-Các chức năng phụ thuộc hệ điều hành. Linux dùng systemd, macOS dùng launchd và Windows dùng Service Control Manager. Web Terminal chỉ được dashboard bật cho Linux server phù hợp; macOS, Windows và máy Linux desktop/personal bị khóa theo chính sách an toàn hiện tại.
+Các chức năng phụ thuộc hệ điều hành. Linux dùng systemd, macOS dùng launchd và Windows dùng Service Control Manager. Web Terminal được bật mặc định cho Linux headless/server. macOS, Windows và Linux có display manager hoặc phiên X11/Wayland đang hoạt động bị khóa theo chính sách an toàn hiện tại.
 
 ## Yêu cầu hệ thống
 
@@ -49,4 +49,3 @@ Máy cài Agent cần:
 Dashboard cần trình duyệt hiện đại có JavaScript và local storage. Docker chỉ xuất hiện khi Docker CLI/daemon có trên Agent. Dữ liệu dịch vụ phụ thuộc service manager gốc của hệ điều hành.
 
 > **Note:** Network, Performance, Security và Logs vẫn có những khu vực đang phát triển. Tài liệu public không xem các màn hình placeholder là tính năng đã hoàn thành.
-
