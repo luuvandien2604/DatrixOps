@@ -3,23 +3,30 @@ package terminal
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/charmbracelet/x/xpty"
 )
 
 const maxSessionDuration = 30 * time.Minute
 
+type terminalPTY interface {
+	io.Reader
+	io.Writer
+	Resize(cols, rows int) error
+	Close() error
+}
+
 type terminalSession struct {
 	id      string
-	pty     xpty.Pty
+	pty     terminalPTY
 	command *exec.Cmd
 	cancel  context.CancelFunc
 	once    sync.Once
@@ -55,51 +62,85 @@ func (m *sessionManager) start(parent context.Context, incoming message) {
 		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "A terminal session is already active"})
 		return
 	}
+
 	cols := clamp(incoming.Cols, 20, 400)
 	rows := clamp(incoming.Rows, 5, 200)
-	pseudoTerminal, err := xpty.NewPty(cols, rows)
-	if err != nil {
-		m.mu.Unlock()
-		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "Unable to create terminal: " + err.Error()})
-		return
-	}
+
 	command, err := shellCommand()
 	if err != nil {
 		m.mu.Unlock()
-		_ = pseudoTerminal.Close()
 		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: err.Error()})
 		return
 	}
-	command.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		"COLUMNS="+strconv.Itoa(cols),
-		"LINES="+strconv.Itoa(rows),
-	)
-	if err := pseudoTerminal.Start(command); err != nil {
+	command.Env = terminalEnvironment(cols, rows)
+
+	pseudoTerminal, err := startPTY(command, cols, rows)
+	if err != nil {
 		m.mu.Unlock()
-		_ = pseudoTerminal.Close()
-		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "Unable to start shell: " + err.Error()})
+		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "Unable to start shell PTY: " + err.Error()})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(parent, maxSessionDuration)
-	current := &terminalSession{id: incoming.SessionID, pty: pseudoTerminal, command: command, cancel: cancel}
+	current := &terminalSession{
+		id:      incoming.SessionID,
+		pty:     pseudoTerminal,
+		command: command,
+		cancel:  cancel,
+	}
 	m.current = current
 	m.mu.Unlock()
 
 	go m.streamOutput(current)
 	go func() {
-		err := xpty.WaitProcess(ctx, command)
+		err := waitProcess(ctx, command)
 		reason := "Shell exited"
-		if ctx.Err() == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			reason = "Maximum terminal duration reached"
+		} else if errors.Is(err, context.Canceled) {
+			reason = "Terminal session closed"
 		} else if err != nil {
 			reason = "Shell exited: " + err.Error()
 		}
 		_ = m.socket.write(message{Type: messageExit, SessionID: current.id, Reason: reason})
 		m.finish(current)
 	}()
+}
+
+func terminalEnvironment(cols, rows int) []string {
+	environment := append([]string{}, os.Environ()...)
+	environment = setEnvironmentValue(environment, "TERM", "xterm-256color")
+	environment = setEnvironmentValue(environment, "COLORTERM", "truecolor")
+	environment = setEnvironmentValue(environment, "COLUMNS", strconv.Itoa(cols))
+	environment = setEnvironmentValue(environment, "LINES", strconv.Itoa(rows))
+	return environment
+}
+
+func setEnvironmentValue(environment []string, key, value string) []string {
+	prefix := key + "="
+	filtered := environment[:0]
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return append(filtered, prefix+value)
+}
+
+func waitProcess(ctx context.Context, command *exec.Cmd) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- command.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		_ = terminateProcess(command)
+		<-done
+		return ctx.Err()
+	}
 }
 
 func (m *sessionManager) streamOutput(current *terminalSession) {
@@ -113,7 +154,7 @@ func (m *sessionManager) streamOutput(current *terminalSession) {
 			})
 		}
 		if err != nil {
-			if err != io.EOF {
+			if !isExpectedPTYReadError(err) {
 				_ = m.socket.write(message{Type: messageError, SessionID: current.id, Reason: err.Error()})
 			}
 			return
@@ -156,9 +197,7 @@ func (m *sessionManager) close(reason string) {
 	}
 	current.once.Do(func() {
 		current.cancel()
-		if current.command.Process != nil {
-			_ = current.command.Process.Kill()
-		}
+		_ = terminateProcess(current.command)
 		_ = current.pty.Close()
 	})
 }
@@ -185,15 +224,29 @@ func shellCommand() (*exec.Cmd, error) {
 		}
 		return nil, fmt.Errorf("no supported Windows shell was found")
 	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
+
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("SHELL")),
+		"/bin/bash",
+		"/bin/sh",
 	}
-	path, err := exec.LookPath(shell)
-	if err != nil {
-		return nil, fmt.Errorf("resolve shell: %w", err)
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, exists := seen[candidate]; exists {
+			continue
+		}
+		seen[candidate] = struct{}{}
+
+		path, err := exec.LookPath(candidate)
+		if err == nil {
+			return exec.Command(path, "-l"), nil
+		}
 	}
-	return exec.Command(path, "-l"), nil
+
+	return nil, fmt.Errorf("no supported Unix shell was found")
 }
 
 func clamp(value, minimum, maximum int) int {

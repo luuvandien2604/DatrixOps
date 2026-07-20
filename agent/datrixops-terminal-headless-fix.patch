@@ -1,0 +1,860 @@
+diff --git a/agent/go.mod b/agent/go.mod
+index bacde1f..ba1fe33 100644
+--- a/agent/go.mod
++++ b/agent/go.mod
+@@ -4,6 +4,7 @@ go 1.24.0
+ 
+ require (
+ 	github.com/charmbracelet/x/xpty v0.1.3
++	github.com/creack/pty v1.1.24
+ 	github.com/gorilla/websocket v1.5.3
+ 	github.com/shirou/gopsutil/v4 v4.26.6
+ )
+@@ -13,7 +14,6 @@ require (
+ 	github.com/charmbracelet/x/errors v0.0.0-20240508181413-e8d8b6e2de86 // indirect
+ 	github.com/charmbracelet/x/term v0.2.1 // indirect
+ 	github.com/charmbracelet/x/termios v0.1.1 // indirect
+-	github.com/creack/pty v1.1.24 // indirect
+ 	github.com/ebitengine/purego v0.10.0 // indirect
+ 	github.com/go-ole/go-ole v1.2.6 // indirect
+ 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+diff --git a/agent/internal/terminal/client.go b/agent/internal/terminal/client.go
+index 03764c3..468bd85 100644
+--- a/agent/internal/terminal/client.go
++++ b/agent/internal/terminal/client.go
+@@ -2,6 +2,8 @@ package terminal
+ 
+ import (
+ 	"context"
++	"fmt"
++	"io"
+ 	"log"
+ 	"net/http"
+ 	"net/url"
+@@ -68,12 +70,21 @@ func connect(ctx context.Context, cfg *config.Config) error {
+ 	}
+ 	header := http.Header{}
+ 	header.Set("Authorization", "Bearer "+cfg.AgentToken)
+-	conn, _, err := (&websocket.Dialer{
++	conn, response, err := (&websocket.Dialer{
+ 		HandshakeTimeout: 10 * time.Second,
+ 		Proxy:            http.ProxyFromEnvironment,
+ 	}).DialContext(ctx, endpoint, header)
+ 	if err != nil {
+-		return err
++		if response != nil {
++			defer response.Body.Close()
++			body, _ := io.ReadAll(io.LimitReader(response.Body, 4*1024))
++			detail := strings.TrimSpace(string(body))
++			if detail != "" {
++				return fmt.Errorf("connect terminal WebSocket %s: %w (HTTP %s: %s)", endpoint, err, response.Status, detail)
++			}
++			return fmt.Errorf("connect terminal WebSocket %s: %w (HTTP %s)", endpoint, err, response.Status)
++		}
++		return fmt.Errorf("connect terminal WebSocket %s: %w", endpoint, err)
+ 	}
+ 	defer conn.Close()
+ 	connected.Store(true)
+@@ -127,13 +138,22 @@ func terminalURL(serverURL string) (string, error) {
+ 	if err != nil {
+ 		return "", err
+ 	}
++	if parsed.Host == "" {
++		return "", fmt.Errorf("terminal server URL is missing a host")
++	}
+ 	switch parsed.Scheme {
+ 	case "https":
+ 		parsed.Scheme = "wss"
+ 	case "http":
+ 		parsed.Scheme = "ws"
++	default:
++		return "", fmt.Errorf("unsupported terminal server URL scheme %q", parsed.Scheme)
++	}
++	basePath := strings.TrimRight(parsed.Path, "/")
++	if basePath == "" {
++		basePath = "/api/v1"
+ 	}
+-	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/agent/terminal"
++	parsed.Path = basePath + "/agent/terminal"
+ 	parsed.RawQuery = ""
+ 	parsed.Fragment = ""
+ 	return parsed.String(), nil
+diff --git a/agent/internal/terminal/client_test.go b/agent/internal/terminal/client_test.go
+new file mode 100644
+index 0000000..1456820
+--- /dev/null
++++ b/agent/internal/terminal/client_test.go
+@@ -0,0 +1,60 @@
++package terminal
++
++import "testing"
++
++func TestTerminalURL(t *testing.T) {
++	t.Parallel()
++
++	tests := []struct {
++		name      string
++		serverURL string
++		want      string
++		wantError bool
++	}{
++		{
++			name:      "configured API base path",
++			serverURL: "https://datrixops.example/api/v1",
++			want:      "wss://datrixops.example/api/v1/agent/terminal",
++		},
++		{
++			name:      "default API base path",
++			serverURL: "http://127.0.0.1:8080",
++			want:      "ws://127.0.0.1:8080/api/v1/agent/terminal",
++		},
++		{
++			name:      "trailing slash",
++			serverURL: "https://datrixops.example/api/v1/",
++			want:      "wss://datrixops.example/api/v1/agent/terminal",
++		},
++		{
++			name:      "unsupported scheme",
++			serverURL: "ftp://datrixops.example/api/v1",
++			wantError: true,
++		},
++		{
++			name:      "missing host",
++			serverURL: "/api/v1",
++			wantError: true,
++		},
++	}
++
++	for _, test := range tests {
++		test := test
++		t.Run(test.name, func(t *testing.T) {
++			t.Parallel()
++			got, err := terminalURL(test.serverURL)
++			if test.wantError {
++				if err == nil {
++					t.Fatalf("terminalURL(%q) expected an error, got %q", test.serverURL, got)
++				}
++				return
++			}
++			if err != nil {
++				t.Fatalf("terminalURL(%q): %v", test.serverURL, err)
++			}
++			if got != test.want {
++				t.Fatalf("terminalURL(%q) = %q, want %q", test.serverURL, got, test.want)
++			}
++		})
++	}
++}
+diff --git a/agent/internal/terminal/protocol.go b/agent/internal/terminal/protocol.go
+index 9bba4ac..dcd2688 100644
+--- a/agent/internal/terminal/protocol.go
++++ b/agent/internal/terminal/protocol.go
+@@ -11,6 +11,7 @@ type message struct {
+ 
+ const (
+ 	messageSessionStart = "session_start"
++	messageSessionReady = "session_ready"
+ 	messageInput        = "input"
+ 	messageOutput       = "output"
+ 	messageResize       = "resize"
+diff --git a/agent/internal/terminal/pty.go b/agent/internal/terminal/pty.go
+new file mode 100644
+index 0000000..7ccb46b
+--- /dev/null
++++ b/agent/internal/terminal/pty.go
+@@ -0,0 +1,10 @@
++package terminal
++
++import "io"
++
++// terminalPTY is the minimum PTY surface needed by the terminal session.
++// Platform-specific implementations live in pty_unix.go and pty_windows.go.
++type terminalPTY interface {
++	io.ReadWriteCloser
++	Resize(width, height int) error
++}
+diff --git a/agent/internal/terminal/pty_unix.go b/agent/internal/terminal/pty_unix.go
+new file mode 100644
+index 0000000..d43f29d
+--- /dev/null
++++ b/agent/internal/terminal/pty_unix.go
+@@ -0,0 +1,81 @@
++//go:build !windows
++
++package terminal
++
++import (
++	"context"
++	"errors"
++	"io"
++	"os"
++	"os/exec"
++	"syscall"
++
++	"github.com/creack/pty"
++)
++
++type unixPTY struct {
++	master *os.File
++}
++
++func startTerminalPTY(command *exec.Cmd, cols, rows int) (terminalPTY, error) {
++	master, err := pty.StartWithSize(command, &pty.Winsize{
++		Cols: uint16(cols), // values are clamped before this call
++		Rows: uint16(rows),
++	})
++	if err != nil {
++		return nil, err
++	}
++	return &unixPTY{master: master}, nil
++}
++
++func (p *unixPTY) Read(data []byte) (int, error) {
++	return p.master.Read(data)
++}
++
++func (p *unixPTY) Write(data []byte) (int, error) {
++	return p.master.Write(data)
++}
++
++func (p *unixPTY) Close() error {
++	return p.master.Close()
++}
++
++func (p *unixPTY) Resize(width, height int) error {
++	return pty.Setsize(p.master, &pty.Winsize{
++		Cols: uint16(width), // values are clamped before this call
++		Rows: uint16(height),
++	})
++}
++
++func waitTerminalProcess(ctx context.Context, command *exec.Cmd) error {
++	done := make(chan error, 1)
++	go func() {
++		done <- command.Wait()
++	}()
++
++	select {
++	case err := <-done:
++		return err
++	case <-ctx.Done():
++		terminateTerminalProcess(command)
++		<-done
++		return ctx.Err()
++	}
++}
++
++func terminateTerminalProcess(command *exec.Cmd) {
++	if command == nil || command.Process == nil {
++		return
++	}
++
++	// creack/pty starts the command in a new session. Killing the negative PID
++	// terminates the complete shell process group, including child commands.
++	_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
++	_ = command.Process.Kill()
++}
++
++func terminalReadClosed(err error) bool {
++	return errors.Is(err, io.EOF) ||
++		errors.Is(err, os.ErrClosed) ||
++		errors.Is(err, syscall.EIO)
++}
+diff --git a/agent/internal/terminal/pty_unix_test.go b/agent/internal/terminal/pty_unix_test.go
+new file mode 100644
+index 0000000..c541452
+--- /dev/null
++++ b/agent/internal/terminal/pty_unix_test.go
+@@ -0,0 +1,52 @@
++//go:build !windows
++
++package terminal
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"os/exec"
++	"testing"
++	"time"
++)
++
++func TestStartTerminalPTYProvidesControllingTTY(t *testing.T) {
++	t.Parallel()
++
++	command := exec.Command(
++		"/bin/sh",
++		"-c",
++		`if [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; then printf 'headless-pty-ok\n'; else printf 'missing-controlling-tty\n'; exit 42; fi`,
++	)
++	command.Env = terminalEnvironment(100, 30)
++	command.Dir = terminalWorkingDirectory()
++
++	pseudoTerminal, err := startTerminalPTY(command, 100, 30)
++	if err != nil {
++		t.Fatalf("startTerminalPTY: %v", err)
++	}
++	defer pseudoTerminal.Close()
++
++	outputCh := make(chan []byte, 1)
++	go func() {
++		output, _ := io.ReadAll(pseudoTerminal)
++		outputCh <- output
++	}()
++
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	if err := waitTerminalProcess(ctx, command); err != nil {
++		t.Fatalf("waitTerminalProcess: %v", err)
++	}
++	_ = pseudoTerminal.Close()
++
++	select {
++	case output := <-outputCh:
++		if !bytes.Contains(output, []byte("headless-pty-ok")) {
++			t.Fatalf("shell did not receive a controlling TTY; output: %q", output)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("timed out reading PTY output")
++	}
++}
+diff --git a/agent/internal/terminal/pty_windows.go b/agent/internal/terminal/pty_windows.go
+new file mode 100644
+index 0000000..9482d94
+--- /dev/null
++++ b/agent/internal/terminal/pty_windows.go
+@@ -0,0 +1,44 @@
++//go:build windows
++
++package terminal
++
++import (
++	"context"
++	"errors"
++	"io"
++	"os"
++	"os/exec"
++
++	"github.com/charmbracelet/x/xpty"
++)
++
++type windowsPTY struct {
++	xpty.Pty
++}
++
++func startTerminalPTY(command *exec.Cmd, cols, rows int) (terminalPTY, error) {
++	pseudoTerminal, err := xpty.NewPty(cols, rows)
++	if err != nil {
++		return nil, err
++	}
++	if err := pseudoTerminal.Start(command); err != nil {
++		_ = pseudoTerminal.Close()
++		return nil, err
++	}
++	return &windowsPTY{Pty: pseudoTerminal}, nil
++}
++
++func waitTerminalProcess(ctx context.Context, command *exec.Cmd) error {
++	return xpty.WaitProcess(ctx, command)
++}
++
++func terminateTerminalProcess(command *exec.Cmd) {
++	if command == nil || command.Process == nil {
++		return
++	}
++	_ = command.Process.Kill()
++}
++
++func terminalReadClosed(err error) bool {
++	return errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed)
++}
+diff --git a/agent/internal/terminal/session.go b/agent/internal/terminal/session.go
+index 11f6f56..953ba6c 100644
+--- a/agent/internal/terminal/session.go
++++ b/agent/internal/terminal/session.go
+@@ -3,23 +3,23 @@ package terminal
+ import (
+ 	"context"
+ 	"encoding/base64"
++	"errors"
+ 	"fmt"
+-	"io"
+ 	"os"
+ 	"os/exec"
++	"path/filepath"
+ 	"runtime"
+ 	"strconv"
++	"strings"
+ 	"sync"
+ 	"time"
+-
+-	"github.com/charmbracelet/x/xpty"
+ )
+ 
+ const maxSessionDuration = 30 * time.Minute
+ 
+ type terminalSession struct {
+ 	id      string
+-	pty     xpty.Pty
++	pty     terminalPTY
+ 	command *exec.Cmd
+ 	cancel  context.CancelFunc
+ 	once    sync.Once
+@@ -49,52 +49,73 @@ func (m *sessionManager) handle(parent context.Context, incoming message) {
+ }
+ 
+ func (m *sessionManager) start(parent context.Context, incoming message) {
++	if strings.TrimSpace(incoming.SessionID) == "" {
++		_ = m.socket.write(message{Type: messageError, Reason: "Terminal session ID is missing"})
++		return
++	}
++
+ 	m.mu.Lock()
+ 	if m.current != nil {
+ 		m.mu.Unlock()
+-		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "A terminal session is already active"})
++		_ = m.socket.write(message{
++			Type:      messageError,
++			SessionID: incoming.SessionID,
++			Reason:    "A terminal session is already active",
++		})
+ 		return
+ 	}
++
+ 	cols := clamp(incoming.Cols, 20, 400)
+ 	rows := clamp(incoming.Rows, 5, 200)
+-	pseudoTerminal, err := xpty.NewPty(cols, rows)
+-	if err != nil {
+-		m.mu.Unlock()
+-		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "Unable to create terminal: " + err.Error()})
+-		return
+-	}
++
+ 	command, err := shellCommand()
+ 	if err != nil {
+ 		m.mu.Unlock()
+-		_ = pseudoTerminal.Close()
+ 		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: err.Error()})
+ 		return
+ 	}
+-	command.Env = append(os.Environ(),
+-		"TERM=xterm-256color",
+-		"COLORTERM=truecolor",
+-		"COLUMNS="+strconv.Itoa(cols),
+-		"LINES="+strconv.Itoa(rows),
+-	)
+-	if err := pseudoTerminal.Start(command); err != nil {
++	command.Env = terminalEnvironment(cols, rows)
++	command.Dir = terminalWorkingDirectory()
++
++	pseudoTerminal, err := startTerminalPTY(command, cols, rows)
++	if err != nil {
+ 		m.mu.Unlock()
+-		_ = pseudoTerminal.Close()
+-		_ = m.socket.write(message{Type: messageError, SessionID: incoming.SessionID, Reason: "Unable to start shell: " + err.Error()})
++		_ = m.socket.write(message{
++			Type:      messageError,
++			SessionID: incoming.SessionID,
++			Reason:    "Unable to start terminal shell: " + err.Error(),
++		})
+ 		return
+ 	}
+ 
+ 	ctx, cancel := context.WithTimeout(parent, maxSessionDuration)
+-	current := &terminalSession{id: incoming.SessionID, pty: pseudoTerminal, command: command, cancel: cancel}
++	current := &terminalSession{
++		id:      incoming.SessionID,
++		pty:     pseudoTerminal,
++		command: command,
++		cancel:  cancel,
++	}
+ 	m.current = current
+ 	m.mu.Unlock()
+ 
++	if err := m.socket.write(message{
++		Type:      messageSessionReady,
++		SessionID: current.id,
++	}); err != nil {
++		m.close("Unable to confirm terminal readiness")
++		return
++	}
++
+ 	go m.streamOutput(current)
+ 	go func() {
+-		err := xpty.WaitProcess(ctx, command)
++		err := waitTerminalProcess(ctx, command)
+ 		reason := "Shell exited"
+-		if ctx.Err() == context.DeadlineExceeded {
++		switch {
++		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+ 			reason = "Maximum terminal duration reached"
+-		} else if err != nil {
++		case errors.Is(ctx.Err(), context.Canceled):
++			reason = "Terminal session closed"
++		case err != nil:
+ 			reason = "Shell exited: " + err.Error()
+ 		}
+ 		_ = m.socket.write(message{Type: messageExit, SessionID: current.id, Reason: reason})
+@@ -107,13 +128,18 @@ func (m *sessionManager) streamOutput(current *terminalSession) {
+ 	for {
+ 		count, err := current.pty.Read(buffer)
+ 		if count > 0 {
+-			_ = m.socket.write(message{
+-				Type: messageOutput, SessionID: current.id,
+-				Data: base64.StdEncoding.EncodeToString(buffer[:count]),
+-			})
++			if writeErr := m.socket.write(message{
++				Type:      messageOutput,
++				SessionID: current.id,
++				Data:      base64.StdEncoding.EncodeToString(buffer[:count]),
++			}); writeErr != nil {
++				return
++			}
+ 		}
+ 		if err != nil {
+-			if err != io.EOF {
++			// Linux PTY masters commonly return EIO when the slave closes. That is
++			// a normal terminal shutdown, not an operator-visible terminal error.
++			if !terminalReadClosed(err) {
+ 				_ = m.socket.write(message{Type: messageError, SessionID: current.id, Reason: err.Error()})
+ 			}
+ 			return
+@@ -123,16 +149,17 @@ func (m *sessionManager) streamOutput(current *terminalSession) {
+ 
+ func (m *sessionManager) input(incoming message) {
+ 	data, err := base64.StdEncoding.DecodeString(incoming.Data)
+-	if err != nil || len(data) > maxMessageBytes {
++	if err != nil || len(data) == 0 || len(data) > maxMessageBytes {
+ 		return
+ 	}
++
+ 	m.mu.Lock()
+ 	current := m.current
+ 	m.mu.Unlock()
+ 	if current == nil || current.id != incoming.SessionID {
+ 		return
+ 	}
+-	if _, err := current.pty.Write(data); err != nil {
++	if _, err := current.pty.Write(data); err != nil && !terminalReadClosed(err) {
+ 		_ = m.socket.write(message{Type: messageError, SessionID: current.id, Reason: err.Error()})
+ 	}
+ }
+@@ -144,35 +171,43 @@ func (m *sessionManager) resize(incoming message) {
+ 	if current == nil || current.id != incoming.SessionID {
+ 		return
+ 	}
+-	_ = current.pty.Resize(clamp(incoming.Cols, 20, 400), clamp(incoming.Rows, 5, 200))
++	if err := current.pty.Resize(
++		clamp(incoming.Cols, 20, 400),
++		clamp(incoming.Rows, 5, 200),
++	); err != nil && !terminalReadClosed(err) {
++		_ = m.socket.write(message{Type: messageError, SessionID: current.id, Reason: "Unable to resize terminal: " + err.Error()})
++	}
+ }
+ 
+-func (m *sessionManager) close(reason string) {
++func (m *sessionManager) close(_ string) {
+ 	m.mu.Lock()
+ 	current := m.current
++	if current != nil {
++		m.current = nil
++	}
+ 	m.mu.Unlock()
+ 	if current == nil {
+ 		return
+ 	}
++
+ 	current.once.Do(func() {
+ 		current.cancel()
+-		if current.command.Process != nil {
+-			_ = current.command.Process.Kill()
+-		}
++		terminateTerminalProcess(current.command)
+ 		_ = current.pty.Close()
+ 	})
+ }
+ 
+ func (m *sessionManager) finish(current *terminalSession) {
+-	current.once.Do(func() {
+-		current.cancel()
+-		_ = current.pty.Close()
+-	})
+ 	m.mu.Lock()
+ 	if m.current == current {
+ 		m.current = nil
+ 	}
+ 	m.mu.Unlock()
++
++	current.once.Do(func() {
++		current.cancel()
++		_ = current.pty.Close()
++	})
+ }
+ 
+ func shellCommand() (*exec.Cmd, error) {
+@@ -185,15 +220,96 @@ func shellCommand() (*exec.Cmd, error) {
+ 		}
+ 		return nil, fmt.Errorf("no supported Windows shell was found")
+ 	}
+-	shell := os.Getenv("SHELL")
+-	if shell == "" {
+-		shell = "/bin/sh"
++
++	candidates := []string{
++		strings.TrimSpace(os.Getenv("DATRIXOPS_TERMINAL_SHELL")),
++		strings.TrimSpace(os.Getenv("SHELL")),
++		"/bin/bash",
++		"/usr/bin/bash",
++		"/bin/sh",
++		"/usr/bin/sh",
+ 	}
+-	path, err := exec.LookPath(shell)
+-	if err != nil {
+-		return nil, fmt.Errorf("resolve shell: %w", err)
++	seen := make(map[string]struct{}, len(candidates))
++	for _, candidate := range candidates {
++		if candidate == "" {
++			continue
++		}
++
++		path := candidate
++		if !filepath.IsAbs(path) {
++			resolved, err := exec.LookPath(path)
++			if err != nil {
++				continue
++			}
++			path = resolved
++		}
++		if _, exists := seen[path]; exists {
++			continue
++		}
++		seen[path] = struct{}{}
++
++		info, err := os.Stat(path)
++		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
++			continue
++		}
++		return exec.Command(path, "-l"), nil
++	}
++
++	return nil, fmt.Errorf("no supported Unix shell was found")
++}
++
++func terminalEnvironment(cols, rows int) []string {
++	environment := append([]string(nil), os.Environ()...)
++	environment = setEnvironmentValue(environment, "TERM", "xterm-256color")
++	environment = setEnvironmentValue(environment, "COLORTERM", "truecolor")
++	environment = setEnvironmentValue(environment, "COLUMNS", strconv.Itoa(cols))
++	environment = setEnvironmentValue(environment, "LINES", strconv.Itoa(rows))
++
++	if environmentValue(environment, "PATH") == "" {
++		environment = setEnvironmentValue(
++			environment,
++			"PATH",
++			"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
++		)
++	}
++	if environmentValue(environment, "HOME") == "" {
++		if home, err := os.UserHomeDir(); err == nil && home != "" {
++			environment = setEnvironmentValue(environment, "HOME", home)
++		}
++	}
++	return environment
++}
++
++func setEnvironmentValue(environment []string, key, value string) []string {
++	prefix := key + "="
++	result := make([]string, 0, len(environment)+1)
++	for _, item := range environment {
++		if strings.HasPrefix(item, prefix) {
++			continue
++		}
++		result = append(result, item)
++	}
++	return append(result, prefix+value)
++}
++
++func environmentValue(environment []string, key string) string {
++	prefix := key + "="
++	for index := len(environment) - 1; index >= 0; index-- {
++		if strings.HasPrefix(environment[index], prefix) {
++			return strings.TrimPrefix(environment[index], prefix)
++		}
++	}
++	return ""
++}
++
++func terminalWorkingDirectory() string {
++	home, err := os.UserHomeDir()
++	if err == nil && home != "" {
++		if info, statErr := os.Stat(home); statErr == nil && info.IsDir() {
++			return home
++		}
+ 	}
+-	return exec.Command(path, "-l"), nil
++	return "/"
+ }
+ 
+ func clamp(value, minimum, maximum int) int {
+diff --git a/backend/internal/core/terminal/handler.go b/backend/internal/core/terminal/handler.go
+index 2c675e8..0917c0d 100644
+--- a/backend/internal/core/terminal/handler.go
++++ b/backend/internal/core/terminal/handler.go
+@@ -138,7 +138,6 @@ func (h *Hub) BrowserSocket(w http.ResponseWriter, r *http.Request) {
+ 		h.endSession(current, "agent_disconnected", "Unable to contact agent", false)
+ 		return
+ 	}
+-	_ = browser.write(message{Type: "ready", SessionID: sessionID})
+ 
+ 	timer := time.AfterFunc(sessionLifetime, func() {
+ 		h.endSession(current, "timed_out", "Maximum terminal duration reached", true)
+diff --git a/backend/internal/core/terminal/protocol.go b/backend/internal/core/terminal/protocol.go
+index 9bba4ac..dcd2688 100644
+--- a/backend/internal/core/terminal/protocol.go
++++ b/backend/internal/core/terminal/protocol.go
+@@ -11,6 +11,7 @@ type message struct {
+ 
+ const (
+ 	messageSessionStart = "session_start"
++	messageSessionReady = "session_ready"
+ 	messageInput        = "input"
+ 	messageOutput       = "output"
+ 	messageResize       = "resize"
+diff --git a/backend/internal/core/terminal/service.go b/backend/internal/core/terminal/service.go
+index 7b44fdd..21b8d50 100644
+--- a/backend/internal/core/terminal/service.go
++++ b/backend/internal/core/terminal/service.go
+@@ -129,6 +129,8 @@ func (h *Hub) dispatchAgentMessage(agent *peer, incoming message) {
+ 	}
+ 
+ 	switch incoming.Type {
++	case messageSessionReady:
++		_ = current.browser.write(incoming)
+ 	case messageOutput:
+ 		_ = current.browser.write(incoming)
+ 		h.addBytes(current, false, decodedLength(incoming.Data))
+diff --git a/frontend/src/app/dashboard/servers/[id]/page.tsx b/frontend/src/app/dashboard/servers/[id]/page.tsx
+index 916d485..9a4d161 100644
+--- a/frontend/src/app/dashboard/servers/[id]/page.tsx
++++ b/frontend/src/app/dashboard/servers/[id]/page.tsx
+@@ -132,7 +132,7 @@ interface AgentUpdateTask {
+ type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
+ 
+ const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
+-const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
++const MIN_TERMINAL_AGENT_VERSION = '1.4.4';
+ 
+ const versionAtLeast = (current: string | undefined, minimum: string) => {
+   if (!current) return false;
+diff --git a/frontend/src/components/WebTerminal.tsx b/frontend/src/components/WebTerminal.tsx
+index 20992da..a51069d 100644
+--- a/frontend/src/components/WebTerminal.tsx
++++ b/frontend/src/components/WebTerminal.tsx
+@@ -57,10 +57,17 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+   const fitAddonRef = useRef<FitAddon | null>(null);
+   const socketRef = useRef<WebSocket | null>(null);
+   const resizeObserverRef = useRef<ResizeObserver | null>(null);
++  const readyTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
++  const sessionReadyRef = useRef(false);
+   const [state, setState] = useState<ConnectionState>('idle');
+   const [error, setError] = useState('');
+ 
+   const disposeTerminal = useCallback((notify = true) => {
++    if (readyTimerRef.current !== null) {
++      window.clearTimeout(readyTimerRef.current);
++      readyTimerRef.current = null;
++    }
++    sessionReadyRef.current = false;
+     const socket = socketRef.current;
+     if (socket && notify && socket.readyState === WebSocket.OPEN) {
+       socket.send(JSON.stringify({ type: 'session_close', reason: 'Operator closed terminal' }));
+@@ -84,7 +91,7 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+   const sendResize = useCallback(() => {
+     const terminal = terminalRef.current;
+     const socket = socketRef.current;
+-    if (!terminal || !socket || socket.readyState !== WebSocket.OPEN) return;
++    if (!terminal || !socket || socket.readyState !== WebSocket.OPEN || !sessionReadyRef.current) return;
+     socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
+   }, []);
+ 
+@@ -135,10 +142,15 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+       socketRef.current = socket;
+ 
+       socket.onopen = () => {
+-        setState('connected');
+-        terminal.clear();
+-        terminal.focus();
+-        sendResize();
++        terminal.writeln('\r\n\x1b[38;2;121;201;244mSecure channel connected. Starting shell…\x1b[0m');
++        readyTimerRef.current = window.setTimeout(() => {
++          if (sessionReadyRef.current) return;
++          const message = 'The agent connected, but did not start a terminal shell within 15 seconds.';
++          setError(message);
++          setState('error');
++          terminal.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
++          socket.close();
++        }, 15_000);
+       };
+       socket.onmessage = event => {
+         let incoming: TerminalMessage;
+@@ -147,11 +159,26 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+         } catch {
+           return;
+         }
+-        if (incoming.type === 'output' && incoming.data) {
++        if (incoming.type === 'session_ready') {
++          sessionReadyRef.current = true;
++          if (readyTimerRef.current !== null) {
++            window.clearTimeout(readyTimerRef.current);
++            readyTimerRef.current = null;
++          }
++          setState('connected');
++          terminal.clear();
++          terminal.focus();
++          sendResize();
++        } else if (incoming.type === 'output' && incoming.data) {
+           terminal.write(base64ToBytes(incoming.data));
+         } else if (incoming.type === 'error') {
++          if (readyTimerRef.current !== null) {
++            window.clearTimeout(readyTimerRef.current);
++            readyTimerRef.current = null;
++          }
+           terminal.writeln(`\r\n\x1b[31m${incoming.reason || 'Terminal error'}\x1b[0m`);
+           setError(incoming.reason || 'Terminal error');
++          setState('error');
+         } else if (incoming.type === 'exit') {
+           terminal.writeln(`\r\n\x1b[33m${incoming.reason || 'Shell exited'}\x1b[0m`);
+           setState('closed');
+@@ -162,6 +189,11 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+         setState('error');
+       };
+       socket.onclose = event => {
++        if (readyTimerRef.current !== null) {
++          window.clearTimeout(readyTimerRef.current);
++          readyTimerRef.current = null;
++        }
++        sessionReadyRef.current = false;
+         if (event.reason) terminal.writeln(`\r\n\x1b[33m${event.reason}\x1b[0m`);
+         resizeObserverRef.current?.disconnect();
+         resizeObserverRef.current = null;
+@@ -170,7 +202,7 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+       };
+ 
+       terminal.onData(data => {
+-        if (socket.readyState !== WebSocket.OPEN) return;
++        if (socket.readyState !== WebSocket.OPEN || !sessionReadyRef.current) return;
+         socket.send(JSON.stringify({
+           type: 'input',
+           data: bytesToBase64(new TextEncoder().encode(data)),
+@@ -182,8 +214,9 @@ export default function WebTerminal({ serverId, serverName, enabled, disabledRea
+       });
+       observer.observe(containerRef.current);
+       resizeObserverRef.current = observer;
+-    } catch (caught: any) {
+-      const message = friendlyTerminalError(caught.message || 'Unable to start terminal');
++    } catch (caught: unknown) {
++      const detail = caught instanceof Error ? caught.message : 'Unable to start terminal';
++      const message = friendlyTerminalError(detail);
+       setError(message);
+       setState('error');
+       terminalRef.current?.writeln(`\r\n\x1b[31m${message}\x1b[0m`);
