@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle, UploadCloud, LoaderCircle, CircleCheck, CircleX
+  Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
+  UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -18,6 +19,7 @@ export default function ServersPage() {
   const [generatedAgentToken, setGeneratedAgentToken] = useState<string | null>(null);
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
   const [customServices, setCustomServices] = useState('');
+  const [installCommandCopied, setInstallCommandCopied] = useState(false);
 
   // Keep both id and name for confirmation dialogs.
   const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
@@ -143,6 +145,11 @@ export default function ServersPage() {
     }
   };
 
+  // Reset the copy confirmation whenever the generated command changes.
+  useEffect(() => {
+    setInstallCommandCopied(false);
+  }, [selectedOs, customServices, generatedAgentToken]);
+
   const getInstallCommand = () => {
     const services = customServices.trim();
     const shellServicesArgument = services ? ` "${services}"` : '';
@@ -156,6 +163,25 @@ export default function ServersPage() {
         return `Invoke-WebRequest -Uri "https://datrixops.vandien.space/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}"${powershellServicesArgument}`;
       default:
         return '';
+    }
+  };
+
+  // Copy the current OS-specific installation command and provide both
+  // a visible button state and a toast confirmation.
+  const copyInstallCommand = async () => {
+    const command = getInstallCommand();
+
+    try {
+      await navigator.clipboard.writeText(command);
+      setInstallCommandCopied(true);
+      toast.success('Install command copied to clipboard');
+
+      window.setTimeout(() => {
+        setInstallCommandCopied(false);
+      }, 2500);
+    } catch {
+      setInstallCommandCopied(false);
+      toast.error('Unable to copy the install command. Please copy it manually.');
     }
   };
 
@@ -529,15 +555,46 @@ export default function ServersPage() {
                     <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">Leave blank to use the recommended defaults for {selectedOs === 'macos' ? 'macOS' : selectedOs === 'windows' ? 'Windows' : 'Linux'}. Use comma-separated native service identifiers.</p>
                   </div>
 
-                  <div className="bg-black/50 border border-white/10 rounded-lg p-4 font-mono text-sm mb-6 overflow-x-auto relative group">
-                    <div className="text-emerald-400 whitespace-nowrap">
-                      {getInstallCommand()}
+                  {/* Installation command: always use a high-contrast code surface
+                      in both light and dark themes. The copy action remains visible
+                      without requiring hover, which also works better on touch devices. */}
+                  <div className="relative mb-3 overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950 shadow-inner dark:border-white/10 dark:bg-black/50">
+                    <div className="overflow-x-auto py-4 pl-4 pr-32">
+                      <code className="block whitespace-nowrap font-mono text-sm font-medium leading-6 text-emerald-300">
+                        {getInstallCommand()}
+                      </code>
                     </div>
+
                     <button
-                      onClick={() => navigator.clipboard.writeText(getInstallCommand())}
-                      className="absolute top-2 right-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs font-sans opacity-0 group-hover:opacity-100 transition-opacity">
-                      Copy
+                      type="button"
+                      onClick={() => void copyInstallCommand()}
+                      className={`absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur-sm transition-colors ${
+                        installCommandCopied
+                          ? 'border-emerald-300/40 bg-emerald-400/20 text-emerald-100'
+                          : 'border-white/15 bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                      aria-label={installCommandCopied ? 'Install command copied' : 'Copy install command'}
+                    >
+                      {installCommandCopied ? (
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                      {installCommandCopied ? 'Copied' : 'Copy'}
                     </button>
+                  </div>
+
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className={`mb-6 flex min-h-5 items-center gap-1.5 text-xs font-medium transition-opacity ${
+                      installCommandCopied
+                        ? 'text-emerald-600 opacity-100 dark:text-emerald-300'
+                        : 'opacity-0'
+                    }`}
+                  >
+                    <CircleCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    Install command copied successfully.
                   </div>
                   <div className="flex justify-end">
                     <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); fetchServers(); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors">
