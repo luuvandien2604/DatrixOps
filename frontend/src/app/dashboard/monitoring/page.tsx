@@ -42,6 +42,11 @@ type TimelinePoint = {
   netOut: number | null;
   diskRead: number | null;
   diskWrite: number | null;
+
+  // Giá trị 0 chỉ xuất hiện trong khoảng downtime đã được xác nhận.
+  // Dùng để vẽ đoạn "No metrics" bằng màu riêng.
+  downtimeZero: number | null;
+
   hasData: boolean;
   isConfirmedMissing: boolean;
 };
@@ -325,6 +330,19 @@ export default function MonitoringPage() {
                     connectNulls={false}
                     isAnimationActive={false}
                   />
+                  <Line
+                    type="linear"
+                    dataKey="downtimeZero"
+                    name="No metrics"
+                    stroke="var(--rose)"
+                    strokeWidth={4}
+                    strokeDasharray="7 5"
+                    strokeLinecap="round"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </MetricChartCard>
@@ -355,6 +373,19 @@ export default function MonitoringPage() {
                     connectNulls={false}
                     isAnimationActive={false}
                   />
+                  <Line
+                    type="linear"
+                    dataKey="downtimeZero"
+                    name="No metrics"
+                    stroke="var(--rose)"
+                    strokeWidth={4}
+                    strokeDasharray="7 5"
+                    strokeLinecap="round"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </MetricChartCard>
@@ -371,6 +402,19 @@ export default function MonitoringPage() {
                   <Tooltip content={<MetricsTooltip />} />
                   <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
                   <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                  <Line
+                    type="linear"
+                    dataKey="downtimeZero"
+                    name="No metrics"
+                    stroke="var(--rose)"
+                    strokeWidth={4}
+                    strokeDasharray="7 5"
+                    strokeLinecap="round"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </MetricChartCard>
@@ -387,6 +431,19 @@ export default function MonitoringPage() {
                   <Tooltip content={<MetricsTooltip />} />
                   <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
                   <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+                  <Line
+                    type="linear"
+                    dataKey="downtimeZero"
+                    name="No metrics"
+                    stroke="var(--rose)"
+                    strokeWidth={4}
+                    strokeDasharray="7 5"
+                    strokeLinecap="round"
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </MetricChartCard>
@@ -489,24 +546,17 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
   if (!active) return null;
   const timestamp = Number(label);
   const point = payload?.[0]?.payload;
-  const visibleItems = (payload ?? []).filter((item) => item.value != null);
+  const visibleItems = (payload ?? []).filter(
+    (item) => item.value != null && item.name !== 'No metrics',
+  );
 
   return (
     <div className="monitoring-tooltip">
       <p className="monitoring-tooltip-time">{formatTooltipTime(timestamp)}</p>
       {!point?.hasData || visibleItems.length === 0 ? (
-        <div
-          className="monitoring-tooltip-missing rounded-lg px-2.5 py-2 font-semibold"
-          style={{
-            color: 'var(--amber)',
-            background:
-              'color-mix(in srgb, var(--amber) 12%, transparent)',
-            border:
-              '1px solid color-mix(in srgb, var(--amber) 35%, transparent)',
-          }}
-        >
-          <CircleAlert className="h-4 w-4 shrink-0" />
-          <span>No metrics</span>
+        <div className="monitoring-tooltip-missing">
+          <CircleAlert className="h-3.5 w-3.5" />
+          No metrics
         </div>
       ) : (
         <div className="mt-2 space-y-1.5">
@@ -565,6 +615,10 @@ function buildTimeline(
       netOut: metric ? toKilobytes(metric.net_out) : missingValue,
       diskRead: metric ? toKilobytes(metric.disk_read) : missingValue,
       diskWrite: metric ? toKilobytes(metric.disk_write) : missingValue,
+
+      // Chỉ tô màu riêng cho đoạn downtime đã được xác nhận.
+      downtimeZero: isConfirmedMissing ? 0 : null,
+
       hasData,
       isConfirmedMissing,
     });
