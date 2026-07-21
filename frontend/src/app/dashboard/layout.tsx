@@ -1,14 +1,14 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Activity, Bell, BookOpen, ChevronLeft, ChevronRight, CircleUserRound,
-  Command, DatabaseBackup, FileText, Gauge, Globe2, KeyRound, LogOut, Menu,
-  ScrollText, Search, Server, ServerCog, Settings2, ShieldCheck, SlidersHorizontal,
-  Users, X, Zap,
+  Activity, Bell, BookOpen, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
+  CircleUserRound, Command, DatabaseBackup, FileText, Gauge, Globe2, KeyRound,
+  Loader2, LogOut, Menu, ScrollText, Search, Server, ServerCog, Settings2,
+  ShieldAlert, ShieldCheck, SlidersHorizontal, Users, X, Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -19,6 +19,22 @@ type NavDefinition = {
   href: string;
   icon: LucideIcon;
   count?: number;
+};
+
+type DashboardNotification = {
+  id: string;
+  kind: string;
+  severity: string;
+  title: string;
+  message: string;
+  server_name?: string | null;
+  read_at?: string | null;
+  created_at: string;
+};
+
+type NotificationResponse = {
+  items: DashboardNotification[];
+  unread_count: number;
 };
 
 const primaryNav: NavDefinition[] = [
@@ -58,6 +74,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   } | null>(null);
   const [fleetSyncFailed, setFleetSyncFailed] = useState(false);
 
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationError, setNotificationError] = useState('');
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => setRole(getUserRole()), []);
   useEffect(() => {
     let active = true;
@@ -85,6 +108,83 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       window.clearInterval(interval);
     };
   }, []);
+
+  // fetchNotifications đồng bộ danh sách và unread_count cho chuông thông báo.
+  const fetchNotifications = useCallback(async (silent = false) => {
+    if (!silent) setNotificationsLoading(true);
+    try {
+      const data = await apiClient('/alerts/notifications?limit=20') as NotificationResponse;
+      setNotifications(Array.isArray(data?.items) ? data.items : []);
+      setUnreadNotificationCount(Number(data?.unread_count) || 0);
+      setNotificationError('');
+    } catch (error) {
+      if (!silent) {
+        setNotificationError(error instanceof Error ? error.message : 'Unable to load notifications');
+      }
+    } finally {
+      if (!silent) setNotificationsLoading(false);
+    }
+  }, []);
+
+  // Poll 10 giây để badge tự cập nhật khi scheduler tạo alert notification mới.
+  useEffect(() => {
+    void fetchNotifications();
+    const interval = window.setInterval(() => void fetchNotifications(true), 10_000);
+    return () => window.clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Đóng menu khi click ra ngoài hoặc nhấn Escape.
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!notificationMenuRef.current?.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNotificationsOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [notificationsOpen]);
+
+  // markNotificationRead cập nhật một item và giảm badge ngay sau khi API thành công.
+  const markNotificationRead = async (notificationID: string) => {
+    const target = notifications.find((item) => item.id === notificationID);
+    if (!target || target.read_at) return;
+
+    try {
+      await apiClient(`/alerts/notifications/${notificationID}/read`, { method: 'PATCH' });
+      const readAt = new Date().toISOString();
+      setNotifications((current) => current.map((item) =>
+        item.id === notificationID ? { ...item, read_at: readAt } : item,
+      ));
+      setUnreadNotificationCount((current) => Math.max(0, current - 1));
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Unable to mark notification as read');
+    }
+  };
+
+  // markAllNotificationsRead đánh dấu toàn bộ item chưa xem và ẩn badge.
+  const markAllNotificationsRead = async () => {
+    if (unreadNotificationCount === 0) return;
+    try {
+      await apiClient('/alerts/notifications/read-all', { method: 'POST' });
+      const readAt = new Date().toISOString();
+      setNotifications((current) => current.map((item) =>
+        item.read_at ? item : { ...item, read_at: readAt },
+      ));
+      setUnreadNotificationCount(0);
+    } catch (error) {
+      setNotificationError(error instanceof Error ? error.message : 'Unable to mark all notifications as read');
+    }
+  };
 
   const logout = () => {
     ['access_token', 'refresh_token'].forEach((key) => {
@@ -335,16 +435,134 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <ThemeToggle />
 
-            <Link
-              href="/dashboard/alerts"
-              aria-label="Open alerts"
-              className="topbar-icon relative text-[var(--color-muted)]"
-            >
-              <Bell className="h-4 w-4" />
-              {(fleetSummary?.open_incidents ?? 0) > 0 && (
-                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[var(--rose)]" />
+            <div ref={notificationMenuRef} className="relative">
+              <button
+                type="button"
+                aria-label={
+                  unreadNotificationCount > 0
+                    ? `Open notifications, ${unreadNotificationCount} unread`
+                    : 'Open notifications'
+                }
+                aria-expanded={notificationsOpen}
+                onClick={() => {
+                  setNotificationsOpen((current) => !current);
+                  if (!notificationsOpen) void fetchNotifications();
+                }}
+                className="topbar-icon relative text-[var(--color-muted)]"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--surface-raised)] shadow-2xl">
+                  <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3">
+                    <div>
+                      <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
+                      <p className="text-[11px] font-medium text-[var(--color-muted)]">
+                        {unreadNotificationCount} unread
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void markAllNotificationsRead()}
+                      disabled={unreadNotificationCount === 0}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--violet-strong)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Mark all as read
+                    </button>
+                  </div>
+
+                  <div className="custom-scrollbar max-h-[26rem] overflow-y-auto">
+                    {notificationsLoading ? (
+                      <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
+                      </div>
+                    ) : notificationError && notifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
+                        Unable to load notifications.
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-10 text-center">
+                        <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
+                        <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
+                        <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
+                      </div>
+                    ) : (
+                      notifications.map((notification) => {
+                        const unread = !notification.read_at;
+                        const resolved = notification.severity === 'resolved';
+                        return (
+                          <div
+                            key={notification.id}
+                            className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
+                              unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
+                            }`}
+                          >
+                            <div
+                              className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                              style={{
+                                background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
+                                color: resolved ? 'var(--mint)' : 'var(--rose)',
+                              }}
+                            >
+                              {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                            </div>
+
+                            <Link
+                              href="/dashboard/alerts"
+                              onClick={() => {
+                                setNotificationsOpen(false);
+                                if (unread) void markNotificationRead(notification.id);
+                              }}
+                              className="min-w-0 flex-1"
+                            >
+                              <div className="flex items-start gap-2">
+                                <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
+                                  {notification.title}
+                                </p>
+                                {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
+                                {notification.message}
+                              </p>
+                              <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
+                                {formatNotificationTime(notification.created_at)}
+                              </p>
+                            </Link>
+
+                            {unread && (
+                              <button
+                                type="button"
+                                onClick={() => void markNotificationRead(notification.id)}
+                                title="Mark as read"
+                                aria-label={`Mark ${notification.title} as read`}
+                                className="mt-0.5 h-8 w-8 shrink-0 rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+                              >
+                                <CircleCheck className="mx-auto h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <Link
+                    href="/dashboard/alerts"
+                    onClick={() => setNotificationsOpen(false)}
+                    className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
+                  >
+                    Open alert settings
+                  </Link>
+                </div>
               )}
-            </Link>
+            </div>
 
             <div className="ml-1 flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] py-1.5 pl-1.5 pr-3">
               <div className="operator-avatar">
@@ -375,4 +593,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
     </div>
   );
+}
+
+// formatNotificationTime hiển thị thời gian tương đối ngắn trong dropdown.
+function formatNotificationTime(value: string): string {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return '';
+
+  const seconds = Math.round((timestamp - Date.now()) / 1_000);
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
+  const minutes = Math.round(seconds / 60);
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour');
+  return formatter.format(Math.round(hours / 24), 'day');
 }

@@ -224,12 +224,6 @@ export default function MonitoringPage() {
   const selectedServer = servers.find((server) => server.id === selectedServerId);
   const serverOnline = selectedServer?.status === 'online';
   const dataPoints = timeline.reduce((total, point) => total + (point.hasData ? 1 : 0), 0);
-  const expectedPoints = timeline.reduce(
-    (total, point) => total + (point.isConfirmedMissing || point.hasData ? 1 : 0),
-    0,
-  );
-  const coverage = expectedPoints > 0 ? Math.round((dataPoints / expectedPoints) * 100) : 0;
-  const lastMetricAt = getLastMetricTimestamp(rawMetrics);
   const xDomain: [number, number] = [now - rangeConfig.durationMs, now];
   const chartContext = {
     data: chartTimeline,
@@ -308,23 +302,11 @@ export default function MonitoringPage() {
         </div>
       </header>
 
-      {selectedServerId && (
-        <section className="monitoring-live-strip" aria-live="polite">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="flex items-center gap-2">
-              <span className="live-data-dot" aria-hidden="true" />
-              Timeline updates every second
-            </span>
-            <span>API refresh: every {POLL_INTERVAL_MS / 1_000} seconds</span>
-            <span>Latest metric: {formatRelativeTime(lastMetricAt, now)}</span>
-            <span>Data coverage: {coverage}%</span>
-          </div>
-          <div className="ml-auto flex items-center gap-4">
-            <span className="missing-data-legend"><i />Sustained no data / Offline</span>
-            {refreshing && <span>Syncing…</span>}
-            {metricsError && <span className="text-[var(--rose)]">Sync error: {metricsError}</span>}
-          </div>
-        </section>
+      {metricsError && (
+        <div className="monitoring-empty-notice text-[var(--rose)]" role="alert">
+          <CircleAlert className="h-4 w-4" />
+          Unable to refresh metrics: {metricsError}
+        </div>
       )}
 
       {!selectedServerId ? (
@@ -660,15 +642,6 @@ function getMetricTimestamp(metric: MetricApiPoint): number | null {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function getLastMetricTimestamp(metrics: MetricApiPoint[]): number | null {
-  let latest: number | null = null;
-  for (const metric of metrics) {
-    const timestamp = getMetricTimestamp(metric);
-    if (timestamp != null && (latest == null || timestamp > latest)) latest = timestamp;
-  }
-  return latest;
-}
-
 function toFiniteMetric(value: number | string | undefined): number | null {
   if (value == null) return null;
   const metric = Number(value);
@@ -719,18 +692,6 @@ function formatTooltipTime(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit',
   });
-}
-
-function formatRelativeTime(timestamp: number | null, now: number): string {
-  if (timestamp == null) return 'Never received';
-  const seconds = Math.round((timestamp - now) / 1_000);
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-  if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
-  const minutes = Math.round(seconds / 60);
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
-  const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour');
-  return formatter.format(Math.round(hours / 24), 'day');
 }
 
 function formatCompactNumber(value: number): string {

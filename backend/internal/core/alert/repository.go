@@ -16,14 +16,20 @@ var (
 	// hoặc không thuộc người dùng đang tạo rule.
 	ErrInvalidChannelSelection = errors.New("invalid alert channel selection")
 
+	// ErrInvalidServerSelection báo agent/server không tồn tại hoặc không thuộc user.
+	ErrInvalidServerSelection = errors.New("invalid alert server selection")
+
 	// ErrChannelInUse ngăn xóa channel đang được ít nhất một rule sử dụng.
 	ErrChannelInUse = errors.New("alert channel is in use")
 
 	// ErrChannelNotFound báo channel không tồn tại hoặc không thuộc user hiện tại.
 	ErrChannelNotFound = errors.New("alert channel not found")
+
+	// ErrNotificationNotFound báo notification không tồn tại hoặc không thuộc user.
+	ErrNotificationNotFound = errors.New("dashboard notification not found")
 )
 
-// Repository chịu trách nhiệm đọc/ghi alert rules, channels và quan hệ giữa chúng.
+// Repository chịu trách nhiệm đọc/ghi alert rules, channels và dashboard notifications.
 type Repository struct {
 	db *database.DB
 }
@@ -33,25 +39,29 @@ func NewRepository(db *database.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// ListRules trả các rule thuộc user cùng danh sách channel đã gắn vào từng rule.
+// ListRules trả các rule thuộc user, agent mục tiêu và danh sách channel đã gắn.
 // Hàm dùng hai query để tránh N+1 query khi số lượng rule tăng lên.
 func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule, error) {
 	rows, err := r.db.Pool.Query(ctx, `
 		SELECT
-			id,
-			user_id,
-			name,
-			metric,
-			operator,
-			threshold,
-			duration_minutes,
-			server_id,
-			enabled,
-			created_at,
-			updated_at
-		FROM alert_rules
-		WHERE user_id = $1
-		ORDER BY created_at DESC
+			r.id,
+			r.user_id,
+			r.name,
+			r.metric,
+			r.operator,
+			r.threshold,
+			r.duration_minutes,
+			r.server_id,
+			s.name AS server_name,
+			r.enabled,
+			r.created_at,
+			r.updated_at
+		FROM alert_rules r
+		LEFT JOIN servers s
+		  ON s.id = r.server_id
+		 AND s.user_id = r.user_id
+		WHERE r.user_id = $1
+		ORDER BY r.created_at DESC
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list alert rules: %w", err)
@@ -72,6 +82,7 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 			&rule.Threshold,
 			&rule.DurationMinutes,
 			&rule.ServerID,
+			&rule.ServerName,
 			&rule.Enabled,
 			&rule.CreatedAt,
 			&rule.UpdatedAt,
@@ -138,7 +149,7 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 }
 
 // CreateRule tạo rule và toàn bộ liên kết channel trong cùng một transaction.
-// Transaction bảo đảm không tồn tại rule nửa vời khi một channel không hợp lệ.
+// Nếu ServerID nil, rule áp dụng cho toàn bộ agent của user.
 func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 	channelIDs := uniqueStrings(rule.ChannelIDs)
 	if len(channelIDs) == 0 {
@@ -150,6 +161,23 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 		return fmt.Errorf("begin create alert rule transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Chỉ cho phép chọn agent thuộc chính user đang tạo rule.
+	if rule.ServerID != nil {
+		var serverName string
+		if err := tx.QueryRow(ctx, `
+			SELECT name
+			FROM servers
+			WHERE user_id = $1
+			  AND id::text = $2
+		`, rule.UserID, *rule.ServerID).Scan(&serverName); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrInvalidServerSelection
+			}
+			return fmt.Errorf("validate alert server: %w", err)
+		}
+		rule.ServerName = &serverName
+	}
 
 	var validChannelCount int
 	if err := tx.QueryRow(ctx, `
@@ -308,7 +336,6 @@ func (r *Repository) CreateChannel(ctx context.Context, channel *AlertChannel) e
 
 // DeleteChannel xóa channel trong transaction.
 // Hàm chỉ chặn khi có rule hợp lệ của chính user đang dùng channel.
-// Các liên kết sai tenant từ dữ liệu cũ được dọn trước khi kiểm tra để tránh báo nhầm CHANNEL_IN_USE.
 func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error {
 	tx, err := r.db.Pool.Begin(ctx)
 	if err != nil {
@@ -329,8 +356,7 @@ func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error
 		return fmt.Errorf("lock alert channel: %w", err)
 	}
 
-	// Dữ liệu hợp lệ luôn yêu cầu rule và channel thuộc cùng một user.
-	// Cleanup này xử lý các liên kết cũ/sai tenant có thể làm khóa ngoại chặn DELETE.
+	// Dọn các liên kết sai tenant từ dữ liệu cũ để tránh báo nhầm CHANNEL_IN_USE.
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM alert_rule_channels arc
 		USING alert_rules r
@@ -370,6 +396,102 @@ func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error
 		return fmt.Errorf("commit alert channel deletion: %w", err)
 	}
 	return nil
+}
+
+// ListNotifications trả các dashboard notification mới nhất và tổng số chưa xem.
+func (r *Repository) ListNotifications(ctx context.Context, userID string, limit int) (NotificationListResponse, error) {
+	result := NotificationListResponse{
+		Items: make([]DashboardNotification, 0),
+	}
+
+	if err := r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM dashboard_notifications
+		WHERE user_id = $1
+		  AND read_at IS NULL
+	`, userID).Scan(&result.UnreadCount); err != nil {
+		return result, fmt.Errorf("count unread dashboard notifications: %w", err)
+	}
+
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			n.id,
+			n.kind,
+			n.severity,
+			n.title,
+			n.message,
+			n.alert_rule_id,
+			n.server_id,
+			s.name AS server_name,
+			n.read_at,
+			n.created_at
+		FROM dashboard_notifications n
+		LEFT JOIN servers s
+		  ON s.id = n.server_id
+		 AND s.user_id = n.user_id
+		WHERE n.user_id = $1
+		ORDER BY n.created_at DESC
+		LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return result, fmt.Errorf("list dashboard notifications: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item DashboardNotification
+		if err := rows.Scan(
+			&item.ID,
+			&item.Kind,
+			&item.Severity,
+			&item.Title,
+			&item.Message,
+			&item.AlertRuleID,
+			&item.ServerID,
+			&item.ServerName,
+			&item.ReadAt,
+			&item.CreatedAt,
+		); err != nil {
+			return result, fmt.Errorf("scan dashboard notification: %w", err)
+		}
+		result.Items = append(result.Items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return result, fmt.Errorf("iterate dashboard notifications: %w", err)
+	}
+
+	return result, nil
+}
+
+// MarkNotificationRead đánh dấu một notification của user là đã xem.
+func (r *Repository) MarkNotificationRead(ctx context.Context, id, userID string) error {
+	result, err := r.db.Pool.Exec(ctx, `
+		UPDATE dashboard_notifications
+		SET read_at = COALESCE(read_at, NOW())
+		WHERE id = $1
+		  AND user_id = $2
+	`, id, userID)
+	if err != nil {
+		return fmt.Errorf("mark dashboard notification read: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotificationNotFound
+	}
+	return nil
+}
+
+// MarkAllNotificationsRead đánh dấu toàn bộ notification chưa xem của user.
+func (r *Repository) MarkAllNotificationsRead(ctx context.Context, userID string) (int64, error) {
+	result, err := r.db.Pool.Exec(ctx, `
+		UPDATE dashboard_notifications
+		SET read_at = NOW()
+		WHERE user_id = $1
+		  AND read_at IS NULL
+	`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("mark all dashboard notifications read: %w", err)
+	}
+	return result.RowsAffected(), nil
 }
 
 // listRuleChannels trả danh sách channel tối giản của một rule sau khi tạo.

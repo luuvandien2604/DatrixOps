@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Loader2,
   Plus,
+  Server,
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
@@ -19,6 +20,12 @@ interface RuleChannel {
   enabled: boolean;
 }
 
+interface AlertServer {
+  id: string;
+  name: string;
+  status: string;
+}
+
 interface AlertRule {
   id: string;
   name: string;
@@ -27,6 +34,8 @@ interface AlertRule {
   threshold: number;
   duration_minutes: number;
   enabled: boolean;
+  server_id?: string | null;
+  server_name?: string | null;
   channel_ids: string[];
   channels: RuleChannel[];
 }
@@ -58,6 +67,7 @@ export default function AlertsPage() {
   const [activeTab, setActiveTab] = useState<AlertTab>('rules');
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [channels, setChannels] = useState<AlertChannel[]>([]);
+  const [servers, setServers] = useState<AlertServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingRule, setSavingRule] = useState(false);
   const [savingChannel, setSavingChannel] = useState(false);
@@ -69,6 +79,7 @@ export default function AlertsPage() {
   const [ruleMetric, setRuleMetric] = useState('cpu');
   const [ruleOperator, setRuleOperator] = useState('>');
   const [ruleThreshold, setRuleThreshold] = useState('90');
+  const [selectedServerId, setSelectedServerId] = useState('all');
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
 
   // Channel form state.
@@ -81,7 +92,7 @@ export default function AlertsPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchRules(), fetchChannels()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
       setLoading(false);
     };
     void loadData();
@@ -106,6 +117,17 @@ export default function AlertsPage() {
     } catch (error) {
       console.error(error);
       setErrorMessage(getApiErrorMessage(error, 'Unable to load notification channels.'));
+    }
+  };
+
+  // fetchServers tải danh sách agent/server để người dùng giới hạn phạm vi của rule.
+  const fetchServers = async () => {
+    try {
+      const data = await apiClient('/servers');
+      setServers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load agents.'));
     }
   };
 
@@ -145,6 +167,7 @@ export default function AlertsPage() {
           operator: ruleOperator,
           threshold: ruleMetric === 'status' ? 0 : threshold,
           duration_minutes: 1,
+          server_id: selectedServerId === 'all' ? null : selectedServerId,
           channel_ids: selectedChannelIds,
         }),
       });
@@ -152,6 +175,7 @@ export default function AlertsPage() {
       setRules((current) => [createdRule, ...current]);
       setRuleName('');
       setRuleThreshold('90');
+      setSelectedServerId('all');
       setSelectedChannelIds([]);
       setSuccessMessage('Alert rule created with its notification channels.');
     } catch (error) {
@@ -242,7 +266,7 @@ export default function AlertsPage() {
     } catch (error) {
       console.error(error);
       // Đồng bộ lại usage_count vì rule có thể vừa được tạo ở tab khác hoặc phiên khác.
-      await Promise.all([fetchRules(), fetchChannels()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
       setErrorMessage(getApiErrorMessage(error, 'Unable to delete notification channel.'));
     }
   };
@@ -332,6 +356,28 @@ export default function AlertsPage() {
               </div>
 
               <div>
+                <label htmlFor="rule-server" className="mb-1 flex items-center gap-2 text-sm font-medium text-[var(--color-muted)]">
+                  <Server className="h-4 w-4" /> Target agent
+                </label>
+                <select
+                  id="rule-server"
+                  value={selectedServerId}
+                  onChange={(event) => setSelectedServerId(event.target.value)}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] p-2 text-sm text-[var(--foreground)]"
+                >
+                  <option value="all">All agents</option>
+                  {servers.map((server) => (
+                    <option key={server.id} value={server.id}>
+                      {server.name} · {server.status === 'online' ? 'Online' : 'Offline'}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+                  Choose one agent or keep All agents to apply this rule across the fleet.
+                </p>
+              </div>
+
+              <div>
                 <label htmlFor="rule-metric" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
                   Metric
                 </label>
@@ -416,18 +462,24 @@ export default function AlertsPage() {
                           role="checkbox"
                           aria-checked={selected}
                           onClick={() => toggleChannel(channel.id)}
-                          className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+                          className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                             selected
-                              ? 'border-blue-500/50 bg-blue-500/10'
-                              : 'border-transparent hover:border-[var(--border-color)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                              ? 'ring-1 ring-[var(--violet-strong)]'
+                              : 'hover:-translate-y-px hover:border-[var(--border-color)]'
                           }`}
+                          style={{
+                            borderColor: selected ? 'var(--violet-strong)' : 'var(--border-color)',
+                            background: selected ? 'var(--violet-wash)' : 'var(--surface-subtle)',
+                            color: 'var(--foreground)',
+                          }}
                         >
                           <span
-                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-                              selected
-                                ? 'border-blue-500 bg-blue-500 text-white'
-                                : 'border-[var(--border-color)]'
-                            }`}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
+                            style={{
+                              borderColor: selected ? 'var(--violet-strong)' : 'var(--border-color)',
+                              background: selected ? 'var(--violet-strong)' : 'var(--control-background)',
+                              color: selected ? '#ffffff' : 'var(--foreground)',
+                            }}
                           >
                             {selected && <Check className="h-3.5 w-3.5" />}
                           </span>
@@ -438,6 +490,11 @@ export default function AlertsPage() {
                             <span className="block text-[11px] font-medium uppercase tracking-wider text-[var(--color-muted)]">
                               {channel.type}
                             </span>
+                            {selected && (
+                              <span className="mt-1 inline-flex rounded-full border border-[var(--violet-strong)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--violet-strong)]">
+                                Selected
+                              </span>
+                            )}
                           </span>
                         </button>
                       );
@@ -469,6 +526,11 @@ export default function AlertsPage() {
                     {rule.metric === 'status'
                       ? 'Alert when server is offline'
                       : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
+                  </p>
+
+                  <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                    <Server className="h-3.5 w-3.5 text-[var(--violet-strong)]" />
+                    {rule.server_name ? `Agent: ${rule.server_name}` : 'All agents'}
                   </p>
 
                   <div className="mt-3 flex flex-wrap gap-2">

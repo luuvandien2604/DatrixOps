@@ -8,7 +8,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 )
 
-// RegisterRoutes đăng ký toàn bộ API quản lý alert rules và notification channels.
+// RegisterRoutes đăng ký API quản lý alert rules, channels và dashboard notifications.
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	repo := NewRepository(db)
 	handler := NewHandler(repo)
@@ -27,4 +27,8 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("GET /api/v1/alerts/channels", withAuth(handler.ListChannels))
 	mux.HandleFunc("POST /api/v1/alerts/channels", withAuth(handler.CreateChannel))
 	mux.HandleFunc("DELETE /api/v1/alerts/channels/{id}", withAuth(handler.DeleteChannel))
+
+	mux.HandleFunc("GET /api/v1/alerts/notifications", withAuth(handler.ListNotifications))
+	mux.HandleFunc("PATCH /api/v1/alerts/notifications/{id}/read", withAuth(handler.MarkNotificationRead))
+	mux.HandleFunc("POST /api/v1/alerts/notifications/read-all", withAuth(handler.MarkAllNotificationsRead))
 }

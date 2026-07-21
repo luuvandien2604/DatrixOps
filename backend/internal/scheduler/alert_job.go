@@ -12,8 +12,8 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
 
-// AlertJob định kỳ đánh giá các alert rule và gửi thông báo qua đúng channel
-// đã được liên kết với từng rule.
+// AlertJob định kỳ đánh giá alert rule, ghi notification lên Dashboard
+// và gửi thông báo ra đúng channel được liên kết với từng rule.
 type AlertJob struct {
 	db     *database.DB
 	logger *slog.Logger
@@ -56,7 +56,6 @@ func (j *AlertJob) Stop() {
 }
 
 // run tải rule và channel đang bật, sau đó đánh giá từng rule.
-// Channel được nhóm theo rule ID, không còn gửi tới tất cả channel của user.
 func (j *AlertJob) run() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -74,8 +73,7 @@ func (j *AlertJob) run() {
 	}
 
 	for _, rule := range rules {
-		// Alert state vẫn được đánh giá khi rule cũ chưa có channel liên kết.
-		// Trường hợp đó chỉ cập nhật dashboard và không gửi notification.
+		// Dashboard notification vẫn được ghi ngay cả khi rule không có external channel.
 		j.evaluateRule(ctx, rule, channelsByRule[rule.ID])
 	}
 }
@@ -113,8 +111,8 @@ func (j *AlertJob) listEnabledRules(ctx context.Context) ([]alert.AlertRule, err
 	return rules, rows.Err()
 }
 
-// listEnabledChannelsByRule tải đúng các channel đang bật được chọn cho mỗi rule.
-// Điều kiện c.user_id = r.user_id bảo vệ tenant isolation ngay trong query scheduler.
+// listEnabledChannelsByRule tải đúng channel đang bật được chọn cho mỗi rule.
+// Điều kiện c.user_id = r.user_id bảo vệ tenant isolation ngay trong query.
 func (j *AlertJob) listEnabledChannelsByRule(ctx context.Context) (map[string][]alert.AlertChannel, error) {
 	rows, err := j.db.Pool.Query(ctx, `
 		SELECT
@@ -164,8 +162,7 @@ func (j *AlertJob) listEnabledChannelsByRule(ctx context.Context) (map[string][]
 	return channelsByRule, rows.Err()
 }
 
-// evaluateRule đánh giá rule trên từng server thuộc cùng user,
-// cập nhật alert_state và gửi firing/resolved notification khi state thay đổi.
+// evaluateRule đánh giá rule trên một agent cụ thể hoặc toàn bộ agent của user.
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
 	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1`
 	args := []interface{}{rule.UserID}
@@ -200,22 +197,11 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 
 	for _, server := range servers {
 		isFiring, currentValue := j.evaluateCondition(ctx, rule, server.ID, server.LastSeen)
-
-		var currentState string
-		if err := j.db.Pool.QueryRow(ctx, `
-			SELECT status
-			FROM alert_state
-			WHERE rule_id = $1 AND server_id = $2
-		`, rule.ID, server.ID).Scan(&currentState); err != nil {
-			currentState = "ok"
-		}
-
-		switch {
-		case isFiring && currentState == "ok":
+		if isFiring {
 			j.handleFiring(ctx, rule, server.ID, server.Name, currentValue, channels)
-		case !isFiring && currentState == "firing":
-			j.handleResolved(ctx, rule, server.ID, server.Name, currentValue, channels)
+			continue
 		}
+		j.handleResolved(ctx, rule, server.ID, server.Name, currentValue, channels)
 	}
 }
 
@@ -242,74 +228,217 @@ func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, 
 		return false, 0
 	}
 
-	if rule.Operator == ">" {
+	switch rule.Operator {
+	case ">":
 		return currentValue > rule.Threshold, currentValue
-	}
-	if rule.Operator == "<" {
+	case "<":
 		return currentValue < rule.Threshold, currentValue
+	default:
+		return false, currentValue
 	}
-	return false, currentValue
 }
 
-// handleFiring chuyển alert sang firing và gửi thông báo qua các channel của rule.
+// handleFiring chuyển state sang firing đúng một lần, tạo dashboard notification,
+// commit transaction rồi mới gửi external notification.
 func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serverID, serverName string, currentValue float64, channels []alert.AlertChannel) {
-	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
-	_, _ = j.db.Pool.Exec(ctx, `
+	tx, err := j.db.Pool.Begin(ctx)
+	if err != nil {
+		j.logger.Error("failed to begin firing transition", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	result, err := tx.Exec(ctx, `
 		INSERT INTO alert_state (rule_id, server_id, status, last_triggered_at)
 		VALUES ($1, $2, 'firing', NOW())
 		ON CONFLICT (rule_id, server_id)
 		DO UPDATE SET status = 'firing', last_triggered_at = NOW()
+		WHERE alert_state.status IS DISTINCT FROM 'firing'
 	`, rule.ID, serverID)
-
-	message := fmt.Sprintf(
-		"🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f",
-		rule.Name,
-		serverName,
-		currentValue,
-	)
-	if rule.Metric == "status" {
-		message = fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 min ago.", serverName)
+	if err != nil {
+		j.logger.Error("failed to update firing state", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
 	}
-	j.sendNotifications(channels, message)
+
+	// RowsAffected = 0 nghĩa là alert đã firing từ vòng scheduler trước.
+	if result.RowsAffected() == 0 {
+		return
+	}
+
+	title, dashboardMessage, externalMessage := firingMessages(rule, serverName, currentValue)
+	metadata, _ := json.Marshal(map[string]interface{}{
+		"metric":        rule.Metric,
+		"operator":      rule.Operator,
+		"threshold":     rule.Threshold,
+		"current_value": currentValue,
+	})
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO dashboard_notifications (
+			user_id,
+			alert_rule_id,
+			server_id,
+			kind,
+			severity,
+			title,
+			message,
+			metadata
+		)
+		VALUES ($1, $2, $3, 'alert_firing', 'critical', $4, $5, $6)
+	`, rule.UserID, rule.ID, serverID, title, dashboardMessage, metadata); err != nil {
+		j.logger.Error("failed to create firing notification", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		j.logger.Error("failed to commit firing transition", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+
+	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
+	j.sendNotifications(channels, externalMessage)
 }
 
-// handleResolved chuyển alert về ok và gửi thông báo phục hồi qua các channel của rule.
+// handleResolved chỉ chạy khi state trước đó là firing, sau đó ghi notification phục hồi.
 func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, serverID, serverName string, currentValue float64, channels []alert.AlertChannel) {
-	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
-	_, _ = j.db.Pool.Exec(ctx, `
+	tx, err := j.db.Pool.Begin(ctx)
+	if err != nil {
+		j.logger.Error("failed to begin resolved transition", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	result, err := tx.Exec(ctx, `
 		UPDATE alert_state
 		SET status = 'ok', last_triggered_at = NOW()
-		WHERE rule_id = $1 AND server_id = $2
+		WHERE rule_id = $1
+		  AND server_id = $2
+		  AND status = 'firing'
 	`, rule.ID, serverID)
+	if err != nil {
+		j.logger.Error("failed to update resolved state", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+	if result.RowsAffected() == 0 {
+		return
+	}
 
-	message := fmt.Sprintf(
-		"✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f",
+	title, dashboardMessage, externalMessage := resolvedMessages(rule, serverName, currentValue)
+	metadata, _ := json.Marshal(map[string]interface{}{
+		"metric":        rule.Metric,
+		"operator":      rule.Operator,
+		"threshold":     rule.Threshold,
+		"current_value": currentValue,
+	})
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO dashboard_notifications (
+			user_id,
+			alert_rule_id,
+			server_id,
+			kind,
+			severity,
+			title,
+			message,
+			metadata
+		)
+		VALUES ($1, $2, $3, 'alert_resolved', 'resolved', $4, $5, $6)
+	`, rule.UserID, rule.ID, serverID, title, dashboardMessage, metadata); err != nil {
+		j.logger.Error("failed to create resolved notification", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		j.logger.Error("failed to commit resolved transition", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+
+	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
+	j.sendNotifications(channels, externalMessage)
+}
+
+// firingMessages tạo nội dung riêng cho Dashboard và external channel.
+func firingMessages(rule alert.AlertRule, serverName string, currentValue float64) (string, string, string) {
+	if rule.Metric == "status" {
+		return "Server offline: " + serverName,
+			fmt.Sprintf("Agent %s has not reported a heartbeat for more than one minute.", serverName),
+			fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 min ago.", serverName)
+	}
+
+	title := "Alert firing: " + rule.Name
+	dashboardMessage := fmt.Sprintf(
+		"%s on %s is %.2f%% (%s %.2f%%).",
+		metricLabel(rule.Metric),
+		serverName,
+		currentValue,
+		rule.Operator,
+		rule.Threshold,
+	)
+	externalMessage := fmt.Sprintf(
+		"🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f%%",
 		rule.Name,
 		serverName,
 		currentValue,
 	)
+	return title, dashboardMessage, externalMessage
+}
+
+// resolvedMessages tạo nội dung phục hồi cho Dashboard và external channel.
+func resolvedMessages(rule alert.AlertRule, serverName string, currentValue float64) (string, string, string) {
 	if rule.Metric == "status" {
-		message = fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", serverName)
+		return "Server online: " + serverName,
+			fmt.Sprintf("Agent %s is reporting heartbeat data again.", serverName),
+			fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", serverName)
 	}
-	j.sendNotifications(channels, message)
+
+	title := "Alert resolved: " + rule.Name
+	dashboardMessage := fmt.Sprintf(
+		"%s on %s returned to %.2f%%.",
+		metricLabel(rule.Metric),
+		serverName,
+		currentValue,
+	)
+	externalMessage := fmt.Sprintf(
+		"✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f%%",
+		rule.Name,
+		serverName,
+		currentValue,
+	)
+	return title, dashboardMessage, externalMessage
+}
+
+// metricLabel chuyển mã metric thành nhãn dễ đọc trong notification.
+func metricLabel(metric string) string {
+	switch metric {
+	case "cpu":
+		return "CPU usage"
+	case "ram":
+		return "Memory usage"
+	default:
+		return metric
+	}
 }
 
 // sendNotifications gửi message tới từng channel đã chọn của rule.
 // Một channel lỗi không chặn các channel còn lại.
 func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, message string) {
 	for _, channel := range channels {
+		var err error
 		switch channel.Type {
 		case "telegram":
 			token, _ := channel.Config["bot_token"].(string)
 			chatID, _ := channel.Config["chat_id"].(string)
 			if token != "" && chatID != "" {
-				notifier.SendTelegram(token, chatID, message)
+				err = notifier.SendTelegram(token, chatID, message)
 			}
 		case "discord":
 			webhookURL, _ := channel.Config["webhook_url"].(string)
 			if webhookURL != "" {
-				notifier.SendDiscord(webhookURL, message)
+				err = notifier.SendDiscord(webhookURL, message)
 			}
+		}
+		if err != nil {
+			j.logger.Warn("failed to send alert notification", "channel_id", channel.ID, "channel_type", channel.Type, "error", err)
 		}
 	}
 }
