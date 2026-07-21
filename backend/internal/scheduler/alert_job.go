@@ -12,12 +12,15 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
 
+// AlertJob định kỳ đánh giá các alert rule và gửi thông báo qua đúng channel
+// đã được liên kết với từng rule.
 type AlertJob struct {
 	db     *database.DB
 	logger *slog.Logger
 	stop   chan struct{}
 }
 
+// NewAlertJob tạo scheduler đánh giá alert dùng database và logger hiện tại.
 func NewAlertJob(db *database.DB, logger *slog.Logger) *AlertJob {
 	return &AlertJob{
 		db:     db,
@@ -26,13 +29,13 @@ func NewAlertJob(db *database.DB, logger *slog.Logger) *AlertJob {
 	}
 }
 
+// Start chạy alert job ngay một lần, sau đó lặp lại mỗi 15 giây.
 func (j *AlertJob) Start() {
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
 		j.logger.Info("AlertJob started")
-		// Run once immediately
 		j.run()
 
 		for {
@@ -47,64 +50,125 @@ func (j *AlertJob) Start() {
 	}()
 }
 
+// Stop yêu cầu goroutine của alert job kết thúc.
 func (j *AlertJob) Stop() {
 	close(j.stop)
 }
 
+// run tải rule và channel đang bật, sau đó đánh giá từng rule.
+// Channel được nhóm theo rule ID, không còn gửi tới tất cả channel của user.
 func (j *AlertJob) run() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Fetch all rules
-	rows, err := j.db.Pool.Query(ctx, `SELECT id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled FROM alert_rules WHERE enabled = true`)
+	rules, err := j.listEnabledRules(ctx)
 	if err != nil {
 		j.logger.Error("failed to list rules", "error", err)
 		return
 	}
-	defer rows.Close()
 
-	var rules []alert.AlertRule
-	for rows.Next() {
-		var rule alert.AlertRule
-		if err := rows.Scan(&rule.ID, &rule.UserID, &rule.Name, &rule.Metric, &rule.Operator, &rule.Threshold, &rule.DurationMinutes, &rule.ServerID, &rule.Enabled); err == nil {
-			rules = append(rules, rule)
-		}
-	}
-	rows.Close() // close explicitly
-
-	// Fetch all active channels
-	rows, err = j.db.Pool.Query(ctx, `SELECT id, user_id, name, type, config, enabled FROM alert_channels WHERE enabled = true`)
+	channelsByRule, err := j.listEnabledChannelsByRule(ctx)
 	if err != nil {
-		j.logger.Error("failed to list channels", "error", err)
+		j.logger.Error("failed to list selected channels", "error", err)
 		return
 	}
-	defer rows.Close()
-
-	channelsByUser := make(map[string][]alert.AlertChannel)
-	for rows.Next() {
-		var ch alert.AlertChannel
-		var configBytes []byte
-		if err := rows.Scan(&ch.ID, &ch.UserID, &ch.Name, &ch.Type, &configBytes, &ch.Enabled); err == nil {
-			ch.Config = make(map[string]interface{})
-			_ = json.Unmarshal(configBytes, &ch.Config)
-		}
-		channelsByUser[ch.UserID] = append(channelsByUser[ch.UserID], ch)
-	}
-	rows.Close()
 
 	for _, rule := range rules {
-		userChannels := channelsByUser[rule.UserID]
-		// Alert state is part of the dashboard source of truth and must be
-		// evaluated even when the user has not configured a notification channel.
-		j.evaluateRule(ctx, rule, userChannels)
+		// Alert state vẫn được đánh giá khi rule cũ chưa có channel liên kết.
+		// Trường hợp đó chỉ cập nhật dashboard và không gửi notification.
+		j.evaluateRule(ctx, rule, channelsByRule[rule.ID])
 	}
 }
 
+// listEnabledRules trả toàn bộ rule đang bật trên hệ thống.
+func (j *AlertJob) listEnabledRules(ctx context.Context) ([]alert.AlertRule, error) {
+	rows, err := j.db.Pool.Query(ctx, `
+		SELECT id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled
+		FROM alert_rules
+		WHERE enabled = true
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rules := make([]alert.AlertRule, 0)
+	for rows.Next() {
+		var rule alert.AlertRule
+		if err := rows.Scan(
+			&rule.ID,
+			&rule.UserID,
+			&rule.Name,
+			&rule.Metric,
+			&rule.Operator,
+			&rule.Threshold,
+			&rule.DurationMinutes,
+			&rule.ServerID,
+			&rule.Enabled,
+		); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
+}
+
+// listEnabledChannelsByRule tải đúng các channel đang bật được chọn cho mỗi rule.
+// Điều kiện c.user_id = r.user_id bảo vệ tenant isolation ngay trong query scheduler.
+func (j *AlertJob) listEnabledChannelsByRule(ctx context.Context) (map[string][]alert.AlertChannel, error) {
+	rows, err := j.db.Pool.Query(ctx, `
+		SELECT
+			arc.alert_rule_id,
+			c.id,
+			c.user_id,
+			c.name,
+			c.type,
+			c.config,
+			c.enabled
+		FROM alert_rule_channels arc
+		JOIN alert_rules r ON r.id = arc.alert_rule_id
+		JOIN alert_channels c ON c.id = arc.alert_channel_id
+		WHERE r.enabled = true
+		  AND c.enabled = true
+		  AND c.user_id = r.user_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	channelsByRule := make(map[string][]alert.AlertChannel)
+	for rows.Next() {
+		var ruleID string
+		var channel alert.AlertChannel
+		var configBytes []byte
+		if err := rows.Scan(
+			&ruleID,
+			&channel.ID,
+			&channel.UserID,
+			&channel.Name,
+			&channel.Type,
+			&configBytes,
+			&channel.Enabled,
+		); err != nil {
+			return nil, err
+		}
+
+		channel.Config = make(map[string]interface{})
+		if err := json.Unmarshal(configBytes, &channel.Config); err != nil {
+			j.logger.Warn("failed to decode alert channel config", "channel_id", channel.ID, "error", err)
+			continue
+		}
+		channelsByRule[ruleID] = append(channelsByRule[ruleID], channel)
+	}
+	return channelsByRule, rows.Err()
+}
+
+// evaluateRule đánh giá rule trên từng server thuộc cùng user,
+// cập nhật alert_state và gửi firing/resolved notification khi state thay đổi.
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
-	// 1. Fetch servers matching rule AND user
 	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1`
-	var args []interface{}
-	args = append(args, rule.UserID)
+	args := []interface{}{rule.UserID}
 
 	if rule.ServerID != nil {
 		query += ` AND id = $2`
@@ -113,100 +177,138 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 
 	rows, err := j.db.Pool.Query(ctx, query, args...)
 	if err != nil {
-		j.logger.Error("failed to query servers", "error", err)
+		j.logger.Error("failed to query servers", "rule_id", rule.ID, "error", err)
 		return
 	}
-	defer rows.Close()
 
-	type Server struct {
+	type serverSnapshot struct {
 		ID       string
 		Name     string
 		LastSeen *time.Time
 	}
-	var servers []Server
+
+	servers := make([]serverSnapshot, 0)
 	for rows.Next() {
-		var s Server
-		if err := rows.Scan(&s.ID, &s.Name, &s.LastSeen); err == nil {
-			servers = append(servers, s)
+		var server serverSnapshot
+		if err := rows.Scan(&server.ID, &server.Name, &server.LastSeen); err != nil {
+			j.logger.Warn("failed to scan alert server", "rule_id", rule.ID, "error", err)
+			continue
 		}
+		servers = append(servers, server)
 	}
-	rows.Close() // Explicitly close before next queries
+	rows.Close()
 
-	for _, s := range servers {
-		// Evaluate condition
-		isFiring := false
-		currentValue := float64(0)
+	for _, server := range servers {
+		isFiring, currentValue := j.evaluateCondition(ctx, rule, server.ID, server.LastSeen)
 
-		if rule.Metric == "status" { // status == offline
-			if s.LastSeen == nil || time.Since(*s.LastSeen) > 1*time.Minute {
-				isFiring = true
-			}
-		} else {
-			// Query latest metric
-			var val float64
-			metricCol := "cpu_usage"
-			if rule.Metric == "ram" {
-				metricCol = "memory_used * 100.0 / NULLIF(memory_total, 0)"
-			}
-			err := j.db.Pool.QueryRow(ctx, fmt.Sprintf(`SELECT %s FROM server_metrics WHERE server_id = $1 ORDER BY created_at DESC LIMIT 1`, metricCol), s.ID).Scan(&val)
-			if err == nil {
-				currentValue = val
-				if rule.Operator == ">" && val > rule.Threshold {
-					isFiring = true
-				} else if rule.Operator == "<" && val < rule.Threshold {
-					isFiring = true
-				}
-			}
-		}
-
-		// Get current state
 		var currentState string
-		err := j.db.Pool.QueryRow(ctx, `SELECT status FROM alert_state WHERE rule_id = $1 AND server_id = $2`, rule.ID, s.ID).Scan(&currentState)
-		if err != nil {
-			currentState = "ok" // not found
+		if err := j.db.Pool.QueryRow(ctx, `
+			SELECT status
+			FROM alert_state
+			WHERE rule_id = $1 AND server_id = $2
+		`, rule.ID, server.ID).Scan(&currentState); err != nil {
+			currentState = "ok"
 		}
 
-		// State transition
-		if isFiring && currentState == "ok" {
-			// Fire alert
-			j.logger.Info("Alert firing", "rule", rule.Name, "server", s.Name)
-			j.db.Pool.Exec(ctx, `INSERT INTO alert_state (rule_id, server_id, status, last_triggered_at) VALUES ($1, $2, 'firing', NOW()) ON CONFLICT (rule_id, server_id) DO UPDATE SET status = 'firing', last_triggered_at = NOW()`, rule.ID, s.ID)
-
-			msg := fmt.Sprintf("🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f", rule.Name, s.Name, currentValue)
-			if rule.Metric == "status" {
-				msg = fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 mins ago.", s.Name)
-			}
-			j.sendNotifications(channels, msg)
-
-		} else if !isFiring && currentState == "firing" {
-			// Resolve alert
-			j.logger.Info("Alert resolved", "rule", rule.Name, "server", s.Name)
-			j.db.Pool.Exec(ctx, `UPDATE alert_state SET status = 'ok', last_triggered_at = NOW() WHERE rule_id = $1 AND server_id = $2`, rule.ID, s.ID)
-
-			msg := fmt.Sprintf("✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f", rule.Name, s.Name, currentValue)
-			if rule.Metric == "status" {
-				msg = fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", s.Name)
-			}
-			j.sendNotifications(channels, msg)
+		switch {
+		case isFiring && currentState == "ok":
+			j.handleFiring(ctx, rule, server.ID, server.Name, currentValue, channels)
+		case !isFiring && currentState == "firing":
+			j.handleResolved(ctx, rule, server.ID, server.Name, currentValue, channels)
 		}
 	}
 }
 
-func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, msg string) {
-	for _, c := range channels {
-		switch c.Type {
+// evaluateCondition tính giá trị hiện tại và kết luận rule có đang firing hay không.
+func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, serverID string, lastSeen *time.Time) (bool, float64) {
+	if rule.Metric == "status" {
+		return lastSeen == nil || time.Since(*lastSeen) > time.Minute, 0
+	}
+
+	metricExpression := "cpu_usage"
+	if rule.Metric == "ram" {
+		metricExpression = "memory_used * 100.0 / NULLIF(memory_total, 0)"
+	}
+
+	var currentValue float64
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM server_metrics
+		WHERE server_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, metricExpression)
+	if err := j.db.Pool.QueryRow(ctx, query, serverID).Scan(&currentValue); err != nil {
+		return false, 0
+	}
+
+	if rule.Operator == ">" {
+		return currentValue > rule.Threshold, currentValue
+	}
+	if rule.Operator == "<" {
+		return currentValue < rule.Threshold, currentValue
+	}
+	return false, currentValue
+}
+
+// handleFiring chuyển alert sang firing và gửi thông báo qua các channel của rule.
+func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serverID, serverName string, currentValue float64, channels []alert.AlertChannel) {
+	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
+	_, _ = j.db.Pool.Exec(ctx, `
+		INSERT INTO alert_state (rule_id, server_id, status, last_triggered_at)
+		VALUES ($1, $2, 'firing', NOW())
+		ON CONFLICT (rule_id, server_id)
+		DO UPDATE SET status = 'firing', last_triggered_at = NOW()
+	`, rule.ID, serverID)
+
+	message := fmt.Sprintf(
+		"🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f",
+		rule.Name,
+		serverName,
+		currentValue,
+	)
+	if rule.Metric == "status" {
+		message = fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 min ago.", serverName)
+	}
+	j.sendNotifications(channels, message)
+}
+
+// handleResolved chuyển alert về ok và gửi thông báo phục hồi qua các channel của rule.
+func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, serverID, serverName string, currentValue float64, channels []alert.AlertChannel) {
+	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
+	_, _ = j.db.Pool.Exec(ctx, `
+		UPDATE alert_state
+		SET status = 'ok', last_triggered_at = NOW()
+		WHERE rule_id = $1 AND server_id = $2
+	`, rule.ID, serverID)
+
+	message := fmt.Sprintf(
+		"✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f",
+		rule.Name,
+		serverName,
+		currentValue,
+	)
+	if rule.Metric == "status" {
+		message = fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", serverName)
+	}
+	j.sendNotifications(channels, message)
+}
+
+// sendNotifications gửi message tới từng channel đã chọn của rule.
+// Một channel lỗi không chặn các channel còn lại.
+func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, message string) {
+	for _, channel := range channels {
+		switch channel.Type {
 		case "telegram":
-			token, _ := c.Config["bot_token"].(string)
-			chatID, _ := c.Config["chat_id"].(string)
+			token, _ := channel.Config["bot_token"].(string)
+			chatID, _ := channel.Config["chat_id"].(string)
 			if token != "" && chatID != "" {
-				notifier.SendTelegram(token, chatID, msg)
+				notifier.SendTelegram(token, chatID, message)
 			}
 		case "discord":
-			url, _ := c.Config["webhook_url"].(string)
-			if url != "" {
-				// Strip HTML tags for discord
-				discordMsg := msg
-				notifier.SendDiscord(url, discordMsg)
+			webhookURL, _ := channel.Config["webhook_url"].(string)
+			if webhookURL != "" {
+				notifier.SendDiscord(webhookURL, message)
 			}
 		}
 	}
