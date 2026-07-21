@@ -10,13 +10,14 @@ Tài liệu này dành cho người vận hành, maintainer và developer có qu
 4. [Agent development, signed release và update](agent-release-and-update.md)
 5. [Backend, frontend, database và configuration](components-and-configuration.md)
 6. [Security, backup và recovery](security-backup-recovery.md)
-7. [Monitoring, troubleshooting và maintenance runbook](operations-runbook.md)
+7. [Web Terminal và remote Agent removal](terminal-and-agent-removal.md)
+8. [Monitoring, troubleshooting và maintenance runbook](operations-runbook.md)
 
 ## Nguồn sự thật
 
 Tài liệu này được đối chiếu với source tại thời điểm cập nhật, đặc biệt:
 
-- `agent/cmd/agent`, `agent/internal/{collector,client,terminal,update}`
+- `agent/cmd/agent`, `agent/internal/{collector,client,terminal,uninstall,update}`
 - `backend/cmd/api`, `backend/internal/core`, `backend/internal/platform`
 - `backend/migrations`
 - `frontend/src/app`, `frontend/src/lib/apiClient.ts`, `frontend/public`
@@ -35,4 +36,6 @@ Khi tài liệu cũ mâu thuẫn migration hoặc source, ưu tiên migration/so
 | Rollback Agent tự động nếu binary mới không heartbeat | Chưa hoàn thiện |
 | Chống downgrade bằng so sánh semantic version trong Agent | Chưa có enforcement đầy đủ |
 | Network, Performance, Security, Logs chuyên sâu | Frontend còn placeholder/không có backend đầy đủ |
-| Backup manager, arbitrary shell library, file manager, gRPC/mTLS | Chưa có |
+| Web Terminal Linux headless với controlling PTY và reverse gateway | Đã có |
+| Remote uninstall khi xóa server | Đã có cho Linux root + systemd; macOS/Windows chưa hỗ trợ |
+| Backup manager, file manager, gRPC/mTLS | Chưa có |

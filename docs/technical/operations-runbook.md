@@ -33,33 +33,68 @@ journalctl -u datrixops-agent -n 200 --no-pager
 
 ## Debug reverse terminal channel
 
-Production traffic must enter the bundled Caddy gateway on host port `3000`;
-do not route the public origin directly to the Frontend container. Caddy sends
-`/api/v1/*` to Backend and preserves WebSocket Upgrade for both terminal
-channels.
+Production traffic phải đi qua bundled Caddy gateway trên host port `3000`. Nginx/Cloudflare public origin không được route riêng `/api/` trực tiếp vào Backend `127.0.0.1:8080`.
 
-One-time migration from the old direct-Frontend port mapping:
+Kiểm tra container:
 
 ```bash
-docker compose -f docker-compose.prod.yml stop frontend
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env -f docker-compose.prod.yml ps
+docker ps --format 'table {{.Names}}\t{{.Ports}}'
 ```
 
-Agent heartbeat lưu `terminal_channel_connected` và lỗi handshake gần nhất trong `terminal_channel_error`. Phân loại:
+Expected:
 
-- `HTTP 401`: token/host terminal không khớp với heartbeat.
+```text
+datrixops-gateway-1   0.0.0.0:3000->80/tcp
+datrixops-frontend-1  3000/tcp
+datrixops-backend-1   127.0.0.1:8080->8080/tcp
+```
+
+Kiểm tra Upgrade nội bộ và public, không gửi Agent Token:
+
+```bash
+curl --http1.1 -i \
+  -H 'Connection: Upgrade' \
+  -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  http://127.0.0.1:3000/api/v1/agent/terminal
+```
+
+```bash
+curl --http1.1 -i \
+  -H 'Connection: Upgrade' \
+  -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  https://<public-domain>/api/v1/agent/terminal
+```
+
+Cả hai phải trả `401 Unauthorized` và `Via: 1.1 Caddy`.
+
+- `HTTP 401` trong curl test: đúng, vì thiếu Agent Token.
+- `HTTP 401` trong Agent log: token/record không hợp lệ.
 - `HTTP 403`: WAF/Cloudflare/origin policy chặn.
-- `HTTP 400`: request tới Backend nhưng tầng proxy trước đó làm mất WebSocket Upgrade; xác minh public origin đang trỏ vào Caddy port `3000`, không trỏ trực tiếp Frontend.
-- `HTTP 426`: Backend xác nhận public origin đang bypass gateway hoặc làm mất Upgrade header.
-- `HTTP 200` hoặc `404`: route rơi vào Frontend hoặc proxy không upgrade.
+- `HTTP 426`: public origin bypass gateway hoặc làm mất Upgrade.
+- `HTTP 200`/`404`: route rơi vào Frontend/sai upstream.
 - `HTTP 502/503`: upstream Backend không sẵn sàng.
 - TLS/timeout: DNS, CA, clock, firewall hoặc proxy timeout.
 
 ```bash
-journalctl -u datrixops-agent -n 200 --no-pager | grep -i terminal
+journalctl -u datrixops-agent -n 200 --no-pager |
+grep -Ei 'terminal|websocket|connected|disabled|401|426|error'
 ```
 
-Một request thường không có Agent Token tới `/api/v1/agent/terminal` phải trả JSON `401` từ Backend. Để kiểm tra phiên thật cần Agent Token hợp lệ; không đưa token vào shell history hoặc ticket.
+PTY acceptance trong Web Terminal:
+
+```bash
+tty
+ps -o pid,ppid,sid,pgid,tpgid,tty,stat,cmd -p $$
+```
+
+`tty` phải là `/dev/pts/N`, `TT=pts/N`, `TPGID` khác `-1`. Nếu shell báo `can't access tty; job control turned off`, Agent chưa có controlling PTY đúng chuẩn.
+
+Linux headless bị auto-detection nhận nhầm có thể dùng systemd drop-in `DATRIXOPS_TERMINAL_MODE=server`, sau đó daemon-reload và restart Agent. Không dùng override để che lỗi detection lâu dài; sửa detection để chỉ coi active X11/Wayland user session là desktop.
 
 ## Debug update không hiển thị
 
@@ -81,6 +116,78 @@ Một request thường không có Agent Token tới `/api/v1/agent/terminal` ph
 - Xác minh binary target có đúng size/SHA/marker.
 - `processing` chỉ complete khi heartbeat đúng target.
 - Task stale được heartbeat/handler cleanup thành `timed_out`; không tạo vòng lặp retry vô hạn.
+
+## Debug remote Agent uninstall và delete server
+
+Request mặc định phải trả `202`, không phải `200` hard-delete:
+
+```text
+DELETE /api/v1/servers/<id> → 202
+```
+
+UI/state expected:
+
+```text
+pending      → Waiting for Agent uninstall
+uninstalling → Uninstalling Agent
+failed       → giữ record và error
+completed    → helper confirm, server biến mất
+```
+
+Agent log:
+
+```bash
+journalctl -u datrixops-agent -n 200 --no-pager |
+grep -Ei 'agent_uninstall|uninstall|received task|shutting down'
+```
+
+Expected:
+
+```text
+Received task ...: agent_uninstall
+Received agent_uninstall task. Preparing detached Linux helper...
+Agent shutting down gracefully...
+```
+
+Detached helper journal:
+
+```bash
+journalctl --since "15 minutes ago" --no-pager |
+grep -Ei 'datrixops-agent-uninstall|uninstall helper|confirm'
+```
+
+Backend callback:
+
+```bash
+docker compose --env-file .env -f docker-compose.prod.yml logs --since=15m backend |
+grep -Ei 'agent_uninstall|uninstall/confirm|DELETE'
+```
+
+Successful sequence:
+
+```text
+DELETE /api/v1/servers/<id>              status=202
+POST /api/v1/agent/uninstall/confirm     status=200
+```
+
+Host cleanup acceptance:
+
+```bash
+pgrep -a datrixops-agent || echo "Không còn Agent process"
+systemctl status datrixops-agent --no-pager || true
+test -e /usr/local/bin/datrixops-agent && echo "Binary còn" || echo "Binary đã xóa"
+test -e /etc/systemd/system/datrixops-agent.service && echo "Service còn" || echo "Service đã xóa"
+```
+
+Failure classification:
+
+- Agent không nhận task: heartbeat/token/capability hoặc Backend chưa chạy code mới.
+- Agent dừng nhưng binary/service còn: helper cleanup lỗi.
+- Host sạch nhưng record còn `uninstalling`: confirm callback lỗi; xác minh rồi force delete.
+- Record biến mất nhưng Agent còn chạy và heartbeat `401`: record bị xóa quá sớm/force delete; gỡ thủ công.
+- `AGENT_OFFLINE`, `UNSUPPORTED_AGENT_OS`, `AGENT_UNINSTALL_UNSUPPORTED`: không queue; update Agent hoặc dùng force delete có chủ đích.
+
+Không hiển thị **Delete Record Only** như lựa chọn ngang hàng khi Agent online/supported. Force delete chỉ dành cho offline, unsupported hoặc failed recovery.
 
 ## Kiểm tra release
 

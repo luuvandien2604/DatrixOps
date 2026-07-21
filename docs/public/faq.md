@@ -5,7 +5,7 @@ description: "Giải đáp theo các chức năng đã tồn tại trong source 
 
 ## DatrixOps có cần mở cổng SSH không?
 
-Không cho việc gửi metrics. Agent chủ động kết nối HTTPS outbound. Web Terminal dùng reverse WebSocket và không yêu cầu lưu SSH credential, nhưng hiện chỉ được UI bật cho Linux server phù hợp.
+Không cho việc gửi metrics hoặc dùng Web Terminal. Agent chủ động kết nối HTTPS/WSS outbound; DatrixOps không cần lưu SSH password/private key và không yêu cầu mở cổng 22 inbound. SSH vẫn nên được giữ như kênh cứu hộ khi Agent hoặc control plane không hoạt động. Web Terminal hiện được ưu tiên cho Linux headless/server.
 
 ## Agent hỗ trợ hệ điều hành nào?
 
@@ -33,7 +33,14 @@ Chưa hoàn chỉnh. Update xác minh artifact trước khi thay binary và serv
 
 ## Xóa server có gỡ Agent khỏi máy không?
 
-Không. Xóa record và gỡ service trên host là hai thao tác riêng. Gỡ service theo [Cài đặt Agent](/docs/getting-started/installation) trước hoặc sau tùy quy trình của bạn.
+Có khi bạn chọn **Uninstall Agent & Delete** trên một Linux Agent đang online và báo hỗ trợ remote uninstall. Backend giữ server record, Agent chạy helper gỡ service/binary, rồi Backend chỉ xóa record sau khi nhận xác nhận hoàn tất.
+
+**Delete Record Only** chỉ xóa dữ liệu DatrixOps và có thể để lại Agent trên máy. Tùy chọn này dành cho máy đã mất, Agent offline, hệ điều hành chưa hỗ trợ hoặc trường hợp cần recovery. Xem [Gỡ Agent và xóa server](/docs/server-management/delete-server).
+
+
+## Vì sao Web Terminal báo `can't access tty`?
+
+Shell đã nối vào PTY nhưng chưa có controlling terminal đúng chuẩn. Chạy `tty` và `ps -o pid,ppid,sid,pgid,tpgid,tty,stat,cmd -p $$`; nếu `TT` là `?` hoặc `TPGID=-1`, cập nhật Agent lên bản có PTY Linux hoàn chỉnh. Xem [Web Terminal](/docs/server-management/web-terminal).
 
 ## DatrixOps có thay thế Prometheus hoặc SIEM không?
 

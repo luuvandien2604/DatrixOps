@@ -5,19 +5,22 @@
 DatrixOps là monorepo quản lý fleet server nhỏ/trung bình bằng một control plane:
 
 ```text
-Browser
-  │ HTTPS (JWT/API key)
+Browser / Agent
+  │ HTTPS + WSS
   ▼
-Reverse proxy (ngoài repository)
-  ├── Next.js frontend :3000
-  └── Go backend :8080 ─── PostgreSQL :5432
-             ▲
-             │ HTTPS heartbeat + task result
-             │ WSS reverse terminal channel
-        Go Agent trên từng host
+Cloudflare/Nginx origin
+  │ toàn bộ traffic → host :3000
+  ▼
+Bundled Caddy gateway
+  ├── /api/v1/* → Go backend :8080 ─── PostgreSQL :5432
+  └── còn lại   → Next.js frontend :3000
+                           ▲
+                           │ HTTPS heartbeat + task result
+                           │ WSS reverse terminal channel
+                      Go Agent trên từng host
 ```
 
-Backend là một process Go `net/http`. Website và alert scheduler là goroutine trong cùng process, không phải microservice. Reverse proxy/TLS production không được định nghĩa trong repository, vì vậy cấu hình upgrade WebSocket, certificate và origin policy phải được quản lý ở hạ tầng triển khai.
+Backend là một process Go `net/http`. Website và alert scheduler là goroutine trong cùng process, không phải microservice. Repository có `deploy/Caddyfile` và service `gateway` trong production Compose để phân luồng API/Frontend và giữ WebSocket Upgrade. TLS public vẫn do Cloudflare/Nginx hoặc hạ tầng origin quản lý. Public Nginx không được route riêng `/api/` thẳng vào Backend vì sẽ bypass gateway.
 
 ## Luồng heartbeat và dữ liệu
 
@@ -64,5 +67,23 @@ Agent task report `completed` chỉ có nghĩa staging/activation đã được 
 
 ## Reverse terminal
 
-Agent duy trì WebSocket outbound `/api/v1/agent/terminal`. Browser xin ticket một lần rồi kết nối `/api/v1/terminal/browser`. Backend relay message, lưu `terminal_sessions`, giới hạn một session active/server và Agent giới hạn 30 phút. Shell chạy dưới identity của Agent service; đây là quyền cao và không phải command allowlist.
+Agent Linux headless duy trì WebSocket outbound `/api/v1/agent/terminal`. Browser xin ticket một lần rồi kết nối `/api/v1/terminal/browser`. Backend relay message, lưu `terminal_sessions`, giới hạn một session active/server và Agent giới hạn 30 phút. Agent chỉ phát `session_ready` sau khi PTY/shell được tạo thành công; Frontend không coi browser socket mở là shell đã sẵn sàng.
+
+Linux PTY phải có controlling terminal thật. Acceptance check là `tty` trả `/dev/pts/N`, `ps` hiển thị `TT=pts/N`, `TPGID` khác `-1`, và không còn cảnh báo job control. Shell chạy dưới identity của Agent service; đây là quyền cao và không phải command allowlist.
+
+## Remote Agent removal
+
+Xóa server mặc định là một state machine thay vì hard-delete ngay:
+
+```text
+DELETE server → 202 + deletion_status=pending
+→ heartbeat claim agent_uninstall
+→ Agent chuẩn bị transient systemd helper
+→ deletion_status=uninstalling
+→ helper dừng/xóa service và binary
+→ one-time confirm callback
+→ Backend xóa server + cascade
+```
+
+Backend chỉ queue khi Agent online, Linux và heartbeat báo `remote_uninstall_supported=true`. `?force=true` là recovery path chỉ xóa record và có thể để lại Agent trên host. Chi tiết tại [Web Terminal and Remote Agent Removal](terminal-and-agent-removal.md).
 

@@ -58,7 +58,9 @@ const viNavigation: DocsNavigation = [
     label: 'Quản lý server',
     slug: 'server-management',
     items: [
-      { slug: 'server-management/servers', title: 'Server và truy cập từ xa', description: 'Thông tin hệ thống, dịch vụ, Docker và Web Terminal.', group: 'server-management', order: 50 },
+      { slug: 'server-management/servers', title: 'Quản lý server', description: 'Metadata, thông tin hệ thống, dịch vụ và Docker.', group: 'server-management', order: 50 },
+      { slug: 'server-management/web-terminal', title: 'Web Terminal', description: 'Mở shell Linux headless qua reverse WebSocket an toàn.', group: 'server-management', order: 51 },
+      { slug: 'server-management/delete-server', title: 'Gỡ Agent và xóa server', description: 'Gỡ Agent Linux từ xa, theo dõi trạng thái và force delete.', group: 'server-management', order: 52 },
     ],
   },
   {
