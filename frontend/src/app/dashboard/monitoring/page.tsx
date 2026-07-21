@@ -495,9 +495,18 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
     <div className="monitoring-tooltip">
       <p className="monitoring-tooltip-time">{formatTooltipTime(timestamp)}</p>
       {!point?.hasData || visibleItems.length === 0 ? (
-        <div className="monitoring-tooltip-missing">
-          <CircleAlert className="h-3.5 w-3.5" />
-          No metrics
+        <div
+          className="monitoring-tooltip-missing rounded-lg px-2.5 py-2 font-semibold"
+          style={{
+            color: 'var(--amber)',
+            background:
+              'color-mix(in srgb, var(--amber) 12%, transparent)',
+            border:
+              '1px solid color-mix(in srgb, var(--amber) 35%, transparent)',
+          }}
+        >
+          <CircleAlert className="h-4 w-4 shrink-0" />
+          <span>No metrics</span>
         </div>
       ) : (
         <div className="mt-2 space-y-1.5">
