@@ -37,9 +37,19 @@ interface AlertChannel {
   type: string;
   config: Record<string, unknown>;
   enabled: boolean;
+  usage_count: number;
 }
 
 type AlertTab = 'rules' | 'channels';
+
+// getApiErrorMessage giữ nguyên thông báo lỗi có mã từ apiClient.
+// Nhờ vậy lỗi 409 CHANNEL_IN_USE không bị nhầm với lỗi 500 hoặc lỗi mạng.
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message.replace(/^\[[^\]]+\]\s*/, '');
+  }
+  return fallback;
+};
 
 // AlertsPage quản lý hai phần riêng biệt:
 // - Channels: tạo nơi nhận thông báo.
@@ -84,7 +94,7 @@ export default function AlertsPage() {
       setRules(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      setErrorMessage('Unable to load alert rules.');
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load alert rules.'));
     }
   };
 
@@ -95,7 +105,7 @@ export default function AlertsPage() {
       setChannels(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      setErrorMessage('Unable to load notification channels.');
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load notification channels.'));
     }
   };
 
@@ -146,7 +156,7 @@ export default function AlertsPage() {
       setSuccessMessage('Alert rule created with its notification channels.');
     } catch (error) {
       console.error(error);
-      setErrorMessage('Unable to create alert rule. Check the selected channels and try again.');
+      setErrorMessage(getApiErrorMessage(error, 'Unable to create alert rule.'));
     } finally {
       setSavingRule(false);
     }
@@ -186,7 +196,7 @@ export default function AlertsPage() {
       setSuccessMessage(`${createdChannel.name} is ready and selected for the new rule.`);
     } catch (error) {
       console.error(error);
-      setErrorMessage('Unable to create notification channel.');
+      setErrorMessage(getApiErrorMessage(error, 'Unable to create notification channel.'));
     } finally {
       setSavingChannel(false);
     }
@@ -202,23 +212,38 @@ export default function AlertsPage() {
       setRules((current) => current.filter((rule) => rule.id !== id));
     } catch (error) {
       console.error(error);
-      setErrorMessage('Unable to delete alert rule.');
+      setErrorMessage(getApiErrorMessage(error, 'Unable to delete alert rule.'));
     }
   };
 
-  // deleteChannel yêu cầu backend xóa channel.
-  // Backend sẽ trả 409 nếu channel vẫn đang được một rule sử dụng.
+  // deleteChannel chỉ chặn ở giao diện khi backend xác nhận usage_count > 0.
+  // Mọi lỗi khác được hiển thị đúng thông báo thay vì mặc định kết luận channel đang được dùng.
   const deleteChannel = async (id: string) => {
-    if (!confirm('Delete this notification channel?')) return;
+    const channel = channels.find((item) => item.id === id);
+    if (!channel) return;
+
+    if ((channel.usage_count ?? 0) > 0) {
+      setSuccessMessage('');
+      setErrorMessage(
+        `This channel is used by ${channel.usage_count} alert rule${channel.usage_count === 1 ? '' : 's'}. Delete or update those rules first.`,
+      );
+      return;
+    }
+
+    if (!confirm(`Delete notification channel "${channel.name}"?`)) return;
     setErrorMessage('');
+    setSuccessMessage('');
 
     try {
       await apiClient(`/alerts/channels/${id}`, { method: 'DELETE' });
-      setChannels((current) => current.filter((channel) => channel.id !== id));
+      setChannels((current) => current.filter((item) => item.id !== id));
       setSelectedChannelIds((current) => current.filter((channelId) => channelId !== id));
+      setSuccessMessage('Notification channel deleted.');
     } catch (error) {
       console.error(error);
-      setErrorMessage('This channel may still be used by an alert rule. Remove the rule before deleting the channel.');
+      // Đồng bộ lại usage_count vì rule có thể vừa được tạo ở tab khác hoặc phiên khác.
+      await Promise.all([fetchRules(), fetchChannels()]);
+      setErrorMessage(getApiErrorMessage(error, 'Unable to delete notification channel.'));
     }
   };
 
@@ -227,7 +252,7 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">Alerts</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">Alerts</h1>
       </div>
 
       {(errorMessage || successMessage) && (
@@ -235,8 +260,8 @@ export default function AlertsPage() {
           role="status"
           className={`rounded-xl border px-4 py-3 text-sm font-medium ${
             errorMessage
-              ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+              ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
           }`}
         >
           {errorMessage || successMessage}
@@ -246,34 +271,37 @@ export default function AlertsPage() {
       <div
         role="tablist"
         aria-label="Alert configuration"
-        className="flex gap-4 border-b border-[var(--border-color)]"
+        className="flex gap-5 border-b border-[var(--border-color)]"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'rules'}
-          onClick={() => setActiveTab('rules')}
-          className={`border-b-2 pb-3 text-sm font-semibold transition-colors ${
-            activeTab === 'rules'
-              ? 'border-blue-500 text-blue-500'
-              : 'border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          Rules
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'channels'}
-          onClick={() => setActiveTab('channels')}
-          className={`border-b-2 pb-3 text-sm font-semibold transition-colors ${
-            activeTab === 'channels'
-              ? 'border-blue-500 text-blue-500'
-              : 'border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
-          }`}
-        >
-          Channels
-        </button>
+        {(['rules', 'channels'] as AlertTab[]).map((tab) => {
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                setActiveTab(tab);
+                setErrorMessage('');
+                setSuccessMessage('');
+              }}
+              className={`relative pb-3 text-sm font-semibold transition-colors ${
+                active
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              {tab === 'rules' ? 'Rules' : 'Channels'}
+              {active && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500"
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -581,30 +609,56 @@ export default function AlertsPage() {
           </div>
 
           <div className="space-y-4 md:col-span-2">
-            {channels.map((channel) => (
-              <div
-                key={channel.id}
-                className="flex items-center justify-between rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4"
-              >
-                <div>
-                  <h4 className="flex items-center gap-2 font-semibold text-[var(--foreground)]">
-                    <ShieldAlert className="h-4 w-4 text-blue-500" /> {channel.name}
-                  </h4>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-                    {channel.type}
-                  </p>
-                </div>
+            {channels.map((channel) => {
+              const usageCount = channel.usage_count ?? 0;
+              const inUse = usageCount > 0;
 
-                <button
-                  type="button"
-                  aria-label={`Delete channel ${channel.name}`}
-                  onClick={() => deleteChannel(channel.id)}
-                  className="p-2 text-rose-500 hover:text-rose-400"
+              return (
+                <div
+                  key={channel.id}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4"
                 >
-                  <Trash2 className="h-5 w-5" />
-                </button>
-              </div>
-            ))}
+                  <div className="min-w-0">
+                    <h4 className="flex items-center gap-2 font-semibold text-[var(--foreground)]">
+                      <ShieldAlert className="h-4 w-4 shrink-0 text-blue-500" />
+                      <span className="truncate">{channel.name}</span>
+                    </h4>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                        {channel.type}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          inUse
+                            ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
+                            : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                        }`}
+                      >
+                        {inUse
+                          ? `Used by ${usageCount} rule${usageCount === 1 ? '' : 's'}`
+                          : 'Not used by any rule'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label={
+                      inUse
+                        ? `Channel ${channel.name} is used by alert rules`
+                        : `Delete channel ${channel.name}`
+                    }
+                    title={inUse ? 'Delete or update the linked alert rules first' : 'Delete channel'}
+                    onClick={() => void deleteChannel(channel.id)}
+                    disabled={inUse}
+                    className="shrink-0 rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                </div>
+              );
+            })}
 
             {channels.length === 0 && (
               <div className="rounded-xl border border-dashed border-[var(--border-color)] p-8 text-center text-[var(--color-muted)]">

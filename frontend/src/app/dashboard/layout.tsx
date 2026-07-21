@@ -107,12 +107,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         className={[
           'liquid-nav-item',
           // Tăng độ rõ cho toàn bộ menu sidebar.
-          'font-medium text-white/80',
-          active ? 'is-active font-semibold !text-white' : '',
+          'font-medium text-[var(--color-muted)]',
+          active ? 'is-active font-semibold !text-[var(--foreground)]' : '',
           collapsed ? 'justify-center' : '',
         ].join(' ')}
       >
-        <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-white/75'}`} />
+        <Icon
+          className={`h-[18px] w-[18px] shrink-0 ${
+            active ? 'text-[var(--foreground)]' : 'text-[var(--color-muted)]'
+          }`}
+        />
         {!collapsed && <span>{item.label}</span>}
         {!collapsed && Boolean(count) && <span className="nav-alert-count">{count}</span>}
       </Link>
@@ -120,6 +124,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
+    // Mọi màu chữ dùng CSS variable của theme. Không dùng text-white cố định,
+    // vì text-white sẽ bị chìm khi người dùng chuyển sang giao diện sáng.
     <div className="liquid-shell min-h-screen text-[var(--foreground)]">
       <div className="liquid-aurora" aria-hidden="true" />
 
@@ -154,12 +160,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!collapsed && (
               <div className="min-w-0">
                 {/* Logo chính rõ và dày hơn. */}
-                <p className="truncate text-sm font-bold tracking-[0.16em] text-white/95">
+                <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
                   DATRIX<span className="text-[var(--violet)]">OPS</span>
                 </p>
 
                 {/* Dòng phụ sáng hơn để không bị chìm trên nền tối. */}
-                <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/60">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
                   control plane
                 </p>
               </div>
@@ -169,7 +175,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="ml-auto text-white/80 lg:hidden"
+            className="ml-auto text-[var(--foreground)] lg:hidden"
             aria-label="Close navigation"
           >
             <X className="h-5 w-5" />
@@ -183,22 +189,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mint)] opacity-50" />
               )}
               <span
-                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${fleetSyncFailed
-                  ? 'bg-[var(--amber)]'
-                  : (fleetSummary?.online_servers ?? 0) > 0
-                    ? 'bg-[var(--mint)]'
-                    : 'bg-white/35'
-                  }`}
+                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                  fleetSyncFailed
+                    ? 'bg-[var(--amber)]'
+                    : (fleetSummary?.online_servers ?? 0) > 0
+                      ? 'bg-[var(--mint)]'
+                      : 'bg-[var(--color-muted)]'
+                }`}
               />
             </span>
 
             {!collapsed && (
               <div>
                 {/* Tên card đậm hơn. */}
-                <p className="text-xs font-semibold text-white/90">Agent network</p>
+                <p className="text-xs font-semibold text-[var(--foreground)]">Agent network</p>
 
                 {/* Thông tin trạng thái tăng contrast. */}
-                <p className="text-[10px] font-medium text-white/60">
+                <p className="text-[10px] font-medium text-[var(--color-muted)]">
                   {fleetSyncFailed
                     ? 'Live data unavailable'
                     : fleetSummary
@@ -212,8 +219,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-5">
           <p
-            className={`nav-eyebrow font-semibold text-white/60 ${collapsed ? 'text-center' : ''
-              }`}
+            className={`nav-eyebrow font-semibold text-[var(--color-muted)] ${
+              collapsed ? 'text-center' : ''
+            }`}
           >
             {collapsed ? '•' : 'Workspace'}
           </p>
@@ -225,8 +233,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <p
-            className={`nav-eyebrow mt-7 font-semibold text-white/60 ${collapsed ? 'text-center' : ''
-              }`}
+            className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
+              collapsed ? 'text-center' : ''
+            }`}
           >
             {collapsed ? '•' : 'Observe'}
           </p>
@@ -240,8 +249,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {role === 'superadmin' && (
             <>
               <p
-                className={`nav-eyebrow mt-7 font-semibold text-white/60 ${collapsed ? 'text-center' : ''
-                  }`}
+                className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
+                  collapsed ? 'text-center' : ''
+                }`}
               >
                 {collapsed ? '•' : 'Admin'}
               </p>
@@ -255,32 +265,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </nav>
 
-        <div className="border-t border-white/[0.08] p-3">
+        <div className="border-t border-[var(--border-color)] p-3">
           <Link
             href="/docs"
-            className={`liquid-nav-item font-medium text-white/80 ${collapsed ? 'justify-center' : ''
-              }`}
+            className={`liquid-nav-item font-medium text-[var(--color-muted)] ${
+              collapsed ? 'justify-center' : ''
+            }`}
           >
-            <BookOpen className="h-[18px] w-[18px] text-white/75" />
+            <BookOpen className="h-[18px] w-[18px] text-[var(--color-muted)]" />
             {!collapsed && <span>Documentation</span>}
           </Link>
 
           <Link
             href="/dashboard/settings"
-            className={`liquid-nav-item font-medium text-white/80 ${collapsed ? 'justify-center' : ''
-              }`}
+            className={`liquid-nav-item font-medium text-[var(--color-muted)] ${
+              collapsed ? 'justify-center' : ''
+            }`}
           >
-            <CircleUserRound className="h-[18px] w-[18px] text-white/75" />
+            <CircleUserRound className="h-[18px] w-[18px] text-[var(--color-muted)]" />
             {!collapsed && <span>Workspace settings</span>}
           </Link>
 
           <button
             type="button"
             onClick={logout}
-            className={`liquid-nav-item w-full font-medium text-white/80 ${collapsed ? 'justify-center' : ''
-              }`}
+            className={`liquid-nav-item w-full font-medium text-[var(--color-muted)] ${
+              collapsed ? 'justify-center' : ''
+            }`}
           >
-            <LogOut className="h-[18px] w-[18px] text-white/75" />
+            <LogOut className="h-[18px] w-[18px] text-[var(--color-muted)]" />
             {!collapsed && <span>Sign out</span>}
           </button>
         </div>
@@ -288,7 +301,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="sidebar-collapse hidden text-white/80 lg:flex"
+          className="sidebar-collapse hidden text-[var(--color-muted)] lg:flex"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
         >
@@ -303,21 +316,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
         <header className="liquid-topbar">
           {/* Breadcrumb tăng độ rõ và weight. */}
-          <div className="hidden items-center gap-2 text-xs font-medium text-white/60 md:flex">
-            <span className="font-semibold text-white/85">Datrix Cloud</span>
-            <span className="text-white/40">/</span>
-            <span className="text-white/65">Production</span>
+          <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
+            <span className="font-semibold text-[var(--foreground)]">Datrix Cloud</span>
+            <span className="text-[var(--color-muted)]">/</span>
+            <span className="text-[var(--color-muted)]">Production</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              className="topbar-action hidden font-medium text-white/75 sm:flex"
+              className="topbar-action hidden font-medium text-[var(--color-muted)] sm:flex"
               aria-label="Search dashboard"
             >
-              <Search className="h-4 w-4 text-white/75" />
+              <Search className="h-4 w-4 text-[var(--color-muted)]" />
               <span>Search</span>
-              <kbd className="text-white/55">⌘ K</kbd>
+              <kbd className="text-[var(--color-muted)]">⌘ K</kbd>
             </button>
 
             <ThemeToggle />
@@ -325,7 +338,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               href="/dashboard/alerts"
               aria-label="Open alerts"
-              className="topbar-icon relative text-white/75"
+              className="topbar-icon relative text-[var(--color-muted)]"
             >
               <Bell className="h-4 w-4" />
               {(fleetSummary?.open_incidents ?? 0) > 0 && (
@@ -333,14 +346,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </Link>
 
-            <div className="ml-1 flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.045] py-1.5 pl-1.5 pr-3">
+            <div className="ml-1 flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] py-1.5 pl-1.5 pr-3">
               <div className="operator-avatar">
                 {role === 'superadmin' ? 'SA' : 'OP'}
               </div>
 
               <div className="hidden sm:block">
                 {/* Tên người dùng rõ hơn. */}
-                <p className="text-[11px] font-semibold text-white/90">
+                <p className="text-[11px] font-semibold text-[var(--foreground)]">
                   {role === 'superadmin' ? 'Superadmin' : 'Operator'}
                 </p>
 

@@ -156,7 +156,11 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusConflict, "CHANNEL_IN_USE", "This channel is used by one or more alert rules")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete channel")
+		if errors.Is(err, ErrChannelNotFound) {
+			response.Error(w, http.StatusNotFound, "CHANNEL_NOT_FOUND", "Notification channel not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete notification channel")
 		return
 	}
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})

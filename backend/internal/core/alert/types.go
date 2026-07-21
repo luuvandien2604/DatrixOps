@@ -5,14 +5,15 @@ import "time"
 // AlertChannel là một đích nhận thông báo do người dùng cấu hình,
 // ví dụ Telegram bot hoặc Discord webhook.
 type AlertChannel struct {
-	ID        string                 `json:"id"`
-	UserID    string                 `json:"user_id"`
-	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`
-	Config    map[string]interface{} `json:"config"`
-	Enabled   bool                   `json:"enabled"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
+	ID         string                 `json:"id"`
+	UserID     string                 `json:"user_id"`
+	Name       string                 `json:"name"`
+	Type       string                 `json:"type"`
+	Config     map[string]interface{} `json:"config"`
+	Enabled    bool                   `json:"enabled"`
+	UsageCount int                    `json:"usage_count"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
 }
 
 // AlertRuleChannel là thông tin channel tối giản được trả kèm một rule.

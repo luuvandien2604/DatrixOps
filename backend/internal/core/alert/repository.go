@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
 
@@ -16,6 +18,9 @@ var (
 
 	// ErrChannelInUse ngăn xóa channel đang được ít nhất một rule sử dụng.
 	ErrChannelInUse = errors.New("alert channel is in use")
+
+	// ErrChannelNotFound báo channel không tồn tại hoặc không thuộc user hiện tại.
+	ErrChannelNotFound = errors.New("alert channel not found")
 )
 
 // Repository chịu trách nhiệm đọc/ghi alert rules, channels và quan hệ giữa chúng.
@@ -223,10 +228,25 @@ func (r *Repository) DeleteRule(ctx context.Context, id, userID string) error {
 // ListChannels trả toàn bộ notification channel thuộc user để quản lý và chọn khi tạo rule.
 func (r *Repository) ListChannels(ctx context.Context, userID string) ([]AlertChannel, error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT id, user_id, name, type, config, enabled, created_at, updated_at
-		FROM alert_channels
-		WHERE user_id = $1
-		ORDER BY created_at DESC
+		SELECT
+			c.id,
+			c.user_id,
+			c.name,
+			c.type,
+			c.config,
+			c.enabled,
+			(
+				SELECT COUNT(*)
+				FROM alert_rule_channels arc
+				JOIN alert_rules r ON r.id = arc.alert_rule_id
+				WHERE arc.alert_channel_id = c.id
+				  AND r.user_id = c.user_id
+			)::int AS usage_count,
+			c.created_at,
+			c.updated_at
+		FROM alert_channels c
+		WHERE c.user_id = $1
+		ORDER BY c.created_at DESC
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list alert channels: %w", err)
@@ -244,6 +264,7 @@ func (r *Repository) ListChannels(ctx context.Context, userID string) ([]AlertCh
 			&channel.Type,
 			&configBytes,
 			&channel.Enabled,
+			&channel.UsageCount,
 			&channel.CreatedAt,
 			&channel.UpdatedAt,
 		); err != nil {
@@ -285,11 +306,43 @@ func (r *Repository) CreateChannel(ctx context.Context, channel *AlertChannel) e
 	return nil
 }
 
-// DeleteChannel chỉ xóa channel khi nó không còn được rule nào của user sử dụng.
-// Việc chặn xóa tránh làm rule âm thầm mất toàn bộ nơi nhận thông báo.
+// DeleteChannel xóa channel trong transaction.
+// Hàm chỉ chặn khi có rule hợp lệ của chính user đang dùng channel.
+// Các liên kết sai tenant từ dữ liệu cũ được dọn trước khi kiểm tra để tránh báo nhầm CHANNEL_IN_USE.
 func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete alert channel transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var lockedChannelID string
+	if err := tx.QueryRow(ctx, `
+		SELECT id
+		FROM alert_channels
+		WHERE id = $1 AND user_id = $2
+		FOR UPDATE
+	`, id, userID).Scan(&lockedChannelID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrChannelNotFound
+		}
+		return fmt.Errorf("lock alert channel: %w", err)
+	}
+
+	// Dữ liệu hợp lệ luôn yêu cầu rule và channel thuộc cùng một user.
+	// Cleanup này xử lý các liên kết cũ/sai tenant có thể làm khóa ngoại chặn DELETE.
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM alert_rule_channels arc
+		USING alert_rules r
+		WHERE arc.alert_rule_id = r.id
+		  AND arc.alert_channel_id = $1
+		  AND r.user_id IS DISTINCT FROM $2::uuid
+	`, id, userID); err != nil {
+		return fmt.Errorf("clean invalid alert channel links: %w", err)
+	}
+
 	var usageCount int
-	if err := r.db.Pool.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM alert_rule_channels arc
 		JOIN alert_rules r ON r.id = arc.alert_rule_id
@@ -302,11 +355,19 @@ func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error
 		return ErrChannelInUse
 	}
 
-	if _, err := r.db.Pool.Exec(ctx, `
+	result, err := tx.Exec(ctx, `
 		DELETE FROM alert_channels
 		WHERE id = $1 AND user_id = $2
-	`, id, userID); err != nil {
+	`, id, userID)
+	if err != nil {
 		return fmt.Errorf("delete alert channel: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrChannelNotFound
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit alert channel deletion: %w", err)
 	}
 	return nil
 }
