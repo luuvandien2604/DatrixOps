@@ -8,7 +8,7 @@ import {
   HardDrive, RefreshCw, Server as ServerIcon, Wifi,
 } from 'lucide-react';
 import {
-  Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceArea,
+  Area, AreaChart, CartesianGrid, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { apiClient } from '@/lib/apiClient';
@@ -44,16 +44,6 @@ type TimelinePoint = {
   diskWrite: number | null;
   hasData: boolean;
   isConfirmedMissing: boolean;
-};
-
-type MissingInterval = {
-  start: number;
-  end: number;
-};
-
-type GapAnalysis = {
-  intervals: MissingInterval[];
-  sustainedMissingTimestamps: Set<number>;
 };
 
 type TimeRange = '15m' | '1h' | '3h' | '6h' | '12h' | '24h' | '7d';
@@ -208,19 +198,9 @@ export default function MonitoringPage() {
     () => buildTimeline(rawMetrics, timelineConfig, now),
     [now, rawMetrics, timelineConfig],
   );
-  const gapAnalysis = useMemo(
-    () => analyzeTimelineGaps(timeline, effectiveBucketSeconds * 1_000, now),
-    [effectiveBucketSeconds, now, timeline],
-  );
-  const chartTimeline = useMemo(
-    () => timeline.filter(
-      (point) =>
-        point.hasData ||
-        !point.isConfirmedMissing ||
-        gapAnalysis.sustainedMissingTimestamps.has(point.timestamp),
-    ),
-    [gapAnalysis.sustainedMissingTimestamps, timeline],
-  );
+  // Giữ toàn bộ timeline.
+  // Khoảng downtime đã xác nhận sẽ có giá trị 0.
+  const chartTimeline = timeline;
   const selectedServer = servers.find((server) => server.id === selectedServerId);
   const serverOnline = selectedServer?.status === 'online';
   const dataPoints = timeline.reduce((total, point) => total + (point.hasData ? 1 : 0), 0);
@@ -229,7 +209,6 @@ export default function MonitoringPage() {
     data: chartTimeline,
     domain: xDomain,
     range: timeRange,
-    missingIntervals: gapAnalysis.intervals,
   };
 
   return (
@@ -242,7 +221,7 @@ export default function MonitoringPage() {
           </p>
           <h1>Resource <em>monitoring.</em></h1>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            The timeline keeps moving while an agent is offline, with every telemetry gap clearly preserved.
+            Confirmed downtime is displayed at zero while the tooltip still distinguishes missing metrics from real zero values.
           </p>
         </div>
 
@@ -320,7 +299,7 @@ export default function MonitoringPage() {
           {!initialLoading && metricsLoaded && dataPoints === 0 && (
             <div className="monitoring-empty-notice">
               <CircleAlert className="h-4 w-4" />
-              No metrics were received in this range. The timeline remains live and every missing interval is highlighted.
+              No metrics were received in this range. Confirmed downtime is displayed at zero.
             </div>
           )}
 
@@ -456,31 +435,22 @@ function MetricChartCard({
 function ChartScaffolding({
   domain,
   range,
-  missingIntervals,
   percentAxis = false,
   fixedPercentDomain = false,
 }: {
   data: TimelinePoint[];
   domain: [number, number];
   range: TimeRange;
-  missingIntervals: MissingInterval[];
   percentAxis?: boolean;
   fixedPercentDomain?: boolean;
 }) {
   return (
     <>
-      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-      {missingIntervals.map((interval) => (
-        <ReferenceArea
-          key={`${interval.start}-${interval.end}`}
-          x1={interval.start}
-          x2={interval.end}
-          fill="var(--rose)"
-          fillOpacity={0.055}
-          strokeOpacity={0}
-          ifOverflow="hidden"
-        />
-      ))}
+      <CartesianGrid
+        strokeDasharray="3 3"
+        stroke="var(--border-color)"
+        vertical={false}
+      />
       <XAxis
         type="number"
         dataKey="timestamp"
@@ -500,8 +470,16 @@ function ChartScaffolding({
         tickLine={false}
         axisLine={false}
         width={46}
-        tickFormatter={(value) => percentAxis ? `${value}%` : formatCompactNumber(Number(value))}
-        domain={fixedPercentDomain ? [0, 100] : percentAxis ? [0, 'auto'] : [0, 'auto']}
+        tickFormatter={(value) =>
+          percentAxis ? `${value}%` : formatCompactNumber(Number(value))
+        }
+        domain={
+          fixedPercentDomain
+            ? [0, 100]
+            : percentAxis
+              ? [0, 'auto']
+              : [0, 'auto']
+        }
       />
     </>
   );
@@ -555,19 +533,31 @@ function buildTimeline(
   }
 
   const timeline: TimelinePoint[] = [];
+
   for (let timestamp = alignedStart; timestamp <= alignedEnd; timestamp += bucketMs) {
     const metric = metricByBucket.get(timestamp);
     const hasData = Boolean(metric);
+
+    // Chỉ xác nhận downtime sau grace period để tránh biến metric đến chậm thành số 0.
+    const isConfirmedMissing =
+      !hasData && timestamp < now - MISSING_DATA_GRACE_MS;
+
+    // Downtime đã xác nhận được vẽ ở 0.
+    // Điểm gần thời gian hiện tại vẫn giữ null trong lúc chờ metric đến.
+    const missingValue = isConfirmedMissing ? 0 : null;
+
     timeline.push({
       timestamp,
-      cpu: metric ? toFiniteMetric(metric.cpu_usage) : null,
-      ram: metric ? calculateMemoryPercent(metric.memory_used, metric.memory_total) : null,
-      netIn: metric ? toKilobytes(metric.net_in) : null,
-      netOut: metric ? toKilobytes(metric.net_out) : null,
-      diskRead: metric ? toKilobytes(metric.disk_read) : null,
-      diskWrite: metric ? toKilobytes(metric.disk_write) : null,
+      cpu: metric ? toFiniteMetric(metric.cpu_usage) : missingValue,
+      ram: metric
+        ? calculateMemoryPercent(metric.memory_used, metric.memory_total)
+        : missingValue,
+      netIn: metric ? toKilobytes(metric.net_in) : missingValue,
+      netOut: metric ? toKilobytes(metric.net_out) : missingValue,
+      diskRead: metric ? toKilobytes(metric.disk_read) : missingValue,
+      diskWrite: metric ? toKilobytes(metric.disk_write) : missingValue,
       hasData,
-      isConfirmedMissing: !hasData && timestamp < now - MISSING_DATA_GRACE_MS,
+      isConfirmedMissing,
     });
   }
 
@@ -595,44 +585,6 @@ function resolveBucketSeconds(metrics: MetricApiPoint[], fallback: number) {
 
   if (intervals.length === 0) return fallback;
   return Math.max(fallback, Math.round(Math.min(...intervals) / 1_000));
-}
-
-function analyzeTimelineGaps(
-  timeline: TimelinePoint[],
-  bucketMs: number,
-  now: number,
-): GapAnalysis {
-  const intervals: MissingInterval[] = [];
-  const sustainedMissingTimestamps = new Set<number>();
-  const minimumOfflineGapMs = Math.max(30_000, bucketMs * 3);
-  let runStartIndex: number | null = null;
-
-  const commitRun = (endIndex: number, endTimestamp: number) => {
-    if (runStartIndex == null) return;
-    const startTimestamp = timeline[runStartIndex].timestamp;
-    if (endTimestamp - startTimestamp >= minimumOfflineGapMs) {
-      intervals.push({ start: startTimestamp, end: endTimestamp });
-      for (let index = runStartIndex; index < endIndex; index += 1) {
-        sustainedMissingTimestamps.add(timeline[index].timestamp);
-      }
-    }
-    runStartIndex = null;
-  };
-
-  timeline.forEach((point, index) => {
-    if (point.isConfirmedMissing) {
-      if (runStartIndex == null) runStartIndex = index;
-      return;
-    }
-    commitRun(index, point.timestamp);
-  });
-
-  if (runStartIndex != null) {
-    const endTimestamp = Math.min(now, (timeline.at(-1)?.timestamp ?? now) + bucketMs);
-    commitRun(timeline.length, endTimestamp);
-  }
-
-  return { intervals, sustainedMissingTimestamps };
 }
 
 function getMetricTimestamp(metric: MetricApiPoint): number | null {
