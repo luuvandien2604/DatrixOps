@@ -29,6 +29,7 @@ export default function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Fetch server list for selector
@@ -53,8 +54,8 @@ export default function LogsPage() {
   }, [isStreaming, selectedServerId, servers]);
 
   useEffect(() => {
-    if (isStreaming) {
-      terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isStreaming && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs, isStreaming]);
 
@@ -272,13 +273,13 @@ export default function LogsPage() {
         <div>
           <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Filter Keyword</label>
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-[var(--color-muted)]" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none" />
             <input
               type="text"
               placeholder="Search message text..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
+              className="w-full pl-10 pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all"
             />
           </div>
         </div>
@@ -305,7 +306,7 @@ export default function LogsPage() {
         </div>
 
         {/* Console Body */}
-        <div className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
+        <div ref={logContainerRef} className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
           {filteredLogs.length === 0 ? (
             <div className="py-12 text-center text-slate-500 font-sans">
               No logs matching the current filter criteria.

@@ -336,16 +336,16 @@ export default function ServersPage() {
       <div className="glass-card p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-1 flex-col sm:flex-row items-center gap-3 w-full">
           <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--color-muted)]" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none" />
             <input
               type="text"
               placeholder="Search by name, IP, group or tag..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none focus:border-blue-500 transition-all"
+              className="w-full pl-10 pr-8 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none focus:border-blue-500 transition-all"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-2.5 text-xs text-[var(--color-muted)] hover:text-white">
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--color-muted)] hover:text-white">
                 ✕
               </button>
             )}
@@ -765,8 +765,23 @@ export default function ServersPage() {
           ) : (
             filteredServers.map((server) => {
               let osInfo = null;
+              let serverSnapshot = null;
               try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+              try {
+                if (server.snapshot) {
+                  serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
+                }
+              } catch (e) { }
+
+              const updateAvailable = Boolean(server.update_available);
+              const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
               const isOffline = server.status !== 'online';
+              const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
+              const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
+              const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
+              const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
+              const UpdateIcon = updateInProgress ? LoaderCircle : updateTask && !updateAvailable ? CircleCheck : RefreshCw;
+
               const liveInfo = isOffline ? null : osInfo;
               const isCritical = liveInfo && liveInfo.cpu_usage > 90;
               const isSelected = selectedServerIds.includes(server.id);
@@ -781,7 +796,7 @@ export default function ServersPage() {
                 >
                   <div>
                     {/* Header */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={e => toggleSelectServer(server.id, e)}
@@ -804,6 +819,22 @@ export default function ServersPage() {
                         {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
                       </div>
                     </div>
+
+                    {/* Group & Tags */}
+                    {(server.group_name || (server.tags && server.tags.length > 0)) && (
+                      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                        {server.group_name && (
+                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[10px] font-semibold">
+                            {server.group_name}
+                          </span>
+                        )}
+                        {server.tags && server.tags.map((t: string) => (
+                          <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Stats Grid: Monospaced Numbers Only */}
                     <div className="grid grid-cols-3 gap-2 bg-white/[0.02] p-3 rounded-lg border border-white/5 my-3 text-center font-mono">
@@ -844,7 +875,22 @@ export default function ServersPage() {
                       Auto-Update
                     </button>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={event => {
+                          event.stopPropagation();
+                          setEditMetaServer(server);
+                          setEditGroupName(server.group_name || '');
+                          setEditTags((server.tags || []).join(', '));
+                          setEditProvider(server.provider || '');
+                          setEditRegion(server.region || '');
+                          setEditEnvironment(server.environment || '');
+                        }}
+                        className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors"
+                        title="Edit Group & Tags"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         onClick={e => { e.stopPropagation(); router.push(`/dashboard/servers/${server.id}?view=terminal`); }}
                         className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
@@ -853,11 +899,49 @@ export default function ServersPage() {
                         <TerminalSquare className="w-3.5 h-3.5" />
                       </button>
                       <button
+                        onClick={event => {
+                          event.stopPropagation();
+                          setServerToUpdate({ id: server.id, name: server.name });
+                        }}
+                        disabled={updateInProgress}
+                        className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${
+                          updateAvailable || updateInProgress || updateFailed
+                            ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-300'
+                            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                        }`}
+                        title={
+                          updateInProgress
+                            ? 'Updating agent...'
+                            : updateAvailable
+                              ? `Update Agent to ${latestAgentVersion}`
+                              : 'Reinstall Agent release'
+                        }
+                      >
+                        <UpdateIcon className={`h-3.5 w-3.5 ${updateInProgress ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button
                         onClick={e => { e.stopPropagation(); setServerToRestart({ id: server.id, name: server.name }); }}
                         className="p-1.5 rounded border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
                         title="Restart Server"
                       >
                         <Play className="w-3.5 h-3.5 rotate-180" />
+                      </button>
+                      <button
+                        onClick={event => {
+                          event.stopPropagation();
+                          setServerToDelete({
+                            id: server.id,
+                            name: server.name,
+                            status: server.status,
+                            deletionStatus: server.deletion_status,
+                            uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
+                          });
+                        }}
+                        disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
+                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50"
+                        title="Delete Server"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

@@ -2344,3 +2344,23 @@ html.light .feature-preview-meta strong {
     background: #ffffff;
   }
 }
+
+/* Synchronized Select & Option Dropdown UI */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #0b0f17 !important;
+  color: #e2e8f0 !important;
+  padding: 8px 12px !important;
+}
+
+select option:hover,
+select option:focus,
+select option:active,
+select option:checked {
+  background-color: #1e293b !important;
+  color: #38bdf8 !important;
+}
+
