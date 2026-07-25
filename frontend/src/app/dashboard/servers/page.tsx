@@ -5,13 +5,23 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
-  UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check
+  UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search, Filter,
+  LayoutGrid, LayoutList, ToggleLeft, ToggleRight, CheckSquare, Square, ShieldCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Search & Filter & View state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'critical' | 'update_available'>('all');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  // Bulk Selection state
+  const [selectedServerIds, setSelectedServerIds] = useState<string[]>([]);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   // Modals state
   const [isAddServerModalOpen, setIsAddServerModalOpen] = useState(false);
@@ -21,8 +31,8 @@ export default function ServersPage() {
   const [customServices, setCustomServices] = useState('');
   const [installCommandCopied, setInstallCommandCopied] = useState(false);
 
-  // Keep both id and name for confirmation dialogs.
-  const [serverToRestart, setServerToRestart] = useState<{ id: string, name: string } | null>(null);
+  // Confirmation dialogs
+  const [serverToRestart, setServerToRestart] = useState<{ id: string; name: string } | null>(null);
   const [confirmRestartText, setConfirmRestartText] = useState('');
 
   const [serverToDelete, setServerToDelete] = useState<{
@@ -44,18 +54,17 @@ export default function ServersPage() {
   const [editEnvironment, setEditEnvironment] = useState('');
 
   // Update Agent
-  const [serverToUpdate, setServerToUpdate] = useState<{ id: string, name: string } | null>(null);
+  const [serverToUpdate, setServerToUpdate] = useState<{ id: string; name: string } | null>(null);
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
-  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, { id: string, status: string, result?: string }>>({});
+  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, { id: string; status: string; result?: string }>>({});
+  const [updatingAutoUpdatePolicyId, setUpdatingAutoUpdatePolicyId] = useState<string | null>(null);
 
   const router = useRouter();
 
   useEffect(() => {
     fetchServers();
-    // Refresh every five seconds so CPU, RAM, and status stay near real time.
-    // Production agents report every ten seconds, so faster polling adds no new data.
     const interval = setInterval(() => fetchServers(true), 10000);
     return () => clearInterval(interval);
   }, []);
@@ -90,7 +99,7 @@ export default function ServersPage() {
     try {
       if (!silent) setLoading(true);
       const data = await apiClient('/servers');
-      setServers(data);
+      setServers(Array.isArray(data) ? data : []);
       setAgentUpdateTasks(current => {
         const next = { ...current };
         for (const server of Array.isArray(data) ? data : []) {
@@ -111,14 +120,123 @@ export default function ServersPage() {
     }
   };
 
+  // Toggle Auto-Update Policy for a single server
+  const toggleAutoUpdatePolicy = async (serverId: string, currentEnabled: boolean, event?: React.MouseEvent) => {
+    if (event) event.stopPropagation();
+    try {
+      setUpdatingAutoUpdatePolicyId(serverId);
+      const newStatus = !currentEnabled;
+      await apiClient(`/servers/${serverId}/agent-update-policy`, {
+        method: 'PUT',
+        data: { enabled: newStatus }
+      });
+      setServers(prev => prev.map(s => s.id === serverId ? { ...s, auto_update_agent: newStatus } : s));
+      toast.success(`Auto-update ${newStatus ? 'enabled' : 'disabled'} for server`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update auto-update policy');
+    } finally {
+      setUpdatingAutoUpdatePolicyId(null);
+    }
+  };
+
+  // Bulk set auto update policy
+  const handleBulkAutoUpdate = async (enable: boolean) => {
+    if (!selectedServerIds.length) return;
+    setIsBulkProcessing(true);
+    let successCount = 0;
+    try {
+      await Promise.all(
+        selectedServerIds.map(async (id) => {
+          try {
+            await apiClient(`/servers/${id}/agent-update-policy`, {
+              method: 'PUT',
+              data: { enabled: enable }
+            });
+            successCount++;
+          } catch (e) {
+            console.error(`Failed auto update toggle for ${id}`, e);
+          }
+        })
+      );
+      toast.success(`Auto-update ${enable ? 'enabled' : 'disabled'} for ${successCount} server(s)`);
+      fetchServers(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Bulk auto-update policy error');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Bulk update agents
+  const handleBulkUpdateAgents = async () => {
+    if (!selectedServerIds.length) return;
+    setIsBulkProcessing(true);
+    let queuedCount = 0;
+    try {
+      await Promise.all(
+        selectedServerIds.map(async (id) => {
+          try {
+            const task = await apiClient(`/servers/${id}/tasks`, {
+              method: 'POST',
+              data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
+            });
+            setAgentUpdateTasks(current => ({ ...current, [id]: task }));
+            queuedCount++;
+          } catch (e) {
+            console.error(`Failed to queue update for ${id}`, e);
+          }
+        })
+      );
+      toast.success(`Queued agent update for ${queuedCount} server(s)`);
+      fetchServers(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Bulk agent update error');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Filtered servers logic
+  const filteredServers = servers.filter(server => {
+    let osInfo = null;
+    try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+    const ip = server.ip_address || osInfo?.snapshot?.system_info?.public_ip || '';
+    const nameMatch = server.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const ipMatch = ip.toLowerCase().includes(searchQuery.toLowerCase());
+    const groupMatch = server.group_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const tagMatch = server.tags?.some((t: string) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    if (!(nameMatch || ipMatch || groupMatch || tagMatch)) return false;
+
+    if (statusFilter === 'online') return server.status === 'online';
+    if (statusFilter === 'offline') return server.status !== 'online';
+    if (statusFilter === 'critical') return server.status === 'online' && osInfo?.cpu_usage > 90;
+    if (statusFilter === 'update_available') return Boolean(server.update_available);
+
+    return true;
+  });
+
+  // Select all toggle
+  const isAllSelected = filteredServers.length > 0 && filteredServers.every(s => selectedServerIds.includes(s.id));
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedServerIds([]);
+    } else {
+      setSelectedServerIds(filteredServers.map(s => s.id));
+    }
+  };
+
+  const toggleSelectServer = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedServerIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
   const closeDeleteDialog = () => {
     if (isDeletingServer) return;
     setServerToDelete(null);
     setConfirmDeleteText('');
   };
 
-  // requestServerDeletion chooses between the normal two-phase uninstall and
-  // an explicit database-only force delete for unreachable machines.
   const requestServerDeletion = async (force: boolean) => {
     if (!serverToDelete || confirmDeleteText !== serverToDelete.name) return;
 
@@ -145,7 +263,6 @@ export default function ServersPage() {
     }
   };
 
-  // Reset the copy confirmation whenever the generated command changes.
   useEffect(() => {
     setInstallCommandCopied(false);
   }, [selectedOs, customServices, generatedAgentToken]);
@@ -166,31 +283,31 @@ export default function ServersPage() {
     }
   };
 
-  // Copy the current OS-specific installation command and provide both
-  // a visible button state and a toast confirmation.
   const copyInstallCommand = async () => {
     const command = getInstallCommand();
-
     try {
       await navigator.clipboard.writeText(command);
       setInstallCommandCopied(true);
       toast.success('Install command copied to clipboard');
-
-      window.setTimeout(() => {
-        setInstallCommandCopied(false);
-      }, 2500);
+      window.setTimeout(() => setInstallCommandCopied(false), 2500);
     } catch {
       setInstallCommandCopied(false);
-      toast.error('Unable to copy the install command. Please copy it manually.');
+      toast.error('Unable to copy install command');
     }
   };
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1">Server Management</h1>
-          <p className="text-sm text-[var(--color-muted)]">Manage and monitor your server fleet</p>
+          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1 flex items-center gap-3">
+            Server Management
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+              {servers.length} Fleet
+            </span>
+          </h1>
+          <p className="text-sm text-[var(--color-muted)]">Manage, configure and auto-update your agent fleet in real-time</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button
@@ -215,258 +332,544 @@ export default function ServersPage() {
         </div>
       </div>
 
-      {/* Server Status Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-white/[0.02] border-b border-white/5">
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Server</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">IP Address</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">OS / Spec</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">CPU</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">RAM</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Disk</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Status</th>
-                <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider text-right">Quick Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {servers.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-[var(--color-muted)]">
-                    No servers found. Add your first server to start monitoring.
-                  </td>
-                </tr>
-              ) : (
-                servers.map((server) => {
-                  let osInfo = null;
-                  let serverSnapshot = null;
-                  try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
-                  try {
-                    if (server.snapshot) {
-                      serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
-                    }
-                  } catch (e) { }
+      {/* Control Toolbar: Search, Status Filter, View Toggle */}
+      <div className="glass-card p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex flex-1 flex-col sm:flex-row items-center gap-3 w-full">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--color-muted)]" />
+            <input
+              type="text"
+              placeholder="Search by name, IP, group or tag..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none focus:border-blue-500 transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-2.5 text-xs text-[var(--color-muted)] hover:text-white">
+                ✕
+              </button>
+            )}
+          </div>
 
-                  const updateAvailable = Boolean(server.update_available);
-                  const latestAgentVersion =
-                    typeof server.latest_agent_version === 'string'
-                      ? server.latest_agent_version
-                      : '';
+          {/* Status Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'online', label: 'Online' },
+              { id: 'offline', label: 'Offline' },
+              { id: 'critical', label: 'Critical' },
+              { id: 'update_available', label: 'Update Available' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                  statusFilter === tab.id
+                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold'
+                    : 'bg-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/10'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-                  const isOffline = server.status !== 'online';
-                  const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
-                  const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
-                  const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
-                  const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
-                  const updateConfirmed = Boolean(updateTask && !updateAvailable);
-                  const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
-                  const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
-                  const updateBadgeLabel = updateInProgress
-                    ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
-                    : updateFailed
-                      ? updateStalled ? 'Update needs retry' : `Update ${updateTask?.status}`
-                      : latestAgentVersion
-                        ? `Update available: ${latestAgentVersion}`
-                        : 'Update available';
-                  const UpdateBadgeIcon = updateInProgress ? LoaderCircle : updateFailed ? CircleX : UploadCloud;
-                  // os_info remains available after an agent disconnects.
-                  // Do not present stale CPU or RAM values as live telemetry.
-                  const liveInfo = isOffline ? null : osInfo;
-
-                  const isCritical = liveInfo && liveInfo.cpu_usage > 90;
-
-                  return (
-                    <tr
-                      key={server.id}
-                      role="link"
-                      tabIndex={0}
-                      aria-label={`Open ${server.name}`}
-                      onClick={() => router.push(`/dashboard/servers/${server.id}`)}
-                      onKeyDown={event => {
-                        if (event.target !== event.currentTarget) return;
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          router.push(`/dashboard/servers/${server.id}`);
-                        }
-                      }}
-                      className="group cursor-pointer transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none"
-                    >
-                      <td className="py-4 px-6">
-                        <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
-                        {server.auto_update_agent && (
-                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/35 bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-600 dark:text-amber-300">
-                            <RefreshCw className="h-3 w-3" />
-                            Auto-update enabled
-                          </div>
-                        )}
-                        {server.deletion_status && server.deletion_status !== 'active' && (
-                          <div className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${server.deletion_status === 'failed'
-                              ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
-                              : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
-                            }`}>
-                            <LoaderCircle className={`h-3 w-3 ${server.deletion_status !== 'failed' ? 'animate-spin' : ''}`} />
-                            {server.deletion_status === 'pending'
-                              ? 'Waiting for Agent uninstall'
-                              : server.deletion_status === 'uninstalling'
-                                ? 'Uninstalling Agent'
-                                : 'Agent uninstall failed'}
-                          </div>
-                        )}
-                        {(updateAvailable || updateInProgress || updateFailed) && (
-                          <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${updateFailed
-                              ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
-                              : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
-                            }`}>
-                            <UpdateBadgeIcon className={`h-3 w-3 ${updateInProgress ? 'animate-spin' : ''}`} />
-                            {updateBadgeLabel}
-                          </div>
-                        )}
-                        {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          {server.tags && server.tags.map((t: string) => (
-                            <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
-                        {agentIPAddress || '—'}
-                      </td>
-                      <td className="py-4 px-6 text-sm">
-                        <div className="text-[var(--foreground)]">{osInfo ? osInfo.os_name : 'Unknown'}</div>
-                        <div className="text-xs text-[var(--color-muted)] mt-1">{osInfo ? `${osInfo.cpu_cores} Cores` : '—'}</div>
-                      </td>
-                      <td className="py-4 px-6">
-                        {liveInfo ? (
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm min-w-[3rem]">{liveInfo.cpu_usage.toFixed(1)}%</span>
-                            <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className={`h-full ${liveInfo.cpu_usage > 90 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(liveInfo.cpu_usage, 100)}%` }}></div>
-                            </div>
-                          </div>
-                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : undefined}>—</span>}
-                      </td>
-                      <td className="py-4 px-6">
-                        {liveInfo ? (
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm min-w-[3rem]">{((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1)}%</span>
-                            <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-500" style={{ width: `${Math.min((liveInfo.memory_used / liveInfo.memory_total) * 100, 100)}%` }}></div>
-                            </div>
-                          </div>
-                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : undefined}>—</span>}
-                      </td>
-                      <td className="py-4 px-6">
-                        {liveInfo && liveInfo.disk_total > 0 ? (
-                          <div className="flex items-center gap-3">
-                            <span className="min-w-[3rem] font-mono text-sm">{Number(liveInfo.disk_usage || 0).toFixed(1)}%</span>
-                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-700">
-                              <div
-                                className={`h-full ${Number(liveInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : Number(liveInfo.disk_usage || 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                                style={{ width: `${Math.min(Number(liveInfo.disk_usage || 0), 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : <span className="text-[var(--color-muted)]" title={isOffline ? 'Agent is offline' : 'Upgrade the agent to report disk usage'}>—</span>}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${server.status === 'online'
-                          ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
-                          }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
-                            }`}></div>
-                          {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        {/* Keep actions visible without hover-dependent discovery. */}
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setEditMetaServer(server);
-                              setEditGroupName(server.group_name || '');
-                              setEditTags((server.tags || []).join(', '));
-                              setEditProvider(server.provider || '');
-                              setEditRegion(server.region || '');
-                              setEditEnvironment(server.environment || '');
-                            }}
-                            className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors" title="Edit Group & Tags">
-                            <FileText className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              router.push(`/dashboard/servers/${server.id}?view=terminal`);
-                            }}
-                            className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
-                            title="Open Web Terminal"
-                          >
-                            <TerminalSquare className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setServerToUpdate({
-                                id: server.id,
-                                name: server.name,
-                              });
-                            }}
-                            disabled={updateInProgress}
-                            className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${updateAvailable || updateInProgress || updateFailed
-                              ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 hover:text-amber-700 disabled:bg-amber-500/15 disabled:text-amber-600 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300'
-                              : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'
-                              }`}
-                            title={
-                              updateInProgress
-                                ? updateTask?.status === 'processing' ? 'Updating agent; waiting for heartbeat confirmation' : 'Agent update queued'
-                                : updateConfirmed
-                                  ? 'Agent update confirmed'
-                                  : updateAvailable && latestAgentVersion
-                                    ? `Update Agent to ${latestAgentVersion}`
-                                    : 'Reinstall current Agent release'
-                            }
-                          >
-                            <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
-                          </button>
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setServerToRestart({ id: server.id, name: server.name });
-                            }}
-                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors" title="Restart">
-                            <Play className="w-4 h-4 rotate-180" />
-                          </button>
-                          <button
-                            onClick={event => {
-                              event.stopPropagation();
-                              setServerToDelete({
-                                id: server.id,
-                                name: server.name,
-                                status: server.status,
-                                deletionStatus: server.deletion_status,
-                                uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
-                              });
-                            }}
-                            disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
-                            className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:cursor-wait disabled:opacity-50"
-                            title={['pending', 'uninstalling'].includes(server.deletion_status) ? 'Agent uninstall is already in progress' : 'Delete'}>
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10 self-end md:self-auto">
+          <button
+            onClick={() => setViewMode('table')}
+            title="Table View"
+            className={`p-1.5 rounded transition-colors ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-[var(--color-muted)] hover:text-white'}`}
+          >
+            <LayoutList className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            title="Grid Card View"
+            className={`p-1.5 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-[var(--color-muted)] hover:text-white'}`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
         </div>
       </div>
+
+      {/* Sticky Bulk Action Bar */}
+      {selectedServerIds.length > 0 && (
+        <div className="sticky top-4 z-40 glass-card bg-blue-950/80 border-blue-500/40 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white font-bold text-xs">
+              {selectedServerIds.length}
+            </span>
+            <span className="text-sm font-semibold text-white">Server(s) selected</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleBulkAutoUpdate(true)}
+              disabled={isBulkProcessing}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <ToggleRight className="w-3.5 h-3.5" />
+              Enable Auto-Update
+            </button>
+            <button
+              onClick={() => handleBulkAutoUpdate(false)}
+              disabled={isBulkProcessing}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30 hover:bg-gray-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <ToggleLeft className="w-3.5 h-3.5" />
+              Disable Auto-Update
+            </button>
+            <button
+              onClick={handleBulkUpdateAgents}
+              disabled={isBulkProcessing}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              Trigger Agent Update
+            </button>
+            <button
+              onClick={() => setSelectedServerIds([])}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors"
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      {viewMode === 'table' ? (
+        /* Table View */
+        <div className="glass-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-white/[0.02] border-b border-white/5">
+                  <th className="py-4 px-4 w-10">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="text-[var(--color-muted)] hover:text-white transition-colors flex items-center"
+                      title={isAllSelected ? 'Deselect all' : 'Select all'}
+                    >
+                      {isAllSelected ? (
+                        <CheckSquare className="w-4 h-4 text-blue-400" />
+                      ) : (
+                        <Square className="w-4 h-4" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Server</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">IP Address</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">OS / Spec</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">CPU</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">RAM</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Disk</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Auto-Update</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Status</th>
+                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider text-right">Quick Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filteredServers.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-[var(--color-muted)]">
+                      {servers.length === 0 ? 'No servers found. Add your first server to start monitoring.' : 'No servers matching filter criteria.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredServers.map((server) => {
+                    let osInfo = null;
+                    let serverSnapshot = null;
+                    try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+                    try {
+                      if (server.snapshot) {
+                        serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
+                      }
+                    } catch (e) { }
+
+                    const updateAvailable = Boolean(server.update_available);
+                    const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
+                    const isOffline = server.status !== 'online';
+                    const agentIPAddress = server.ip_address || serverSnapshot?.system_info?.public_ip || osInfo?.snapshot?.system_info?.public_ip || '';
+                    const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
+                    const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
+                    const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
+                    const updateConfirmed = Boolean(updateTask && !updateAvailable);
+                    const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
+                    const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
+                    const updateBadgeLabel = updateInProgress
+                      ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
+                      : updateFailed
+                        ? updateStalled ? 'Update needs retry' : `Update ${updateTask?.status}`
+                        : latestAgentVersion
+                          ? `Update available: ${latestAgentVersion}`
+                          : 'Update available';
+                    const UpdateBadgeIcon = updateInProgress ? LoaderCircle : updateFailed ? CircleX : UploadCloud;
+                    const liveInfo = isOffline ? null : osInfo;
+                    const isCritical = liveInfo && liveInfo.cpu_usage > 90;
+                    const isSelected = selectedServerIds.includes(server.id);
+
+                    // Compute pure numerical text for CPU, RAM, Disk
+                    const cpuText = liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—';
+                    const ramPct = liveInfo ? ((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1) : null;
+                    const ramUsedGb = liveInfo ? (liveInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1) : null;
+                    const ramTotalGb = liveInfo ? (liveInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1) : null;
+                    const ramText = ramPct ? `${ramPct}%` : '—';
+                    const ramSubtext = ramUsedGb && ramTotalGb ? `${ramUsedGb} / ${ramTotalGb} GB` : null;
+
+                    const diskPct = liveInfo && liveInfo.disk_total > 0 ? Number(liveInfo.disk_usage || 0).toFixed(1) : null;
+                    const diskText = diskPct !== null ? `${diskPct}%` : '—';
+
+                    return (
+                      <tr
+                        key={server.id}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Open ${server.name}`}
+                        onClick={() => router.push(`/dashboard/servers/${server.id}`)}
+                        onKeyDown={event => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            router.push(`/dashboard/servers/${server.id}`);
+                          }
+                        }}
+                        className={`group cursor-pointer transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none ${
+                          isSelected ? 'bg-blue-500/10' : ''
+                        }`}
+                      >
+                        <td className="py-4 px-4">
+                          <button
+                            onClick={e => toggleSelectServer(server.id, e)}
+                            className="text-[var(--color-muted)] hover:text-white transition-colors flex items-center"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4 text-blue-400" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
+                          {server.deletion_status && server.deletion_status !== 'active' && (
+                            <div className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                              server.deletion_status === 'failed'
+                                ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
+                                : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                            }`}>
+                              <LoaderCircle className={`h-3 w-3 ${server.deletion_status !== 'failed' ? 'animate-spin' : ''}`} />
+                              {server.deletion_status === 'pending'
+                                ? 'Waiting for Agent uninstall'
+                                : server.deletion_status === 'uninstalling'
+                                  ? 'Uninstalling Agent'
+                                  : 'Agent uninstall failed'}
+                            </div>
+                          )}
+                          {(updateAvailable || updateInProgress || updateFailed) && (
+                            <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                              updateFailed
+                                ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
+                                : 'border-amber-500/35 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                            }`}>
+                              <UpdateBadgeIcon className={`h-3 w-3 ${updateInProgress ? 'animate-spin' : ''}`} />
+                              {updateBadgeLabel}
+                            </div>
+                          )}
+                          {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {server.tags && server.tags.map((t: string) => (
+                              <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
+                          {agentIPAddress || '—'}
+                        </td>
+                        <td className="py-4 px-6 text-sm">
+                          <div className="text-[var(--foreground)]">{osInfo ? osInfo.os_name : 'Unknown'}</div>
+                          <div className="text-xs text-[var(--color-muted)] mt-1">{osInfo ? `${osInfo.cpu_cores} Cores` : '—'}</div>
+                        </td>
+
+                        {/* CPU: Pure Monospaced Numerical Display */}
+                        <td className="py-4 px-6 font-mono text-sm">
+                          {liveInfo ? (
+                            <span className={`font-semibold ${liveInfo.cpu_usage > 90 ? 'text-rose-400 font-bold animate-pulse' : 'text-[var(--foreground)]'}`}>
+                              {cpuText}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--color-muted)]">—</span>
+                          )}
+                        </td>
+
+                        {/* RAM: Pure Monospaced Numerical Display */}
+                        <td className="py-4 px-6 font-mono text-sm">
+                          {liveInfo ? (
+                            <div>
+                              <div className="text-[var(--foreground)] font-semibold">{ramText}</div>
+                              {ramSubtext && <div className="text-[10px] text-[var(--color-muted)]">{ramSubtext}</div>}
+                            </div>
+                          ) : (
+                            <span className="text-[var(--color-muted)]">—</span>
+                          )}
+                        </td>
+
+                        {/* Disk: Pure Monospaced Numerical Display */}
+                        <td className="py-4 px-6 font-mono text-sm">
+                          {liveInfo && liveInfo.disk_total > 0 ? (
+                            <span className={`font-semibold ${
+                              Number(liveInfo.disk_usage || 0) >= 90
+                                ? 'text-rose-400'
+                                : Number(liveInfo.disk_usage || 0) >= 75
+                                  ? 'text-amber-400'
+                                  : 'text-[var(--foreground)]'
+                            }`}>
+                              {diskText}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--color-muted)]">—</span>
+                          )}
+                        </td>
+
+                        {/* Auto-Update Toggle Button */}
+                        <td className="py-4 px-6">
+                          <button
+                            type="button"
+                            disabled={updatingAutoUpdatePolicyId === server.id}
+                            onClick={e => toggleAutoUpdatePolicy(server.id, Boolean(server.auto_update_agent), e)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                              server.auto_update_agent
+                                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                                : 'border-gray-500/30 bg-gray-500/10 text-gray-400 hover:bg-gray-500/20'
+                            }`}
+                            title={server.auto_update_agent ? 'Click to disable auto-update' : 'Click to enable auto-update'}
+                          >
+                            {updatingAutoUpdatePolicyId === server.id ? (
+                              <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                            ) : server.auto_update_agent ? (
+                              <ToggleRight className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <ToggleLeft className="w-4 h-4 text-gray-400" />
+                            )}
+                            {server.auto_update_agent ? 'Enabled' : 'Disabled'}
+                          </button>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-4 px-6">
+                          <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                            server.status === 'online'
+                              ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
+                          }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${
+                              server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
+                            }`}></div>
+                            {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
+                          </div>
+                        </td>
+
+                        {/* Quick Actions */}
+                        <td className="py-4 px-6 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setEditMetaServer(server);
+                                setEditGroupName(server.group_name || '');
+                                setEditTags((server.tags || []).join(', '));
+                                setEditProvider(server.provider || '');
+                                setEditRegion(server.region || '');
+                                setEditEnvironment(server.environment || '');
+                              }}
+                              className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors"
+                              title="Edit Group & Tags"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                router.push(`/dashboard/servers/${server.id}?view=terminal`);
+                              }}
+                              className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
+                              title="Open Web Terminal"
+                            >
+                              <TerminalSquare className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setServerToUpdate({ id: server.id, name: server.name });
+                              }}
+                              disabled={updateInProgress}
+                              className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${
+                                updateAvailable || updateInProgress || updateFailed
+                                  ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-300'
+                                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                              }`}
+                              title={
+                                updateInProgress
+                                  ? 'Updating agent...'
+                                  : updateAvailable
+                                    ? `Update Agent to ${latestAgentVersion}`
+                                    : 'Reinstall Agent release'
+                              }
+                            >
+                              <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
+                            </button>
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setServerToRestart({ id: server.id, name: server.name });
+                              }}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors"
+                              title="Restart"
+                            >
+                              <Play className="w-4 h-4 rotate-180" />
+                            </button>
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
+                                setServerToDelete({
+                                  id: server.id,
+                                  name: server.name,
+                                  status: server.status,
+                                  deletionStatus: server.deletion_status,
+                                  uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
+                                });
+                              }}
+                              disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Grid Cards View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredServers.length === 0 ? (
+            <div className="col-span-full glass-card py-12 text-center text-[var(--color-muted)]">
+              No servers matching filter criteria.
+            </div>
+          ) : (
+            filteredServers.map((server) => {
+              let osInfo = null;
+              try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+              const isOffline = server.status !== 'online';
+              const liveInfo = isOffline ? null : osInfo;
+              const isCritical = liveInfo && liveInfo.cpu_usage > 90;
+              const isSelected = selectedServerIds.includes(server.id);
+
+              return (
+                <div
+                  key={server.id}
+                  onClick={() => router.push(`/dashboard/servers/${server.id}`)}
+                  className={`glass-card p-5 cursor-pointer transition-all hover:border-blue-500/40 relative flex flex-col justify-between ${
+                    isSelected ? 'border-blue-500 bg-blue-500/10' : ''
+                  }`}
+                >
+                  <div>
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={e => toggleSelectServer(server.id, e)}
+                          className="text-[var(--color-muted)] hover:text-white transition-colors"
+                        >
+                          {isSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
+                        </button>
+                        <div>
+                          <h3 className="font-bold text-[var(--foreground)] text-base group-hover:text-blue-400 transition-colors">
+                            {server.name}
+                          </h3>
+                          <span className="font-mono text-xs text-[var(--color-muted)]">{server.ip_address || '—'}</span>
+                        </div>
+                      </div>
+                      <div className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        server.status === 'online'
+                          ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                      }`}>
+                        {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
+                      </div>
+                    </div>
+
+                    {/* Stats Grid: Monospaced Numbers Only */}
+                    <div className="grid grid-cols-3 gap-2 bg-white/[0.02] p-3 rounded-lg border border-white/5 my-3 text-center font-mono">
+                      <div>
+                        <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">CPU</div>
+                        <div className={`text-sm font-semibold ${liveInfo && liveInfo.cpu_usage > 90 ? 'text-rose-400 font-bold' : 'text-[var(--foreground)]'}`}>
+                          {liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">RAM</div>
+                        <div className="text-sm font-semibold text-[var(--foreground)]">
+                          {liveInfo ? `${((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1)}%` : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">DISK</div>
+                        <div className="text-sm font-semibold text-[var(--foreground)]">
+                          {liveInfo && liveInfo.disk_total > 0 ? `${Number(liveInfo.disk_usage || 0).toFixed(1)}%` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer Action Bar */}
+                  <div className="flex items-center justify-between pt-3 border-t border-white/5 text-xs">
+                    {/* Auto Update Policy Toggle */}
+                    <button
+                      type="button"
+                      onClick={e => toggleAutoUpdatePolicy(server.id, Boolean(server.auto_update_agent), e)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold border transition-all ${
+                        server.auto_update_agent
+                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400'
+                          : 'border-gray-500/30 bg-gray-500/10 text-gray-400'
+                      }`}
+                    >
+                      {server.auto_update_agent ? <ToggleRight className="w-3.5 h-3.5 text-emerald-400" /> : <ToggleLeft className="w-3.5 h-3.5 text-gray-400" />}
+                      Auto-Update
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={e => { e.stopPropagation(); router.push(`/dashboard/servers/${server.id}?view=terminal`); }}
+                        className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                        title="Web Terminal"
+                      >
+                        <TerminalSquare className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setServerToRestart({ id: server.id, name: server.name }); }}
+                        className="p-1.5 rounded border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                        title="Restart Server"
+                      >
+                        <Play className="w-3.5 h-3.5 rotate-180" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {/* Add Server Modal */}
       {isAddServerModalOpen && (
@@ -524,7 +927,6 @@ export default function ServersPage() {
                     Server created successfully. Select an operating system and run the command with Administrator or root privileges.
                   </p>
 
-                  {/* OS Tabs */}
                   <div className="flex gap-2 mb-4 border-b border-white/10 pb-2">
                     <button
                       onClick={() => setSelectedOs('linux')}
@@ -552,12 +954,8 @@ export default function ServersPage() {
                       className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
                       placeholder={selectedOs === 'linux' ? 'nginx,postgresql,docker,ssh' : selectedOs === 'macos' ? 'com.openssh.sshd,homebrew.mxcl.nginx' : 'EventLog,Schedule,WinRM,sshd'}
                     />
-                    <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">Leave blank to use the recommended defaults for {selectedOs === 'macos' ? 'macOS' : selectedOs === 'windows' ? 'Windows' : 'Linux'}. Use comma-separated native service identifiers.</p>
                   </div>
 
-                  {/* Installation command: always use a high-contrast code surface
-                      in both light and dark themes. The copy action remains visible
-                      without requiring hover, which also works better on touch devices. */}
                   <div className="relative mb-3 overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950 shadow-inner dark:border-white/10 dark:bg-black/50">
                     <div className="overflow-x-auto py-4 pl-4 pr-32">
                       <code className="block whitespace-nowrap font-mono text-sm font-medium leading-6 text-emerald-300">
@@ -573,29 +971,12 @@ export default function ServersPage() {
                           ? 'border-emerald-300/40 bg-emerald-400/20 text-emerald-100'
                           : 'border-white/15 bg-white/10 text-white hover:bg-white/20'
                       }`}
-                      aria-label={installCommandCopied ? 'Install command copied' : 'Copy install command'}
                     >
-                      {installCommandCopied ? (
-                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                      )}
+                      {installCommandCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                       {installCommandCopied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
 
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className={`mb-6 flex min-h-5 items-center gap-1.5 text-xs font-medium transition-opacity ${
-                      installCommandCopied
-                        ? 'text-emerald-600 opacity-100 dark:text-emerald-300'
-                        : 'opacity-0'
-                    }`}
-                  >
-                    <CircleCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                    Install command copied successfully.
-                  </div>
                   <div className="flex justify-end">
                     <button onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); fetchServers(); }} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors">
                       Done
@@ -618,7 +999,7 @@ export default function ServersPage() {
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
-                You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart.name}</strong>. This action may cause downtime.
+                You are about to restart the server <strong className="text-[var(--foreground)]">{serverToRestart.name}</strong>.
               </p>
               <div className="mb-6">
                 <label htmlFor="restart-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
@@ -626,7 +1007,6 @@ export default function ServersPage() {
                 </label>
                 <input
                   id="restart-server-confirmation"
-                  name="restart-server-confirmation"
                   type="text"
                   value={confirmRestartText}
                   onChange={(e) => setConfirmRestartText(e.target.value)}
@@ -635,12 +1015,7 @@ export default function ServersPage() {
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setServerToRestart(null);
-                    setConfirmRestartText('');
-                  }}
-                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                <button onClick={() => { setServerToRestart(null); setConfirmRestartText(''); }} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
                 <button
@@ -659,7 +1034,7 @@ export default function ServersPage() {
                       toast.error(err.message || 'Unable to send restart command');
                     }
                   }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
                   Restart Server
                 </button>
               </div>
@@ -678,66 +1053,35 @@ export default function ServersPage() {
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-4">
-                DatrixOps will ask the online Linux Agent on <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> to stop its service, remove its binary, and then permanently delete the server and related monitoring data.
+                DatrixOps will ask the online Agent on <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> to uninstall and delete.
               </p>
-
-              {serverToDelete.status !== 'online' && (
-                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
-                  The Agent is offline, so remote uninstall cannot be delivered. Use <strong>Delete Record Only</strong> only when the machine is gone or you will remove the Agent manually.
-                </div>
-              )}
-
-              {serverToDelete.status === 'online' && !serverToDelete.uninstallSupported && (
-                <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
-                  This Agent version does not advertise safe remote uninstall support. Update the Agent first, or remove it manually before deleting only the record.
-                </div>
-              )}
-
-              {serverToDelete.deletionStatus === 'failed' && (
-                <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">
-                  The previous uninstall attempt failed. You may retry while the Agent is online or force-delete only the DatrixOps record.
-                </div>
-              )}
-
               <div className="mb-6">
                 <label htmlFor="delete-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
-                  Type &quot;{serverToDelete.name}&quot; to confirm
+                  Type "{serverToDelete.name}" to confirm
                 </label>
                 <input
                   id="delete-server-confirmation"
-                  name="delete-server-confirmation"
                   type="text"
                   value={confirmDeleteText}
                   onChange={(e) => setConfirmDeleteText(e.target.value)}
-                  disabled={isDeletingServer}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500 disabled:opacity-60"
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
                   placeholder={serverToDelete.name}
                 />
               </div>
-
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  onClick={closeDeleteDialog}
-                  disabled={isDeletingServer}
-                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors disabled:opacity-50">
+              <div className="flex justify-end gap-3">
+                <button onClick={closeDeleteDialog} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
                 <button
                   disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer}
                   onClick={() => requestServerDeletion(true)}
-                  className="px-4 py-2 border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-rose-300 rounded-lg font-medium transition-colors">
+                  className="px-4 py-2 border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 rounded-lg font-medium transition-colors">
                   Delete Record Only
                 </button>
                 <button
-                  disabled={
-                    confirmDeleteText !== serverToDelete.name ||
-                    isDeletingServer ||
-                    serverToDelete.status !== 'online' ||
-                    !serverToDelete.uninstallSupported
-                  }
+                  disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer || serverToDelete.status !== 'online'}
                   onClick={() => requestServerDeletion(false)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
-                  {isDeletingServer ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
                   Uninstall Agent & Delete
                 </button>
               </div>
@@ -746,7 +1090,7 @@ export default function ServersPage() {
         </div>
       )}
 
-      {/* Edit Meta Confirm Dialog */}
+      {/* Edit Meta Dialog */}
       {editMetaServer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-card w-full max-w-2xl bg-[var(--background-card)] border-amber-500/30 overflow-hidden flex flex-col">
@@ -756,10 +1100,8 @@ export default function ServersPage() {
             </div>
             <div className="p-6">
               <div className="mb-4">
-                <label htmlFor="server-group-name" className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
                 <input
-                  id="server-group-name"
-                  name="server-group-name"
                   type="text"
                   value={editGroupName}
                   onChange={(e) => setEditGroupName(e.target.value)}
@@ -768,10 +1110,8 @@ export default function ServersPage() {
                 />
               </div>
               <div className="mb-6">
-                <label htmlFor="server-tags" className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Tags (comma separated)</label>
                 <input
-                  id="server-tags"
-                  name="server-tags"
                   type="text"
                   value={editTags}
                   onChange={(e) => setEditTags(e.target.value)}
@@ -779,25 +1119,8 @@ export default function ServersPage() {
                   placeholder="e.g. web, database, vietnam"
                 />
               </div>
-              <div className="mb-6 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label htmlFor="server-provider" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Provider</label>
-                  <input id="server-provider" value={editProvider} onChange={(event) => setEditProvider(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="AWS" />
-                </div>
-                <div>
-                  <label htmlFor="server-region" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Region</label>
-                  <input id="server-region" value={editRegion} onChange={(event) => setEditRegion(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="ap-southeast-1" />
-                </div>
-                <div>
-                  <label htmlFor="server-environment" className="mb-2 block text-xs font-semibold uppercase text-[var(--color-muted)]">Environment</label>
-                  <input id="server-environment" value={editEnvironment} onChange={(event) => setEditEnvironment(event.target.value)} className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-amber-500" placeholder="Production" />
-                </div>
-              </div>
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setEditMetaServer(null)}
-                  className="px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors text-[var(--color-muted)]"
-                >
+                <button onClick={() => setEditMetaServer(null)} className="px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors text-[var(--color-muted)]">
                   Cancel
                 </button>
                 <button
@@ -806,13 +1129,7 @@ export default function ServersPage() {
                     try {
                       await apiClient(`/servers/${editMetaServer.id}/meta`, {
                         method: 'PUT',
-                        data: {
-                          group_name: editGroupName.trim(),
-                          tags: tagsArray,
-                          provider: editProvider.trim(),
-                          region: editRegion.trim(),
-                          environment: editEnvironment.trim(),
-                        }
+                        data: { group_name: editGroupName.trim(), tags: tagsArray, provider: editProvider.trim(), region: editRegion.trim(), environment: editEnvironment.trim() }
                       });
                       fetchServers();
                       toast.success('Server information updated!');
@@ -831,22 +1148,20 @@ export default function ServersPage() {
         </div>
       )}
 
-      {/* Update Agent Confirm Dialog */}
+      {/* Update Agent Modal */}
       {serverToUpdate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="update-agent-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/35 overflow-hidden flex flex-col">
+          <div role="alertdialog" aria-modal="true" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/35 overflow-hidden flex flex-col">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/10">
               <RefreshCw className="w-6 h-6 text-amber-400" />
-              <h2 id="update-agent-title" className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
             </div>
             <div className="p-6">
               <p className="text-[var(--color-muted)] mb-6">
-                You are about to send an update command to <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>. The agent will restart and download the latest version automatically.
+                You are about to send an update command to <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>.
               </p>
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setServerToUpdate(null)}
-                  className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
                   Cancel
                 </button>
                 <button
@@ -867,7 +1182,7 @@ export default function ServersPage() {
                       setIsUpdatingAgent(false);
                     }
                   }}
-                  className="px-4 py-2 bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70 rounded-lg font-bold transition-colors">
+                  className="px-4 py-2 bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:opacity-70 rounded-lg font-bold transition-colors">
                   {isUpdatingAgent ? 'Queueing…' : 'Start Update'}
                 </button>
               </div>
@@ -876,22 +1191,20 @@ export default function ServersPage() {
         </div>
       )}
 
+      {/* Update All Modal */}
       {isUpdateAllOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="update-all-agents-title" className="glass-card flex w-full max-w-lg flex-col overflow-hidden border border-emerald-500/30 bg-[var(--background-card)]">
+          <div role="alertdialog" aria-modal="true" className="glass-card flex w-full max-w-lg flex-col overflow-hidden border border-emerald-500/30 bg-[var(--background-card)]">
             <div className="flex items-center gap-3 border-b border-[var(--border-color)] bg-emerald-500/5 p-6">
               <UploadCloud className="h-6 w-6 text-emerald-500" />
-              <h2 id="update-all-agents-title" className="text-xl font-bold text-[var(--foreground)]">Update all agents?</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Update all agents?</h2>
             </div>
             <div className="p-6">
               <p className="leading-6 text-[var(--color-muted)]">
-                This queues the current agent release for all {servers.length} servers in your workspace. Online agents will update on their next heartbeat; offline agents can claim the task when they reconnect within 24 hours.
-              </p>
-              <p className="mt-3 text-sm text-[var(--color-muted)]">
-                Agents that already have a pending or processing update will be skipped. Legacy agents older than 1.3.0 require the one-time token-free in-place update before they can process dashboard update tasks.
+                This queues the current agent release for all {servers.length} servers in your workspace.
               </p>
               <div className="mt-6 flex justify-end gap-3">
-                <button type="button" disabled={isUpdatingAll} onClick={() => setIsUpdateAllOpen(false)} className="rounded-lg px-4 py-2 font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--background)] disabled:opacity-50">
+                <button type="button" disabled={isUpdatingAll} onClick={() => setIsUpdateAllOpen(false)} className="rounded-lg px-4 py-2 font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--background)]">
                   Cancel
                 </button>
                 <button
@@ -909,7 +1222,7 @@ export default function ServersPage() {
                       setIsUpdatingAll(false);
                     }
                   }}
-                  className="liquid-button disabled:cursor-not-allowed disabled:opacity-50"
+                  className="liquid-button"
                 >
                   <UploadCloud className="h-4 w-4" />
                   {isUpdatingAll ? 'Queueing updates…' : 'Update all agents'}
@@ -919,7 +1232,6 @@ export default function ServersPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

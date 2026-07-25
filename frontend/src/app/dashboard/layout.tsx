@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { CommandPalette } from '@/components/CommandPalette';
 
 type NavDefinition = {
   label: string;
@@ -74,12 +75,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   } | null>(null);
   const [fleetSyncFailed, setFleetSyncFailed] = useState(false);
 
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [notificationError, setNotificationError] = useState('');
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => setRole(getUserRole()), []);
   useEffect(() => {
@@ -425,7 +438,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              className="topbar-action hidden font-medium text-[var(--color-muted)] sm:flex"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="topbar-action hidden font-medium text-[var(--color-muted)] sm:flex hover:border-blue-500/40 hover:text-white transition-colors"
               aria-label="Search dashboard"
             >
               <Search className="h-4 w-4 text-[var(--color-muted)]" />
@@ -591,6 +605,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
     </div>
   );
 }
