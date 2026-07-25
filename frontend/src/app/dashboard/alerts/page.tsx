@@ -363,7 +363,7 @@ export default function AlertsPage() {
                   id="rule-server"
                   value={selectedServerId}
                   onChange={(event) => setSelectedServerId(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] p-2 text-sm text-[var(--foreground)]"
+                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
                 >
                   <option value="all">All agents</option>
                   {servers.map((server) => (
@@ -385,7 +385,7 @@ export default function AlertsPage() {
                   id="rule-metric"
                   value={ruleMetric}
                   onChange={(event) => setRuleMetric(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] p-2 text-sm text-[var(--foreground)]"
+                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
                 >
                   <option value="cpu">CPU Usage</option>
                   <option value="ram">RAM Usage</option>
@@ -403,7 +403,7 @@ export default function AlertsPage() {
                       id="rule-operator"
                       value={ruleOperator}
                       onChange={(event) => setRuleOperator(event.target.value)}
-                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] p-2 text-sm text-[var(--foreground)]"
+                      className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
                     >
                       <option value=">">Greater than (&gt;)</option>
                       <option value="<">Less than (&lt;)</option>
@@ -605,7 +605,7 @@ export default function AlertsPage() {
                   id="channel-type"
                   value={channelType}
                   onChange={(event) => setChannelType(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] p-2 text-sm text-[var(--foreground)]"
+                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
                 >
                   <option value="telegram">Telegram Bot</option>
                   <option value="discord">Discord Webhook</option>

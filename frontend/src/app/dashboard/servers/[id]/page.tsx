@@ -766,7 +766,7 @@ export default function ServerDetailsPage() {
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>RAM USAGE</span>
                   <span className="text-[11px] text-[var(--color-muted)]">
-                    {parsedOSInfo.memory_total ? `${(parsedOSInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1)} / ${(parsedOSInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1)} GB` : ''}
+                    {parsedOSInfo.memory_total && parsedOSInfo.memory_used ? `${(parsedOSInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1)} / ${(parsedOSInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1)} GB` : ''}
                   </span>
                 </div>
                 <div className="text-2xl font-bold text-[var(--foreground)]">
@@ -1098,7 +1098,7 @@ export default function ServerDetailsPage() {
                 </label>
                 <label>
                   <span className="sr-only">Filter service status</span>
-                  <select value={serviceFilter} onChange={event => setServiceFilter(event.target.value)} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] px-4 py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500">
+                  <select value={serviceFilter} onChange={event => setServiceFilter(event.target.value)} className="w-full rounded-full border border-white/15 bg-[#0B0F17] px-4 py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer">
                     <option value="all">All statuses</option>
                     <option value="running">Running</option>
                     <option value="stopped">{serviceContent.stopped}</option>
