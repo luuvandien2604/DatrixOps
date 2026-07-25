@@ -631,7 +631,7 @@ export default function ServerDetailsPage() {
         {/* View Metrics Button */}
         <button
           type="button"
-          onClick={() => router.push('/dashboard/metrics')}
+          onClick={() => router.push('/dashboard/monitoring')}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 shrink-0 self-start sm:self-center"
         >
           <Activity className="w-4 h-4" /> View Metrics
@@ -730,21 +730,108 @@ export default function ServerDetailsPage() {
             </section>
           )}
 
-          {/* Clean 3-Column Overview Grid */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* 1. System Information */}
+          {/* Section 1: Real-Time Telemetry Parameters */}
+          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 shadow-lg">
+            <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" /> Real-Time Telemetry Parameters
+              </span>
+              <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">
+                Node IP: {server.ip_address || server.id}
+              </span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* CPU Usage */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
+                  <span>CPU USAGE</span>
+                  <span className={totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                    {totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'HIGH' : 'NORMAL'}
+                  </span>
+                </div>
+                <div className={`text-2xl font-bold ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-400' : 'text-[var(--foreground)]'}`}>
+                  {totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : '—'}
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                  <div
+                    className={`h-full rounded-full ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${Math.min(totalCPUUsage || 0, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* RAM Usage */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
+                  <span>RAM USAGE</span>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    {parsedOSInfo.memory_total ? `${(parsedOSInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1)} / ${(parsedOSInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1)} GB` : ''}
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-[var(--foreground)]">
+                  {totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : '—'}
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                  <div
+                    className="h-full rounded-full bg-blue-500"
+                    style={{ width: `${Math.min(totalMemoryUsage || 0, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Disk Usage */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
+                  <span>DISK USAGE</span>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    {parsedOSInfo.disk_total ? `${formatBytes(parsedOSInfo.disk_used)} / ${formatBytes(parsedOSInfo.disk_total)}` : ''}
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-[var(--foreground)]">
+                  {parsedOSInfo.disk_usage !== undefined ? `${parsedOSInfo.disk_usage.toFixed(1)}%` : '—'}
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                  <div
+                    className={`h-full rounded-full ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : 'bg-amber-500'}`}
+                    style={{ width: `${Math.min(Number(parsedOSInfo.disk_usage || 0), 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Uptime */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
+                  <span>UPTIME</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ONLINE
+                  </span>
+                </div>
+                <div className="text-xl font-bold text-emerald-400 mt-1">
+                  {snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : '—'}
+                </div>
+                <div className="text-[11px] text-[var(--color-muted)] mt-3">
+                  Heartbeat Active
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Static System Information & Package Security */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* System Information */}
             <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
-                <Cpu className="w-4 h-4 text-blue-400" /> System Information
+              <h3 className="text-xs font-bold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
+                <Cpu className="w-4 h-4 text-blue-400" /> System Specification & Environment
               </h3>
-              <div className="space-y-4 text-sm">
+              <div className="space-y-3.5 text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
                   <span className="text-[var(--color-muted)]">Operating System</span>
                   <span className="font-semibold text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
                   <span className="text-[var(--color-muted)]">Agent Version</span>
-                  <span className={`font-semibold ${reportedAgentVersion ? 'text-[var(--foreground)]' : 'text-amber-500'}`}>
+                  <span className={`font-semibold ${reportedAgentVersion ? 'text-blue-400' : 'text-amber-500'}`}>
                     {reportedAgentVersion || 'Not reported'}
                   </span>
                 </div>
@@ -752,24 +839,20 @@ export default function ServerDetailsPage() {
                   <span className="text-[var(--color-muted)]">Kernel Version</span>
                   <span className="font-mono text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <span className="text-[var(--color-muted)]">Virtualization</span>
-                  <span className="font-semibold text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
-                </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[var(--color-muted)]">Uptime</span>
-                  <span className="font-mono font-semibold text-emerald-400">{snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : 'N/A'}</span>
+                  <span className="text-[var(--color-muted)]">Virtualization Platform</span>
+                  <span className="font-semibold text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
                 </div>
               </div>
             </div>
 
-            {/* 2. Package Updates */}
+            {/* Package Updates & Fleet Security */}
             <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 flex flex-col justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
-                  <Box className="w-4 h-4 text-blue-400" /> Package Updates
+                <h3 className="text-xs font-bold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
+                  <Box className="w-4 h-4 text-blue-400" /> Package Updates & Security Status
                 </h3>
-                <div className="flex items-center gap-4 mt-4">
+                <div className="flex items-center gap-4 mt-2">
                   <div className="p-3.5 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20">
                     <ShieldCheck className="w-7 h-7" />
                   </div>
@@ -782,44 +865,11 @@ export default function ServerDetailsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-                <span className="text-[var(--color-muted)]">Security policy status</span>
+              <div className="mt-6 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
+                <span className="text-[var(--color-muted)]">Fleet Security policy</span>
                 <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <CircleCheck className="w-3.5 h-3.5" /> Up to date
+                  <CircleCheck className="w-3.5 h-3.5" /> Compliant
                 </span>
-              </div>
-            </div>
-
-            {/* 3. System Disk Storage */}
-            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 flex flex-col justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
-                  <HardDrive className="w-4 h-4 text-blue-400" /> System Disk Storage
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-[var(--color-muted)]">Storage used</p>
-                      <p className="mt-1 text-2xl font-bold font-mono text-[var(--foreground)]">
-                        {parsedOSInfo.disk_usage !== undefined ? `${parsedOSInfo.disk_usage.toFixed(1)}%` : 'Unavailable'}
-                      </p>
-                    </div>
-                    <p className="text-right text-xs font-mono font-semibold text-[var(--color-muted)]">
-                      {parsedOSInfo.disk_total ? `${formatBytes(parsedOSInfo.disk_used)} / ${formatBytes(parsedOSInfo.disk_total)}` : 'Waiting for telemetry'}
-                    </p>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[var(--background)]">
-                    <div
-                      className={`h-full rounded-full ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : Number(parsedOSInfo.disk_usage || 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                      style={{ width: `${Math.min(Number(parsedOSInfo.disk_usage || 0), 100)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-                <span className="text-[var(--color-muted)]">Filesystem status</span>
-                <span className="text-blue-400 font-semibold font-mono">Healthy</span>
               </div>
             </div>
           </div>

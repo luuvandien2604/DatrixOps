@@ -336,13 +336,14 @@ export default function ServersPage() {
       <div className="glass-card p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-1 flex-col sm:flex-row items-center gap-3 w-full">
           <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none z-10" />
             <input
               type="text"
               placeholder="Search by name, IP, group or tag..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-8 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none focus:border-blue-500 transition-all"
+              style={{ paddingLeft: '44px' }}
+              className="w-full pr-8 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none focus:border-blue-500 transition-all"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--color-muted)] hover:text-white">
