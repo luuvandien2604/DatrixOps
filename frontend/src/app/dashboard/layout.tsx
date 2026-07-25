@@ -439,12 +439,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="topbar-action hidden font-medium text-[var(--color-muted)] sm:flex hover:border-blue-500/40 hover:text-white transition-colors"
+              className="hidden sm:flex items-center justify-between w-64 md:w-80 px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-blue-500/40 text-xs text-[var(--color-muted)] hover:text-white transition-all shadow-sm group"
               aria-label="Search dashboard"
             >
-              <Search className="h-4 w-4 text-[var(--color-muted)]" />
-              <span>Search</span>
-              <kbd className="text-[var(--color-muted)]">⌘ K</kbd>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Search className="h-4 w-4 text-[var(--color-muted)] group-hover:text-blue-400 transition-colors shrink-0" />
+                <span className="truncate">Search commands, servers, logs...</span>
+              </div>
+              <kbd className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-white/10 text-[var(--color-muted)] group-hover:text-white border border-white/10 shrink-0 ml-2">⌘ K</kbd>
             </button>
 
             <ThemeToggle />

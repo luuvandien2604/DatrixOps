@@ -156,7 +156,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             placeholder="Type a command, server name, IP or page..."
             value={query}
             onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
-            className="w-full bg-transparent text-base text-[var(--foreground)] placeholder-[var(--color-muted)] outline-none"
+            className="w-full bg-transparent text-base text-[var(--foreground)] placeholder-[var(--color-muted)] border-none outline-none focus:outline-none focus:ring-0 focus:border-none shadow-none ring-0"
           />
           <kbd className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-white/10 text-[var(--color-muted)] border border-white/10">
             ESC

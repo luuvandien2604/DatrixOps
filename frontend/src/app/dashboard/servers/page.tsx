@@ -605,13 +605,10 @@ export default function ServersPage() {
                           )}
                         </td>
 
-                        {/* RAM: Pure Monospaced Numerical Display */}
+                        {/* RAM: Pure Monospaced Numerical Display (%) */}
                         <td className="py-4 px-6 font-mono text-sm">
                           {liveInfo ? (
-                            <div>
-                              <div className="text-[var(--foreground)] font-semibold">{ramText}</div>
-                              {ramSubtext && <div className="text-[10px] text-[var(--color-muted)]">{ramSubtext}</div>}
-                            </div>
+                            <span className="text-[var(--foreground)] font-semibold">{ramText}</span>
                           ) : (
                             <span className="text-[var(--color-muted)]">—</span>
                           )}

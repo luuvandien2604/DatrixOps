@@ -228,11 +228,11 @@ export default function LogsPage() {
           <select
             value={selectedServerId}
             onChange={e => setSelectedServerId(e.target.value)}
-            className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 bg-[#0B0F17] border border-white/15 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
           >
-            <option value="all">All Servers Fleet</option>
+            <option value="all" className="bg-[#0B0F17] text-slate-100 py-1">All Servers Fleet</option>
             {servers.map(s => (
-              <option key={s.id} value={s.id}>{s.name} ({s.ip_address || 'No IP'})</option>
+              <option key={s.id} value={s.id} className="bg-[#0B0F17] text-slate-100 py-1">{s.name} ({s.ip_address || 'No IP'})</option>
             ))}
           </select>
         </div>
@@ -243,13 +243,13 @@ export default function LogsPage() {
           <select
             value={logLevel}
             onChange={e => setLogLevel(e.target.value)}
-            className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 bg-[#0B0F17] border border-white/15 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
           >
-            <option value="all">All Levels (INFO, WARN, ERROR)</option>
-            <option value="info">INFO</option>
-            <option value="warn">WARN</option>
-            <option value="error">ERROR</option>
-            <option value="debug">DEBUG</option>
+            <option value="all" className="bg-[#0B0F17] text-slate-100 py-1">All Levels (INFO, WARN, ERROR)</option>
+            <option value="info" className="bg-[#0B0F17] text-slate-100 py-1">INFO</option>
+            <option value="warn" className="bg-[#0B0F17] text-slate-100 py-1">WARN</option>
+            <option value="error" className="bg-[#0B0F17] text-slate-100 py-1">ERROR</option>
+            <option value="debug" className="bg-[#0B0F17] text-slate-100 py-1">DEBUG</option>
           </select>
         </div>
 
@@ -259,12 +259,12 @@ export default function LogsPage() {
           <select
             value={logType}
             onChange={e => setLogType(e.target.value as any)}
-            className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 bg-[#0B0F17] border border-white/15 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
           >
-            <option value="all">All Sources</option>
-            <option value="agent">DatrixOps Agent</option>
-            <option value="docker">Docker Containers</option>
-            <option value="system">Systemd Services</option>
+            <option value="all" className="bg-[#0B0F17] text-slate-100 py-1">All Sources</option>
+            <option value="agent" className="bg-[#0B0F17] text-slate-100 py-1">DatrixOps Agent</option>
+            <option value="docker" className="bg-[#0B0F17] text-slate-100 py-1">Docker Containers</option>
+            <option value="system" className="bg-[#0B0F17] text-slate-100 py-1">Systemd Services</option>
           </select>
         </div>
 
