@@ -6,6 +6,7 @@ import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as Server
 import { apiClient } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
+import CustomSelect from '@/components/CustomSelect';
 
 interface TopProcess {
   pid: number;
@@ -631,8 +632,8 @@ export default function ServerDetailsPage() {
         {/* View Metrics Button */}
         <button
           type="button"
-          onClick={() => router.push('/dashboard/monitoring')}
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 shrink-0 self-start sm:self-center"
+          onClick={() => router.push(`/dashboard/monitoring?server_id=${server?.id || params.id}`)}
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 shrink-0 self-start sm:self-center cursor-pointer"
         >
           <Activity className="w-4 h-4" /> View Metrics
         </button>
@@ -1096,16 +1097,18 @@ export default function ServerDetailsPage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
                   <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder={serviceContent.search} />
                 </label>
-                <label>
-                  <span className="sr-only">Filter service status</span>
-                  <select value={serviceFilter} onChange={event => setServiceFilter(event.target.value)} className="w-full rounded-full border border-white/15 bg-[#0B0F17] px-4 py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer">
-                    <option value="all">All statuses</option>
-                    <option value="running">Running</option>
-                    <option value="stopped">{serviceContent.stopped}</option>
-                    <option value="not_installed">{serviceContent.missing}</option>
-                    <option value="unknown">Unknown</option>
-                  </select>
-                </label>
+                <CustomSelect
+                  value={serviceFilter}
+                  onChange={setServiceFilter}
+                  options={[
+                    { value: 'all', label: 'All statuses' },
+                    { value: 'running', label: 'Running' },
+                    { value: 'stopped', label: serviceContent.stopped },
+                    { value: 'not_installed', label: serviceContent.missing },
+                    { value: 'unknown', label: 'Unknown' },
+                  ]}
+                  className="w-48"
+                />
               </div>
             </div>
 

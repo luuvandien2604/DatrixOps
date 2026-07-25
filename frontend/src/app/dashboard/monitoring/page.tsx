@@ -12,6 +12,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { apiClient } from '@/lib/apiClient';
+import CustomSelect from '@/components/CustomSelect';
 
 type MonitoringServer = {
   id: string;
@@ -111,6 +112,13 @@ export default function MonitoringPage() {
       const nextServers = Array.isArray(data) ? data as MonitoringServer[] : [];
       setServers(nextServers);
       setSelectedServerId((current) => {
+        if (typeof window !== 'undefined') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const targetId = urlParams.get('server_id') || urlParams.get('id');
+          if (targetId && nextServers.some((s) => s.id === targetId)) {
+            return targetId;
+          }
+        }
         if (current && nextServers.some((server) => server.id === current)) return current;
         return nextServers[0]?.id ?? '';
       });
@@ -127,6 +135,16 @@ export default function MonitoringPage() {
     const interval = window.setInterval(() => void fetchServers(), 10_000);
     return () => window.clearInterval(interval);
   }, [fetchServers]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && servers.length > 0) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetId = urlParams.get('server_id') || urlParams.get('id');
+      if (targetId && servers.some((s) => s.id === targetId)) {
+        setSelectedServerId(targetId);
+      }
+    }
+  }, [servers]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), TIMELINE_TICK_MS);
@@ -230,24 +248,15 @@ export default function MonitoringPage() {
           </p>
         </div>
 
-        <div className="monitoring-toolbar">
-          <div className="monitoring-control monitoring-server-control">
-            <ServerIcon className="monitoring-control-icon" aria-hidden="true" />
-            <label htmlFor="monitoring-server" className="sr-only">Select server</label>
-            <select
-              id="monitoring-server"
-              name="monitoring-server"
-              value={selectedServerId}
-              onChange={(event) => setSelectedServerId(event.target.value)}
-              className="monitoring-server-select"
-            >
-              {servers.length === 0 && <option value="">No servers available</option>}
-              {servers.map((server) => (
-                <option key={server.id} value={server.id}>{server.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="monitoring-control-chevron" aria-hidden="true" />
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <CustomSelect
+            value={selectedServerId}
+            onChange={setSelectedServerId}
+            icon={<ServerIcon className="w-4 h-4 text-blue-400" />}
+            placeholder="No servers available"
+            options={servers.map((s) => ({ value: s.id, label: s.name }))}
+            className="w-56"
+          />
 
           {selectedServer && (
             <span className={`monitoring-server-status ${serverOnline ? 'is-online' : 'is-offline'}`}>
@@ -256,22 +265,13 @@ export default function MonitoringPage() {
             </span>
           )}
 
-          <div className="monitoring-control monitoring-range-control">
-            <Clock3 className="monitoring-control-icon" aria-hidden="true" />
-            <label htmlFor="monitoring-range" className="sr-only">Select time range</label>
-            <select
-              id="monitoring-range"
-              name="monitoring-range"
-              value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value as TimeRange)}
-              className="monitoring-range-select"
-            >
-              {RANGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="monitoring-control-chevron" aria-hidden="true" />
-          </div>
+          <CustomSelect
+            value={timeRange}
+            onChange={(val) => setTimeRange(val as TimeRange)}
+            icon={<Clock3 className="w-4 h-4 text-slate-400" />}
+            options={RANGE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+            className="w-48"
+          />
 
           <button
             type="button"

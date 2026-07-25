@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/apiClient';
 import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
   UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search, Filter,
-  LayoutGrid, LayoutList, ToggleLeft, ToggleRight, CheckSquare, Square, ShieldCheck
+  LayoutGrid, LayoutList, ToggleLeft, ToggleRight, CheckSquare, Square, ShieldCheck, Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -701,6 +701,16 @@ export default function ServersPage() {
                             <button
                               onClick={event => {
                                 event.stopPropagation();
+                                router.push(`/dashboard/monitoring?server_id=${server.id}`);
+                              }}
+                              className="p-1.5 rounded border border-purple-500/20 bg-purple-500/10 text-purple-400 transition-colors hover:bg-purple-500/20 hover:text-purple-300"
+                              title="View Telemetry Metrics"
+                            >
+                              <Activity className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={event => {
+                                event.stopPropagation();
                                 setServerToUpdate({ id: server.id, name: server.name });
                               }}
                               disabled={updateInProgress}
@@ -898,6 +908,13 @@ export default function ServersPage() {
                         title="Web Terminal"
                       >
                         <TerminalSquare className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); router.push(`/dashboard/monitoring?server_id=${server.id}`); }}
+                        className="p-1.5 rounded border border-purple-500/20 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                        title="View Telemetry Metrics"
+                      >
+                        <Activity className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={event => {

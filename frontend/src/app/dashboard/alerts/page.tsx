@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
+import CustomSelect from '@/components/CustomSelect';
 
 interface RuleChannel {
   id: string;
@@ -359,19 +360,19 @@ export default function AlertsPage() {
                 <label htmlFor="rule-server" className="mb-1 flex items-center gap-2 text-sm font-medium text-[var(--color-muted)]">
                   <Server className="h-4 w-4" /> Target agent
                 </label>
-                <select
-                  id="rule-server"
+                <CustomSelect
                   value={selectedServerId}
-                  onChange={(event) => setSelectedServerId(event.target.value)}
-                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
-                >
-                  <option value="all">All agents</option>
-                  {servers.map((server) => (
-                    <option key={server.id} value={server.id}>
-                      {server.name} · {server.status === 'online' ? 'Online' : 'Offline'}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedServerId}
+                  options={[
+                    { value: 'all', label: 'All agents' },
+                    ...servers.map((server) => ({
+                      value: server.id,
+                      label: server.name,
+                      subLabel: server.status === 'online' ? 'Online' : 'Offline',
+                    })),
+                  ]}
+                  className="w-full"
+                />
                 <p className="mt-1.5 text-xs text-[var(--color-muted)]">
                   Choose one agent or keep All agents to apply this rule across the fleet.
                 </p>
@@ -381,16 +382,16 @@ export default function AlertsPage() {
                 <label htmlFor="rule-metric" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
                   Metric
                 </label>
-                <select
-                  id="rule-metric"
+                <CustomSelect
                   value={ruleMetric}
-                  onChange={(event) => setRuleMetric(event.target.value)}
-                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
-                >
-                  <option value="cpu">CPU Usage</option>
-                  <option value="ram">RAM Usage</option>
-                  <option value="status">Offline status</option>
-                </select>
+                  onChange={setRuleMetric}
+                  options={[
+                    { value: 'cpu', label: 'CPU Usage' },
+                    { value: 'ram', label: 'RAM Usage' },
+                    { value: 'status', label: 'Offline status' },
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               {ruleMetric !== 'status' && (
@@ -399,15 +400,15 @@ export default function AlertsPage() {
                     <label htmlFor="rule-operator" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
                       Condition
                     </label>
-                    <select
-                      id="rule-operator"
+                    <CustomSelect
                       value={ruleOperator}
-                      onChange={(event) => setRuleOperator(event.target.value)}
-                      className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
-                    >
-                      <option value=">">Greater than (&gt;)</option>
-                      <option value="<">Less than (&lt;)</option>
-                    </select>
+                      onChange={setRuleOperator}
+                      options={[
+                        { value: '>', label: 'Greater than (>)' },
+                        { value: '<', label: 'Less than (<)' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
                   <div className="flex-1">
@@ -601,15 +602,15 @@ export default function AlertsPage() {
                 <label htmlFor="channel-type" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
                   Platform
                 </label>
-                <select
-                  id="channel-type"
+                <CustomSelect
                   value={channelType}
-                  onChange={(event) => setChannelType(event.target.value)}
-                  className="w-full rounded-lg border border-white/15 bg-[#0B0F17] p-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 font-medium cursor-pointer"
-                >
-                  <option value="telegram">Telegram Bot</option>
-                  <option value="discord">Discord Webhook</option>
-                </select>
+                  onChange={setChannelType}
+                  options={[
+                    { value: 'telegram', label: 'Telegram Bot' },
+                    { value: 'discord', label: 'Discord Webhook' },
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               {channelType === 'telegram' ? (
