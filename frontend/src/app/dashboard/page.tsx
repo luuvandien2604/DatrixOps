@@ -68,7 +68,7 @@ type ChartPoint = {
   ram: number;
 };
 
-const POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 15_000;
 
 export default function OverviewDashboard() {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);

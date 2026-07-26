@@ -132,7 +132,7 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     void fetchServers();
-    const interval = window.setInterval(() => void fetchServers(), 10_000);
+    const interval = window.setInterval(() => void fetchServers(), 30_000);
     return () => window.clearInterval(interval);
   }, [fetchServers]);
 

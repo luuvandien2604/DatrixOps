@@ -175,7 +175,7 @@ export default function ServerDetailsPage() {
       setActiveTab('terminal');
     }
     fetchServer();
-    const interval = setInterval(fetchServer, 15000); // refresh every 15s
+    const interval = setInterval(fetchServer, 20_000); // refresh every 20s
     return () => clearInterval(interval);
   }, []);
 
@@ -198,7 +198,7 @@ export default function ServerDetailsPage() {
       } catch (error: any) {
         toast.error(error.message || 'Unable to refresh agent update status');
       }
-    }, 3000);
+    }, 5_000);
     return () => window.clearInterval(interval);
   }, [agentUpdateTask, params.id]);
 

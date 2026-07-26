@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
@@ -63,39 +63,7 @@ export default function ServersPage() {
 
   const router = useRouter();
 
-  useEffect(() => {
-    fetchServers();
-    const interval = setInterval(() => fetchServers(true), 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const activeEntries = Object.entries(agentUpdateTasks).filter(([, task]) => ['pending', 'processing'].includes(task.status));
-    if (!activeEntries.length) return;
-
-    const interval = window.setInterval(async () => {
-      const nextTasks = { ...agentUpdateTasks };
-      await Promise.all(activeEntries.map(async ([serverId, task]) => {
-        try {
-          const updatedTask = await apiClient(`/servers/${serverId}/tasks/${task.id}`);
-          nextTasks[serverId] = updatedTask;
-          if (updatedTask.status === 'completed') {
-            toast.success('Agent update completed and confirmed');
-          } else if (['failed', 'expired', 'timed_out'].includes(updatedTask.status)) {
-            toast.error(updatedTask.result || `Agent update ${updatedTask.status}`);
-          }
-        } catch (error: any) {
-          toast.error(error.message || 'Unable to refresh agent update status');
-        }
-      }));
-      setAgentUpdateTasks(nextTasks);
-      fetchServers(true);
-    }, 3000);
-
-    return () => window.clearInterval(interval);
-  }, [agentUpdateTasks]);
-
-  const fetchServers = async (silent = false) => {
+  const fetchServers = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       const data = await apiClient('/servers');
@@ -118,7 +86,39 @@ export default function ServersPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    fetchServers();
+    const interval = setInterval(() => fetchServers(true), 20_000);
+    return () => clearInterval(interval);
+  }, [fetchServers]);
+
+  useEffect(() => {
+    const activeEntries = Object.entries(agentUpdateTasks).filter(([, task]) => ['pending', 'processing'].includes(task.status));
+    if (!activeEntries.length) return;
+
+    const interval = window.setInterval(async () => {
+      const nextTasks = { ...agentUpdateTasks };
+      await Promise.all(activeEntries.map(async ([serverId, task]) => {
+        try {
+          const updatedTask = await apiClient(`/servers/${serverId}/tasks/${task.id}`);
+          nextTasks[serverId] = updatedTask;
+          if (updatedTask.status === 'completed') {
+            toast.success('Agent update completed and confirmed');
+          } else if (['failed', 'expired', 'timed_out'].includes(updatedTask.status)) {
+            toast.error(updatedTask.result || `Agent update ${updatedTask.status}`);
+          }
+        } catch (error: any) {
+          toast.error(error.message || 'Unable to refresh agent update status');
+        }
+      }));
+      setAgentUpdateTasks(nextTasks);
+      fetchServers(true);
+    }, 5_000);
+
+    return () => window.clearInterval(interval);
+  }, [agentUpdateTasks, fetchServers]);
 
   // Toggle Auto-Update Policy for a single server
   const toggleAutoUpdatePolicy = async (serverId: string, currentEnabled: boolean, event?: React.MouseEvent) => {

@@ -283,7 +283,7 @@ button:disabled {
     linear-gradient(135deg, rgba(255, 255, 255, .055), transparent 18%),
     linear-gradient(155deg, var(--surface-panel-start), var(--surface-panel-end));
   box-shadow: var(--shadow-surface);
-  backdrop-filter: blur(28px) saturate(135%);
+  backdrop-filter: blur(12px);
 }
 
 .glass-card,
@@ -364,6 +364,8 @@ button:disabled {
   inset: 0;
   pointer-events: none;
   overflow: hidden;
+  contain: strict;
+  will-change: auto;
 }
 
 .liquid-aurora::before,
@@ -401,7 +403,7 @@ button:disabled {
   border-right: 1px solid var(--border-color);
   background: var(--sidebar-background);
   box-shadow: 18px 0 70px rgba(0, 0, 0, .18);
-  backdrop-filter: blur(30px) saturate(130%);
+  backdrop-filter: blur(16px);
   transition: width 350ms var(--ease-out), transform 350ms var(--ease-out);
 }
 
@@ -490,7 +492,7 @@ button:disabled {
   border-bottom: 1px solid var(--border-color);
   background: var(--topbar-background);
   padding: 0 40px;
-  backdrop-filter: blur(28px) saturate(130%);
+  backdrop-filter: blur(14px);
 }
 
 .topbar-action,
@@ -851,7 +853,7 @@ button:disabled {
     radial-gradient(circle at 8% -10%, rgba(255, 255, 255, .075), transparent 30%),
     linear-gradient(145deg, var(--surface-panel-start), var(--surface-panel-end)) !important;
   box-shadow: var(--shadow-surface);
-  backdrop-filter: blur(26px) saturate(130%);
+  backdrop-filter: blur(12px);
 }
 
 .dashboard-stage main :is(input, select, textarea) {

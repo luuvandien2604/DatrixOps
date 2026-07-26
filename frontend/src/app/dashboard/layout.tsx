@@ -115,7 +115,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
 
     void fetchFleetSummary();
-    const interval = window.setInterval(() => void fetchFleetSummary(), 10_000);
+    const interval = window.setInterval(() => void fetchFleetSummary(), 30_000);
     return () => {
       active = false;
       window.clearInterval(interval);
@@ -142,7 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Poll 10 giây để badge tự cập nhật khi scheduler tạo alert notification mới.
   useEffect(() => {
     void fetchNotifications();
-    const interval = window.setInterval(() => void fetchNotifications(true), 10_000);
+    const interval = window.setInterval(() => void fetchNotifications(true), 30_000);
     return () => window.clearInterval(interval);
   }, [fetchNotifications]);
 
