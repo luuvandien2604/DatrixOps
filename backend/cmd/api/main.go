@@ -112,7 +112,7 @@ func main() {
 
 	// --- Middleware ---
 	var handler http.Handler = mux
-	handler = middleware.CORS(handler)
+	handler = middleware.CORS(cfg.AllowedOrigins)(handler)
 	handler = middleware.Logger(log)(handler)
 
 	// --- HTTP Server ---

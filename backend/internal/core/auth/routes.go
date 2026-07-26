@@ -6,6 +6,8 @@ import (
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
+	"golang.org/x/time/rate"
 )
 
 // Container interface provides the required dependencies for the auth module.
@@ -22,8 +24,11 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	svc := NewService(repo, cfg.JWTSecret)
 	h := NewHandler(svc)
 
-	mux.HandleFunc("POST /api/v1/auth/register", h.Register)
-	mux.HandleFunc("POST /api/v1/auth/login", h.Login)
+	// Rate limit: 5 requests per second, burst 10
+	rl := middleware.NewRateLimiter(rate.Limit(5), 10)
+
+	mux.Handle("POST /api/v1/auth/register", rl(http.HandlerFunc(h.Register)))
+	mux.Handle("POST /api/v1/auth/login", rl(http.HandlerFunc(h.Login)))
 	mux.HandleFunc("POST /api/v1/auth/refresh", h.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.Logout)
 }

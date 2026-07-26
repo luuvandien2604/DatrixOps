@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -30,20 +31,48 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// CORS returns middleware that sets CORS headers.
-func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+// CORS returns middleware that sets CORS headers based on allowed origins.
+func CORS(allowedOriginsStr string) func(http.Handler) http.Handler {
+	allowedOrigins := strings.Split(allowedOriginsStr, ",")
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			allowed := false
 
-		next.ServeHTTP(w, r)
-	})
+			if allowedOriginsStr == "*" {
+				allowed = true
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" {
+				for _, o := range allowedOrigins {
+					if o == origin {
+						allowed = true
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						w.Header().Set("Vary", "Origin")
+						break
+					}
+				}
+			}
+
+			// If no origin is provided (e.g. server-to-server or agent) or not allowed,
+			// we don't set CORS headers. The browser will block it if it's a cross-origin request.
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // statusWriter wraps http.ResponseWriter to capture the status code.

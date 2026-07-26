@@ -16,31 +16,31 @@
   --ink-900: #07080a;
   --ink-850: #0c0d11;
   --ink-800: #12141a;
-  --paper: #f7f7f4;
-  --paper-soft: #d9dadd;
-  --paper-muted: #a7a9b0;
-  --paper-faint: #777a84;
+  --paper: #ffffff;
+  --paper-soft: #e2e4e8;
+  --paper-muted: #b8bac3;
+  --paper-faint: #9295a1;
 
-  --violet: #afbcff;
-  --violet-strong: #3150ff;
-  --violet-wash: rgba(49, 80, 255, .13);
-  --mint: #8bd5c5;
-  --mint-wash: rgba(139, 213, 197, .09);
-  --sky: #79c9f4;
-  --amber: #f1ca7b;
-  --rose: #ff8da1;
+  --violet: #c4d0ff;
+  --violet-strong: #5a75ff;
+  --violet-wash: rgba(90, 117, 255, .15);
+  --mint: #9ae8d5;
+  --mint-wash: rgba(154, 232, 213, .1);
+  --sky: #8fd5fb;
+  --amber: #ffd585;
+  --rose: #ff9cb0;
 
   --background: var(--ink-950);
   --background-card: rgba(9, 10, 13, .82);
   --foreground: var(--paper);
   --foreground-muted: var(--paper-muted);
   --color-muted: var(--paper-muted);
-  --border-color: rgba(255, 255, 255, .085);
-  --text-strong: rgba(255, 255, 255, .82);
-  --text-secondary: rgba(255, 255, 255, .7);
-  --text-tertiary: rgba(255, 255, 255, .5);
-  --surface-panel-start: rgba(14, 15, 19, .94);
-  --surface-panel-end: rgba(4, 5, 7, .9);
+  --border-color: rgba(255, 255, 255, .12);
+  --text-strong: rgba(255, 255, 255, .9);
+  --text-secondary: rgba(255, 255, 255, .75);
+  --text-tertiary: rgba(255, 255, 255, .65);
+  --surface-panel-start: rgba(18, 19, 24, .95);
+  --surface-panel-end: rgba(8, 9, 12, .9);
   --surface-subtle: rgba(255, 255, 255, .035);
   --surface-hover: rgba(255, 255, 255, .065);
   --surface-raised: rgba(12, 13, 17, .94);
@@ -1501,7 +1501,7 @@ button:disabled {
 .landing-proof div { border-right: 1px solid rgba(255, 255, 255, .06); text-align: center; }
 .landing-proof div:last-child { border: 0; }
 .landing-proof strong { display: block; font-family: var(--font-display); font-size: 28px; font-weight: 500; }
-.landing-proof span { display: block; margin-top: 6px; color: rgba(255, 255, 255, .28); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .17em; }
+.landing-proof span { display: block; margin-top: 6px; color: rgba(255, 255, 255, .55); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .17em; }
 
 .landing-section {
   width: min(calc(100% - 40px), 1120px);
@@ -1581,17 +1581,17 @@ button:disabled {
 .agent-glow { bottom: -300px; width: min(1000px, 100vw); height: 620px; transform: translateX(-50%); }
 .agent-section h2, .landing-final h2 { font-size: clamp(4rem, 8vw, 7.2rem); }
 .install-command { display: flex; max-width: 580px; margin: 36px auto 0; align-items: center; justify-content: space-between; border: 1px solid rgba(255, 255, 255, .1); border-radius: var(--radius-md); background: rgba(5, 7, 10, .65); padding: 7px 8px 7px 16px; text-align: left; }
-.install-command code { overflow: hidden; color: rgba(255, 255, 255, .55); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.install-command code { overflow: hidden; color: rgba(255, 255, 255, .75); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .install-command code span { margin-right: 8px; color: var(--mint); }
-.install-command button { border: 1px solid rgba(255, 255, 255, .08); border-radius: 9px; background: rgba(255, 255, 255, .05); padding: 8px 11px; color: rgba(255, 255, 255, .5); font-size: 9px; }
+.install-command button { border: 1px solid rgba(255, 255, 255, .08); border-radius: 9px; background: rgba(255, 255, 255, .05); padding: 8px 11px; color: rgba(255, 255, 255, .75); font-size: 9px; }
 
 .workflow-section { width: min(calc(100% - 40px), 1120px); margin: auto; padding: 150px 0; }
 .workflow-grid { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 78px; border-block: 1px solid rgba(255, 255, 255, .08); }
 .workflow-item { min-height: 240px; border-right: 1px solid rgba(255, 255, 255, .07); padding: 27px; }
 .workflow-item:last-child { border: 0; }
-.workflow-item > div > span { color: rgba(255, 255, 255, .26); font-family: var(--font-mono); font-size: 9px; }
+.workflow-item > div > span { color: rgba(255, 255, 255, .55); font-family: var(--font-mono); font-size: 9px; }
 .workflow-item h3 { margin-top: 62px; font-family: var(--font-display); font-size: 28px; font-weight: 500; }
-.workflow-item p { margin-top: 12px; color: rgba(255, 255, 255, .36); font-size: 11px; line-height: 1.75; }
+.workflow-item p { margin-top: 12px; color: rgba(255, 255, 255, .65); font-size: 11px; line-height: 1.75; }
 
 .landing-final { position: relative; overflow: hidden; padding: 160px 20px; text-align: center; }
 .final-orb {
@@ -1608,7 +1608,7 @@ button:disabled {
   opacity: .72;
   animation: none;
 }
-.landing-footer { display: flex; width: min(calc(100% - 40px), 1120px); margin: auto; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, .07); padding: 32px 0; color: rgba(255, 255, 255, .3); font-size: 9px; text-transform: uppercase; letter-spacing: .16em; }
+.landing-footer { display: flex; width: min(calc(100% - 40px), 1120px); margin: auto; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, .07); padding: 32px 0; color: rgba(255, 255, 255, .55); font-size: 9px; text-transform: uppercase; letter-spacing: .16em; }
 
 /* Authentication */
 .auth-shell {

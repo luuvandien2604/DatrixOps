@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL  string
 	JWTSecret    string
 	AgentVersion string
+	AllowedOrigins string
 }
 
 // Load reads configuration from environment variables.
@@ -20,6 +21,7 @@ func Load() (*Config, error) {
 		DatabaseURL:  getEnv("DATABASE_URL", "postgres://datrixops:datrixops_secret@localhost:5432/datrixops?sslmode=disable"),
 		JWTSecret:    getEnv("JWT_SECRET", ""),
 		AgentVersion: getEnv("AGENT_VERSION", "1.4.3"),
+		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "https://datrixops.vandien.space"),
 	}
 
 	if cfg.JWTSecret == "" {
