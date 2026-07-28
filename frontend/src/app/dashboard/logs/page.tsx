@@ -223,7 +223,7 @@ export default function LogsPage() {
       </div>
 
       {/* Control Filters */}
-      <div className="glass-card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="glass-card glass-regular glass-static p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Server Selector */}
         <div>
           <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
@@ -289,7 +289,7 @@ export default function LogsPage() {
       </div>
 
       {/* Terminal Log Console Window */}
-      <div className="log-console glass-card overflow-hidden rounded-xl font-mono text-xs">
+      <div className="log-console glass-card glass-static overflow-hidden rounded-xl font-mono text-xs">
         {/* Terminal Header Bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 text-slate-400">
           <div className="flex items-center gap-2">

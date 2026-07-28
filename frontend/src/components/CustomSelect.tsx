@@ -100,9 +100,9 @@ export default function CustomSelect({
           top: `${coords.top}px`,
           left: `${coords.left}px`,
           width: `${coords.width}px`,
-          zIndex: 99999,
+          zIndex: 'var(--z-dropdown)',
         }}
-        className="glass-dropdown max-h-60 overflow-y-auto py-1.5 font-sans animate-in fade-in zoom-in-95 duration-300"
+        className="glass-dropdown glass-elevated max-h-60 overflow-y-auto py-1.5 font-sans"
       >
         {options.length === 0 ? (
           <div className="px-3.5 py-2 text-xs text-slate-400 italic">No options available</div>
@@ -119,7 +119,7 @@ export default function CustomSelect({
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2 text-sm text-left transition-colors cursor-pointer ${
                   isSelected
-                    ? 'bg-[var(--violet-wash)] text-[var(--violet)] font-semibold'
+                    ? 'glass-active text-[var(--violet)] font-semibold'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]'
                 }`}
               >

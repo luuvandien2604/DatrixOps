@@ -52,8 +52,8 @@ export default function RootLayout({
                 border: "1px solid var(--glass-edge-strong)",
                 fontSize: "13px",
                 borderRadius: "999px",
-                backdropFilter: "blur(56px) saturate(195%)",
-                boxShadow: "var(--shadow-raised)",
+                backdropFilter: "blur(var(--glass-blur-elevated)) saturate(var(--glass-saturation-elevated))",
+                boxShadow: "var(--shadow-elevated)",
               },
               success: {
                 iconTheme: {

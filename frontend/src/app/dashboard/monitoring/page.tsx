@@ -468,7 +468,7 @@ function MetricChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass-card monitoring-chart-card p-5 sm:p-6">
+    <section className="glass-card glass-regular glass-static monitoring-chart-card p-5 sm:p-6">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h2 className="flex items-center gap-2 text-base font-semibold">
           {icon}

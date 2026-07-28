@@ -208,6 +208,7 @@ export default function OverviewDashboard() {
           note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
           color="var(--mint)"
           bars={fleetBars}
+          tint="good"
         />
         <MetricCard
           icon={Cpu}
@@ -216,6 +217,7 @@ export default function OverviewDashboard() {
           note={hasLiveMetrics ? 'Online server average' : 'No metrics'}
           color="var(--violet)"
           bars={cpuBars}
+          tint="info"
         />
         <MetricCard
           icon={MemoryStick}
@@ -224,6 +226,7 @@ export default function OverviewDashboard() {
           note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
           color="var(--sky)"
           bars={memoryBars}
+          tint="info"
         />
         <MetricCard
           icon={BellRing}
@@ -232,6 +235,8 @@ export default function OverviewDashboard() {
           note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
           color="var(--rose)"
           bars={incidentBars}
+          tint={warning > 0 ? 'danger' : 'good'}
+          emptyLabel={warning > 0 ? 'NO HISTORY' : 'CLEAR'}
         />
       </section>
 
@@ -321,12 +326,30 @@ export default function OverviewDashboard() {
   );
 }
 
-function MetricCard({ icon: Icon, label, value, note, color, bars }: { icon: LucideIcon; label: string; value: string; note: string; color: string; bars: number[] }) {
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  note,
+  color,
+  bars,
+  tint = 'info',
+  emptyLabel = 'NO DATA',
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  note: string;
+  color: string;
+  bars: number[];
+  tint?: 'info' | 'good' | 'warning' | 'danger';
+  emptyLabel?: string;
+}) {
   return (
-    <div className="metric-card">
+    <div className={`metric-card glass-regular glass-tint-${tint}`}>
       <div className="flex items-start justify-between">
         <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
-        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-white/25">NO DATA</span>}
+        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-[var(--text-tertiary)]">{emptyLabel}</span>}
       </div>
       <p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p>
       <div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 max-w-[130px] text-right text-[10px]" style={{ color }}>{note}</p></div>
@@ -350,7 +373,7 @@ function ServerRow({ server }: { server: DashboardServer }) {
       <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
       <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
       <td><span className="text-[10px] text-white/38">{formatRelativeTime(server.last_seen_at)}</span></td>
-      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Xem ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
+      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Open ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
     </tr>
   );
 }

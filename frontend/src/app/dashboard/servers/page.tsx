@@ -216,6 +216,11 @@ export default function ServersPage() {
     return true;
   });
 
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+  };
+
   // Select all toggle
   const isAllSelected = filteredServers.length > 0 && filteredServers.every(s => selectedServerIds.includes(s.id));
   const toggleSelectAll = () => {
@@ -319,13 +324,13 @@ export default function ServersPage() {
             <UploadCloud className="h-4 w-4" />
             Update all agents
           </button>
-          <button onClick={() => fetchServers()} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5 flex items-center gap-2">
+          <button onClick={() => fetchServers()} className="liquid-button secondary">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Refresh
           </button>
           <button
             onClick={() => setIsAddServerModalOpen(true)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 text-white flex items-center gap-2">
+            className="liquid-button primary">
             <Server className="w-4 h-4" />
             + Add Server
           </button>
@@ -333,7 +338,7 @@ export default function ServersPage() {
       </div>
 
       {/* Control Toolbar: Search, Status Filter, View Toggle */}
-      <div className="glass-card p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="glass-card glass-regular glass-static p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-1 flex-col sm:flex-row items-center gap-3 w-full">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none z-10" />
@@ -373,18 +378,18 @@ export default function ServersPage() {
         </div>
 
         {/* View Mode Toggle */}
-        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10 self-end md:self-auto">
+        <div className="server-view-toggle self-end md:self-auto">
           <button
             onClick={() => setViewMode('table')}
             title="Table View"
-            className={`p-1.5 rounded transition-colors ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-[var(--color-muted)] hover:text-white'}`}
+            className={`server-view-button ${viewMode === 'table' ? 'is-active' : ''}`}
           >
             <LayoutList className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewMode('grid')}
             title="Grid Card View"
-            className={`p-1.5 rounded transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-[var(--color-muted)] hover:text-white'}`}
+            className={`server-view-button ${viewMode === 'grid' ? 'is-active' : ''}`}
           >
             <LayoutGrid className="w-4 h-4" />
           </button>
@@ -393,7 +398,7 @@ export default function ServersPage() {
 
       {/* Sticky Bulk Action Bar */}
       {selectedServerIds.length > 0 && (
-        <div className="sticky top-4 z-40 glass-card bg-blue-950/80 border-blue-500/40 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-2">
+        <div className="sticky top-4 z-40 glass-card glass-elevated glass-tint-info p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 shadow-xl animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white font-bold text-xs">
               {selectedServerIds.length}
@@ -438,7 +443,7 @@ export default function ServersPage() {
       {/* Main Content Area */}
       {viewMode === 'table' ? (
         /* Table View */
-        <div className="glass-card overflow-hidden">
+        <div className="glass-card glass-subtle glass-static data-table-surface overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -471,7 +476,16 @@ export default function ServersPage() {
                 {filteredServers.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-12 text-center text-[var(--color-muted)]">
-                      {servers.length === 0 ? 'No servers found. Add your first server to start monitoring.' : 'No servers matching filter criteria.'}
+                      {servers.length === 0 ? (
+                        'No servers found. Add your first server to start monitoring.'
+                      ) : (
+                        <div className="flex flex-col items-center gap-3">
+                          <span>No servers match the active search or status filter.</span>
+                          <button type="button" onClick={clearFilters} className="liquid-button secondary">
+                            Clear filters
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -668,7 +682,7 @@ export default function ServersPage() {
 
                         {/* Quick Actions */}
                         <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="server-quick-actions flex items-center justify-end gap-2">
                             <button
                               onClick={event => {
                                 event.stopPropagation();
@@ -766,8 +780,17 @@ export default function ServersPage() {
         /* Grid Cards View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredServers.length === 0 ? (
-            <div className="col-span-full glass-card py-12 text-center text-[var(--color-muted)]">
-              No servers matching filter criteria.
+            <div className="col-span-full glass-card glass-subtle glass-static py-12 text-center text-[var(--color-muted)]">
+              {servers.length === 0 ? (
+                'No servers found. Add your first server to start monitoring.'
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <span>No servers match the active search or status filter.</span>
+                  <button type="button" onClick={clearFilters} className="liquid-button secondary">
+                    Clear filters
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             filteredServers.map((server) => {
@@ -797,7 +820,7 @@ export default function ServersPage() {
                 <div
                   key={server.id}
                   onClick={() => router.push(`/dashboard/servers/${server.id}`)}
-                  className={`glass-card p-5 cursor-pointer transition-all hover:border-blue-500/40 relative flex flex-col justify-between ${
+                  className={`glass-card glass-regular p-5 cursor-pointer transition-all hover:border-blue-500/40 relative flex flex-col justify-between ${
                     isSelected ? 'border-blue-500 bg-blue-500/10' : ''
                   }`}
                 >
