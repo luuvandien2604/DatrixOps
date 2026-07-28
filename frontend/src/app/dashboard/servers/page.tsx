@@ -353,7 +353,7 @@ export default function ServersPage() {
           </div>
 
           {/* Status Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+          <div className="server-filter-tabs w-full overflow-x-auto sm:w-auto">
             {[
               { id: 'all', label: 'All' },
               { id: 'online', label: 'Online' },
@@ -364,11 +364,7 @@ export default function ServersPage() {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-                  statusFilter === tab.id
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold'
-                    : 'bg-white/5 text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/10'
-                }`}
+                className={`server-filter-tab ${statusFilter === tab.id ? 'is-active' : ''}`}
               >
                 {tab.label}
               </button>

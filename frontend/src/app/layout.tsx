@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
+import { LiquidGlassPointer } from "@/components/LiquidGlassPointer";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
 const sans = Inter({
@@ -40,6 +41,7 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
+          <LiquidGlassPointer />
 
           <Toaster
             position="bottom-right"
@@ -50,7 +52,7 @@ export default function RootLayout({
                 border: "1px solid var(--glass-edge-strong)",
                 fontSize: "13px",
                 borderRadius: "999px",
-                backdropFilter: "blur(34px) saturate(155%)",
+                backdropFilter: "blur(56px) saturate(195%)",
                 boxShadow: "var(--shadow-raised)",
               },
               success: {

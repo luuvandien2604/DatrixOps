@@ -289,7 +289,7 @@ export default function LogsPage() {
       </div>
 
       {/* Terminal Log Console Window */}
-      <div className="glass-card bg-slate-950 border-slate-800 rounded-xl overflow-hidden shadow-2xl font-mono text-xs">
+      <div className="log-console glass-card overflow-hidden rounded-xl font-mono text-xs">
         {/* Terminal Header Bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 text-slate-400">
           <div className="flex items-center gap-2">

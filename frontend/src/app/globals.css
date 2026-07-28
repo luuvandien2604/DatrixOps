@@ -81,31 +81,59 @@
   --radius-pill: 999px;
 
   /* Liquid Glass tiers: shell → card → overlay. */
+  --glass-tint-hue: 226;
+  --glass-tint-info: 226;
+  --glass-tint-good: 160;
+  --glass-tint-warning: 42;
+  --glass-tint-danger: 350;
+  --glass-tint-alpha: .105;
+  --glass-tint-secondary-alpha: .056;
+  --glass-specular: rgba(255, 255, 255, .44);
+  --glass-specular-soft: rgba(255, 255, 255, .12);
+  --glass-lens-border:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, .42) 0%,
+      rgba(255, 255, 255, .14) 34%,
+      rgba(255, 255, 255, .035) 64%,
+      rgba(0, 0, 0, .18) 100%
+    );
   --glass-shell-background:
-    radial-gradient(circle at 16% -12%, rgba(88, 118, 255, .12), transparent 34%),
-    linear-gradient(145deg, rgba(16, 23, 34, .68), rgba(5, 9, 15, .48));
+    radial-gradient(circle at 16% -12%, hsl(var(--glass-tint-hue) 88% 68% / .096), transparent 38%) padding-box,
+    linear-gradient(145deg, rgba(14, 19, 28, .6), rgba(4, 7, 12, .38)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-card-background:
-    radial-gradient(circle at 10% -14%, rgba(92, 126, 255, .13), transparent 35%),
-    radial-gradient(circle at 94% 112%, rgba(43, 210, 170, .07), transparent 31%),
-    linear-gradient(145deg, rgba(21, 28, 40, .72), rgba(7, 11, 18, .54));
+    radial-gradient(circle at 12% -12%, hsl(var(--glass-tint-hue) 88% 68% / var(--glass-tint-alpha)), transparent 40%) padding-box,
+    radial-gradient(circle at 96% 112%, hsl(var(--glass-tint-hue) 78% 58% / var(--glass-tint-secondary-alpha)), transparent 34%) padding-box,
+    linear-gradient(145deg, rgba(18, 23, 32, .64), rgba(6, 9, 15, .42)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-modal-background:
-    radial-gradient(circle at 8% -8%, rgba(112, 140, 255, .16), transparent 34%),
-    linear-gradient(145deg, rgba(25, 33, 47, .88), rgba(8, 13, 21, .72));
+    radial-gradient(circle at 10% -10%, hsl(var(--glass-tint-hue) 88% 68% / .128), transparent 42%) padding-box,
+    linear-gradient(145deg, rgba(20, 27, 39, .88), rgba(6, 10, 17, .76)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-control-background:
-    linear-gradient(145deg, rgba(255, 255, 255, .07), rgba(104, 132, 255, .035));
+    radial-gradient(circle at 12% -20%, hsl(var(--glass-tint-hue) 88% 68% / .06), transparent 54%) padding-box,
+    linear-gradient(145deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .018)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-accent-background:
-    linear-gradient(125deg, rgba(73, 108, 255, .18), rgba(48, 207, 167, .08) 58%, rgba(255, 255, 255, .035));
+    radial-gradient(circle at 12% -18%, hsl(var(--glass-tint-hue) 86% 66% / .14), transparent 58%) padding-box,
+    linear-gradient(125deg, hsl(var(--glass-tint-hue) 76% 54% / .055), rgba(255, 255, 255, .025)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-edge: rgba(255, 255, 255, .115);
   --glass-edge-strong: rgba(255, 255, 255, .19);
   --glass-edge-soft: rgba(255, 255, 255, .055);
   --shadow-surface:
-    inset 0 1px 0 var(--glass-edge-strong),
-    inset 1px 0 0 var(--glass-edge-soft),
+    inset 0 1px 0 rgba(255, 255, 255, .2),
+    inset 1px 0 0 rgba(255, 255, 255, .075),
+    inset 0 -3px 6px rgba(0, 0, 0, .13),
+    inset 0 0 0 1px rgba(255, 255, 255, .035),
     0 2px 5px rgba(0, 0, 0, .22),
     0 22px 60px rgba(0, 0, 0, .34);
   --shadow-raised:
-    inset 0 1px 0 rgba(255, 255, 255, .22),
-    inset 1px 0 0 rgba(255, 255, 255, .08),
+    inset 0 1px 0 rgba(255, 255, 255, .26),
+    inset 1px 0 0 rgba(255, 255, 255, .095),
+    inset 0 -3px 7px rgba(0, 0, 0, .17),
+    inset 0 0 0 1px rgba(255, 255, 255, .045),
     0 4px 12px rgba(0, 0, 0, .34),
     0 36px 100px rgba(0, 0, 0, .58);
   --shadow-shell:
@@ -113,8 +141,9 @@
     4px 0 12px rgba(0, 0, 0, .16),
     28px 0 72px rgba(0, 0, 0, .24);
   --shadow-control:
-    inset 0 1px 0 rgba(255, 255, 255, .11),
-    inset 1px 0 0 rgba(255, 255, 255, .035),
+    inset 0 1px 0 rgba(255, 255, 255, .16),
+    inset 1px 0 0 rgba(255, 255, 255, .05),
+    inset 0 -2px 4px rgba(0, 0, 0, .11),
     0 1px 2px rgba(0, 0, 0, .2),
     0 8px 24px rgba(0, 0, 0, .16);
   --shadow-violet: 0 18px 52px rgba(36, 66, 255, .24);
@@ -172,31 +201,54 @@ html.light {
   --button-primary-foreground: #24377f;
   --button-primary-border: rgba(64, 88, 214, .26);
 
+  --glass-tint-alpha: .09;
+  --glass-tint-secondary-alpha: .052;
+  --glass-specular: rgba(255, 255, 255, .92);
+  --glass-specular-soft: rgba(255, 255, 255, .28);
+  --glass-lens-border:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, .98) 0%,
+      rgba(255, 255, 255, .72) 32%,
+      rgba(64, 88, 214, .12) 68%,
+      rgba(30, 50, 84, .12) 100%
+    );
   --glass-shell-background:
-    radial-gradient(circle at 14% -10%, rgba(87, 116, 230, .11), transparent 35%),
-    linear-gradient(145deg, rgba(255, 255, 255, .72), rgba(235, 243, 255, .5));
+    radial-gradient(circle at 14% -10%, hsl(var(--glass-tint-hue) 72% 52% / .088), transparent 40%) padding-box,
+    linear-gradient(145deg, rgba(255, 255, 255, .62), rgba(238, 243, 251, .34)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-card-background:
-    radial-gradient(circle at 10% -14%, rgba(79, 108, 224, .11), transparent 35%),
-    radial-gradient(circle at 94% 112%, rgba(40, 165, 139, .065), transparent 31%),
-    linear-gradient(145deg, rgba(255, 255, 255, .78), rgba(236, 244, 255, .52));
+    radial-gradient(circle at 12% -12%, hsl(var(--glass-tint-hue) 72% 52% / var(--glass-tint-alpha)), transparent 40%) padding-box,
+    radial-gradient(circle at 96% 112%, hsl(var(--glass-tint-hue) 64% 48% / var(--glass-tint-secondary-alpha)), transparent 34%) padding-box,
+    linear-gradient(145deg, rgba(255, 255, 255, .6), rgba(238, 243, 251, .36)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-modal-background:
-    radial-gradient(circle at 8% -8%, rgba(91, 119, 230, .12), transparent 34%),
-    linear-gradient(145deg, rgba(255, 255, 255, .9), rgba(238, 246, 255, .72));
+    radial-gradient(circle at 10% -10%, hsl(var(--glass-tint-hue) 72% 52% / .096), transparent 42%) padding-box,
+    linear-gradient(145deg, rgba(255, 255, 255, .9), rgba(238, 244, 252, .82)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-control-background:
-    linear-gradient(145deg, rgba(255, 255, 255, .68), rgba(224, 235, 255, .45));
+    radial-gradient(circle at 12% -20%, hsl(var(--glass-tint-hue) 72% 52% / .044), transparent 54%) padding-box,
+    linear-gradient(145deg, rgba(255, 255, 255, .52), rgba(236, 242, 250, .28)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-accent-background:
-    linear-gradient(125deg, rgba(64, 88, 214, .14), rgba(23, 120, 102, .07) 58%, rgba(255, 255, 255, .52));
+    radial-gradient(circle at 12% -18%, hsl(var(--glass-tint-hue) 72% 50% / .12), transparent 58%) padding-box,
+    linear-gradient(125deg, hsl(var(--glass-tint-hue) 62% 44% / .045), rgba(255, 255, 255, .42)) padding-box,
+    var(--glass-lens-border) border-box;
   --glass-edge: rgba(255, 255, 255, .72);
   --glass-edge-strong: rgba(255, 255, 255, .92);
   --glass-edge-soft: rgba(255, 255, 255, .48);
   --shadow-surface:
-    inset 0 1px 0 var(--glass-edge-strong),
-    inset 1px 0 0 var(--glass-edge-soft),
+    inset 0 1px 0 rgba(255, 255, 255, .98),
+    inset 1px 0 0 rgba(255, 255, 255, .7),
+    inset 0 -3px 6px rgba(30, 50, 84, .075),
+    inset 0 0 0 1px rgba(255, 255, 255, .44),
     0 2px 5px rgba(35, 55, 91, .07),
     0 22px 60px rgba(39, 70, 120, .12);
   --shadow-raised:
     inset 0 1px 0 rgba(255, 255, 255, .98),
-    inset 1px 0 0 rgba(255, 255, 255, .72),
+    inset 1px 0 0 rgba(255, 255, 255, .78),
+    inset 0 -3px 7px rgba(30, 50, 84, .09),
+    inset 0 0 0 1px rgba(255, 255, 255, .5),
     0 4px 12px rgba(29, 50, 86, .1),
     0 36px 100px rgba(39, 70, 120, .18);
   --shadow-shell:
@@ -206,6 +258,7 @@ html.light {
   --shadow-control:
     inset 0 1px 0 rgba(255, 255, 255, .94),
     inset 1px 0 0 rgba(255, 255, 255, .56),
+    inset 0 -2px 4px rgba(30, 50, 84, .065),
     0 1px 2px rgba(35, 55, 91, .06),
     0 8px 24px rgba(39, 70, 120, .08);
   --shadow-violet: 0 18px 52px rgba(64, 88, 214, .16);
@@ -366,29 +419,29 @@ button:disabled {
 .glass-panel,
 .liquid-panel,
 .metric-card {
+  --mouse-x: 50%;
+  --mouse-y: 0%;
   position: relative;
-  border: 1px solid var(--glass-edge);
+  isolation: isolate;
+  border: 1.5px solid transparent;
   border-radius: var(--radius-lg);
   corner-shape: squircle;
   background: var(--glass-card-background);
-  background-position: 100% 100%;
-  background-size: 135% 135%;
   box-shadow: var(--shadow-surface);
-  backdrop-filter: blur(26px) saturate(145%);
-  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(42px) saturate(190%);
+  -webkit-backdrop-filter: blur(42px) saturate(190%);
   transition:
-    transform var(--transition),
-    border-color var(--transition),
-    background-position var(--transition),
-    box-shadow var(--transition);
+    transform 180ms var(--ease-out),
+    border-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out);
 }
 
 .glass-shell {
-  border-color: var(--glass-edge);
+  border: 1.5px solid transparent;
   background: var(--glass-shell-background);
   box-shadow: var(--shadow-shell);
-  backdrop-filter: blur(32px) saturate(145%);
-  -webkit-backdrop-filter: blur(32px) saturate(145%);
+  backdrop-filter: blur(40px) saturate(185%);
+  -webkit-backdrop-filter: blur(40px) saturate(185%);
 }
 
 .glass-card,
@@ -398,26 +451,34 @@ button:disabled {
 }
 
 .glass-modal {
+  --mouse-x: 50%;
+  --mouse-y: 0%;
   position: relative;
+  isolation: isolate;
   overflow: hidden;
-  border: 1px solid var(--glass-edge-strong);
+  border: 2px solid transparent;
   border-radius: var(--radius-xl);
   corner-shape: squircle;
   background: var(--glass-modal-background);
   box-shadow: var(--shadow-raised);
-  backdrop-filter: blur(42px) saturate(155%);
-  -webkit-backdrop-filter: blur(42px) saturate(155%);
+  backdrop-filter: blur(56px) saturate(195%);
+  -webkit-backdrop-filter: blur(56px) saturate(195%);
+  transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
 }
 
 .glass-dropdown {
-  border: 1px solid var(--glass-edge-strong);
+  --mouse-x: 50%;
+  --mouse-y: 0%;
+  position: relative;
+  isolation: isolate;
+  border: 2px solid transparent;
   border-radius: 18px;
   corner-shape: squircle;
   background: var(--glass-modal-background);
   color: var(--foreground);
   box-shadow: var(--shadow-raised);
-  backdrop-filter: blur(34px) saturate(155%);
-  -webkit-backdrop-filter: blur(34px) saturate(155%);
+  backdrop-filter: blur(52px) saturate(195%);
+  -webkit-backdrop-filter: blur(52px) saturate(195%);
 }
 
 .glass-scrim {
@@ -427,39 +488,104 @@ button:disabled {
 }
 
 .glass-control {
-  border: 1px solid var(--glass-edge);
+  --mouse-x: 50%;
+  --mouse-y: 0%;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1.5px solid transparent;
   corner-shape: squircle;
   background: var(--glass-control-background);
   color: var(--foreground);
   box-shadow: var(--shadow-control);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(185%);
+  -webkit-backdrop-filter: blur(30px) saturate(185%);
   transition:
-    transform var(--transition),
-    border-color var(--transition),
-    background var(--transition),
-    box-shadow var(--transition),
-    color var(--transition);
+    transform 165ms var(--ease-out),
+    border-color 165ms var(--ease-out),
+    background 165ms var(--ease-out),
+    box-shadow 165ms var(--ease-out),
+    color 165ms var(--ease-out);
 }
 
 .glass-control:hover,
 .glass-control:focus-visible {
-  border-color: var(--glass-edge-strong);
   background: var(--glass-accent-background);
 }
 
-.glass-card[class*="cursor-pointer"]:hover,
-button.glass-card:hover,
-a.glass-card:hover,
-.metric-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--glass-edge-strong);
-  background-position: 0 0;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--glass-edge-strong) 92%, transparent),
-    inset 1px 0 0 var(--glass-edge-soft),
-    0 3px 8px rgba(0, 0, 0, .2),
-    0 28px 72px color-mix(in srgb, var(--violet-strong) 12%, transparent);
+/* Pointer-driven specular is edge-masked, so it reads as reflected light
+   instead of a white overlay washing out the card content. */
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: -1px;
+  padding: 2px;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      220px circle at var(--mouse-x) var(--mouse-y),
+      var(--glass-specular) 0%,
+      var(--glass-specular-soft) 34%,
+      transparent 68%
+    );
+  opacity: 0;
+  transition: opacity 160ms var(--ease-out);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card):hover::before,
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card):focus-within::before {
+  opacity: 1;
+}
+
+/* Context-aware tint: classes and data attributes both reuse one material
+   formula, changing only the hue absorbed by the glass. */
+.glass-tint-info,
+[data-glass-tint="info"] {
+  --glass-tint-hue: var(--glass-tint-info);
+}
+
+.glass-tint-good,
+[data-glass-tint="good"],
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)[class*="border-emerald"] {
+  --glass-tint-hue: var(--glass-tint-good);
+}
+
+.glass-tint-warning,
+[data-glass-tint="warning"],
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)[class*="border-amber"] {
+  --glass-tint-hue: var(--glass-tint-warning);
+}
+
+.glass-tint-danger,
+[data-glass-tint="danger"],
+:is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)[class*="border-rose"] {
+  --glass-tint-hue: var(--glass-tint-danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.glass-card, .glass-panel, .liquid-panel, .metric-card):hover {
+    transform: translateY(-1px) scale(1.006);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 48%, transparent),
+      inset 0 -3px 6px rgba(0, 0, 0, .13),
+      inset 0 0 0 1px var(--glass-edge-soft),
+      0 3px 8px rgba(0, 0, 0, .2),
+      0 28px 72px hsl(var(--glass-tint-hue) 70% 52% / .11);
+  }
+
+  .glass-control:hover {
+    transform: translateY(-1px) scale(1.008);
+  }
 }
 
 .liquid-button,
@@ -573,12 +699,14 @@ a.glass-card:hover,
   .liquid-panel,
   .metric-card,
   .glass-modal,
-  .glass-dropdown {
+  .glass-dropdown,
+  .glass-control {
     background: var(--surface-raised);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
+  :is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)::before,
   body::before {
     display: none;
   }
@@ -933,12 +1061,11 @@ a.glass-card:hover,
 .metric-card {
   overflow: hidden;
   padding: 20px;
-  transition: transform var(--transition), border-color var(--transition);
+  transition: transform 180ms var(--ease-out), border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
 }
 
 .metric-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(163, 151, 255, .24);
+  transform: translateY(-1px) scale(1.006);
 }
 
 .metric-icon {
@@ -1102,14 +1229,110 @@ a.glass-card:hover,
 
 /* Normalize every legacy application surface to the shared tokens. */
 .dashboard-stage main :is(.glass-card, [class*="bg-[var(--background-card)]"]) {
-  border: 1px solid var(--glass-edge) !important;
+  border: 1.5px solid transparent !important;
   border-radius: var(--radius-lg) !important;
   background: var(--glass-card-background) !important;
-  background-position: 100% 100% !important;
-  background-size: 135% 135% !important;
   box-shadow: var(--shadow-surface);
-  backdrop-filter: blur(26px) saturate(145%);
-  -webkit-backdrop-filter: blur(26px) saturate(145%);
+  backdrop-filter: blur(42px) saturate(190%);
+  -webkit-backdrop-filter: blur(42px) saturate(190%);
+}
+
+/* Log consoles are optical black canvases in both themes. Keeping them out of
+   the generic light glass fill prevents light-mode slate text from vanishing. */
+.dashboard-stage main .log-console {
+  --glass-tint-hue: 214;
+  border-color: rgba(131, 159, 197, .24) !important;
+  background:
+    radial-gradient(circle at 12% -18%, rgba(72, 121, 190, .1), transparent 38%),
+    linear-gradient(145deg, rgba(9, 18, 30, .985), rgba(4, 9, 17, .99)) !important;
+  color: #e8eef8;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .1),
+    inset 0 -3px 7px rgba(0, 0, 0, .34),
+    0 18px 48px rgba(18, 35, 58, .2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.dashboard-stage main .log-console > :first-child {
+  background: rgba(18, 31, 49, .96) !important;
+  color: #a9b7c9 !important;
+}
+
+.dashboard-stage main .log-console :is(.text-slate-200, .text-slate-300) {
+  color: #e8eef8 !important;
+}
+
+.dashboard-stage main .log-console .text-slate-400 {
+  color: #a9b7c9 !important;
+}
+
+.dashboard-stage main .log-console .text-slate-500 {
+  color: #8293aa !important;
+}
+
+.dashboard-stage main .log-console .text-blue-400 {
+  color: #8eb5ff !important;
+}
+
+.dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hover {
+  background: rgba(72, 108, 153, .13) !important;
+}
+
+.dashboard-stage main .log-console:hover {
+  transform: none !important;
+}
+
+.server-filter-tabs {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  min-height: 42px;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--glass-control-background);
+  padding: 3px;
+  box-shadow: var(--shadow-control);
+  scrollbar-width: none;
+  backdrop-filter: blur(30px) saturate(185%);
+  -webkit-backdrop-filter: blur(30px) saturate(185%);
+}
+
+.server-filter-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.server-filter-tab {
+  min-height: 34px;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: color 165ms var(--ease-out), background 165ms var(--ease-out), box-shadow 165ms var(--ease-out);
+}
+
+.server-filter-tab:hover {
+  background: hsl(var(--glass-tint-hue) 70% 54% / .065);
+  color: var(--foreground);
+  transform: none !important;
+}
+
+.server-filter-tab.is-active {
+  border-color: color-mix(in srgb, var(--violet) 22%, transparent);
+  background:
+    linear-gradient(145deg, hsl(var(--glass-tint-hue) 76% 56% / .14), hsl(var(--glass-tint-hue) 66% 48% / .055));
+  color: var(--violet);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge-strong),
+    0 4px 12px hsl(var(--glass-tint-hue) 68% 50% / .1);
 }
 
 .dashboard-stage main :is(input, select, textarea) {
@@ -1262,12 +1485,12 @@ a.glass-card:hover,
   .glass-card,
   .glass-modal
 ) {
-  border: 1px solid var(--glass-edge-strong) !important;
+  border: 2px solid transparent !important;
   border-radius: var(--radius-xl) !important;
   background: var(--glass-modal-background) !important;
   box-shadow: var(--shadow-raised);
-  backdrop-filter: blur(42px) saturate(155%);
-  -webkit-backdrop-filter: blur(42px) saturate(155%);
+  backdrop-filter: blur(56px) saturate(195%);
+  -webkit-backdrop-filter: blur(56px) saturate(195%);
 }
 
 .dashboard-stage main .recharts-default-tooltip {
@@ -1275,8 +1498,8 @@ a.glass-card:hover,
   border-radius: 12px !important;
   background: var(--glass-modal-background) !important;
   box-shadow: var(--shadow-raised);
-  backdrop-filter: blur(34px) saturate(150%);
-  -webkit-backdrop-filter: blur(34px) saturate(150%);
+  backdrop-filter: blur(52px) saturate(195%);
+  -webkit-backdrop-filter: blur(52px) saturate(195%);
 }
 
 /* Continuous monitoring timeline */
@@ -1491,8 +1714,8 @@ a.glass-card:hover,
   color: var(--foreground);
   font-size: 13px;
   box-shadow: var(--shadow-raised);
-  backdrop-filter: blur(34px) saturate(150%);
-  -webkit-backdrop-filter: blur(34px) saturate(150%);
+  backdrop-filter: blur(52px) saturate(195%);
+  -webkit-backdrop-filter: blur(52px) saturate(195%);
 }
 
 .monitoring-tooltip-time {
@@ -2058,6 +2281,9 @@ a.glass-card:hover,
     transition-duration: .01ms !important;
   }
   .landing-liquid::before { display: none; }
+  :is(.glass-card, .glass-panel, .liquid-panel, .glass-modal, .glass-dropdown, .glass-control, .metric-card)::before {
+    display: none;
+  }
 }
 
 @media (prefers-contrast: more) {
@@ -2074,13 +2300,6 @@ html.light body {
   background:
     radial-gradient(circle at 76% -18%, var(--body-glow), transparent 32rem),
     var(--background);
-}
-
-html.light .glass-card,
-html.light .glass-panel,
-html.light .liquid-panel,
-html.light .metric-card {
-  background: var(--glass-card-background);
 }
 
 html.light .liquid-aurora::before,
@@ -2119,10 +2338,6 @@ html.light .topbar-action kbd {
   color: var(--text-tertiary);
 }
 
-html.light .metric-card:hover {
-  border-color: rgba(64, 88, 214, .24);
-}
-
 html.light .metric-icon,
 html.light .theme-toggle {
   background: rgba(255, 255, 255, .6);
@@ -2130,10 +2345,6 @@ html.light .theme-toggle {
 
 html.light .mini-bars i {
   opacity: .72;
-}
-
-html.light .dashboard-stage main :is(.glass-card, [class*="bg-[var(--background-card)]"]) {
-  background: var(--glass-card-background) !important;
 }
 
 html.light .dashboard-stage main :is(input, select, textarea):focus {
@@ -2545,7 +2756,7 @@ html.light .docs-content .prose pre code {
 .docs-adjacent small { color: var(--foreground-muted); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
 
 .docs-search-overlay { position: fixed; z-index: 100; inset: 0; display: grid; place-items: start center; background: var(--overlay-background); padding: 12vh 20px 20px; backdrop-filter: blur(16px) saturate(120%); -webkit-backdrop-filter: blur(16px) saturate(120%); }
-.docs-search-dialog { width: min(100%, 660px); overflow: hidden; border: 1px solid var(--glass-edge-strong); border-radius: var(--radius-xl); background: var(--glass-modal-background); box-shadow: var(--shadow-raised); backdrop-filter: blur(42px) saturate(155%); -webkit-backdrop-filter: blur(42px) saturate(155%); }
+.docs-search-dialog { width: min(100%, 660px); overflow: hidden; border: 2px solid transparent; border-radius: var(--radius-xl); background: var(--glass-modal-background); box-shadow: var(--shadow-raised); backdrop-filter: blur(56px) saturate(195%); -webkit-backdrop-filter: blur(56px) saturate(195%); }
 .docs-search-dialog > label { display: flex; height: 62px; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-color); padding: 0 18px; }
 .docs-search-dialog > label svg { width: 18px; color: var(--foreground-muted); }
 .docs-search-dialog input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--foreground); font-size: 15px; }
