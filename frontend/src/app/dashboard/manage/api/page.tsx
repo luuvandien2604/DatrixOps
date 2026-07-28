@@ -131,8 +131,8 @@ export default function APIKeyPage() {
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div role="dialog" aria-modal="true" aria-labelledby="api-key-dialog-title" className="glass-card w-full max-w-md p-6 rounded-2xl border border-white/10 shadow-2xl">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center">
+          <div role="dialog" aria-modal="true" aria-labelledby="api-key-dialog-title" className="glass-modal w-full max-w-md p-6">
             <h3 id="api-key-dialog-title" className="text-xl font-bold mb-4">Generate API Key</h3>
             
             {generatedKey ? (

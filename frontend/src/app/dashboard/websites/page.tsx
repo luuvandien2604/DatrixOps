@@ -263,8 +263,8 @@ export default function WebsitesPage() {
 
       {/* Add Website Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="glass-card bg-[#0B0F14] border-white/10 rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="glass-modal w-full max-w-md overflow-hidden">
             <div className="p-5 border-b border-white/5 flex justify-between items-center">
               <h3 id="website-dialog-title" className="font-bold text-lg text-[var(--foreground)]">Add Monitored Website</h3>
               <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Close dialog" className="text-[var(--color-muted)] hover:text-white">

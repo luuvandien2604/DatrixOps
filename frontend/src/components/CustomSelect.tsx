@@ -102,7 +102,7 @@ export default function CustomSelect({
           width: `${coords.width}px`,
           zIndex: 99999,
         }}
-        className="bg-[#0B0F17] border border-white/20 rounded-xl shadow-2xl py-1.5 backdrop-blur-2xl max-h-60 overflow-y-auto font-sans animate-in fade-in zoom-in-95 duration-100"
+        className="glass-dropdown max-h-60 overflow-y-auto py-1.5 font-sans animate-in fade-in zoom-in-95 duration-300"
       >
         {options.length === 0 ? (
           <div className="px-3.5 py-2 text-xs text-slate-400 italic">No options available</div>
@@ -119,16 +119,16 @@ export default function CustomSelect({
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2 text-sm text-left transition-colors cursor-pointer ${
                   isSelected
-                    ? 'bg-blue-600/25 text-blue-400 font-semibold'
-                    : 'text-slate-200 hover:bg-white/[0.08] hover:text-white'
+                    ? 'bg-[var(--violet-wash)] text-[var(--violet)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]'
                 }`}
               >
                 <span className="flex items-center gap-2 min-w-0 truncate">
                   {option.icon}
                   <span className="truncate">{option.label}</span>
-                  {option.subLabel && <span className="text-xs text-slate-400 ml-1">({option.subLabel})</span>}
+                  {option.subLabel && <span className="ml-1 text-xs text-[var(--color-muted)]">({option.subLabel})</span>}
                 </span>
-                {isSelected && <Check className="w-4 h-4 text-blue-400 shrink-0 ml-2" />}
+                {isSelected && <Check className="ml-2 h-4 w-4 shrink-0 text-[var(--violet)]" />}
               </button>
             );
           })
@@ -144,13 +144,13 @@ export default function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={handleToggle}
-        className="w-full flex items-center justify-between gap-2 px-3.5 py-2 bg-[#0B0F17] hover:bg-[#121824] border border-white/15 rounded-xl text-sm font-medium text-slate-100 transition-all outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="glass-control flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--violet)_24%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <span className="flex items-center gap-2 min-w-0 truncate">
           {icon || selectedOption?.icon}
           <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         </span>
-        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-blue-400' : ''}`} />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[var(--color-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180 text-[var(--violet)]' : ''}`} />
       </button>
 
       {dropdownMenu}

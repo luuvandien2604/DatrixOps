@@ -254,7 +254,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {mobileOpen && (
         <button
           type="button"
-          className="mobile-nav-overlay fixed inset-0 z-40 backdrop-blur-sm lg:hidden"
+          className="glass-scrim mobile-nav-overlay fixed inset-0 z-40 lg:hidden"
           onClick={() => setMobileOpen(false)}
           aria-label="Close navigation"
         />
@@ -262,7 +262,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside
         aria-label="Dashboard navigation"
-        className={`liquid-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
+        className={`glass-shell liquid-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
       >
         <div className="flex h-20 items-center gap-3 px-4">
           <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
@@ -427,7 +427,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
-        <header className="liquid-topbar">
+        <header className="glass-shell liquid-topbar">
           {/* Breadcrumb tăng độ rõ và weight. */}
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
             <span className="font-semibold text-[var(--foreground)]">Datrix Cloud</span>
@@ -439,7 +439,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="hidden sm:flex items-center justify-between w-64 md:w-80 px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-blue-500/40 text-xs text-[var(--color-muted)] hover:text-white transition-all shadow-sm group"
+              className="glass-control group hidden w-64 items-center justify-between rounded-xl px-3.5 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] sm:flex md:w-80"
               aria-label="Search dashboard"
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -475,7 +475,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--surface-raised)] shadow-2xl">
+                <div className="glass-dropdown absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden">
                   <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3">
                     <div>
                       <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
@@ -580,7 +580,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            <div className="ml-1 flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] py-1.5 pl-1.5 pr-3">
+            <div className="glass-control ml-1 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3">
               <div className="operator-avatar">
                 {role === 'superadmin' ? 'SA' : 'OP'}
               </div>

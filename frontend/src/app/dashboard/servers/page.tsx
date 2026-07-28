@@ -972,8 +972,8 @@ export default function ServersPage() {
 
       {/* Add Server Modal */}
       {isAddServerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="glass-card w-full max-w-2xl bg-[#0B0F14] border-white/10 overflow-hidden flex flex-col">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="glass-modal flex w-full max-w-2xl flex-col overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-white/5">
               <h2 id="add-server-title" className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
               <button type="button" aria-label="Close add server dialog" onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
@@ -1090,8 +1090,8 @@ export default function ServersPage() {
 
       {/* Restart Confirm Dialog */}
       {serverToRestart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="restart-server-title" className="glass-card w-full max-w-md bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="restart-server-title" className="glass-modal flex w-full max-w-md flex-col overflow-hidden border-rose-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <AlertTriangle className="w-6 h-6 text-rose-500" />
               <h2 id="restart-server-title" className="text-xl font-bold text-[var(--foreground)]">Restart Server?</h2>
@@ -1144,8 +1144,8 @@ export default function ServersPage() {
 
       {/* Delete Confirm Dialog */}
       {serverToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-card w-full max-w-lg bg-[#0B0F14] border-rose-500/30 overflow-hidden flex flex-col">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-modal flex w-full max-w-lg flex-col overflow-hidden border-rose-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <Trash2 className="w-6 h-6 text-rose-500" />
               <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Uninstall Agent and Delete Server?</h2>
@@ -1191,8 +1191,8 @@ export default function ServersPage() {
 
       {/* Edit Meta Dialog */}
       {editMetaServer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-card w-full max-w-2xl bg-[var(--background-card)] border-amber-500/30 overflow-hidden flex flex-col">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-modal flex w-full max-w-2xl flex-col overflow-hidden border-amber-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/5">
               <FileText className="w-6 h-6 text-amber-500" />
               <h2 id="edit-server-title" className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
@@ -1249,8 +1249,8 @@ export default function ServersPage() {
 
       {/* Update Agent Modal */}
       {serverToUpdate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div role="alertdialog" aria-modal="true" className="glass-card w-full max-w-md bg-[#0B0F14] border-amber-500/35 overflow-hidden flex flex-col">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" className="glass-modal flex w-full max-w-md flex-col overflow-hidden border-amber-500/35">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/10">
               <RefreshCw className="w-6 h-6 text-amber-400" />
               <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
@@ -1292,8 +1292,8 @@ export default function ServersPage() {
 
       {/* Update All Modal */}
       {isUpdateAllOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div role="alertdialog" aria-modal="true" className="glass-card flex w-full max-w-lg flex-col overflow-hidden border border-emerald-500/30 bg-[var(--background-card)]">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" className="glass-modal flex w-full max-w-lg flex-col overflow-hidden border-emerald-500/30">
             <div className="flex items-center gap-3 border-b border-[var(--border-color)] bg-emerald-500/5 p-6">
               <UploadCloud className="h-6 w-6 text-emerald-500" />
               <h2 className="text-xl font-bold text-[var(--foreground)]">Update all agents?</h2>

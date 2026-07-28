@@ -1277,8 +1277,8 @@ export default function ServerDetailsPage() {
       )}
 
       {serviceActionRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="service-action-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="service-action-title" className="glass-modal w-full max-w-md overflow-hidden">
             <div className="flex items-center gap-3 border-b border-[var(--border-color)] p-6">
               <RotateCw className="h-5 w-5 text-blue-500" />
               <h2 id="service-action-title" className="text-xl font-semibold capitalize text-[var(--foreground)]">{serviceActionRequest.action} service?</h2>
@@ -1305,8 +1305,8 @@ export default function ServerDetailsPage() {
 
       {/* Logs Modal */}
       {logsModal.isOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="glass-modal flex max-h-[80vh] w-full max-w-4xl flex-col">
             <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)]">
               <h3 id="container-logs-title" className="font-semibold text-[var(--foreground)]">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
               <button type="button" onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} aria-label="Close container logs" className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">

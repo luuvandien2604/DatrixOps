@@ -1,12 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Manrope } from "next/font/google";
+import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ["latin", "vietnamese"],
-  variable: "--font-manrope",
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -45,12 +45,12 @@ export default function RootLayout({
             position="bottom-right"
             toastOptions={{
               style: {
-                background: "var(--toast-background)",
+                background: "var(--glass-modal-background)",
                 color: "var(--foreground)",
-                border: "1px solid var(--border-color)",
+                border: "1px solid var(--glass-edge-strong)",
                 fontSize: "13px",
                 borderRadius: "999px",
-                backdropFilter: "blur(24px)",
+                backdropFilter: "blur(34px) saturate(155%)",
                 boxShadow: "var(--shadow-raised)",
               },
               success: {

@@ -142,9 +142,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="glass-scrim fixed inset-0 z-50 flex items-start justify-center px-4 pt-20 animate-in fade-in duration-300">
       <div
-        className="glass-card w-full max-w-2xl bg-[#0B0F17] border-white/10 shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+        className="glass-modal flex w-full max-w-2xl flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Search Header */}
