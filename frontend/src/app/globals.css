@@ -74,6 +74,9 @@
   --button-primary-background: var(--accent-primary);
   --button-primary-foreground: #ffffff;
   --button-primary-border: var(--accent-primary);
+  --button-disabled-background: #1a2430;
+  --button-disabled-border: #3a4a5d;
+  --button-disabled-foreground: #9aa8b8;
 
   --font-sans: Inter, "SF Pro Text", "Segoe UI", sans-serif;
   --font-display: var(--font-sans);
@@ -166,6 +169,9 @@ html.light {
   --shadow-md: 0 12px 28px rgba(35, 50, 68, .12);
   --focus-ring: #2f72d8;
   --focus-ring-shadow: 0 0 0 3px rgba(47, 114, 216, .18);
+  --button-disabled-background: #e9eff5;
+  --button-disabled-border: #aebbc9;
+  --button-disabled-foreground: #526171;
 }
 
 @theme inline {
@@ -454,6 +460,7 @@ button:disabled {
   border-color: var(--accent-primary);
   background: var(--accent-primary);
   color: #ffffff;
+  font-weight: 750;
 }
 
 .ops-button.primary:hover,
@@ -475,10 +482,16 @@ button:disabled {
 .landing-pill:disabled,
 .auth-submit:disabled {
   cursor: not-allowed;
-  border-color: var(--border-subtle);
-  background: var(--surface-3);
-  color: var(--text-tertiary);
+  border-color: var(--button-disabled-border);
+  background: var(--button-disabled-background);
+  color: var(--button-disabled-foreground);
   opacity: 1;
+}
+
+.ops-button.primary:disabled {
+  border-color: var(--button-disabled-border);
+  background: var(--button-disabled-background);
+  color: var(--button-disabled-foreground);
 }
 
 .section-eyebrow,

@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	agentReleaseBaseURL      = "https://datrixops.vandien.space/releases"
-	agentUninstallConfirmURL = "https://datrixops.vandien.space/api/v1/agent/uninstall/confirm"
+	agentReleaseBaseURL        = "https://datrixops.vandien.space/releases"
+	agentUninstallConfirmURL   = "https://datrixops.vandien.space/api/v1/agent/uninstall/confirm"
+	minimumScriptAgentVersion  = "1.5.2"
+	minimumLogReadAgentVersion = "1.5.2"
 )
 
 type Handler struct {
@@ -356,6 +358,10 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.Type == "script_run" {
+		if err := validateAgentFeatureVersion(ownedServer, minimumScriptAgentVersion, "Script Library"); err != nil {
+			response.Error(w, http.StatusConflict, "AGENT_UPDATE_REQUIRED", err.Error())
+			return
+		}
 		policy, err := h.svc.repo.ScriptPolicy(r.Context(), req.Payload)
 		if err != nil {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
@@ -373,6 +379,10 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		req.TimeoutSeconds = policy.TimeoutSeconds
 	}
 	if req.Type == "log_read" {
+		if err := validateAgentFeatureVersion(ownedServer, minimumLogReadAgentVersion, "Read-only Log Viewer"); err != nil {
+			response.Error(w, http.StatusConflict, "AGENT_UPDATE_REQUIRED", err.Error())
+			return
+		}
 		if err := validateLogReadTask(ownedServer, req.Payload); err != nil {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			return
@@ -437,6 +447,17 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordAudit(r.Context(), userID, "QUEUE_TASK", "SERVER", serverID, auditDetails)
 	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": taskStatus})
+}
+
+func validateAgentFeatureVersion(server *Server, minimumVersion string, featureName string) error {
+	currentVersion := agentVersionFromOSInfo(server.OSInfo)
+	if currentVersion == "" {
+		return fmt.Errorf("%s requires Agent %s or newer. This agent has not reported a running version yet", featureName, minimumVersion)
+	}
+	if compareVersions(currentVersion, minimumVersion) < 0 {
+		return fmt.Errorf("%s requires Agent %s or newer. This agent reports version %s", featureName, minimumVersion, currentVersion)
+	}
+	return nil
 }
 
 func (h *Handler) ListScripts(w http.ResponseWriter, r *http.Request) {

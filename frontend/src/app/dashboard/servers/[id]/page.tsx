@@ -168,10 +168,11 @@ type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
 const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
+const MIN_SCRIPT_LIBRARY_AGENT_VERSION = '1.5.2';
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current) return false;
-  const parse = (value: string) => value.split('.').map(part => Number.parseInt(part, 10) || 0);
+  const parse = (value: string) => value.replace(/^v/i, '').split('.').map(part => Number.parseInt(part, 10) || 0);
   const currentParts = parse(current);
   const minimumParts = parse(minimum);
   for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
@@ -446,6 +447,10 @@ export default function ServerDetailsPage() {
     }
     if (script.os_family !== osFamily) {
       toast.error('This script is not available for this operating system');
+      return;
+    }
+    if (!supportsScriptLibrary) {
+      toast.error(`Script Library requires Agent ${MIN_SCRIPT_LIBRARY_AGENT_VERSION} or newer${reportedAgentVersion ? ` (current ${reportedAgentVersion})` : ''}`);
       return;
     }
     if (script.requires_confirmation && !window.confirm(`Run "${script.name}" on ${server.name}? This action is audited and limited to the allowlisted command.`)) {
@@ -730,6 +735,7 @@ export default function ServerDetailsPage() {
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
+  const supportsScriptLibrary = versionAtLeast(reportedAgentVersion, MIN_SCRIPT_LIBRARY_AGENT_VERSION);
   const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
   const updateAvailable = Boolean(server.update_available && latestAgentVersion);
   const agentUpdateInProgress = Boolean(agentUpdateTask && ['pending', 'processing'].includes(agentUpdateTask.status));
@@ -1274,6 +1280,12 @@ export default function ServerDetailsPage() {
               </span>
             </div>
 
+            {osFamily === 'linux' && !supportsScriptLibrary && (
+              <div className="border-b border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-medium text-amber-700 dark:text-amber-300">
+                Script Library requires Agent {MIN_SCRIPT_LIBRARY_AGENT_VERSION} or newer. This server reports Agent {reportedAgentVersion || 'Unknown'}.
+              </div>
+            )}
+
             {osFamily !== 'linux' ? (
               <div className="p-8 text-sm leading-6 text-[var(--color-muted)]">
                 Script Library is currently enabled only for Linux agents. {osFamily === 'windows' ? 'Windows' : osFamily === 'macos' ? 'macOS' : 'Unknown OS'} agents stay read-only until a native allowlist is defined for that platform.
@@ -1287,7 +1299,7 @@ export default function ServerDetailsPage() {
                 {scriptLibrary.map(script => {
                   const runState = scriptRuns[script.id] || { status: 'idle' as const };
                   const running = runState.status === 'pending' || runState.status === 'processing';
-                  const disabled = running || server.status !== 'online';
+                  const disabled = running || server.status !== 'online' || !supportsScriptLibrary;
                   return (
                     <article key={script.id} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1314,10 +1326,11 @@ export default function ServerDetailsPage() {
                           type="button"
                           disabled={disabled}
                           onClick={() => runAllowlistedScript(script)}
+                          title={!supportsScriptLibrary ? `Update Agent to ${MIN_SCRIPT_LIBRARY_AGENT_VERSION}+ first` : server.status !== 'online' ? 'The agent must be online' : `Run ${script.name}`}
                           className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                          {running ? 'Running' : 'Run'}
+                          {running ? 'Running' : supportsScriptLibrary ? 'Run' : 'Update agent'}
                         </button>
                       </div>
 

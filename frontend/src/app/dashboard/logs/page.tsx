@@ -39,13 +39,31 @@ interface LogServer {
   name: string;
   ip_address?: string;
   status?: string;
-  os_info?: string;
+  os_info?: string | {
+    os_family?: string;
+    os_name?: string;
+    platform?: string;
+    version?: string;
+  };
 }
 
 type LogType = 'all' | 'audit' | 'system' | 'docker' | 'agent';
 
 const MAX_VISIBLE_LOGS = 500;
 const MAX_DETAIL_LENGTH = 600;
+const MIN_LOG_READ_AGENT_VERSION = '1.5.2';
+
+const versionAtLeast = (current: string | undefined, minimum: string) => {
+  if (!current) return false;
+  const parse = (value: string) => value.replace(/^v/i, '').split('.').map(part => Number.parseInt(part, 10) || 0);
+  const currentParts = parse(current);
+  const minimumParts = parse(minimum);
+  for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
+    if ((currentParts[index] || 0) > (minimumParts[index] || 0)) return true;
+    if ((currentParts[index] || 0) < (minimumParts[index] || 0)) return false;
+  }
+  return true;
+};
 
 const classifyAuditLevel = (action: string): LogEntry['level'] => {
   const normalized = action.toLowerCase();
@@ -167,18 +185,51 @@ export default function LogsPage() {
 
   const visibleLogs = useMemo(() => filteredLogs.slice(0, MAX_VISIBLE_LOGS), [filteredLogs]);
   const selectedServer = servers.find((server) => server.id === selectedServerId);
-  const selectedServerOS = (() => {
-    if (!selectedServer?.os_info) return 'unknown';
+  const selectedServerOSInfo = (() => {
+    if (!selectedServer?.os_info) return {};
+    if (typeof selectedServer.os_info === 'object') return selectedServer.os_info;
     try {
-      const parsed = JSON.parse(selectedServer.os_info);
-      return String(parsed.os_family || parsed.os_name || '').toLowerCase();
+      return JSON.parse(selectedServer.os_info) as {
+        os_family?: string;
+        os_name?: string;
+        platform?: string;
+        version?: string;
+      };
     } catch {
-      return 'unknown';
+      return {};
     }
   })();
+  const selectedServerOS = (() => {
+    if (!selectedServer?.os_info) return 'unknown';
+    return String(
+      selectedServerOSInfo.os_family ||
+      selectedServerOSInfo.os_name ||
+      selectedServerOSInfo.platform ||
+      '',
+    ).toLowerCase();
+  })();
+  const selectedServerAgentVersion = typeof selectedServerOSInfo.version === 'string'
+    ? selectedServerOSInfo.version.trim()
+    : '';
+  const selectedServerIsLinux = ['linux', 'ubuntu', 'debian', 'centos', 'rocky', 'alma', 'fedora', 'alpine']
+    .some(marker => selectedServerOS.includes(marker));
+  const selectedServerSupportsLogRead = versionAtLeast(selectedServerAgentVersion, MIN_LOG_READ_AGENT_VERSION);
   const canFetchRemoteLogs = selectedServerId !== 'all'
     && selectedServer?.status === 'online'
-    && ['linux', 'ubuntu', 'debian', 'centos', 'rocky', 'alma', 'fedora', 'alpine'].some(marker => selectedServerOS.includes(marker));
+    && selectedServerIsLinux
+    && selectedServerSupportsLogRead;
+  const remoteLogReadiness = (() => {
+    if (fetchingRemoteLogs) return 'Fetching log snapshot…';
+    if (selectedServerId === 'all') return 'Select one Linux server first';
+    if (!selectedServer) return 'Selected server is unavailable';
+    if (selectedServer.status !== 'online') return 'Selected server is offline';
+    if (!selectedServerIsLinux) return 'Only online Linux agents are supported';
+    if (!selectedServerSupportsLogRead) {
+      return `Update Agent to ${MIN_LOG_READ_AGENT_VERSION}+ before reading logs${selectedServerAgentVersion ? ` (current ${selectedServerAgentVersion})` : ''}`;
+    }
+    return 'Ready to fetch read-only logs';
+  })();
+  const fetchLogsLabel = canFetchRemoteLogs ? 'Fetch logs' : selectedServerSupportsLogRead ? 'Select server' : 'Update agent';
 
   const copyAllLogs = async () => {
     const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
@@ -206,7 +257,7 @@ export default function LogsPage() {
 
   const fetchRemoteLogs = async () => {
     if (!canFetchRemoteLogs || !selectedServer) {
-      toast.error('Select an online Linux server first');
+      toast.error(remoteLogReadiness);
       return;
     }
     setFetchingRemoteLogs(true);
@@ -239,13 +290,20 @@ export default function LogsPage() {
       }
       const finalStatus = taskResult.status;
       const resultText = taskResult.result || '';
+      const agentDoesNotSupportLogRead = resultText.toLowerCase().includes('unknown task type: log_read');
+      const displayText = agentDoesNotSupportLogRead
+        ? `Agent update required: read-only log fetch needs Agent ${MIN_LOG_READ_AGENT_VERSION} or newer. This agent has not activated the log_read handler yet.`
+        : resultText;
+      if (agentDoesNotSupportLogRead) {
+        toast.error(`Update this agent to ${MIN_LOG_READ_AGENT_VERSION}+ before fetching logs`);
+      }
       const now = new Date().toISOString();
-      const remoteEntries = resultText.split('\n').filter(Boolean).slice(-500).map((line, index) => ({
+      const remoteEntries = displayText.split('\n').filter(Boolean).slice(-500).map((line, index) => ({
         id: `remote-${task.id}-${index}`,
         timestamp: now,
         server_id: selectedServer.id,
         server_name: selectedServer.name,
-        level: finalStatus === 'failed' ? 'error' as const : classifyLineLevel(line),
+        level: finalStatus === 'failed' || agentDoesNotSupportLogRead ? 'error' as const : classifyLineLevel(line),
         source: `agent:${remoteLogSource}`,
         message: line,
       }));
@@ -356,7 +414,7 @@ export default function LogsPage() {
         </div>
       </div>
 
-      <div className="ops-panel surface-regular no-hover-lift grid grid-cols-1 gap-4 p-4 md:grid-cols-[1fr_180px_140px_auto]">
+      <div className="ops-panel surface-regular no-hover-lift grid grid-cols-1 gap-4 p-4 md:grid-cols-[1fr_180px_220px_auto]">
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase text-[var(--color-muted)]">Read-only agent log source</label>
           <CustomSelect
@@ -384,21 +442,22 @@ export default function LogsPage() {
             className="w-full"
           />
         </div>
-        <div className="self-end text-xs text-[var(--color-muted)]">
-          {selectedServerId === 'all'
-            ? 'Select one server'
-            : canFetchRemoteLogs
-              ? 'Linux read-only'
-              : 'Requires online Linux agent'}
+        <div className={`self-end rounded-md border px-3 py-2 text-xs font-semibold ${
+          canFetchRemoteLogs
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+            : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+        }`}>
+          {remoteLogReadiness}
         </div>
         <button
           type="button"
           onClick={() => void fetchRemoteLogs()}
           disabled={!canFetchRemoteLogs || fetchingRemoteLogs}
           className="ops-button primary self-end"
+          title={remoteLogReadiness}
         >
           {fetchingRemoteLogs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
-          Fetch logs
+          {fetchingRemoteLogs ? 'Fetching…' : fetchLogsLabel}
         </button>
       </div>
 
