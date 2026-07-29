@@ -139,8 +139,8 @@ html.light {
   --text-primary: #17202b;
   --text-secondary: #526171;
   --text-tertiary: #7c8997;
-  --accent-primary: #2f72d8;
-  --accent-hover: #2865c2;
+  --accent-primary: #0b68c7;
+  --accent-hover: #0759ad;
   --accent-subtle: #e7f0fd;
   --status-healthy: #147f69;
   --status-warning: #996411;
@@ -1365,8 +1365,14 @@ html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hove
   transform: none;
 }
 
-.dashboard-stage main :is(button, a)[class*="bg-blue-"],
-.dashboard-stage main :is(button, a)[class*="bg-emerald-6"] {
+.dashboard-stage main :is(
+  button.bg-blue-500,
+  button.bg-blue-600,
+  a.bg-blue-500,
+  a.bg-blue-600,
+  button.bg-emerald-600,
+  a.bg-emerald-600
+) {
   border: 1px solid var(--accent-primary) !important;
   border-radius: var(--radius-md) !important;
   background: var(--accent-primary) !important;

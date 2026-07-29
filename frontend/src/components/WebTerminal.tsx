@@ -204,39 +204,39 @@ export default function WebTerminal({
   };
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[#050608] shadow-2xl shadow-black/30">
-      <header className="flex flex-col gap-4 border-b border-white/10 bg-white/[0.035] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="overflow-hidden rounded-xl border border-[#2a3746] bg-[#050608] shadow-sm">
+      <header className="flex flex-col gap-4 border-b border-[#243244] bg-[#101926] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <TerminalSquare className="h-4 w-4 text-[var(--mint)]" />
+          <div className="flex items-center gap-2 text-sm font-bold text-[#f1f5f9]">
+            <TerminalSquare className="h-4 w-4 text-[#2dd4bf]" />
             Web Terminal
-            <span className={`h-2 w-2 rounded-full ${state === 'connected' ? 'bg-emerald-400' : state === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-white/30'}`} />
+            <span className={`h-2 w-2 rounded-full ${state === 'connected' ? 'bg-emerald-400' : state === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-slate-500'}`} />
             {unsupported && (
-              <span className="ml-1 rounded-full border border-rose-300/30 bg-rose-300/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-200">
+              <span className="ml-1 rounded-md border border-rose-400/40 bg-rose-950/60 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-100">
                 Not supported
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs font-medium text-white/65">
+          <p className="mt-1 text-xs font-medium text-[#a9b7c9]">
             Agent-native encrypted reverse session · maximum 30 minutes · audited
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {state === 'connected' && (
-            <button type="button" onClick={() => { fitAddonRef.current?.fit(); sendResize(); terminalRef.current?.focus(); }} className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/10">
+            <button type="button" onClick={() => { fitAddonRef.current?.fit(); sendResize(); terminalRef.current?.focus(); }} className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 transition-colors hover:bg-slate-700">
               <Maximize2 className="h-4 w-4" /> Fit
             </button>
           )}
           {unsupported ? (
-            <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-rose-300/25 bg-rose-300/10 px-4 py-2 text-xs font-bold text-rose-200">
+            <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-rose-400/40 bg-rose-950/70 px-4 py-2 text-xs font-bold text-rose-100">
               <Ban className="h-4 w-4" /> Not supported
             </span>
           ) : state === 'connected' || state === 'connecting' ? (
-            <button type="button" onClick={() => closeTerminal(true)} className="inline-flex items-center gap-2 rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-300">
+            <button type="button" onClick={() => closeTerminal(true)} className="inline-flex items-center gap-2 rounded-md border border-rose-400/45 bg-rose-950/70 px-3 py-2 text-xs font-bold text-rose-100">
               <Power className="h-4 w-4" /> Close session
             </button>
           ) : (
-            <button type="button" disabled={!enabled} onClick={startTerminal} className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-black disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" disabled={!enabled} onClick={startTerminal} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-950 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">
               <Play className="h-4 w-4" /> Start terminal
             </button>
           )}
@@ -244,29 +244,29 @@ export default function WebTerminal({
       </header>
 
       {!enabled && (
-        <div className={`flex items-start gap-3 border-b px-5 py-5 text-sm ${unsupported ? 'border-rose-300/25 bg-rose-300/10 text-rose-100' : 'border-amber-400/25 bg-amber-400/10 text-amber-100'}`}>
+        <div className={`flex items-start gap-3 border-b px-5 py-5 text-sm ${unsupported ? 'border-rose-400/35 bg-rose-950/65 text-rose-100' : 'border-amber-400/35 bg-amber-950/65 text-amber-100'}`}>
           {unsupported ? <Ban className="mt-0.5 h-5 w-5 shrink-0" /> : <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />}
           <div>
             {unsupported && <p className="font-extrabold uppercase tracking-wide">Terminal is not supported on this device</p>}
-            <p className={unsupported ? 'mt-1 font-medium leading-6 text-rose-100/80' : 'font-semibold'}>
+            <p className={unsupported ? 'mt-1 font-medium leading-6 text-rose-100' : 'font-semibold'}>
               {disabledReason || 'Terminal is unavailable for this agent.'}
             </p>
           </div>
         </div>
       )}
       {enabled && !channelConnected && (
-        <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm leading-6 text-amber-100">
+        <div className="flex items-start gap-3 border-b border-amber-400/35 bg-amber-950/65 px-5 py-4 text-sm leading-6 text-amber-100">
           <WifiOff className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
             <p className="font-semibold">The last heartbeat reported that the reverse terminal channel was disconnected.</p>
-            <p className="mt-1 text-xs text-amber-100/75">
+            <p className="mt-1 text-xs text-amber-100">
               {channelDiagnostic || 'You can retry: the Backend terminal hub will perform the authoritative connection check.'}
             </p>
           </div>
         </div>
       )}
       {enabled && !unsupported && state === 'idle' && (
-        <div className="flex items-start gap-3 border-b border-amber-400/25 bg-amber-400/10 px-5 py-4 text-sm leading-6 text-amber-100">
+        <div className="flex items-start gap-3 border-b border-amber-400/35 bg-amber-950/65 px-5 py-4 text-sm leading-6 text-amber-100">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
           <p>
             This shell runs with the DatrixOps Agent service account&apos;s privileges.
