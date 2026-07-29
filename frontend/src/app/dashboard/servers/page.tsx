@@ -469,9 +469,7 @@ export default function ServersPage() {
                   <th className="py-4 px-6">Host</th>
                   <th className="py-4 px-6">Connection</th>
                   <th className="py-4 px-6">Platform</th>
-                  <th className="py-4 px-6">Resources</th>
-                  <th className="py-4 px-6">Agent</th>
-                  <th className="py-4 px-6">Last heartbeat</th>
+                  <th className="min-w-[220px] py-4 px-6">Resources</th>
                   <th className="py-4 px-6">Update policy</th>
                   <th className="py-4 px-6">Health</th>
                   <th className="py-4 px-6 text-right">Actions</th>
@@ -480,7 +478,7 @@ export default function ServersPage() {
               <tbody className="divide-y divide-white/5">
                 {filteredServers.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-[var(--color-muted)]">
+                    <td colSpan={8} className="py-12 text-center text-[var(--color-muted)]">
                       {servers.length === 0 ? (
                         'No servers found. Add your first server to start monitoring.'
                       ) : (
@@ -564,7 +562,14 @@ export default function ServersPage() {
                           </button>
                         </td>
                         <td className="py-4 px-6">
-                          <div className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">{server.name}</div>
+                          <div className="host-identity">
+                            <span className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">
+                              {server.name}
+                            </span>
+                            <span className="agent-version-inline" title="Running agent version">
+                              v{runningAgentVersion}
+                            </span>
+                          </div>
                           {server.deletion_status && server.deletion_status !== 'active' && (
                             <div className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${
                               server.deletion_status === 'failed'
@@ -612,17 +617,6 @@ export default function ServersPage() {
                             <ResourceValue label="RAM" value={ramText} numericValue={ramPct == null ? undefined : Number(ramPct)} />
                             <ResourceValue label="DISK" value={diskText} numericValue={diskPct == null ? undefined : Number(diskPct)} />
                           </div>
-                        </td>
-
-                        <td className="py-4 px-6">
-                          <div className="font-mono text-xs text-[var(--text-primary)]">v{runningAgentVersion}</div>
-                          <div className={`mt-1 text-[11px] ${updateAvailable ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
-                            {updateAvailable ? `v${latestAgentVersion} available` : 'Current'}
-                          </div>
-                        </td>
-
-                        <td className="py-4 px-6 font-mono text-xs text-[var(--text-secondary)]">
-                          {formatRelativeTimestamp(server.last_seen_at)}
                         </td>
 
                         {/* Auto-Update Toggle Button */}
@@ -798,6 +792,7 @@ export default function ServersPage() {
               const liveInfo = isOffline ? null : osInfo;
               const isCritical = liveInfo && liveInfo.cpu_usage > 90;
               const isSelected = selectedServerIds.includes(server.id);
+              const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
 
               return (
                 <div
@@ -818,9 +813,14 @@ export default function ServersPage() {
                           {isSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
                         </button>
                         <div>
-                          <h3 className="font-bold text-[var(--foreground)] text-base group-hover:text-blue-400 transition-colors">
-                            {server.name}
-                          </h3>
+                          <div className="host-identity">
+                            <h3 className="font-bold text-[var(--foreground)] text-base group-hover:text-blue-400 transition-colors">
+                              {server.name}
+                            </h3>
+                            <span className="agent-version-inline" title="Running agent version">
+                              v{runningAgentVersion}
+                            </span>
+                          </div>
                           <span className="font-mono text-xs text-[var(--color-muted)]">{server.ip_address || '—'}</span>
                         </div>
                       </div>
@@ -1355,22 +1355,17 @@ function ResourceValue({
         : 'var(--text-primary)';
 
   return (
-    <span>
+    <span className="resource-value">
       <b>{label}</b>
+      <span className="resource-meter" aria-hidden="true">
+        <i
+          style={{
+            width: `${Math.max(0, Math.min(100, numericValue ?? 0))}%`,
+            backgroundColor: tone,
+          }}
+        />
+      </span>
       <code style={{ color: tone }}>{value}</code>
     </span>
   );
-}
-
-function formatRelativeTimestamp(value?: string) {
-  if (!value) return 'Unknown';
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return 'Unknown';
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1_000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
