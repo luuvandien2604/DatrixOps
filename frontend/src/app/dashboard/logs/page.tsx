@@ -11,10 +11,20 @@ import toast from 'react-hot-toast';
 interface LogEntry {
   id: string;
   timestamp: string;
+  server_id?: string;
   server_name: string;
   level: 'info' | 'warn' | 'error' | 'debug';
   source: string;
   message: string;
+}
+
+interface AuditLog {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  details?: Record<string, unknown> | null;
+  created_at: string;
 }
 
 interface LogServer {
@@ -23,31 +33,99 @@ interface LogServer {
   ip_address?: string;
 }
 
-type LogType = 'all' | 'system' | 'docker' | 'agent';
+type LogType = 'all' | 'audit' | 'system' | 'docker' | 'agent';
+
+const classifyAuditLevel = (action: string): LogEntry['level'] => {
+  const normalized = action.toLowerCase();
+  if (normalized.includes('fail') || normalized.includes('delete') || normalized.includes('uninstall')) return 'error';
+  if (normalized.includes('update') || normalized.includes('restart') || normalized.includes('reboot')) return 'warn';
+  return 'info';
+};
+
+const stringifyDetail = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const formatAuditMessage = (log: AuditLog): string => {
+  const details = log.details || {};
+  const detailPairs = Object.entries(details)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => `${key}=${stringifyDetail(value)}`);
+  const subject = `${log.resource_type || 'RESOURCE'} ${log.resource_id || ''}`.trim();
+  return `${log.action}${subject ? ` on ${subject}` : ''}${detailPairs.length ? ` | ${detailPairs.join(' ')}` : ''}`;
+};
 
 export default function LogsPage() {
   const [servers, setServers] = useState<LogServer[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedServerId, setSelectedServerId] = useState<string>('all');
   const [logLevel, setLogLevel] = useState<string>('all');
   const [logType, setLogType] = useState<LogType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
-  const logs: LogEntry[] = [];
 
   useEffect(() => {
-    // Fetch server list for selector
-    apiClient('/servers')
-      .then(data => setServers(Array.isArray(data) ? data : []))
-      .catch(() => setServers([]));
+    let cancelled = false;
 
+    const loadLogs = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [serverData, auditData] = await Promise.all([
+          apiClient('/servers').catch(() => []),
+          apiClient('/audit-logs'),
+        ]);
+
+        if (cancelled) return;
+
+        const serverList = Array.isArray(serverData) ? serverData : [];
+        const serverById = new Map<string, LogServer>(serverList.map((server: LogServer) => [server.id, server]));
+        const auditRows: AuditLog[] = Array.isArray(auditData) ? auditData : [];
+
+        setServers(serverList);
+        setLogs(auditRows.map((auditLog) => {
+          const server = serverById.get(auditLog.resource_id);
+          return {
+            id: auditLog.id,
+            timestamp: auditLog.created_at,
+            server_id: auditLog.resource_type === 'SERVER' ? auditLog.resource_id : undefined,
+            server_name: server?.name || auditLog.resource_type || 'control-plane',
+            level: classifyAuditLevel(auditLog.action),
+            source: `audit:${(auditLog.resource_type || 'system').toLowerCase()}`,
+            message: formatAuditMessage(auditLog),
+          };
+        }));
+      } catch (err) {
+        if (cancelled) return;
+        console.error(err);
+        setLogs([]);
+        setLoadError(err instanceof Error ? err.message : 'Failed to load logs');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadLogs();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredLogs = logs.filter(log => {
     if (selectedServerId !== 'all') {
-      const s = servers.find(item => item.id === selectedServerId);
-      if (s && log.server_name !== s.name) return false;
+      if (log.server_id !== selectedServerId) return false;
     }
     if (logLevel !== 'all' && log.level !== logLevel) return false;
+    if (logType === 'audit' && !log.source.startsWith('audit')) return false;
     if (logType === 'system' && !log.source.includes('systemd') && !log.source.includes('kernel')) return false;
     if (logType === 'docker' && !log.source.startsWith('docker')) return false;
     if (logType === 'agent' && !log.source.includes('agent')) return false;
@@ -57,7 +135,8 @@ export default function LogsPage() {
       return (
         log.message.toLowerCase().includes(q) ||
         log.server_name.toLowerCase().includes(q) ||
-        log.source.toLowerCase().includes(q)
+        log.source.toLowerCase().includes(q) ||
+        (log.server_id || '').toLowerCase().includes(q)
       );
     }
     return true;
@@ -158,6 +237,7 @@ export default function LogsPage() {
             onChange={(val) => setLogType(val as LogType)}
             options={[
               { value: 'all', label: 'All Sources' },
+              { value: 'audit', label: 'Audit Stream' },
               { value: 'agent', label: 'DatrixOps Agent' },
               { value: 'docker', label: 'Docker Containers' },
               { value: 'system', label: 'Systemd Services' },
@@ -191,18 +271,26 @@ export default function LogsPage() {
             <Terminal className="w-4 h-4 text-emerald-400" />
             <span className="font-semibold text-slate-200">live-stream.log</span>
             <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-              {filteredLogs.length} entries
+              {loading ? 'loading' : `${filteredLogs.length} entries`}
             </span>
           </div>
 
-          <span className="status-badge disabled">INGESTION UNAVAILABLE</span>
+          <span className="status-badge disabled">AUDIT STREAM</span>
         </div>
 
         {/* Console Body */}
         <div className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
-          {filteredLogs.length === 0 ? (
+          {loading ? (
             <div className="py-12 text-center text-slate-500 font-sans">
-              No real log records are available. Agent log ingestion is not implemented by the current backend.
+              Loading operational log records...
+            </div>
+          ) : loadError ? (
+            <div className="py-12 text-center text-rose-300 font-sans">
+              Unable to load logs: {loadError}
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 font-sans">
+              No log records match the current filters.
             </div>
           ) : (
             filteredLogs.map((log, idx) => (
