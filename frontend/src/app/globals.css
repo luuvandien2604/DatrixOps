@@ -150,7 +150,7 @@ html.light {
   --chart-grid: #dfe6ed;
   --chart-axis: #657486;
   --table-row-hover: #f1f5f8;
-  --table-row-selected: #e8f1fd;
+  --table-row-selected: #eaf4ff;
   --ink-950: #f3f6f9;
   --ink-925: #eef2f6;
   --ink-900: #f8fafc;
@@ -468,6 +468,17 @@ button:disabled {
   border-color: var(--border-default);
   background: var(--surface-2);
   color: var(--text-primary);
+}
+
+.ops-button:disabled,
+.landing-cta:disabled,
+.landing-pill:disabled,
+.auth-submit:disabled {
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  background: var(--surface-3);
+  color: var(--text-tertiary);
+  opacity: 1;
 }
 
 .section-eyebrow,
@@ -856,7 +867,11 @@ button:disabled {
 .status-badge.warning { border-color: color-mix(in srgb, var(--status-warning) 28%, var(--border-default)); background: color-mix(in srgb, var(--status-warning) 9%, var(--surface-1)); color: var(--status-warning); }
 .status-badge.critical { border-color: color-mix(in srgb, var(--status-critical) 28%, var(--border-default)); background: color-mix(in srgb, var(--status-critical) 9%, var(--surface-1)); color: var(--status-critical); }
 .status-badge.offline,
-.status-badge.disabled { color: var(--status-disabled); }
+.status-badge.disabled {
+  border-color: var(--border-default);
+  background: var(--surface-3);
+  color: var(--status-disabled);
+}
 
 .health-ring {
   position: absolute;
@@ -917,6 +932,14 @@ button:disabled {
   box-shadow: inset 2px 0 var(--accent-primary);
 }
 
+html.light .dashboard-stage main table tbody tr.is-row-selected {
+  color: var(--text-primary);
+}
+
+html.light .dashboard-stage main table tbody tr.is-row-selected td {
+  color: var(--text-secondary);
+}
+
 .resource-values {
   display: grid;
   width: 100%;
@@ -947,6 +970,10 @@ button:disabled {
   overflow: hidden;
   border-radius: 2px;
   background: var(--surface-3);
+}
+
+html.light .resource-meter {
+  background: #dbe4ee;
 }
 
 .resource-meter i {
@@ -1096,7 +1123,7 @@ button:disabled {
 
 /* Light mode contrast guard for legacy Tailwind colour classes that remain in
    older dashboard sections. Keep semantic colour, but avoid washed-out text. */
-html.light .dashboard-stage main :is(.text-slate-200, .text-slate-300, .text-slate-400, .text-gray-400, .text-zinc-400, .text-neutral-400) {
+html.light .dashboard-stage main :is(.text-slate-200, .text-slate-300, .text-slate-400, .text-gray-300, .text-gray-400, .text-zinc-400, .text-neutral-400) {
   color: var(--text-secondary) !important;
 }
 
@@ -1125,42 +1152,53 @@ html.light .dashboard-stage main :is(.hover\:text-white:hover, .group-hover\:tex
 }
 
 html.light .dashboard-stage main .log-console {
-  border-color: #2a3746 !important;
-  background: #080d14 !important;
-  color: #e8eef8 !important;
+  border-color: var(--border-default) !important;
+  background: #ffffff !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-sm);
 }
 
 html.light .dashboard-stage main .log-console > :first-child {
-  background: rgba(18, 31, 49, .96) !important;
-  color: #a9b7c9 !important;
+  border-color: var(--border-default) !important;
+  background: #eef4fa !important;
+  color: var(--text-secondary) !important;
 }
 
 html.light .dashboard-stage main .log-console :is(.text-slate-200, .text-slate-300) {
-  color: #e8eef8 !important;
+  color: var(--text-primary) !important;
 }
 
 html.light .dashboard-stage main .log-console .text-slate-400 {
-  color: #a9b7c9 !important;
+  color: #415267 !important;
 }
 
 html.light .dashboard-stage main .log-console .text-slate-500 {
-  color: #8293aa !important;
+  color: #526b86 !important;
 }
 
 html.light .dashboard-stage main .log-console .text-blue-400 {
-  color: #8eb5ff !important;
+  color: #145fb8 !important;
 }
 
 html.light .dashboard-stage main .log-console :is(.text-amber-200, .text-amber-300, .text-amber-400) {
-  color: #ffd36a !important;
+  color: #8a5708 !important;
 }
 
 html.light .dashboard-stage main .log-console :is(.text-rose-300, .text-rose-400) {
-  color: #ff8da1 !important;
+  color: #bf263c !important;
 }
 
 html.light .dashboard-stage main .log-console .text-emerald-400 {
-  color: #64d6bf !important;
+  color: #08745f !important;
+}
+
+html.light .dashboard-stage main .log-console [class*="bg-slate-800"] {
+  background: #dbe7f2 !important;
+  color: #43566b !important;
+}
+
+html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hover {
+  background: #eef4fa !important;
 }
 
 .server-filter-tabs {

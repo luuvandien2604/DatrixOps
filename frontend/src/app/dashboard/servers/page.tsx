@@ -408,13 +408,13 @@ export default function ServersPage() {
             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white font-bold text-xs">
               {selectedServerIds.length}
             </span>
-            <span className="text-sm font-semibold text-white">Server(s) selected</span>
+            <span className="text-sm font-semibold text-[var(--foreground)]">Server(s) selected</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleBulkAutoUpdate(true)}
               disabled={isBulkProcessing}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] dark:text-emerald-300 dark:hover:bg-emerald-500/25"
             >
               <ToggleRight className="w-3.5 h-3.5" />
               Enable Auto-Update
@@ -422,7 +422,7 @@ export default function ServersPage() {
             <button
               onClick={() => handleBulkAutoUpdate(false)}
               disabled={isBulkProcessing}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30 hover:bg-gray-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)]"
             >
               <ToggleLeft className="w-3.5 h-3.5" />
               Disable Auto-Update
@@ -430,14 +430,14 @@ export default function ServersPage() {
             <button
               onClick={handleBulkUpdateAgents}
               disabled={isBulkProcessing}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/12 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] dark:text-amber-300 dark:hover:bg-amber-500/25"
             >
               <UploadCloud className="w-3.5 h-3.5" />
               Trigger Agent Update
             </button>
             <button
               onClick={() => setSelectedServerIds([])}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors"
+              className="rounded-md px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
             >
               Clear Selection
             </button>
@@ -552,7 +552,7 @@ export default function ServersPage() {
                         <td className="py-4 px-4">
                           <button
                             onClick={e => toggleSelectServer(server.id, e)}
-                            className="text-[var(--color-muted)] hover:text-white transition-colors flex items-center"
+                            className="flex items-center text-[var(--color-muted)] transition-colors hover:text-[var(--foreground)]"
                           >
                             {isSelected ? (
                               <CheckSquare className="w-4 h-4 text-blue-400" />
