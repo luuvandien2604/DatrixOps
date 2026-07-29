@@ -1035,7 +1035,7 @@ button:disabled {
 .dashboard-stage main :is(
   .ops-panel:not(.surface-subtle):not(.surface-elevated),
   [class*="bg-[var(--background-card)]"]
-) {
+):not(.log-console) {
   border: 1px solid var(--border-default) !important;
   border-radius: var(--radius-lg) !important;
   background: var(--surface-1) !important;
@@ -1075,8 +1075,92 @@ button:disabled {
   background: rgba(72, 108, 153, .13) !important;
 }
 
+.dashboard-stage main .log-console .text-amber-200,
+.dashboard-stage main .log-console .text-amber-300,
+.dashboard-stage main .log-console .text-amber-400 {
+  color: #ffd36a !important;
+}
+
+.dashboard-stage main .log-console .text-rose-300,
+.dashboard-stage main .log-console .text-rose-400 {
+  color: #ff8da1 !important;
+}
+
+.dashboard-stage main .log-console .text-emerald-400 {
+  color: #64d6bf !important;
+}
+
 .dashboard-stage main .log-console:hover {
   transform: none !important;
+}
+
+/* Light mode contrast guard for legacy Tailwind colour classes that remain in
+   older dashboard sections. Keep semantic colour, but avoid washed-out text. */
+html.light .dashboard-stage main :is(.text-slate-200, .text-slate-300, .text-slate-400, .text-gray-400, .text-zinc-400, .text-neutral-400) {
+  color: var(--text-secondary) !important;
+}
+
+html.light .dashboard-stage main :is(.text-slate-500, .text-gray-500, .text-zinc-500, .text-neutral-500) {
+  color: var(--text-tertiary) !important;
+}
+
+html.light .dashboard-stage main :is(.text-blue-400, .text-blue-500) {
+  color: var(--accent-primary) !important;
+}
+
+html.light .dashboard-stage main :is(.text-emerald-400, .text-emerald-500) {
+  color: var(--status-healthy) !important;
+}
+
+html.light .dashboard-stage main :is(.text-amber-200, .text-amber-300, .text-amber-400, .text-amber-500) {
+  color: var(--status-warning) !important;
+}
+
+html.light .dashboard-stage main :is(.text-rose-300, .text-rose-400, .text-rose-500, .text-red-400, .text-red-500) {
+  color: var(--status-critical) !important;
+}
+
+html.light .dashboard-stage main :is(.hover\:text-white:hover, .group-hover\:text-white) {
+  color: var(--text-primary) !important;
+}
+
+html.light .dashboard-stage main .log-console {
+  border-color: #2a3746 !important;
+  background: #080d14 !important;
+  color: #e8eef8 !important;
+}
+
+html.light .dashboard-stage main .log-console > :first-child {
+  background: rgba(18, 31, 49, .96) !important;
+  color: #a9b7c9 !important;
+}
+
+html.light .dashboard-stage main .log-console :is(.text-slate-200, .text-slate-300) {
+  color: #e8eef8 !important;
+}
+
+html.light .dashboard-stage main .log-console .text-slate-400 {
+  color: #a9b7c9 !important;
+}
+
+html.light .dashboard-stage main .log-console .text-slate-500 {
+  color: #8293aa !important;
+}
+
+html.light .dashboard-stage main .log-console .text-blue-400 {
+  color: #8eb5ff !important;
+}
+
+html.light .dashboard-stage main .log-console :is(.text-amber-200, .text-amber-300, .text-amber-400) {
+  color: #ffd36a !important;
+}
+
+html.light .dashboard-stage main .log-console :is(.text-rose-300, .text-rose-400) {
+  color: #ff8da1 !important;
+}
+
+html.light .dashboard-stage main .log-console .text-emerald-400 {
+  color: #64d6bf !important;
 }
 
 .server-filter-tabs {
