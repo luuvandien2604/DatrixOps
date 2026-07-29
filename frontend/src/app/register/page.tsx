@@ -36,9 +36,7 @@ export default function RegisterPage() {
     <main id="main-content" className="auth-shell">
       <Link href="/" className="auth-back"><ArrowLeft className="h-4 w-4" /> Back to home</Link>
       <ThemeToggle className="auth-theme-toggle" />
-      <div className="auth-liquid auth-liquid-one" />
-      <div className="auth-liquid auth-liquid-two" />
-      <div className="auth-card glass-card">
+      <div className="auth-card ops-panel">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 hover:opacity-80 transition-opacity">
             <span className="brand-orbit"><Command className="h-4 w-4" /></span>

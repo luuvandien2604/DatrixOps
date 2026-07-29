@@ -133,7 +133,7 @@ export default function WebsitesPage() {
           <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
         </div>
       ) : websites.length === 0 ? (
-        <div className="glass-card p-12 text-center">
+        <div className="ops-panel p-12 text-center">
           <Globe className="w-12 h-12 text-[var(--color-muted)] mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-medium text-[var(--foreground)] mb-2">No websites monitored yet</h3>
           <p className="text-[var(--color-muted)] text-sm mb-4">Add a URL (https://...) to start real-time health checks.</p>
@@ -158,7 +158,7 @@ export default function WebsitesPage() {
               : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
 
             return (
-              <div key={w.id} className="glass-card p-5 hover:border-blue-500/30 transition-all flex flex-col justify-between">
+              <div key={w.id} className="ops-panel p-5 hover:border-blue-500/30 transition-all flex flex-col justify-between">
                 <div>
                   {/* Top row */}
                   <div className="flex justify-between items-start mb-4">
@@ -263,8 +263,8 @@ export default function WebsitesPage() {
 
       {/* Add Website Modal */}
       {isModalOpen && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="glass-modal w-full max-w-md overflow-hidden">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="ops-modal w-full max-w-md overflow-hidden">
             <div className="p-5 border-b border-white/5 flex justify-between items-center">
               <h3 id="website-dialog-title" className="font-bold text-lg text-[var(--foreground)]">Add Monitored Website</h3>
               <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Close dialog" className="text-[var(--color-muted)] hover:text-white">

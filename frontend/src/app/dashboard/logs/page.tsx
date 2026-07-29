@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 import {
-  FileText, Server, RefreshCw, Search, Download, Copy,
-  Check, Pause, Play, Terminal, AlertTriangle, Info, CheckCircle2
+  FileText, Search, Download, Copy, Check, PauseCircle, Terminal
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -18,19 +17,22 @@ interface LogEntry {
   message: string;
 }
 
+interface LogServer {
+  id: string;
+  name: string;
+  ip_address?: string;
+}
+
+type LogType = 'all' | 'system' | 'docker' | 'agent';
+
 export default function LogsPage() {
-  const [servers, setServers] = useState<any[]>([]);
+  const [servers, setServers] = useState<LogServer[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string>('all');
   const [logLevel, setLogLevel] = useState<string>('all');
-  const [logType, setLogType] = useState<'all' | 'system' | 'docker' | 'agent'>('all');
+  const [logType, setLogType] = useState<LogType>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isStreaming, setIsStreaming] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-
-  const terminalEndRef = useRef<HTMLDivElement | null>(null);
-  const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const logs: LogEntry[] = [];
 
   useEffect(() => {
     // Fetch server list for selector
@@ -38,107 +40,7 @@ export default function LogsPage() {
       .then(data => setServers(Array.isArray(data) ? data : []))
       .catch(() => setServers([]));
 
-    generateMockInitialLogs();
-    setLoading(false);
   }, []);
-
-  // Poll / Stream simulated live logs when streaming is enabled
-  useEffect(() => {
-    if (!isStreaming) return;
-
-    const interval = setInterval(() => {
-      const newLog = generateRandomLog(selectedServerId, servers);
-      setLogs(prev => [...prev.slice(-499), newLog]);
-    }, 3500);
-
-    return () => clearInterval(interval);
-  }, [isStreaming, selectedServerId, servers]);
-
-  useEffect(() => {
-    if (isStreaming && logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [logs, isStreaming]);
-
-  const generateMockInitialLogs = () => {
-    const mockLogs: LogEntry[] = [
-      {
-        id: '1',
-        timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        server_name: 'prod-api-sg-01',
-        level: 'info',
-        source: 'datrixops-agent',
-        message: 'DatrixOps Agent v1.3.2 initialized. Connected to control plane.'
-      },
-      {
-        id: '2',
-        timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-        server_name: 'prod-api-sg-01',
-        level: 'info',
-        source: 'systemd',
-        message: 'Started Nginx HTTP and reverse proxy server.'
-      },
-      {
-        id: '3',
-        timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-        server_name: 'prod-db-postgres-01',
-        level: 'warn',
-        source: 'postgresql',
-        message: 'PostgreSQL: process 14202 checkpointer sleeping for 300s'
-      },
-      {
-        id: '4',
-        timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-        server_name: 'prod-api-sg-01',
-        level: 'info',
-        source: 'docker:app-backend',
-        message: 'HTTP GET /api/v1/servers status=200 latency=14.2ms'
-      },
-      {
-        id: '5',
-        timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-        server_name: 'prod-cache-redis-01',
-        level: 'info',
-        source: 'redis-server',
-        message: 'DB loaded from disk: 0.042 seconds, 1420 keys loaded.'
-      },
-      {
-        id: '6',
-        timestamp: new Date(Date.now() - 1000 * 30).toISOString(),
-        server_name: 'prod-api-sg-01',
-        level: 'error',
-        source: 'docker:auth-service',
-        message: 'JWT verification warning: Token cache miss for user_id=usr_8921a. Refreshed from DB.'
-      }
-    ];
-    setLogs(mockLogs);
-  };
-
-  const generateRandomLog = (currentServerId: string, serverList: any[]): LogEntry => {
-    const levels: ('info' | 'warn' | 'error' | 'debug')[] = ['info', 'info', 'info', 'warn', 'info', 'debug'];
-    const sources = ['datrixops-agent', 'docker:api-gateway', 'systemd', 'nginx', 'postgresql', 'kernel'];
-    const messages = [
-      'Heartbeat metric report submitted successfully (latency 12ms)',
-      'HTTP POST /api/v1/servers/actions/update-agents status=200',
-      'CPU usage spike detected: 42.1% across 8 cores',
-      'Memory cache cleanup freed 128MB resident memory',
-      'SSL cert check for datrixops.vandien.space: Valid for 84 days',
-      'Cron job discovery cycle completed. Found 4 scheduled tasks.'
-    ];
-
-    const targetServer = currentServerId !== 'all'
-      ? serverList.find(s => s.id === currentServerId)?.name || 'prod-server-01'
-      : (serverList.length > 0 ? serverList[Math.floor(Math.random() * serverList.length)].name : 'prod-api-sg-01');
-
-    return {
-      id: Math.random().toString(36).substring(2, 9),
-      timestamp: new Date().toISOString(),
-      server_name: targetServer,
-      level: levels[Math.floor(Math.random() * levels.length)],
-      source: sources[Math.floor(Math.random() * sources.length)],
-      message: messages[Math.floor(Math.random() * messages.length)]
-    };
-  };
 
   const filteredLogs = logs.filter(log => {
     if (selectedServerId !== 'all') {
@@ -192,30 +94,23 @@ export default function LogsPage() {
         <div>
           <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1 flex items-center gap-3">
             <FileText className="w-6 h-6 text-blue-400" />
-            Unified Logs Studio
+            Log Explorer
           </h1>
-          <p className="text-sm text-[var(--color-muted)]">Real-time centralized log aggregator for infrastructure agents and containerized workloads</p>
+          <p className="text-sm text-[var(--color-muted)]">Search and inspect agent, system and container log streams.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsStreaming(!isStreaming)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border ${
-              isStreaming
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
-                : 'bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25'
-            }`}
-          >
-            {isStreaming ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {isStreaming ? 'Streaming Live' : 'Stream Paused'}
+          <button type="button" disabled className="ops-button secondary" title="Log ingestion is not available from the current backend">
+            <PauseCircle className="w-4 h-4" />
+            Live tail unavailable
           </button>
 
-          <button onClick={copyAllLogs} className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm border border-white/10 flex items-center gap-1.5 transition-colors">
+          <button disabled={filteredLogs.length === 0} onClick={copyAllLogs} className="ops-button secondary">
             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             Copy
           </button>
 
-          <button onClick={downloadLogs} className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm border border-white/10 flex items-center gap-1.5 transition-colors">
+          <button disabled={filteredLogs.length === 0} onClick={downloadLogs} className="ops-button secondary">
             <Download className="w-4 h-4" />
             Export
           </button>
@@ -223,7 +118,7 @@ export default function LogsPage() {
       </div>
 
       {/* Control Filters */}
-      <div className="glass-card glass-regular glass-static p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="ops-panel surface-regular no-hover-lift p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Server Selector */}
         <div>
           <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
@@ -260,7 +155,7 @@ export default function LogsPage() {
           <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Source Category</label>
           <CustomSelect
             value={logType}
-            onChange={(val) => setLogType(val as any)}
+            onChange={(val) => setLogType(val as LogType)}
             options={[
               { value: 'all', label: 'All Sources' },
               { value: 'agent', label: 'DatrixOps Agent' },
@@ -289,7 +184,7 @@ export default function LogsPage() {
       </div>
 
       {/* Terminal Log Console Window */}
-      <div className="log-console glass-card glass-static overflow-hidden rounded-xl font-mono text-xs">
+      <div className="log-console ops-panel no-hover-lift overflow-hidden rounded-xl font-mono text-xs">
         {/* Terminal Header Bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 text-slate-400">
           <div className="flex items-center gap-2">
@@ -300,19 +195,14 @@ export default function LogsPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              LIVE STREAMS
-            </span>
-          </div>
+          <span className="status-badge disabled">INGESTION UNAVAILABLE</span>
         </div>
 
         {/* Console Body */}
-        <div ref={logContainerRef} className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
+        <div className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
           {filteredLogs.length === 0 ? (
             <div className="py-12 text-center text-slate-500 font-sans">
-              No logs matching the current filter criteria.
+              No real log records are available. Agent log ingestion is not implemented by the current backend.
             </div>
           ) : (
             filteredLogs.map((log, idx) => (
@@ -347,7 +237,6 @@ export default function LogsPage() {
               </div>
             ))
           )}
-          <div ref={terminalEndRef} />
         </div>
       </div>
     </div>

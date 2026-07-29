@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, ChevronDown, CircleAlert, Clock3, Cpu, DatabaseBackup,
+  Activity, CircleAlert, Clock3, Cpu, DatabaseBackup,
   HardDrive, RefreshCw, Server as ServerIcon, Wifi,
 } from 'lucide-react';
 import {
@@ -44,8 +44,7 @@ type TimelinePoint = {
   diskRead: number | null;
   diskWrite: number | null;
 
-  // Giá trị 0 chỉ xuất hiện trong khoảng downtime đã được xác nhận.
-  // Dùng để vẽ đoạn "No metrics" bằng màu riêng.
+  // Zero is only emitted during confirmed downtime and is rendered separately.
   downtimeZero: number | null;
 
   hasData: boolean;
@@ -103,6 +102,7 @@ export default function MonitoringPage() {
   const [metricsLoaded, setMetricsLoaded] = useState(false);
   const [metricsError, setMetricsError] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const activeMetricsRequest = useRef<AbortController | null>(null);
   const router = useRouter();
 
@@ -172,6 +172,7 @@ export default function MonitoringPage() {
       setMetricsLoaded(true);
       setMetricsError('');
       setNow(Date.now());
+      setLastRefreshedAt(new Date());
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       const message = error instanceof Error ? error.message : 'Unable to load metrics';
@@ -221,8 +222,7 @@ export default function MonitoringPage() {
     () => buildTimeline(rawMetrics, timelineConfig, now),
     [now, rawMetrics, timelineConfig],
   );
-  // Giữ toàn bộ timeline.
-  // Khoảng downtime đã xác nhận sẽ có giá trị 0.
+  // Preserve the full timeline; confirmed downtime is represented at zero.
   const chartTimeline = timeline;
   const selectedServer = servers.find((server) => server.id === selectedServerId);
   const serverOnline = selectedServer?.status === 'online';
@@ -242,9 +242,12 @@ export default function MonitoringPage() {
             <Activity className="h-3.5 w-3.5" />
             Continuous telemetry
           </p>
-          <h1>Resource <em>monitoring.</em></h1>
+          <h1>Resource Monitoring</h1>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
             Confirmed downtime is displayed at zero while the tooltip still distinguishes missing metrics from real zero values.
+          </p>
+          <p className="mt-2 font-mono text-xs text-[var(--text-tertiary)]">
+            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · Polling every {POLL_INTERVAL_MS / 1_000}s
           </p>
         </div>
 
@@ -294,7 +297,7 @@ export default function MonitoringPage() {
       )}
 
       {!selectedServerId ? (
-        <div className="glass-card p-12 text-center">
+        <div className="ops-panel p-12 text-center">
           <ServerIcon className="mx-auto mb-4 h-10 w-10 text-[var(--color-muted)] opacity-45" />
           <h2 className="text-xl">No servers to monitor</h2>
           <p className="mt-2 text-[var(--color-muted)]">Connect a DatrixOps Agent to start receiving metrics.</p>
@@ -313,6 +316,8 @@ export default function MonitoringPage() {
               title="CPU Usage (%)"
               icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
               rangeLabel={rangeConfig.label}
+              summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
+              freshness={`${effectiveBucketSeconds}s resolution`}
               loading={initialLoading}
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -351,6 +356,8 @@ export default function MonitoringPage() {
               title="Memory Usage (%)"
               icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
               rangeLabel={rangeConfig.label}
+              summary={formatMetricSummary(chartTimeline, 'ram', '%')}
+              freshness={`${effectiveBucketSeconds}s resolution`}
               loading={initialLoading}
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -394,6 +401,8 @@ export default function MonitoringPage() {
               title="Network Throughput (KB/s)"
               icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
               rangeLabel={rangeConfig.label}
+              summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
+              freshness={`${effectiveBucketSeconds}s resolution`}
               loading={initialLoading}
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -423,6 +432,8 @@ export default function MonitoringPage() {
               title="Disk I/O (KB/s)"
               icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
               rangeLabel={rangeConfig.label}
+              summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
+              freshness={`${effectiveBucketSeconds}s resolution`}
               loading={initialLoading}
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -458,23 +469,33 @@ function MetricChartCard({
   title,
   icon,
   rangeLabel,
+  summary,
+  freshness,
   loading,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
   rangeLabel: string;
+  summary: string;
+  freshness: string;
   loading: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass-card glass-regular glass-static monitoring-chart-card p-5 sm:p-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          {icon}
-          {title}
-        </h2>
-        <span className="text-xs text-[var(--color-muted)]">{rangeLabel}</span>
+    <section className="ops-panel surface-regular no-hover-lift monitoring-chart-card p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            {icon}
+            {title}
+          </h2>
+          <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">{summary}</p>
+        </div>
+        <div className="text-right text-xs text-[var(--color-muted)]">
+          <span className="block">{rangeLabel}</span>
+          <span className="mt-1 block font-mono text-[11px]">{freshness}</span>
+        </div>
       </div>
       <div className="relative h-72">
         {children}
@@ -569,6 +590,10 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
               <strong>{formatTooltipValue(item.value)}</strong>
             </div>
           ))}
+          <div className="monitoring-tooltip-meta">
+            <span>Status</span><strong>Data received</strong>
+            <span>Source</span><strong>Agent heartbeat</strong>
+          </div>
         </div>
       )}
     </div>
@@ -721,4 +746,34 @@ function formatTooltipValue(value: number | string | null | undefined): string {
   const metric = Number(value);
   if (!Number.isFinite(metric)) return '—';
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(metric);
+}
+
+function formatMetricSummary(
+  points: TimelinePoint[],
+  key: 'cpu' | 'ram',
+  unit: string,
+) {
+  const values = points
+    .filter(point => point.hasData && point[key] != null)
+    .map(point => Number(point[key]));
+  if (values.length === 0) return 'Current — · Avg — · Peak —';
+  const current = values.at(-1) ?? 0;
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const peak = Math.max(...values);
+  return `Current ${current.toFixed(1)}${unit} · Avg ${average.toFixed(1)}${unit} · Peak ${peak.toFixed(1)}${unit}`;
+}
+
+function formatPairSummary(
+  points: TimelinePoint[],
+  firstKey: 'netIn' | 'diskRead',
+  firstLabel: string,
+  secondKey: 'netOut' | 'diskWrite',
+  secondLabel: string,
+  unit: string,
+) {
+  const latest = [...points].reverse().find(point => point.hasData);
+  if (!latest) return `${firstLabel} — · ${secondLabel} —`;
+  const first = latest[firstKey];
+  const second = latest[secondKey];
+  return `${firstLabel} ${first == null ? '—' : first.toFixed(2)}${unit} · ${secondLabel} ${second == null ? '—' : second.toFixed(2)}${unit}`;
 }

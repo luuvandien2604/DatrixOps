@@ -1,22 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import "@fontsource-variable/inter";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
-import { LiquidGlassPointer } from "@/components/LiquidGlassPointer";
 import { ThemeProvider } from "@/components/ThemeProvider";
-
-const sans = Inter({
-  subsets: ["latin", "vietnamese"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const display = Cormorant_Garamond({
-  subsets: ["latin", "vietnamese"],
-  style: ["normal", "italic"],
-  variable: "--font-cormorant",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "DatrixOps — Server Observability",
@@ -35,25 +21,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${display.variable} h-full antialiased`}
+      className="h-full antialiased"
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
-          <LiquidGlassPointer />
 
           <Toaster
             position="bottom-right"
             toastOptions={{
               style: {
-                background: "var(--glass-modal-background)",
+                background: "var(--surface-3)",
                 color: "var(--foreground)",
-                border: "1px solid var(--glass-edge-strong)",
+                border: "1px solid var(--border-default)",
                 fontSize: "13px",
-                borderRadius: "999px",
-                backdropFilter: "blur(var(--glass-blur-elevated)) saturate(var(--glass-saturation-elevated))",
-                boxShadow: "var(--shadow-elevated)",
+                borderRadius: "10px",
+                boxShadow: "var(--shadow-md)",
               },
               success: {
                 iconTheme: {

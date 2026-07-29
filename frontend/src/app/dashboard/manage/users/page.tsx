@@ -39,10 +39,10 @@ export default function ManageUsersPage() {
     else setLoading(false);
   }, [fetchUsers, isSuperadmin]);
 
-  if (isSuperadmin == null) return <div className="glass-card p-10 text-center text-[var(--color-muted)]">Checking access…</div>;
+  if (isSuperadmin == null) return <div className="ops-panel p-10 text-center text-[var(--color-muted)]">Checking access…</div>;
   if (!isSuperadmin) {
     return (
-      <div className="glass-card mx-auto max-w-xl p-10 text-center">
+      <div className="ops-panel mx-auto max-w-xl p-10 text-center">
         <ShieldCheck className="mx-auto h-9 w-9 text-[var(--rose)]" />
         <h1 className="mt-5">Restricted <em>workspace.</em></h1>
         <p className="mt-4 text-[var(--color-muted)]">Superadmin access is required to view tenant and operator information.</p>
@@ -58,7 +58,7 @@ export default function ManageUsersPage() {
           <h1>Team <em>access.</em></h1>
           <p className="mt-3 text-[var(--color-muted)]">A live, read-only inventory of users, roles, and owned infrastructure.</p>
         </div>
-        <button type="button" onClick={() => void fetchUsers()} className="liquid-button secondary" disabled={loading}>
+        <button type="button" onClick={() => void fetchUsers()} className="ops-button secondary" disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
       </header>
@@ -67,7 +67,7 @@ export default function ManageUsersPage() {
         <div className="monitoring-empty-notice"><CircleAlert className="h-4 w-4" />{error}</div>
       )}
 
-      <section className="glass-card overflow-hidden">
+      <section className="ops-panel overflow-hidden">
         <div className="flex items-center justify-between border-b border-[var(--border-color)] p-5">
           <div><p className="panel-kicker">Directory</p><h2 className="panel-title">{users.length} operators</h2></div>
           <Users className="h-5 w-5 text-[var(--violet)]" />

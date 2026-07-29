@@ -89,7 +89,7 @@ export default function APIKeyPage() {
         </button>
       </div>
 
-      <div className="glass-card rounded-xl overflow-hidden">
+      <div className="ops-panel rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-[var(--color-muted)] text-sm animate-pulse">Loading API keys...</div>
         ) : keys.length === 0 ? (
@@ -131,8 +131,8 @@ export default function APIKeyPage() {
       </div>
 
       {showCreateModal && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center">
-          <div role="dialog" aria-modal="true" aria-labelledby="api-key-dialog-title" className="glass-modal w-full max-w-md p-6">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center">
+          <div role="dialog" aria-modal="true" aria-labelledby="api-key-dialog-title" className="ops-modal w-full max-w-md p-6">
             <h3 id="api-key-dialog-title" className="text-xl font-bold mb-4">Generate API Key</h3>
             
             {generatedKey ? (

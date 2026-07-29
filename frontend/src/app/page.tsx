@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Activity, ArrowRight, BellRing, Check, ChevronRight, Command, Cpu,
   Database, Globe2, HardDrive, Radio, Server, ShieldCheck, Terminal,
@@ -16,7 +15,6 @@ export default function LandingPage() {
   const [liveSignal, setLiveSignal] = useState(signal);
   const [activeFeed, setActiveFeed] = useState(0);
   const [copied, setCopied] = useState(false);
-  const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -25,13 +23,6 @@ export default function LandingPage() {
     }, 1800);
     return () => window.clearInterval(interval);
   }, []);
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const x = Math.round((event.clientX / window.innerWidth) * 100);
-    const y = Math.round((event.clientY / window.innerHeight) * 100);
-    pageRef.current?.style.setProperty('--pointer-x', `${x}%`);
-    pageRef.current?.style.setProperty('--pointer-y', `${y}%`);
-  };
 
   const currentCpu = liveSignal[liveSignal.length - 1];
   const installCommand = 'curl -sSL datrixops.io/install.sh | sudo bash';
@@ -43,9 +34,8 @@ export default function LandingPage() {
   };
 
   return (
-    <div ref={pageRef} onPointerMove={handlePointerMove} className="landing-liquid min-h-screen overflow-hidden text-[var(--foreground)]">
+    <div className="public-shell min-h-screen overflow-hidden text-[var(--foreground)]">
       <a href="#main-content" className="skip-link">Skip to content</a>
-      <div className="landing-noise" aria-hidden="true" />
 
       <header className="landing-header">
         <Link href="/" className="flex items-center gap-3">
@@ -67,7 +57,6 @@ export default function LandingPage() {
 
       <main id="main-content">
         <section className="landing-hero">
-          <div className="hero-liquid-field" aria-hidden="true" />
           <div className="relative z-10 mx-auto max-w-4xl text-center">
             <div className="landing-badge"><Radio className="h-3 w-3" />Agent network is operational</div>
             <h1>See every signal.<br /><em>Control every server.</em></h1>
@@ -78,7 +67,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Product-native observability visual framed with liquid chrome. */}
+          {/* Product-native observability preview. */}
           <div className="hero-console-wrap">
             <div className="hero-console">
               <div className="console-topbar">
@@ -141,7 +130,7 @@ export default function LandingPage() {
               <p>See health, CPU, memory, disks, network and agent status together. Move from fleet-level anomalies to a single server without losing context.</p>
               <Link href="/dashboard" className="feature-link">Open live overview <ArrowRight className="h-3.5 w-3.5" /></Link>
             </div>
-            <div className="liquid-demo violet">
+            <div className="product-demo violet">
               <div className="demo-toolbar"><Activity className="h-3.5 w-3.5" /><span>Fleet telemetry</span><i>LIVE</i></div>
               <div className="demo-wave">
                 <svg viewBox="0 0 600 180" preserveAspectRatio="none" aria-hidden="true">
@@ -161,7 +150,7 @@ export default function LandingPage() {
               <p>Threshold rules turn telemetry into focused incidents. Know what failed, where it happened and which signal crossed the line before you open a terminal.</p>
               <Link href="/dashboard/alerts" className="feature-link">Explore incident center <ArrowRight className="h-3.5 w-3.5" /></Link>
             </div>
-            <div className="liquid-demo teal">
+            <div className="product-demo teal">
               <div className="demo-toolbar"><BellRing className="h-3.5 w-3.5" /><span>Incident stream</span><i>2 OPEN</i></div>
               <div className="alert-stack">
                 <DemoAlert icon={Database} title="Memory threshold exceeded" server="db-primary-01" tone="red" active={activeFeed === 0} />
@@ -173,7 +162,6 @@ export default function LandingPage() {
         </section>
 
         <section id="agents" className="agent-section">
-          <div className="agent-glow" aria-hidden="true" />
           <div className="relative z-10 mx-auto max-w-3xl text-center">
             <span className="landing-badge"><Terminal className="h-3 w-3" />Native Go agent</span>
             <h2>Light on every server.<br /><em>Heavy on insight.</em></h2>
@@ -202,7 +190,6 @@ export default function LandingPage() {
         </section>
 
         <section className="landing-final">
-          <div className="final-orb" aria-hidden="true" />
           <div className="relative z-10">
             <span className="text-[9px] uppercase tracking-[.25em] text-[#8ef0d0]">Your infrastructure is speaking</span>
             <h2>Start listening<br /><em>before it gets loud.</em></h2>

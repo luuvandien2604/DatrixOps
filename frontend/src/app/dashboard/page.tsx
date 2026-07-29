@@ -152,9 +152,6 @@ export default function OverviewDashboard() {
   const latestMetric = chartData.at(-1);
   const cpuBars = chartData.slice(-7).map((point) => point.cpu);
   const memoryBars = chartData.slice(-7).map((point) => point.ram);
-  // Mini bars are also data-driven: binary heartbeat and active firing states.
-  const fleetBars = servers.slice(0, 7).map((server) => server.status === 'online' ? 100 : 0);
-  const incidentBars = incidents.slice(0, 7).map(() => 100);
 
   if (loading && !overview) {
     return <DashboardMessage title="Syncing live data" description="Fetching the latest heartbeat, metrics, and alert state." loading />;
@@ -165,7 +162,7 @@ export default function OverviewDashboard() {
       <DashboardMessage
         title="Unable to load data"
         description={error}
-        action={<button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
+        action={<button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
       />
     );
   }
@@ -176,14 +173,14 @@ export default function OverviewDashboard() {
     <div className="mx-auto max-w-[1540px] space-y-6">
       <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-[var(--mint)]">
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
             <Activity className="h-3 w-3" />
-            Live infrastructure
+            Live telemetry
             <span className="live-data-dot" aria-hidden="true" />
           </div>
-          <h1 className="liquid-title">Infrastructure, <em>as it is now.</em></h1>
+          <h1 className="page-title">Infrastructure Overview</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-white/42">
-            Live data from DatrixOps Agent heartbeats, automatically refreshed every {POLL_INTERVAL_MS / 1000} seconds.
+            Current fleet health, resource pressure and incident state from agent heartbeats.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-white/35" aria-live="polite">
             <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
@@ -193,22 +190,23 @@ export default function OverviewDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void fetchOverview(true)} className="liquid-button secondary" disabled={refreshing}>
+          <button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary" disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
           </button>
-          <Link href="/dashboard/servers" className="liquid-button primary"><Plus className="h-4 w-4" />Add server</Link>
+          <Link href="/dashboard/servers" className="ops-button primary"><Plus className="h-4 w-4" />Add server</Link>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={Server}
-          label="Fleet online"
+          label="Agents online"
           value={`${online}/${total}`}
           note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
           color="var(--mint)"
-          bars={fleetBars}
-          tint="good"
+          bars={[]}
+          tint="healthy"
+          emptyLabel="LIVE"
         />
         <MetricCard
           icon={Cpu}
@@ -234,14 +232,14 @@ export default function OverviewDashboard() {
           value={String(summary?.open_incidents ?? 0)}
           note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
           color="var(--rose)"
-          bars={incidentBars}
-          tint={warning > 0 ? 'danger' : 'good'}
-          emptyLabel={warning > 0 ? 'NO HISTORY' : 'CLEAR'}
+          bars={[]}
+          tint={warning > 0 ? 'critical' : 'healthy'}
+          emptyLabel={warning > 0 ? 'ACTIVE' : 'CLEAR'}
         />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.65fr_.75fr]">
-        <div className="liquid-panel min-h-[390px] p-5 sm:p-6">
+        <div className="ops-panel min-h-[390px] p-5 sm:p-6">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
             <div className="range-picker" aria-label="Chart time range">
@@ -261,12 +259,12 @@ export default function OverviewDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="cpuLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".42" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
-                    <linearGradient id="ramLiquid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".28" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".16" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".12" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
                   </defs>
                   <Tooltip contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }} />
-                  <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={2} fill="url(#ramLiquid)" isAnimationActive={false} />
-                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={2} fill="url(#cpuLiquid)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -275,7 +273,7 @@ export default function OverviewDashboard() {
           </div>
         </div>
 
-        <div className="liquid-panel overflow-hidden p-6">
+        <div className="ops-panel overflow-hidden p-6">
           <div className="flex items-start justify-between">
             <div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div>
             <span className={`status-pill ${fleetStatus.tone}`}>{fleetStatus.label}</span>
@@ -293,7 +291,7 @@ export default function OverviewDashboard() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
-        <div className="liquid-panel overflow-hidden">
+        <div className="ops-panel overflow-hidden">
           <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
           {servers.length > 0 ? (
             <div className="overflow-x-auto">
@@ -307,7 +305,7 @@ export default function OverviewDashboard() {
           )}
         </div>
 
-        <div className="liquid-panel p-6">
+        <div className="ops-panel p-6">
           <div className="flex items-start justify-between">
             <div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Active incidents</h2></div>
             <Link href="/dashboard/alerts" className={incidents.length > 0 ? 'status-pill warning' : 'status-pill good'}>{incidents.length} open</Link>
@@ -342,11 +340,11 @@ function MetricCard({
   note: string;
   color: string;
   bars: number[];
-  tint?: 'info' | 'good' | 'warning' | 'danger';
+  tint?: 'info' | 'healthy' | 'warning' | 'critical';
   emptyLabel?: string;
 }) {
   return (
-    <div className={`metric-card glass-regular glass-tint-${tint}`}>
+    <div className={`metric-card surface-regular status-tone-${tint}`}>
       <div className="flex items-start justify-between">
         <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
         {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-[var(--text-tertiary)]">{emptyLabel}</span>}
@@ -380,7 +378,8 @@ function ServerRow({ server }: { server: DashboardServer }) {
 
 function LoadBar({ value }: { value: number }) {
   const normalized = Math.max(0, Math.min(value, 100));
-  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: 'linear-gradient(90deg, var(--violet-strong), var(--mint))' }} /></span><span className="font-mono text-[10px] text-white/45">{roundMetric(value)}%</span></div>;
+  const pressure = normalized >= 85 ? 'var(--status-critical)' : normalized >= 70 ? 'var(--status-warning)' : 'var(--text-secondary)';
+  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: pressure }} /></span><span className="font-mono text-[10px]" style={{ color: pressure }}>{roundMetric(value)}%</span></div>;
 }
 
 function Incident({ incident }: { incident: DashboardIncident }) {
@@ -403,7 +402,7 @@ function EmptyPanel({ icon: Icon, title, description }: { icon: LucideIcon; titl
 }
 
 function DashboardMessage({ title, description, loading = false, action }: { title: string; description: string; loading?: boolean; action?: React.ReactNode }) {
-  return <div className="feature-preview"><section className="glass-card"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
+  return <div className="feature-preview"><section className="ops-panel"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
 }
 
 function getIncidentIcon(metric: string): LucideIcon {

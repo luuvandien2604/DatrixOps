@@ -102,7 +102,7 @@ export default function CustomSelect({
           width: `${coords.width}px`,
           zIndex: 'var(--z-dropdown)',
         }}
-        className="glass-dropdown glass-elevated max-h-60 overflow-y-auto py-1.5 font-sans"
+        className="ops-popover surface-elevated max-h-60 overflow-y-auto py-1.5 font-sans"
       >
         {options.length === 0 ? (
           <div className="px-3.5 py-2 text-xs text-slate-400 italic">No options available</div>
@@ -119,7 +119,7 @@ export default function CustomSelect({
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2 text-sm text-left transition-colors cursor-pointer ${
                   isSelected
-                    ? 'glass-active text-[var(--violet)] font-semibold'
+                    ? 'is-selected text-[var(--violet)] font-semibold'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]'
                 }`}
               >
@@ -144,7 +144,7 @@ export default function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={handleToggle}
-        className="glass-control flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--violet)_24%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="ops-control flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--violet)_24%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <span className="flex items-center gap-2 min-w-0 truncate">
           {icon || selectedOption?.icon}

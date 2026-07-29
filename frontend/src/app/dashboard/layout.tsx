@@ -218,7 +218,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-current={active ? 'page' : undefined}
         onClick={() => setMobileOpen(false)}
         className={[
-          'liquid-nav-item',
+          'sidebar-nav-item',
           // Tăng độ rõ cho toàn bộ menu sidebar.
           'font-medium text-[var(--color-muted)]',
           active ? 'is-active font-semibold !text-[var(--foreground)]' : '',
@@ -239,13 +239,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     // Mọi màu chữ dùng CSS variable của theme. Không dùng text-white cố định,
     // vì text-white sẽ bị chìm khi người dùng chuyển sang giao diện sáng.
-    <div className="liquid-shell min-h-screen text-[var(--foreground)]">
-      <div className="liquid-aurora" aria-hidden="true" />
-
+    <div className="app-shell min-h-screen text-[var(--foreground)]">
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-full p-3 backdrop-blur-xl lg:hidden"
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-3 lg:hidden"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
@@ -254,7 +252,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {mobileOpen && (
         <button
           type="button"
-          className="glass-scrim mobile-nav-overlay fixed inset-0 z-40 lg:hidden"
+          className="ops-scrim mobile-nav-overlay fixed inset-0 z-40 lg:hidden"
           onClick={() => setMobileOpen(false)}
           aria-label="Close navigation"
         />
@@ -262,7 +260,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside
         aria-label="Dashboard navigation"
-        className={`glass-shell liquid-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
+        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
       >
         <div className="flex h-20 items-center gap-3 px-4">
           <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
@@ -298,9 +296,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="px-3">
           <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              {!fleetSyncFailed && (fleetSummary?.online_servers ?? 0) > 0 && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mint)] opacity-50" />
-              )}
               <span
                 className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
                   fleetSyncFailed
@@ -381,7 +376,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="border-t border-[var(--border-color)] p-3">
           <Link
             href="/docs"
-            className={`liquid-nav-item font-medium text-[var(--color-muted)] ${
+            className={`sidebar-nav-item font-medium text-[var(--color-muted)] ${
               collapsed ? 'justify-center' : ''
             }`}
           >
@@ -391,7 +386,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <Link
             href="/dashboard/settings"
-            className={`liquid-nav-item font-medium text-[var(--color-muted)] ${
+            className={`sidebar-nav-item font-medium text-[var(--color-muted)] ${
               collapsed ? 'justify-center' : ''
             }`}
           >
@@ -402,7 +397,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button
             type="button"
             onClick={logout}
-            className={`liquid-nav-item w-full font-medium text-[var(--color-muted)] ${
+            className={`sidebar-nav-item w-full font-medium text-[var(--color-muted)] ${
               collapsed ? 'justify-center' : ''
             }`}
           >
@@ -427,7 +422,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
-        <header className="glass-shell liquid-topbar">
+        <header className="shell-surface app-header">
           {/* Breadcrumb tăng độ rõ và weight. */}
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
             <span className="font-semibold text-[var(--foreground)]">Datrix Cloud</span>
@@ -439,7 +434,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="glass-control group hidden w-64 items-center justify-between rounded-xl px-3.5 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] sm:flex md:w-80"
+              className="ops-control group hidden w-64 items-center justify-between rounded-xl px-3.5 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] sm:flex md:w-80"
               aria-label="Search dashboard"
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -475,7 +470,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
 
               {notificationsOpen && (
-                <div className="glass-dropdown absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden">
+                <div className="ops-popover absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden">
                   <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3">
                     <div>
                       <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
@@ -580,7 +575,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
             </div>
 
-            <div className="glass-control ml-1 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3">
+            <div className="ops-control ml-1 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3">
               <div className="operator-avatar">
                 {role === 'superadmin' ? 'SA' : 'OP'}
               </div>

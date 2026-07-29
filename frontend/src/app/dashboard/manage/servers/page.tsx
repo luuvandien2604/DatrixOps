@@ -61,19 +61,19 @@ export default function ManageServersPage() {
     setRunningAction(null);
   };
 
-  if (isSuperadmin == null) return <div className="glass-card p-10 text-center text-[var(--color-muted)]">Checking access…</div>;
-  if (!isSuperadmin) return <div className="glass-card p-10 text-center"><CircleAlert className="mx-auto h-8 w-8 text-[var(--rose)]" /><h2 className="mt-4">Superadmin access required</h2></div>;
+  if (isSuperadmin == null) return <div className="ops-panel p-10 text-center text-[var(--color-muted)]">Checking access…</div>;
+  if (!isSuperadmin) return <div className="ops-panel p-10 text-center"><CircleAlert className="mx-auto h-8 w-8 text-[var(--rose)]" /><h2 className="mt-4">Superadmin access required</h2></div>;
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div><p className="panel-kicker">Fleet automation</p><h1>Operate the <em>fleet.</em></h1><p className="mt-3 text-[var(--color-muted)]">Queue safe lifecycle actions across multiple agents without exposing arbitrary shell access.</p></div>
-        <button type="button" onClick={() => void fetchServers()} className="liquid-button secondary" disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
+        <button type="button" onClick={() => void fetchServers()} className="ops-button secondary" disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
         {(Object.entries(ACTIONS) as [FleetAction, typeof ACTIONS[FleetAction]][]).map(([action, config]) => (
-          <button key={action} type="button" disabled={selected.size === 0 || runningAction != null} onClick={() => void runFleetAction(action)} className="glass-card p-5 text-left transition hover:-translate-y-0.5">
+          <button key={action} type="button" disabled={selected.size === 0 || runningAction != null} onClick={() => void runFleetAction(action)} className="ops-panel p-5 text-left transition hover:-translate-y-0.5">
             {action === 'agent_update' ? <UploadCloud className="h-5 w-5 text-[var(--mint)]" /> : action === 'agent_restart' ? <RotateCcw className="h-5 w-5 text-[var(--violet)]" /> : <Zap className="h-5 w-5 text-[var(--amber)]" />}
             <strong className="mt-4 block text-[var(--foreground)]">{config.label}</strong>
             <span className="mt-1 block text-sm text-[var(--color-muted)]">{config.description}</span>
@@ -83,7 +83,7 @@ export default function ManageServersPage() {
 
       {message && <div className="monitoring-live-strip"><ServerCog className="h-4 w-4" />{message}</div>}
 
-      <section className="glass-card overflow-hidden">
+      <section className="ops-panel overflow-hidden">
         <div className="flex items-center justify-between border-b border-[var(--border-color)] p-5"><div><p className="panel-kicker">Selection</p><h2 className="panel-title">{selected.size} of {servers.length} selected</h2></div></div>
         <div className="overflow-x-auto">
           <table>

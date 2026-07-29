@@ -52,7 +52,7 @@ export default function AuditLogPage() {
         <p className="text-[var(--color-muted)]">Track all system activities and changes</p>
       </div>
 
-      <div className="glass-card rounded-xl overflow-hidden">
+      <div className="ops-panel rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[var(--color-muted)]/10 flex justify-between items-center bg-black/5 dark:bg-white/5">
           <h2 className="font-semibold text-sm">Recent Activity</h2>
           <button onClick={fetchLogs} className="text-xs text-blue-400 hover:text-blue-300">Refresh</button>

@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 export default function ServersPage() {
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   // Search & Filter & View state
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +69,7 @@ export default function ServersPage() {
       if (!silent) setLoading(true);
       const data = await apiClient('/servers');
       setServers(Array.isArray(data) ? data : []);
+      setLastRefreshedAt(new Date());
       setAgentUpdateTasks(current => {
         const next = { ...current };
         for (const server of Array.isArray(data) ? data : []) {
@@ -223,6 +225,8 @@ export default function ServersPage() {
 
   // Select all toggle
   const isAllSelected = filteredServers.length > 0 && filteredServers.every(s => selectedServerIds.includes(s.id));
+  const onlineCount = servers.filter(server => server.status === 'online').length;
+  const offlineCount = servers.length - onlineCount;
   const toggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedServerIds([]);
@@ -306,31 +310,32 @@ export default function ServersPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1 flex items-center gap-3">
-            Server Management
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
-              {servers.length} Fleet
-            </span>
-          </h1>
-          <p className="text-sm text-[var(--color-muted)]">Manage, configure and auto-update your agent fleet in real-time</p>
+          <h1 className="page-title">Server Management</h1>
+          <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">
+            {servers.length} agents · {onlineCount} online · {offlineCount} offline
+          </p>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">Manage agent state, versions, connectivity and operational actions.</p>
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for data'} · Auto-refresh 20s
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={() => setIsUpdateAllOpen(true)}
             disabled={servers.length === 0 || isUpdatingAll}
-            className="liquid-button secondary disabled:cursor-not-allowed disabled:opacity-50"
+            className="ops-button secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
             <UploadCloud className="h-4 w-4" />
             Update all agents
           </button>
-          <button onClick={() => fetchServers()} className="liquid-button secondary">
+          <button onClick={() => fetchServers()} className="ops-button secondary">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : 'text-[var(--color-muted)]'}`} />
             Refresh
           </button>
           <button
             onClick={() => setIsAddServerModalOpen(true)}
-            className="liquid-button primary">
+            className="ops-button primary">
             <Server className="w-4 h-4" />
             + Add Server
           </button>
@@ -338,7 +343,7 @@ export default function ServersPage() {
       </div>
 
       {/* Control Toolbar: Search, Status Filter, View Toggle */}
-      <div className="glass-card glass-regular glass-static p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="ops-panel surface-regular no-hover-lift p-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex flex-1 flex-col sm:flex-row items-center gap-3 w-full">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none z-10" />
@@ -398,7 +403,7 @@ export default function ServersPage() {
 
       {/* Sticky Bulk Action Bar */}
       {selectedServerIds.length > 0 && (
-        <div className="sticky top-4 z-40 glass-card glass-elevated glass-tint-info p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 shadow-xl animate-in fade-in slide-in-from-top-2">
+        <div className="sticky top-4 z-40 ops-panel surface-elevated status-tone-info p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 shadow-xl animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white font-bold text-xs">
               {selectedServerIds.length}
@@ -443,7 +448,7 @@ export default function ServersPage() {
       {/* Main Content Area */}
       {viewMode === 'table' ? (
         /* Table View */
-        <div className="glass-card glass-subtle glass-static data-table-surface overflow-hidden">
+        <div className="ops-panel surface-subtle no-hover-lift data-table-surface overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -461,15 +466,15 @@ export default function ServersPage() {
                       )}
                     </button>
                   </th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Server</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">IP Address</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">OS / Spec</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">CPU</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">RAM</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Disk</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Auto-Update</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">Status</th>
-                  <th className="py-4 px-6 text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider text-right">Quick Actions</th>
+                  <th className="py-4 px-6">Host</th>
+                  <th className="py-4 px-6">Connection</th>
+                  <th className="py-4 px-6">Platform</th>
+                  <th className="py-4 px-6">Resources</th>
+                  <th className="py-4 px-6">Agent</th>
+                  <th className="py-4 px-6">Last heartbeat</th>
+                  <th className="py-4 px-6">Update policy</th>
+                  <th className="py-4 px-6">Health</th>
+                  <th className="py-4 px-6 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -481,7 +486,7 @@ export default function ServersPage() {
                       ) : (
                         <div className="flex flex-col items-center gap-3">
                           <span>No servers match the active search or status filter.</span>
-                          <button type="button" onClick={clearFilters} className="liquid-button secondary">
+                          <button type="button" onClick={clearFilters} className="ops-button secondary">
                             Clear filters
                           </button>
                         </div>
@@ -520,14 +525,12 @@ export default function ServersPage() {
                     const liveInfo = isOffline ? null : osInfo;
                     const isCritical = liveInfo && liveInfo.cpu_usage > 90;
                     const isSelected = selectedServerIds.includes(server.id);
+                    const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
 
                     // Compute pure numerical text for CPU, RAM, Disk
                     const cpuText = liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—';
                     const ramPct = liveInfo ? ((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1) : null;
-                    const ramUsedGb = liveInfo ? (liveInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1) : null;
-                    const ramTotalGb = liveInfo ? (liveInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1) : null;
                     const ramText = ramPct ? `${ramPct}%` : '—';
-                    const ramSubtext = ramUsedGb && ramTotalGb ? `${ramUsedGb} / ${ramTotalGb} GB` : null;
 
                     const diskPct = liveInfo && liveInfo.disk_total > 0 ? Number(liveInfo.disk_usage || 0).toFixed(1) : null;
                     const diskText = diskPct !== null ? `${diskPct}%` : '—';
@@ -546,9 +549,7 @@ export default function ServersPage() {
                             router.push(`/dashboard/servers/${server.id}`);
                           }
                         }}
-                        className={`group cursor-pointer transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none ${
-                          isSelected ? 'bg-blue-500/10' : ''
-                        }`}
+                        className={`group cursor-pointer transition-colors focus-visible:outline-none ${isSelected ? 'is-row-selected' : ''}`}
                       >
                         <td className="py-4 px-4">
                           <button
@@ -605,41 +606,23 @@ export default function ServersPage() {
                           <div className="text-xs text-[var(--color-muted)] mt-1">{osInfo ? `${osInfo.cpu_cores} Cores` : '—'}</div>
                         </td>
 
-                        {/* CPU: Pure Monospaced Numerical Display */}
-                        <td className="py-4 px-6 font-mono text-sm">
-                          {liveInfo ? (
-                            <span className={`font-semibold ${liveInfo.cpu_usage > 90 ? 'text-rose-400 font-bold animate-pulse' : 'text-[var(--foreground)]'}`}>
-                              {cpuText}
-                            </span>
-                          ) : (
-                            <span className="text-[var(--color-muted)]">—</span>
-                          )}
+                        <td className="py-4 px-6">
+                          <div className="resource-values">
+                            <ResourceValue label="CPU" value={cpuText} numericValue={liveInfo?.cpu_usage} />
+                            <ResourceValue label="RAM" value={ramText} numericValue={ramPct == null ? undefined : Number(ramPct)} />
+                            <ResourceValue label="DISK" value={diskText} numericValue={diskPct == null ? undefined : Number(diskPct)} />
+                          </div>
                         </td>
 
-                        {/* RAM: Pure Monospaced Numerical Display (%) */}
-                        <td className="py-4 px-6 font-mono text-sm">
-                          {liveInfo ? (
-                            <span className="text-[var(--foreground)] font-semibold">{ramText}</span>
-                          ) : (
-                            <span className="text-[var(--color-muted)]">—</span>
-                          )}
+                        <td className="py-4 px-6">
+                          <div className="font-mono text-xs text-[var(--text-primary)]">v{runningAgentVersion}</div>
+                          <div className={`mt-1 text-[11px] ${updateAvailable ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
+                            {updateAvailable ? `v${latestAgentVersion} available` : 'Current'}
+                          </div>
                         </td>
 
-                        {/* Disk: Pure Monospaced Numerical Display */}
-                        <td className="py-4 px-6 font-mono text-sm">
-                          {liveInfo && liveInfo.disk_total > 0 ? (
-                            <span className={`font-semibold ${
-                              Number(liveInfo.disk_usage || 0) >= 90
-                                ? 'text-rose-400'
-                                : Number(liveInfo.disk_usage || 0) >= 75
-                                  ? 'text-amber-400'
-                                  : 'text-[var(--foreground)]'
-                            }`}>
-                              {diskText}
-                            </span>
-                          ) : (
-                            <span className="text-[var(--color-muted)]">—</span>
-                          )}
+                        <td className="py-4 px-6 font-mono text-xs text-[var(--text-secondary)]">
+                          {formatRelativeTimestamp(server.last_seen_at)}
                         </td>
 
                         {/* Auto-Update Toggle Button */}
@@ -780,13 +763,13 @@ export default function ServersPage() {
         /* Grid Cards View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredServers.length === 0 ? (
-            <div className="col-span-full glass-card glass-subtle glass-static py-12 text-center text-[var(--color-muted)]">
+            <div className="col-span-full ops-panel surface-subtle no-hover-lift py-12 text-center text-[var(--color-muted)]">
               {servers.length === 0 ? (
                 'No servers found. Add your first server to start monitoring.'
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   <span>No servers match the active search or status filter.</span>
-                  <button type="button" onClick={clearFilters} className="liquid-button secondary">
+                  <button type="button" onClick={clearFilters} className="ops-button secondary">
                     Clear filters
                   </button>
                 </div>
@@ -820,7 +803,7 @@ export default function ServersPage() {
                 <div
                   key={server.id}
                   onClick={() => router.push(`/dashboard/servers/${server.id}`)}
-                  className={`glass-card glass-regular p-5 cursor-pointer transition-all hover:border-blue-500/40 relative flex flex-col justify-between ${
+                  className={`ops-panel surface-regular p-5 cursor-pointer transition-all hover:border-blue-500/40 relative flex flex-col justify-between ${
                     isSelected ? 'border-blue-500 bg-blue-500/10' : ''
                   }`}
                 >
@@ -991,8 +974,8 @@ export default function ServersPage() {
 
       {/* Add Server Modal */}
       {isAddServerModalOpen && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="glass-modal flex w-full max-w-2xl flex-col overflow-hidden">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="add-server-title" className="ops-modal flex w-full max-w-2xl flex-col overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-white/5">
               <h2 id="add-server-title" className="text-xl font-bold text-[var(--foreground)]">Add New Server</h2>
               <button type="button" aria-label="Close add server dialog" onClick={() => { setIsAddServerModalOpen(false); setGeneratedAgentToken(null); setNewServerName(''); setCustomServices(''); }} className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
@@ -1084,7 +1067,7 @@ export default function ServersPage() {
                     <button
                       type="button"
                       onClick={() => void copyInstallCommand()}
-                      className={`absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur-sm transition-colors ${
+                      className={`absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition-colors ${
                         installCommandCopied
                           ? 'border-emerald-300/40 bg-emerald-400/20 text-emerald-100'
                           : 'border-white/15 bg-white/10 text-white hover:bg-white/20'
@@ -1109,8 +1092,8 @@ export default function ServersPage() {
 
       {/* Restart Confirm Dialog */}
       {serverToRestart && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="restart-server-title" className="glass-modal flex w-full max-w-md flex-col overflow-hidden border-rose-500/30">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="restart-server-title" className="ops-modal flex w-full max-w-md flex-col overflow-hidden border-rose-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <AlertTriangle className="w-6 h-6 text-rose-500" />
               <h2 id="restart-server-title" className="text-xl font-bold text-[var(--foreground)]">Restart Server?</h2>
@@ -1163,8 +1146,8 @@ export default function ServersPage() {
 
       {/* Delete Confirm Dialog */}
       {serverToDelete && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="glass-modal flex w-full max-w-lg flex-col overflow-hidden border-rose-500/30">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="ops-modal flex w-full max-w-lg flex-col overflow-hidden border-rose-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <Trash2 className="w-6 h-6 text-rose-500" />
               <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Uninstall Agent and Delete Server?</h2>
@@ -1210,8 +1193,8 @@ export default function ServersPage() {
 
       {/* Edit Meta Dialog */}
       {editMetaServer && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="glass-modal flex w-full max-w-2xl flex-col overflow-hidden border-amber-500/30">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="edit-server-title" className="ops-modal flex w-full max-w-2xl flex-col overflow-hidden border-amber-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/5">
               <FileText className="w-6 h-6 text-amber-500" />
               <h2 id="edit-server-title" className="text-xl font-bold text-[var(--foreground)]">Edit Server Info</h2>
@@ -1268,8 +1251,8 @@ export default function ServersPage() {
 
       {/* Update Agent Modal */}
       {serverToUpdate && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" className="glass-modal flex w-full max-w-md flex-col overflow-hidden border-amber-500/35">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" className="ops-modal flex w-full max-w-md flex-col overflow-hidden border-amber-500/35">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/10">
               <RefreshCw className="w-6 h-6 text-amber-400" />
               <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
@@ -1311,8 +1294,8 @@ export default function ServersPage() {
 
       {/* Update All Modal */}
       {isUpdateAllOpen && (
-        <div className="glass-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" className="glass-modal flex w-full max-w-lg flex-col overflow-hidden border-emerald-500/30">
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="alertdialog" aria-modal="true" className="ops-modal flex w-full max-w-lg flex-col overflow-hidden border-emerald-500/30">
             <div className="flex items-center gap-3 border-b border-[var(--border-color)] bg-emerald-500/5 p-6">
               <UploadCloud className="h-6 w-6 text-emerald-500" />
               <h2 className="text-xl font-bold text-[var(--foreground)]">Update all agents?</h2>
@@ -1340,7 +1323,7 @@ export default function ServersPage() {
                       setIsUpdatingAll(false);
                     }
                   }}
-                  className="liquid-button"
+                  className="ops-button"
                 >
                   <UploadCloud className="h-4 w-4" />
                   {isUpdatingAll ? 'Queueing updates…' : 'Update all agents'}
@@ -1352,4 +1335,42 @@ export default function ServersPage() {
       )}
     </div>
   );
+}
+
+function ResourceValue({
+  label,
+  value,
+  numericValue,
+}: {
+  label: 'CPU' | 'RAM' | 'DISK';
+  value: string;
+  numericValue?: number;
+}) {
+  const tone = numericValue == null
+    ? 'var(--text-tertiary)'
+    : numericValue >= 85
+      ? 'var(--status-critical)'
+      : numericValue >= 70
+        ? 'var(--status-warning)'
+        : 'var(--text-primary)';
+
+  return (
+    <span>
+      <b>{label}</b>
+      <code style={{ color: tone }}>{value}</code>
+    </span>
+  );
+}
+
+function formatRelativeTimestamp(value?: string) {
+  if (!value) return 'Unknown';
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return 'Unknown';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1_000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
