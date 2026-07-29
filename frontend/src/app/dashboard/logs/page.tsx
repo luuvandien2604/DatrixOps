@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 import {
@@ -35,6 +35,9 @@ interface LogServer {
 
 type LogType = 'all' | 'audit' | 'system' | 'docker' | 'agent';
 
+const MAX_VISIBLE_LOGS = 500;
+const MAX_DETAIL_LENGTH = 600;
+
 const classifyAuditLevel = (action: string): LogEntry['level'] => {
   const normalized = action.toLowerCase();
   if (normalized.includes('fail') || normalized.includes('delete') || normalized.includes('uninstall')) return 'error';
@@ -52,11 +55,16 @@ const stringifyDetail = (value: unknown): string => {
   }
 };
 
+const compactDetail = (value: unknown): string => {
+  const text = stringifyDetail(value);
+  return text.length > MAX_DETAIL_LENGTH ? `${text.slice(0, MAX_DETAIL_LENGTH)}...` : text;
+};
+
 const formatAuditMessage = (log: AuditLog): string => {
   const details = log.details || {};
   const detailPairs = Object.entries(details)
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => `${key}=${stringifyDetail(value)}`);
+    .map(([key, value]) => `${key}=${compactDetail(value)}`);
   const subject = `${log.resource_type || 'RESOURCE'} ${log.resource_id || ''}`.trim();
   return `${log.action}${subject ? ` on ${subject}` : ''}${detailPairs.length ? ` | ${detailPairs.join(' ')}` : ''}`;
 };
@@ -120,30 +128,35 @@ export default function LogsPage() {
     };
   }, []);
 
-  const filteredLogs = logs.filter(log => {
-    if (selectedServerId !== 'all') {
-      if (log.server_id !== selectedServerId) return false;
-    }
-    if (logLevel !== 'all' && log.level !== logLevel) return false;
-    if (logType === 'audit' && !log.source.startsWith('audit')) return false;
-    if (logType === 'system' && !log.source.includes('systemd') && !log.source.includes('kernel')) return false;
-    if (logType === 'docker' && !log.source.startsWith('docker')) return false;
-    if (logType === 'agent' && !log.source.includes('agent')) return false;
+  const filteredLogs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        log.message.toLowerCase().includes(q) ||
-        log.server_name.toLowerCase().includes(q) ||
-        log.source.toLowerCase().includes(q) ||
-        (log.server_id || '').toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+    return logs.filter(log => {
+      if (selectedServerId !== 'all') {
+        if (log.server_id !== selectedServerId) return false;
+      }
+      if (logLevel !== 'all' && log.level !== logLevel) return false;
+      if (logType === 'audit' && !log.source.startsWith('audit')) return false;
+      if (logType === 'system' && !log.source.includes('systemd') && !log.source.includes('kernel')) return false;
+      if (logType === 'docker' && !log.source.startsWith('docker')) return false;
+      if (logType === 'agent' && !log.source.includes('agent')) return false;
+
+      if (q) {
+        return (
+          log.message.toLowerCase().includes(q) ||
+          log.server_name.toLowerCase().includes(q) ||
+          log.source.toLowerCase().includes(q) ||
+          (log.server_id || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [logs, selectedServerId, logLevel, logType, searchQuery]);
+
+  const visibleLogs = useMemo(() => filteredLogs.slice(0, MAX_VISIBLE_LOGS), [filteredLogs]);
 
   const copyAllLogs = async () => {
-    const text = filteredLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
+    const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -155,7 +168,7 @@ export default function LogsPage() {
   };
 
   const downloadLogs = () => {
-    const text = filteredLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
+    const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -184,12 +197,12 @@ export default function LogsPage() {
             Live tail unavailable
           </button>
 
-          <button disabled={filteredLogs.length === 0} onClick={copyAllLogs} className="ops-button secondary">
+          <button disabled={visibleLogs.length === 0} onClick={copyAllLogs} className="ops-button secondary">
             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             Copy
           </button>
 
-          <button disabled={filteredLogs.length === 0} onClick={downloadLogs} className="ops-button secondary">
+          <button disabled={visibleLogs.length === 0} onClick={downloadLogs} className="ops-button secondary">
             <Download className="w-4 h-4" />
             Export
           </button>
@@ -273,6 +286,11 @@ export default function LogsPage() {
             <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
               {loading ? 'loading' : `${filteredLogs.length} entries`}
             </span>
+            {filteredLogs.length > MAX_VISIBLE_LOGS && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                showing latest {MAX_VISIBLE_LOGS}
+              </span>
+            )}
           </div>
 
           <span className="status-badge disabled">AUDIT STREAM</span>
@@ -288,12 +306,12 @@ export default function LogsPage() {
             <div className="py-12 text-center text-rose-300 font-sans">
               Unable to load logs: {loadError}
             </div>
-          ) : filteredLogs.length === 0 ? (
+          ) : visibleLogs.length === 0 ? (
             <div className="py-12 text-center text-slate-500 font-sans">
               No log records match the current filters.
             </div>
           ) : (
-            filteredLogs.map((log, idx) => (
+            visibleLogs.map((log, idx) => (
               <div key={log.id || idx} className="flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-slate-900/60 p-1.5 rounded transition-colors group">
                 <span className="text-slate-500 shrink-0 select-none w-24">
                   {new Date(log.timestamp).toLocaleTimeString()}
