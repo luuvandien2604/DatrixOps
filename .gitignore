@@ -8,6 +8,7 @@
 # Go
 /backend/tmp/
 /agent/tmp/
+/.tmp/
 
 # Node / Next.js
 node_modules/

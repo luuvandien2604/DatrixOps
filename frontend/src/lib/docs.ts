@@ -61,6 +61,7 @@ const viNavigation: DocsNavigation = [
       { slug: 'server-management/servers', title: 'Quản lý server', description: 'Metadata, thông tin hệ thống, dịch vụ và Docker.', group: 'server-management', order: 50 },
       { slug: 'server-management/web-terminal', title: 'Web Terminal', description: 'Mở shell Linux headless qua reverse WebSocket an toàn.', group: 'server-management', order: 51 },
       { slug: 'server-management/delete-server', title: 'Gỡ Agent và xóa server', description: 'Gỡ Agent Linux từ xa, theo dõi trạng thái và force delete.', group: 'server-management', order: 52 },
+      { slug: 'server-management/cron-telemetry', title: 'Cron Execution Telemetry', description: 'Ghi nhận last run, exit status và lịch sử chạy cron bằng wrapper an toàn.', group: 'server-management', order: 53 },
     ],
   },
   {
@@ -115,6 +116,7 @@ const enNavigation: DocsNavigation = [
     slug: 'server-management',
     items: [
       { slug: 'server-management/servers', title: 'Servers and remote access', description: 'System information, services, Docker, and Web Terminal.', group: 'server-management', order: 50 },
+      { slug: 'server-management/cron-telemetry', title: 'Cron Execution Telemetry', description: 'Record real cron last-run time, exit status, and execution history with the Agent wrapper.', group: 'server-management', order: 51 },
     ],
   },
   {

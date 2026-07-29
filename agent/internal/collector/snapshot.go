@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,12 +77,15 @@ type Inventory struct {
 }
 
 type CronJob struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Owner    string `json:"owner"`
-	Schedule string `json:"schedule"`
-	Command  string `json:"command"`
-	Enabled  bool   `json:"enabled"`
+	ID         string     `json:"id"`
+	Source     string     `json:"source"`
+	Owner      string     `json:"owner"`
+	Schedule   string     `json:"schedule"`
+	Command    string     `json:"command"`
+	Enabled    bool       `json:"enabled"`
+	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+	LastStatus string     `json:"last_status,omitempty"`
 }
 
 type Snapshot struct {
@@ -290,15 +294,187 @@ func parseCronFile(content, source, defaultOwner string, systemFormat bool) []Cr
 		command := strings.Join(fields[commandIndex:], " ")
 		sum := sha256.Sum256([]byte(source + "\x00" + owner + "\x00" + schedule + "\x00" + command))
 		jobs = append(jobs, CronJob{
-			ID:       fmt.Sprintf("%x", sum),
-			Source:   source,
-			Owner:    owner,
-			Schedule: schedule,
-			Command:  command,
-			Enabled:  true,
+			ID:        fmt.Sprintf("%x", sum),
+			Source:    source,
+			Owner:     owner,
+			Schedule:  schedule,
+			Command:   command,
+			Enabled:   true,
+			NextRunAt: nextCronRun(schedule, time.Now().UTC()),
 		})
 	}
 	return jobs
+}
+
+func nextCronRun(schedule string, after time.Time) *time.Time {
+	parsed, ok := parseCronSchedule(schedule)
+	if !ok {
+		return nil
+	}
+
+	cursor := after.UTC().Truncate(time.Minute).Add(time.Minute)
+	limit := cursor.AddDate(1, 0, 0)
+	for cursor.Before(limit) || cursor.Equal(limit) {
+		if !parsed.months[cursor.Month()] {
+			cursor = time.Date(cursor.Year(), cursor.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+			continue
+		}
+		if !parsed.dayMatches(cursor) {
+			cursor = time.Date(cursor.Year(), cursor.Month(), cursor.Day()+1, 0, 0, 0, 0, time.UTC)
+			continue
+		}
+		if !parsed.hours[cursor.Hour()] {
+			cursor = cursor.Add(time.Hour).Truncate(time.Hour)
+			continue
+		}
+		if parsed.minutes[cursor.Minute()] {
+			next := cursor
+			return &next
+		}
+		cursor = cursor.Add(time.Minute)
+	}
+	return nil
+}
+
+type cronSchedule struct {
+	minutes            map[int]bool
+	hours              map[int]bool
+	daysOfMonth        map[int]bool
+	months             map[time.Month]bool
+	daysOfWeek         map[int]bool
+	dayOfMonthWildcard bool
+	dayOfWeekWildcard  bool
+}
+
+func (schedule cronSchedule) dayMatches(at time.Time) bool {
+	dayOfMonthMatches := schedule.daysOfMonth[at.Day()]
+	dayOfWeekMatches := schedule.daysOfWeek[int(at.Weekday())]
+	if !schedule.dayOfMonthWildcard && !schedule.dayOfWeekWildcard {
+		return dayOfMonthMatches || dayOfWeekMatches
+	}
+	return dayOfMonthMatches && dayOfWeekMatches
+}
+
+func parseCronSchedule(schedule string) (cronSchedule, bool) {
+	switch strings.TrimSpace(schedule) {
+	case "@hourly":
+		schedule = "0 * * * *"
+	case "@daily", "@midnight":
+		schedule = "0 0 * * *"
+	case "@weekly":
+		schedule = "0 0 * * 0"
+	case "@monthly":
+		schedule = "0 0 1 * *"
+	case "@yearly", "@annually":
+		schedule = "0 0 1 1 *"
+	}
+
+	fields := strings.Fields(schedule)
+	if len(fields) != 5 {
+		return cronSchedule{}, false
+	}
+
+	minutes, _, ok := parseCronField(fields[0], 0, 59)
+	if !ok {
+		return cronSchedule{}, false
+	}
+	hours, _, ok := parseCronField(fields[1], 0, 23)
+	if !ok {
+		return cronSchedule{}, false
+	}
+	daysOfMonth, dayOfMonthWildcard, ok := parseCronField(fields[2], 1, 31)
+	if !ok {
+		return cronSchedule{}, false
+	}
+	monthNumbers, _, ok := parseCronField(fields[3], 1, 12)
+	if !ok {
+		return cronSchedule{}, false
+	}
+	dayNumbers, dayOfWeekWildcard, ok := parseCronField(fields[4], 0, 7)
+	if !ok {
+		return cronSchedule{}, false
+	}
+
+	months := make(map[time.Month]bool, len(monthNumbers))
+	for month := range monthNumbers {
+		months[time.Month(month)] = true
+	}
+	daysOfWeek := make(map[int]bool, len(dayNumbers))
+	for day := range dayNumbers {
+		if day == 7 {
+			daysOfWeek[0] = true
+			continue
+		}
+		daysOfWeek[day] = true
+	}
+	return cronSchedule{
+		minutes:            minutes,
+		hours:              hours,
+		daysOfMonth:        daysOfMonth,
+		months:             months,
+		daysOfWeek:         daysOfWeek,
+		dayOfMonthWildcard: dayOfMonthWildcard,
+		dayOfWeekWildcard:  dayOfWeekWildcard,
+	}, true
+}
+
+func parseCronField(field string, minValue, maxValue int) (map[int]bool, bool, bool) {
+	values := make(map[int]bool)
+	wildcard := strings.TrimSpace(field) == "*"
+	for _, part := range strings.Split(field, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, false, false
+		}
+
+		step := 1
+		base := part
+		if strings.Contains(part, "/") {
+			pieces := strings.Split(part, "/")
+			if len(pieces) != 2 {
+				return nil, false, false
+			}
+			base = pieces[0]
+			parsedStep, err := strconv.Atoi(pieces[1])
+			if err != nil || parsedStep <= 0 {
+				return nil, false, false
+			}
+			step = parsedStep
+		}
+
+		start, end := minValue, maxValue
+		switch {
+		case base == "*":
+		case strings.Contains(base, "-"):
+			bounds := strings.Split(base, "-")
+			if len(bounds) != 2 {
+				return nil, false, false
+			}
+			parsedStart, err := strconv.Atoi(bounds[0])
+			if err != nil {
+				return nil, false, false
+			}
+			parsedEnd, err := strconv.Atoi(bounds[1])
+			if err != nil {
+				return nil, false, false
+			}
+			start, end = parsedStart, parsedEnd
+		default:
+			parsed, err := strconv.Atoi(base)
+			if err != nil {
+				return nil, false, false
+			}
+			start, end = parsed, parsed
+		}
+
+		if start < minValue || end > maxValue || start > end {
+			return nil, false, false
+		}
+		for value := start; value <= end; value += step {
+			values[value] = true
+		}
+	}
+	return values, wildcard, len(values) > 0
 }
 
 func collectTopProcesses() []TopProcess {

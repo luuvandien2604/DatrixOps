@@ -12,6 +12,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	h := NewHandler(db, cfg.AgentVersion)
 
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", h.Heartbeat)
+	mux.HandleFunc("POST /api/v1/agent/cron/executions", h.ReportCronExecution)
 	mux.HandleFunc("POST /api/v1/agent/tasks/result", h.ReportTaskResult)
 	mux.HandleFunc("POST /api/v1/agent/uninstall/confirm", h.ConfirmUninstall)
 }

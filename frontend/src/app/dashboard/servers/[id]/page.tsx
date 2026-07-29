@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -71,6 +72,7 @@ interface Inventory {
 
 interface CronJob {
   id: string;
+  external_id?: string;
   source: string;
   owner?: string;
   schedule: string;
@@ -80,6 +82,17 @@ interface CronJob {
   next_run_at?: string;
   last_status?: string;
   discovered_at: string;
+  executions?: CronExecution[];
+}
+
+interface CronExecution {
+  id: string;
+  started_at: string;
+  completed_at?: string;
+  status: string;
+  exit_code?: number;
+  output?: string;
+  created_at: string;
 }
 
 interface Snapshot {
@@ -166,6 +179,7 @@ export default function ServerDetailsPage() {
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
+  const [copiedCronCommandId, setCopiedCronCommandId] = useState<string | null>(null);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
   const [savingAutoUpdate, setSavingAutoUpdate] = useState(false);
@@ -333,6 +347,31 @@ export default function ServerDetailsPage() {
     }
   };
 
+  const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+
+  const cronWrapperCommand = (job: CronJob) => {
+    if (!job.external_id) {
+      return '';
+    }
+    return `datrixops-agent cron-run --external-id ${job.external_id} -- /bin/sh -lc ${shellQuote(job.command)}`;
+  };
+
+  const copyCronWrapperCommand = async (job: CronJob) => {
+    const command = cronWrapperCommand(job);
+    if (!command) {
+      toast.error('Telemetry ID is unavailable for this cron job');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCronCommandId(job.id);
+      window.setTimeout(() => setCopiedCronCommandId(current => current === job.id ? null : current), 2000);
+      toast.success('Cron telemetry wrapper copied');
+    } catch {
+      toast.error('Unable to copy the cron wrapper command');
+    }
+  };
+
   const queueAgentUpdate = async () => {
     if (!server) return;
     setQueueingAgentUpdate(true);
@@ -395,6 +434,67 @@ export default function ServerDetailsPage() {
   const formatTimestamp = (value?: string) => value
     ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
     : 'Unknown';
+
+  const cronStatusMeta = (job: CronJob) => {
+    if (!job.enabled) {
+      return {
+        label: 'Disabled',
+        className: 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]',
+      };
+    }
+    if (!job.last_status) {
+      return {
+        label: 'Not instrumented',
+        className: 'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      };
+    }
+    const normalized = job.last_status.toLowerCase();
+    if (normalized.includes('success') || normalized.includes('ok') || normalized.includes('completed')) {
+      return {
+        label: job.last_status,
+        className: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      };
+    }
+    if (normalized.includes('fail') || normalized.includes('error')) {
+      return {
+        label: job.last_status,
+        className: 'border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-300',
+      };
+    }
+    return {
+      label: job.last_status,
+      className: 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--foreground)]',
+    };
+  };
+
+  const cronExecutionStatusClass = (status: string) => {
+    const normalized = status.toLowerCase();
+    if (normalized === 'completed') {
+      return 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+    }
+    if (normalized === 'failed' || normalized === 'timed_out') {
+      return 'border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-300';
+    }
+    return 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]';
+  };
+
+  const formatExecutionDuration = (execution: CronExecution) => {
+    if (!execution.started_at || !execution.completed_at) {
+      return 'Duration unknown';
+    }
+    const started = new Date(execution.started_at).getTime();
+    const completed = new Date(execution.completed_at).getTime();
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
+      return 'Duration unknown';
+    }
+    const seconds = Math.max(0, Math.round((completed - started) / 1000));
+    if (seconds < 60) {
+      return `${seconds}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return `${minutes}m ${remainder}s`;
+  };
 
   const reportedServices = snapshot?.services || [];
   const reportedServiceManager = reportedServices.find(service => service.source)?.source;
@@ -963,7 +1063,10 @@ export default function ServerDetailsPage() {
         <div className="overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
           <div className="border-b border-[var(--border-color)] p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]"><CalendarClock className="h-4 w-4" /> DISCOVERED CRON JOBS</h3>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">Schedules are reported by the agent. Run history remains Unknown until execution telemetry is available.</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
+              Schedules are reported by the agent. Copy a wrapper command into crontab to report real last-run time and exit status.
+              {' '}<Link href="/docs/server-management/cron-telemetry" className="font-semibold text-[var(--accent-primary)] underline-offset-4 hover:underline">Read the migration guide</Link>.
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
@@ -971,19 +1074,58 @@ export default function ServerDetailsPage() {
                 <tr><th className="px-6 py-3">Schedule</th><th className="px-6 py-3">Command</th><th className="px-6 py-3">Source</th><th className="px-6 py-3">Owner</th><th className="px-6 py-3">Last run</th><th className="px-6 py-3">Next run</th><th className="px-6 py-3">Status</th></tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
-                {cronJobs.map(job => (
-                  <tr key={job.id}>
-                    <td className="px-6 py-4"><code className="rounded bg-[var(--background)] px-2 py-1 font-semibold text-[var(--foreground)]">{job.schedule}</code></td>
-                    <td className="max-w-md break-all px-6 py-4 font-mono text-xs text-[var(--foreground)]">{job.command}</td>
-                    <td className="px-6 py-4 text-[var(--color-muted)]">{job.source}</td>
-                    <td className="px-6 py-4 text-[var(--color-muted)]">{job.owner || 'Unknown'}</td>
-                    <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.last_run_at)}</td>
-                    <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.next_run_at)}</td>
-                    <td className="px-6 py-4">
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${job.enabled ? 'border-emerald-500/30 text-emerald-500' : 'border-[var(--border-color)] text-[var(--color-muted)]'}`}>{job.enabled ? (job.last_status || 'Discovered') : 'Not reported'}</span>
-                    </td>
-                  </tr>
-                ))}
+                {cronJobs.map(job => {
+                  const statusMeta = cronStatusMeta(job);
+                  const executions = job.executions || [];
+                  return (
+                    <React.Fragment key={job.id}>
+                      <tr>
+                        <td className="px-6 py-4"><code className="rounded bg-[var(--background)] px-2 py-1 font-semibold text-[var(--foreground)]">{job.schedule}</code></td>
+                        <td className="max-w-md break-all px-6 py-4 font-mono text-xs text-[var(--foreground)]">
+                          {job.command}
+                          {job.external_id && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-[var(--color-muted)]">
+                              <span>Telemetry ID <code className="rounded bg-[var(--background)] px-1.5 py-0.5">{job.external_id.slice(0, 12)}</code></span>
+                              <button
+                                type="button"
+                                onClick={() => copyCronWrapperCommand(job)}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-color)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+                                aria-label={`Copy cron telemetry wrapper for ${job.schedule}`}
+                              >
+                                <Copy className="h-3 w-3" />
+                                {copiedCronCommandId === job.id ? 'Copied' : 'Copy wrapper'}
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-[var(--color-muted)]">{job.source}</td>
+                        <td className="px-6 py-4 text-[var(--color-muted)]">{job.owner || 'Unknown'}</td>
+                        <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.last_run_at)}</td>
+                        <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.next_run_at)}</td>
+                        <td className="px-6 py-4">
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
+                        </td>
+                      </tr>
+                      {executions.length > 0 && (
+                        <tr className="bg-[var(--background)]/45">
+                          <td className="px-6 pb-4 pt-0 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">Recent runs</td>
+                          <td colSpan={6} className="px-6 pb-4 pt-0">
+                            <div className="grid gap-2">
+                              {executions.slice(0, 3).map(execution => (
+                                <div key={execution.id} className="grid gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-2 text-xs md:grid-cols-[160px_120px_90px_1fr]">
+                                  <span className="font-mono text-[var(--color-muted)]">{formatTimestamp(execution.started_at)}</span>
+                                  <span className={`w-fit rounded-full border px-2 py-0.5 font-semibold ${cronExecutionStatusClass(execution.status)}`}>{execution.status}</span>
+                                  <span className="font-mono text-[var(--foreground)]">exit {execution.exit_code ?? '—'}</span>
+                                  <span className="truncate font-mono text-[var(--color-muted)]">{formatExecutionDuration(execution)}{execution.output ? ` · ${execution.output}` : ''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
                 {!cronJobs.length && <tr><td colSpan={7} className="px-6 py-10 text-center text-[var(--color-muted)]">No cron jobs have been reported by this server.</td></tr>}
               </tbody>
             </table>

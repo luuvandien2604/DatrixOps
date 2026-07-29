@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
@@ -65,12 +67,15 @@ type DockerContainer struct {
 }
 
 type CronJob struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Owner    string `json:"owner"`
-	Schedule string `json:"schedule"`
-	Command  string `json:"command"`
-	Enabled  bool   `json:"enabled"`
+	ID         string     `json:"id"`
+	Source     string     `json:"source"`
+	Owner      string     `json:"owner"`
+	Schedule   string     `json:"schedule"`
+	Command    string     `json:"command"`
+	Enabled    bool       `json:"enabled"`
+	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+	LastStatus string     `json:"last_status,omitempty"`
 }
 
 type Snapshot struct {
@@ -115,20 +120,35 @@ type ServerTask struct {
 	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
-func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
-	// 1. Extract and validate Agent Token from header
+type CronExecutionReportRequest struct {
+	ExternalID  string     `json:"external_id"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Status      string     `json:"status"`
+	ExitCode    *int       `json:"exit_code,omitempty"`
+	Output      string     `json:"output,omitempty"`
+}
+
+func agentTokenFromRequest(r *http.Request) (string, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing Authorization header")
-		return
+		return "", false
 	}
-
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return "", false
+	}
+	token := strings.TrimSpace(parts[1])
+	return token, token != ""
+}
+
+func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	// 1. Extract and validate Agent Token from header
+	agentToken, ok := agentTokenFromRequest(r)
+	if !ok {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
 		return
 	}
-	agentToken := parts[1]
 
 	// 2. Parse Payload
 	var req HeartbeatRequest
@@ -433,22 +453,114 @@ func (h *Handler) persistCronJobs(ctx context.Context, serverID string, jobs []C
 	for _, job := range jobs {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO cron_jobs
-				(server_id, external_id, source, owner, schedule, command, enabled, discovered_at, updated_at)
-			 VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, NOW(), NOW())
+				(server_id, external_id, source, owner, schedule, command, enabled,
+				 last_run_at, next_run_at, last_status, discovered_at, updated_at)
+			 VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, NULLIF($10, ''), NOW(), NOW())
 			 ON CONFLICT (server_id, external_id) DO UPDATE SET
 				source = EXCLUDED.source,
 				owner = EXCLUDED.owner,
 				schedule = EXCLUDED.schedule,
 				command = EXCLUDED.command,
 				enabled = EXCLUDED.enabled,
+				last_run_at = COALESCE(EXCLUDED.last_run_at, cron_jobs.last_run_at),
+				next_run_at = EXCLUDED.next_run_at,
+				last_status = COALESCE(EXCLUDED.last_status, cron_jobs.last_status),
 				discovered_at = NOW(),
 				updated_at = NOW()`,
 			serverID, job.ID, job.Source, job.Owner, job.Schedule, job.Command, job.Enabled,
+			job.LastRunAt, job.NextRunAt, job.LastStatus,
 		); err != nil {
 			return err
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
+	agentToken, ok := agentTokenFromRequest(r)
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
+		return
+	}
+
+	var req CronExecutionReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	req.ExternalID = strings.TrimSpace(req.ExternalID)
+	if len(req.ExternalID) != 64 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "external_id must be a 64-character cron job identifier")
+		return
+	}
+	if _, err := hex.DecodeString(req.ExternalID); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "external_id must be hexadecimal")
+		return
+	}
+	if req.StartedAt.IsZero() {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "started_at is required")
+		return
+	}
+	req.Status = strings.ToLower(strings.TrimSpace(req.Status))
+	switch req.Status {
+	case "completed", "failed", "timed_out":
+	default:
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be completed, failed, or timed_out")
+		return
+	}
+	if req.CompletedAt != nil && req.CompletedAt.Before(req.StartedAt) {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "completed_at must be after started_at")
+		return
+	}
+	if len(req.Output) > 8192 {
+		req.Output = req.Output[:8192]
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var executionID string
+	err := h.db.Pool.QueryRow(ctx,
+		`WITH server_scope AS (
+		    SELECT id FROM servers WHERE agent_token = $1
+		 ),
+		 target_job AS (
+		    SELECT cron_jobs.id
+		    FROM cron_jobs
+		    JOIN server_scope ON server_scope.id = cron_jobs.server_id
+		    WHERE cron_jobs.external_id = $2
+		 ),
+		 inserted AS (
+		    INSERT INTO cron_executions
+		        (cron_job_id, started_at, completed_at, status, exit_code, output)
+		    SELECT target_job.id, $3, $4, $5, $6, NULLIF($7, '')
+		    FROM target_job
+		    RETURNING id, cron_job_id
+		 ),
+		 updated_job AS (
+		    UPDATE cron_jobs
+		    SET last_run_at = $3,
+		        last_status = $5,
+		        updated_at = NOW()
+		    WHERE id IN (SELECT cron_job_id FROM inserted)
+		    RETURNING id
+		 )
+		 SELECT inserted.id
+		 FROM inserted
+		 JOIN updated_job ON updated_job.id = inserted.cron_job_id`,
+		agentToken, req.ExternalID, req.StartedAt, req.CompletedAt, req.Status, req.ExitCode, req.Output,
+	).Scan(&executionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Cron job was not found for this agent token")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to record cron execution")
+		return
+	}
+
+	response.Success(w, http.StatusCreated, map[string]string{"id": executionID})
 }
 
 type ReportTaskRequest struct {

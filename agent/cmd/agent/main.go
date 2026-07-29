@@ -51,6 +51,9 @@ func main() {
 		}
 		return
 	}
+	if handled, exitCode := runCronWrapperFromArgs(os.Args[1:]); handled {
+		os.Exit(exitCode)
+	}
 
 	log.Printf("Starting DatrixOps Agent %s (%s)...", Version, VersionMarker)
 

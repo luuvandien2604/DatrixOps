@@ -58,17 +58,28 @@ type AgentUpdateTask struct {
 }
 
 type CronJob struct {
-	ID           string     `json:"id"`
-	ExternalID   string     `json:"external_id"`
-	Source       string     `json:"source"`
-	Owner        *string    `json:"owner,omitempty"`
-	Schedule     string     `json:"schedule"`
-	Command      string     `json:"command"`
-	Enabled      bool       `json:"enabled"`
-	LastRunAt    *time.Time `json:"last_run_at,omitempty"`
-	NextRunAt    *time.Time `json:"next_run_at,omitempty"`
-	LastStatus   *string    `json:"last_status,omitempty"`
-	DiscoveredAt time.Time  `json:"discovered_at"`
+	ID           string          `json:"id"`
+	ExternalID   string          `json:"external_id"`
+	Source       string          `json:"source"`
+	Owner        *string         `json:"owner,omitempty"`
+	Schedule     string          `json:"schedule"`
+	Command      string          `json:"command"`
+	Enabled      bool            `json:"enabled"`
+	LastRunAt    *time.Time      `json:"last_run_at,omitempty"`
+	NextRunAt    *time.Time      `json:"next_run_at,omitempty"`
+	LastStatus   *string         `json:"last_status,omitempty"`
+	DiscoveredAt time.Time       `json:"discovered_at"`
+	Executions   []CronExecution `json:"executions"`
+}
+
+type CronExecution struct {
+	ID          string     `json:"id"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Status      string     `json:"status"`
+	ExitCode    *int       `json:"exit_code,omitempty"`
+	Output      *string    `json:"output,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type ServerMetric struct {
@@ -463,7 +474,29 @@ func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) 
 	rows, err := r.db.Pool.Query(ctx,
 		`SELECT job.id, job.external_id, job.source, job.owner, job.schedule,
 		        job.command, job.enabled, job.last_run_at, job.next_run_at,
-		        job.last_status, job.discovered_at
+		        job.last_status, job.discovered_at,
+		        COALESCE((
+		            SELECT jsonb_agg(
+		                jsonb_build_object(
+		                    'id', recent.id,
+		                    'started_at', recent.started_at,
+		                    'completed_at', recent.completed_at,
+		                    'status', recent.status,
+		                    'exit_code', recent.exit_code,
+		                    'output', recent.output,
+		                    'created_at', recent.created_at
+		                )
+		                ORDER BY recent.started_at DESC
+		            )
+		            FROM (
+		                SELECT execution.id, execution.started_at, execution.completed_at,
+		                       execution.status, execution.exit_code, execution.output, execution.created_at
+		                FROM cron_executions execution
+		                WHERE execution.cron_job_id = job.id
+		                ORDER BY execution.started_at DESC
+		                LIMIT 5
+		            ) recent
+		        ), '[]'::jsonb) AS executions
 		 FROM cron_jobs job
 		 JOIN servers server ON server.id = job.server_id
 		 WHERE job.server_id = $1 AND server.user_id = $2
@@ -478,12 +511,21 @@ func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) 
 	jobs := make([]CronJob, 0)
 	for rows.Next() {
 		var job CronJob
+		var executionsRaw []byte
 		if err := rows.Scan(
 			&job.ID, &job.ExternalID, &job.Source, &job.Owner, &job.Schedule,
 			&job.Command, &job.Enabled, &job.LastRunAt, &job.NextRunAt,
-			&job.LastStatus, &job.DiscoveredAt,
+			&job.LastStatus, &job.DiscoveredAt, &executionsRaw,
 		); err != nil {
 			return nil, fmt.Errorf("scan cron job: %w", err)
+		}
+		if len(executionsRaw) > 0 {
+			if err := json.Unmarshal(executionsRaw, &job.Executions); err != nil {
+				return nil, fmt.Errorf("decode cron executions: %w", err)
+			}
+		}
+		if job.Executions == nil {
+			job.Executions = make([]CronExecution, 0)
 		}
 		jobs = append(jobs, job)
 	}
