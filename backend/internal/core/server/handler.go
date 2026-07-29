@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
@@ -34,6 +36,8 @@ var allowedTaskTypes = map[string]struct{}{
 	"agent_update":    {},
 	"agent_restart":   {},
 	"vps_reboot":      {},
+	"script_run":      {},
+	"log_read":        {},
 }
 
 var serviceTaskTypes = map[string]struct{}{
@@ -42,6 +46,11 @@ var serviceTaskTypes = map[string]struct{}{
 	"service_restart": {},
 	"service_reload":  {},
 }
+
+var (
+	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
+)
 
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
@@ -346,6 +355,32 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Type == "script_run" {
+		policy, err := h.svc.repo.ScriptPolicy(r.Context(), req.Payload)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
+		if err := validateScriptTask(ownedServer, policy, req.Payload); err != nil {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
+		req.Payload, err = normalizedScriptTaskPayload(req.Payload, policy)
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to prepare script policy payload")
+			return
+		}
+		req.TimeoutSeconds = policy.TimeoutSeconds
+	}
+	if req.Type == "log_read" {
+		if err := validateLogReadTask(ownedServer, req.Payload); err != nil {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
+		if req.TimeoutSeconds > 120 {
+			req.TimeoutSeconds = 120
+		}
+	}
 	if req.Type == "agent_update" {
 		h.expireStaleAgentUpdateTasks(r.Context(), serverID)
 	}
@@ -380,11 +415,48 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.recordAudit(r.Context(), userID, "QUEUE_TASK", "SERVER", serverID, map[string]interface{}{
+	auditDetails := map[string]interface{}{
 		"task_id": taskID,
 		"type":    req.Type,
-	})
+	}
+	if req.Type == "script_run" {
+		var payload scriptTaskPayload
+		if err := json.Unmarshal([]byte(req.Payload), &payload); err == nil {
+			auditDetails["script_id"] = payload.ScriptID
+			auditDetails["confirmed"] = payload.Confirmed
+		}
+	}
+	if req.Type == "log_read" {
+		var payload logReadTaskPayload
+		if err := json.Unmarshal([]byte(req.Payload), &payload); err == nil {
+			auditDetails["source"] = payload.Source
+			auditDetails["unit"] = payload.Unit
+			auditDetails["container_id"] = payload.ContainerID
+			auditDetails["lines"] = payload.Lines
+		}
+	}
+	h.recordAudit(r.Context(), userID, "QUEUE_TASK", "SERVER", serverID, auditDetails)
 	response.Success(w, http.StatusCreated, map[string]string{"id": taskID, "status": taskStatus})
+}
+
+func (h *Handler) ListScripts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	server, err := h.svc.GetServer(r.Context(), r.PathValue("id"), userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+	scripts, err := h.svc.repo.ListScripts(r.Context(), osFamilyFromServer(server))
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list scripts")
+		return
+	}
+	response.Success(w, http.StatusOK, scripts)
 }
 
 type serviceTaskPayload struct {
@@ -434,6 +506,110 @@ func validateServiceTask(server *Server, taskType, rawPayload string) error {
 		return nil
 	}
 	return fmt.Errorf("service is not present in the agent-reported inventory")
+}
+
+type scriptTaskPayload struct {
+	ScriptID         string `json:"script_id"`
+	Confirmed        bool   `json:"confirmed"`
+	OutputLimitBytes string `json:"output_limit_bytes,omitempty"`
+}
+
+func validateScriptTask(server *Server, policy ScriptPolicy, rawPayload string) error {
+	var payload scriptTaskPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return fmt.Errorf("invalid script task payload")
+	}
+	if strings.TrimSpace(payload.ScriptID) == "" {
+		return fmt.Errorf("script_id is required")
+	}
+	if policy.RequiresConfirmation && !payload.Confirmed {
+		return fmt.Errorf("script requires explicit confirmation")
+	}
+	if osFamilyFromServer(server) != policy.OSFamily {
+		return fmt.Errorf("script is not available for this operating system")
+	}
+	return nil
+}
+
+func normalizedScriptTaskPayload(rawPayload string, policy ScriptPolicy) (string, error) {
+	var payload scriptTaskPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return "", fmt.Errorf("invalid script task payload")
+	}
+	payload.ScriptID = strings.TrimSpace(payload.ScriptID)
+	payload.OutputLimitBytes = strconv.Itoa(policy.OutputLimitBytes)
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode script task payload: %w", err)
+	}
+	return string(payloadBytes), nil
+}
+
+type logReadTaskPayload struct {
+	Source      string `json:"source"`
+	Unit        string `json:"unit"`
+	ContainerID string `json:"container_id"`
+	Lines       string `json:"lines"`
+}
+
+func validateLogReadTask(server *Server, rawPayload string) error {
+	if osFamilyFromServer(server) != "linux" {
+		return fmt.Errorf("read-only log viewer is currently supported only on Linux agents")
+	}
+	var payload logReadTaskPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return fmt.Errorf("invalid log task payload")
+	}
+	switch payload.Source {
+	case "journal", "nginx_access", "nginx_error", "mysql_error", "docker":
+	default:
+		return fmt.Errorf("unsupported log source")
+	}
+	if payload.Source == "journal" && strings.TrimSpace(payload.Unit) != "" && !serviceIdentifierPattern.MatchString(payload.Unit) {
+		return fmt.Errorf("invalid journal unit")
+	}
+	if payload.Source == "docker" {
+		containerID := strings.TrimSpace(payload.ContainerID)
+		if containerID == "" {
+			return fmt.Errorf("container_id is required for Docker logs")
+		}
+		if !containerIdentifierPattern.MatchString(containerID) {
+			return fmt.Errorf("invalid container_id")
+		}
+	}
+	lines, err := strconv.Atoi(strings.TrimSpace(payload.Lines))
+	if err != nil || lines < 1 || lines > 500 {
+		return fmt.Errorf("lines must be between 1 and 500")
+	}
+	return nil
+}
+
+func osFamilyFromServer(server *Server) string {
+	if server == nil || server.OSInfo == nil {
+		return "unknown"
+	}
+	var payload struct {
+		OSFamily string `json:"os_family"`
+		OSName   string `json:"os_name"`
+	}
+	if err := json.Unmarshal([]byte(*server.OSInfo), &payload); err != nil {
+		return "unknown"
+	}
+	family := strings.ToLower(strings.TrimSpace(payload.OSFamily))
+	if family != "" {
+		return family
+	}
+	name := strings.ToLower(payload.OSName)
+	if strings.Contains(name, "windows") {
+		return "windows"
+	}
+	if strings.Contains(name, "darwin") || strings.Contains(name, "mac") {
+		return "macos"
+	}
+	if strings.Contains(name, "linux") || strings.Contains(name, "ubuntu") || strings.Contains(name, "debian") {
+		return "linux"
+	}
+	return "unknown"
 }
 
 func (h *Handler) UpdateAllAgents(w http.ResponseWriter, r *http.Request) {

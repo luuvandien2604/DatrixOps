@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
@@ -15,17 +17,19 @@ import (
 // AlertJob định kỳ đánh giá alert rule, ghi notification lên Dashboard
 // và gửi thông báo ra đúng channel được liên kết với từng rule.
 type AlertJob struct {
-	db     *database.DB
-	logger *slog.Logger
-	stop   chan struct{}
+	db         *database.DB
+	logger     *slog.Logger
+	stop       chan struct{}
+	dispatcher *webhook.Dispatcher
 }
 
 // NewAlertJob tạo scheduler đánh giá alert dùng database và logger hiện tại.
 func NewAlertJob(db *database.DB, logger *slog.Logger) *AlertJob {
 	return &AlertJob{
-		db:     db,
-		logger: logger.With("component", "AlertJob"),
-		stop:   make(chan struct{}),
+		db:         db,
+		logger:     logger.With("component", "AlertJob"),
+		stop:       make(chan struct{}),
+		dispatcher: webhook.NewDispatcher(db),
 	}
 }
 
@@ -297,6 +301,7 @@ func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serve
 
 	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
 	j.sendNotifications(channels, externalMessage)
+	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "firing")
 }
 
 // handleResolved chỉ chạy khi state trước đó là firing, sau đó ghi notification phục hồi.
@@ -355,6 +360,52 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 
 	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
 	j.sendNotifications(channels, externalMessage)
+	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "resolved")
+}
+
+func (j *AlertJob) dispatchAlertWebhook(rule alert.AlertRule, serverID, serverName string, currentValue float64, transition string) {
+	eventType := ""
+	switch {
+	case rule.Metric == "status" && transition == "firing":
+		eventType = "server.offline"
+	case rule.Metric == "status" && transition == "resolved":
+		eventType = "server.online"
+	case (rule.Metric == "cpu" || rule.Metric == "ram") && transition == "firing":
+		eventType = "server.degraded"
+	default:
+		return
+	}
+
+	payload := webhook.EventPayload{
+		Test: false,
+		Resource: map[string]any{
+			"type":      "server",
+			"id":        serverID,
+			"name":      serverName,
+			"workspace": rule.UserID,
+		},
+		Alert: map[string]any{
+			"rule_id":          rule.ID,
+			"rule_name":        rule.Name,
+			"metric":           rule.Metric,
+			"operator":         rule.Operator,
+			"threshold":        rule.Threshold,
+			"duration_minutes": rule.DurationMinutes,
+			"transition":       transition,
+		},
+		Metrics: map[string]any{
+			"current_value": currentValue,
+			"unit":          "%",
+		},
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := j.dispatcher.Dispatch(ctx, rule.UserID, eventType, payload); err != nil {
+			j.logger.Warn("failed to dispatch system webhook", "event", eventType, "rule_id", rule.ID, "server_id", serverID, "error", err)
+		}
+	}()
 }
 
 // firingMessages tạo nội dung riêng cho Dashboard và external channel.
@@ -436,9 +487,71 @@ func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, message stri
 			if webhookURL != "" {
 				err = notifier.SendDiscord(webhookURL, message)
 			}
+		case "email":
+			err = notifier.SendEmail(emailConfigFromChannel(channel), alertEmailSubject(message), alertEmailBody(message))
 		}
 		if err != nil {
 			j.logger.Warn("failed to send alert notification", "channel_id", channel.ID, "channel_type", channel.Type, "error", err)
 		}
 	}
+}
+
+func emailConfigFromChannel(channel alert.AlertChannel) notifier.EmailConfig {
+	port := 587
+	switch value := channel.Config["smtp_port"].(type) {
+	case float64:
+		if value >= 1 && value <= 65535 {
+			port = int(value)
+		}
+	case int:
+		if value >= 1 && value <= 65535 {
+			port = value
+		}
+	}
+	useTLS := false
+	if rawTLS, ok := channel.Config["use_tls"].(bool); ok {
+		useTLS = rawTLS
+	}
+	stringValue := func(key string) string {
+		value, _ := channel.Config[key].(string)
+		return value
+	}
+	return notifier.EmailConfig{
+		Host:     stringValue("smtp_host"),
+		Port:     port,
+		Username: stringValue("username"),
+		Password: stringValue("password"),
+		From:     stringValue("from"),
+		To:       stringValue("to"),
+		UseTLS:   useTLS,
+	}
+}
+
+func alertEmailSubject(message string) string {
+	plain := alertEmailBody(message)
+	switch {
+	case strings.Contains(plain, "SERVER OFFLINE"):
+		return "DatrixOps alert: server offline"
+	case strings.Contains(plain, "SERVER ONLINE"):
+		return "DatrixOps resolved: server online"
+	case strings.Contains(plain, "ALERT RESOLVED"):
+		return "DatrixOps alert resolved"
+	default:
+		return "DatrixOps alert firing"
+	}
+}
+
+func alertEmailBody(message string) string {
+	replacements := map[string]string{
+		"<b>":   "",
+		"</b>":  "",
+		"&lt;":  "<",
+		"&gt;":  ">",
+		"&amp;": "&",
+	}
+	body := message
+	for old, next := range replacements {
+		body = strings.ReplaceAll(body, old, next)
+	}
+	return body
 }

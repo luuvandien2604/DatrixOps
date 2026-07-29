@@ -4,7 +4,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 import {
-  FileText, Search, Download, Copy, Check, PauseCircle, Terminal
+  Check,
+  Copy,
+  Download,
+  FileText,
+  Loader2,
+  PauseCircle,
+  Search,
+  Terminal,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -31,6 +38,8 @@ interface LogServer {
   id: string;
   name: string;
   ip_address?: string;
+  status?: string;
+  os_info?: string;
 }
 
 type LogType = 'all' | 'audit' | 'system' | 'docker' | 'agent';
@@ -77,8 +86,11 @@ export default function LogsPage() {
   const [selectedServerId, setSelectedServerId] = useState<string>('all');
   const [logLevel, setLogLevel] = useState<string>('all');
   const [logType, setLogType] = useState<LogType>('all');
+  const [remoteLogSource, setRemoteLogSource] = useState('journal');
+  const [remoteLogLines, setRemoteLogLines] = useState('200');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [fetchingRemoteLogs, setFetchingRemoteLogs] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +166,19 @@ export default function LogsPage() {
   }, [logs, selectedServerId, logLevel, logType, searchQuery]);
 
   const visibleLogs = useMemo(() => filteredLogs.slice(0, MAX_VISIBLE_LOGS), [filteredLogs]);
+  const selectedServer = servers.find((server) => server.id === selectedServerId);
+  const selectedServerOS = (() => {
+    if (!selectedServer?.os_info) return 'unknown';
+    try {
+      const parsed = JSON.parse(selectedServer.os_info);
+      return String(parsed.os_family || parsed.os_name || '').toLowerCase();
+    } catch {
+      return 'unknown';
+    }
+  })();
+  const canFetchRemoteLogs = selectedServerId !== 'all'
+    && selectedServer?.status === 'online'
+    && ['linux', 'ubuntu', 'debian', 'centos', 'rocky', 'alma', 'fedora', 'alpine'].some(marker => selectedServerOS.includes(marker));
 
   const copyAllLogs = async () => {
     const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
@@ -179,6 +204,61 @@ export default function LogsPage() {
     toast.success('Log file downloaded');
   };
 
+  const fetchRemoteLogs = async () => {
+    if (!canFetchRemoteLogs || !selectedServer) {
+      toast.error('Select an online Linux server first');
+      return;
+    }
+    setFetchingRemoteLogs(true);
+    try {
+      const payload = {
+        source: remoteLogSource,
+        unit: '',
+        lines: remoteLogLines,
+      };
+      const task = await apiClient(`/servers/${selectedServer.id}/tasks`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'log_read',
+          payload: JSON.stringify(payload),
+          idempotency_key: `log-read-${selectedServer.id}-${remoteLogSource}-${Date.now()}`,
+          timeout_seconds: 60,
+        }),
+      });
+
+      let taskResult: { status: string; result?: string } | null = null;
+      for (let attempt = 0; attempt < 18; attempt++) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        taskResult = await apiClient(`/servers/${selectedServer.id}/tasks/${task.id}`);
+        if (taskResult?.status === 'completed' || taskResult?.status === 'failed') break;
+      }
+
+      if (!taskResult || (taskResult.status !== 'completed' && taskResult.status !== 'failed')) {
+        toast.error('Log read task is still running. Try again in a few seconds.');
+        return;
+      }
+      const finalStatus = taskResult.status;
+      const resultText = taskResult.result || '';
+      const now = new Date().toISOString();
+      const remoteEntries = resultText.split('\n').filter(Boolean).slice(-500).map((line, index) => ({
+        id: `remote-${task.id}-${index}`,
+        timestamp: now,
+        server_id: selectedServer.id,
+        server_name: selectedServer.name,
+        level: finalStatus === 'failed' ? 'error' as const : classifyLineLevel(line),
+        source: `agent:${remoteLogSource}`,
+        message: line,
+      }));
+      setLogs((current) => [...remoteEntries, ...current].slice(0, 1000));
+      setLogType('all');
+      toast.success(`Fetched ${remoteEntries.length} log lines`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to fetch remote logs');
+    } finally {
+      setFetchingRemoteLogs(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
@@ -192,9 +272,9 @@ export default function LogsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button type="button" disabled className="ops-button secondary" title="Log ingestion is not available from the current backend">
+          <button type="button" disabled className="ops-button secondary" title="Continuous live tail will be enabled after the read-only fetch path is stable">
             <PauseCircle className="w-4 h-4" />
-            Live tail unavailable
+            Live tail next
           </button>
 
           <button disabled={visibleLogs.length === 0} onClick={copyAllLogs} className="ops-button secondary">
@@ -276,6 +356,52 @@ export default function LogsPage() {
         </div>
       </div>
 
+      <div className="ops-panel surface-regular no-hover-lift grid grid-cols-1 gap-4 p-4 md:grid-cols-[1fr_180px_140px_auto]">
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase text-[var(--color-muted)]">Read-only agent log source</label>
+          <CustomSelect
+            value={remoteLogSource}
+            onChange={setRemoteLogSource}
+            options={[
+	              { value: 'journal', label: 'systemd journal' },
+	              { value: 'nginx_access', label: 'Nginx access log' },
+	              { value: 'nginx_error', label: 'Nginx error log' },
+	              { value: 'mysql_error', label: 'MySQL/MariaDB error log' },
+	            ]}
+            className="w-full"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase text-[var(--color-muted)]">Lines</label>
+          <CustomSelect
+            value={remoteLogLines}
+            onChange={setRemoteLogLines}
+            options={[
+              { value: '100', label: '100 lines' },
+              { value: '200', label: '200 lines' },
+              { value: '500', label: '500 lines' },
+            ]}
+            className="w-full"
+          />
+        </div>
+        <div className="self-end text-xs text-[var(--color-muted)]">
+          {selectedServerId === 'all'
+            ? 'Select one server'
+            : canFetchRemoteLogs
+              ? 'Linux read-only'
+              : 'Requires online Linux agent'}
+        </div>
+        <button
+          type="button"
+          onClick={() => void fetchRemoteLogs()}
+          disabled={!canFetchRemoteLogs || fetchingRemoteLogs}
+          className="ops-button primary self-end"
+        >
+          {fetchingRemoteLogs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
+          Fetch logs
+        </button>
+      </div>
+
       {/* Terminal Log Console Window */}
       <div className="log-console ops-panel no-hover-lift overflow-hidden rounded-xl font-mono text-xs">
         {/* Terminal Header Bar */}
@@ -347,4 +473,12 @@ export default function LogsPage() {
       </div>
     </div>
   );
+}
+
+function classifyLineLevel(line: string): LogEntry['level'] {
+  const normalized = line.toLowerCase();
+  if (normalized.includes('error') || normalized.includes('failed') || normalized.includes('panic')) return 'error';
+  if (normalized.includes('warn') || normalized.includes('denied') || normalized.includes('timeout')) return 'warn';
+  if (normalized.includes('debug')) return 'debug';
+  return 'info';
 }

@@ -19,6 +19,9 @@ var (
 	// ErrInvalidServerSelection báo agent/server không tồn tại hoặc không thuộc user.
 	ErrInvalidServerSelection = errors.New("invalid alert server selection")
 
+	// ErrRuleNotFound báo rule không tồn tại hoặc không thuộc user hiện tại.
+	ErrRuleNotFound = errors.New("alert rule not found")
+
 	// ErrChannelInUse ngăn xóa channel đang được ít nhất một rule sử dụng.
 	ErrChannelInUse = errors.New("alert channel is in use")
 
@@ -243,12 +246,15 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 
 // DeleteRule xóa rule thuộc user. Quan hệ alert_rule_channels được cascade tự động.
 func (r *Repository) DeleteRule(ctx context.Context, id, userID string) error {
-	_, err := r.db.Pool.Exec(ctx, `
+	result, err := r.db.Pool.Exec(ctx, `
 		DELETE FROM alert_rules
 		WHERE id = $1 AND user_id = $2
 	`, id, userID)
 	if err != nil {
 		return fmt.Errorf("delete alert rule: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrRuleNotFound
 	}
 	return nil
 }

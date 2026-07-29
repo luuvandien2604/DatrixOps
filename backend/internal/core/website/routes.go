@@ -10,7 +10,7 @@ import (
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, jwtSecret string) {
 	repo := NewRepository(db)
 	svc := NewService(repo)
-	h := NewHandler(svc)
+	h := NewHandler(svc, db)
 
 	authMiddleware := middleware.RequireAuth([]byte(jwtSecret), db)
 

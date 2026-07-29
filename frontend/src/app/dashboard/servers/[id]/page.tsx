@@ -147,6 +147,23 @@ interface AgentUpdateTask {
   completed_at?: string;
 }
 
+interface ScriptPolicy {
+  id: string;
+  name: string;
+  description: string;
+  os_family: string;
+  category: string;
+  requires_confirmation: boolean;
+  timeout_seconds: number;
+  output_limit_bytes: number;
+}
+
+interface ScriptRunState {
+  taskId?: string;
+  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed' | 'expired' | 'timed_out';
+  result?: string;
+}
+
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
@@ -183,6 +200,9 @@ export default function ServerDetailsPage() {
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
   const [savingAutoUpdate, setSavingAutoUpdate] = useState(false);
+  const [scriptLibrary, setScriptLibrary] = useState<ScriptPolicy[]>([]);
+  const [scriptRuns, setScriptRuns] = useState<Record<string, ScriptRunState>>({});
+  const [scriptLibraryError, setScriptLibraryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
@@ -234,6 +254,15 @@ export default function ServerDetailsPage() {
         setCronJobs(Array.isArray(jobs) ? jobs : []);
       } catch (cronError) {
         console.error('Unable to load cron jobs', cronError);
+      }
+      try {
+        const scripts = await apiClient(`/servers/${params.id}/scripts`);
+        setScriptLibrary(Array.isArray(scripts) ? scripts : []);
+        setScriptLibraryError(null);
+      } catch (scriptError: any) {
+        console.error('Unable to load script library', scriptError);
+        setScriptLibrary([]);
+        setScriptLibraryError(scriptError.message || 'Unable to load script library');
       }
     } catch (err) {
       console.error(err);
@@ -406,6 +435,84 @@ export default function ServerDetailsPage() {
       toast.error(error.message || 'Unable to change the automatic update policy');
     } finally {
       setSavingAutoUpdate(false);
+    }
+  };
+
+  const runAllowlistedScript = async (script: ScriptPolicy) => {
+    if (!server) return;
+    if (server.status !== 'online') {
+      toast.error('The agent must be online before a script can run');
+      return;
+    }
+    if (script.os_family !== osFamily) {
+      toast.error('This script is not available for this operating system');
+      return;
+    }
+    if (script.requires_confirmation && !window.confirm(`Run "${script.name}" on ${server.name}? This action is audited and limited to the allowlisted command.`)) {
+      return;
+    }
+
+    setScriptRuns(current => ({
+      ...current,
+      [script.id]: { status: 'pending', result: 'Queued. Waiting for the agent to claim the task…' },
+    }));
+
+    try {
+      const task = await apiClient(`/servers/${server.id}/tasks`, {
+        method: 'POST',
+        data: {
+          type: 'script_run',
+          payload: JSON.stringify({
+            script_id: script.id,
+            confirmed: script.requires_confirmation,
+          }),
+          timeout_seconds: script.timeout_seconds,
+          idempotency_key: `script-${script.id}-${Date.now()}`,
+        },
+      });
+      setScriptRuns(current => ({
+        ...current,
+        [script.id]: { taskId: task.id, status: task.status || 'pending', result: 'Task queued. Waiting for output…' },
+      }));
+
+      const maxAttempts = Math.max(8, Math.ceil((script.timeout_seconds + 10) / 2));
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 2000));
+        const result = await apiClient(`/servers/${server.id}/tasks/${task.id}`);
+        const status = result.status as ScriptRunState['status'];
+        setScriptRuns(current => ({
+          ...current,
+          [script.id]: {
+            taskId: task.id,
+            status,
+            result: result.result || (status === 'processing' ? 'Running on agent…' : 'Waiting for agent…'),
+          },
+        }));
+        if (status === 'completed') {
+          toast.success(`${script.name} completed`);
+          return;
+        }
+        if (['failed', 'expired', 'timed_out'].includes(status)) {
+          toast.error(`${script.name}: ${status}`);
+          return;
+        }
+      }
+
+      setScriptRuns(current => ({
+        ...current,
+        [script.id]: {
+          taskId: task.id,
+          status: 'timed_out',
+          result: 'Timed out waiting for the task result. The backend timeout policy still applies.',
+        },
+      }));
+      toast.error(`${script.name}: timed out waiting for result`);
+    } catch (error: any) {
+      setScriptRuns(current => ({
+        ...current,
+        [script.id]: { status: 'failed', result: error.message || 'Unable to queue script task' },
+      }));
+      toast.error(error.message || 'Unable to queue script task');
     }
   };
 
@@ -605,6 +712,7 @@ export default function ServerDetailsPage() {
     ['overview', 'Overview'],
     ['inventory', 'Inventory'],
     ...(osFamily === 'windows' ? [] : [['cron', osFamily === 'macos' ? 'Cron Jobs' : 'Cron Monitoring'] as [string, string]]),
+    ['scripts', 'Script Library'],
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
@@ -682,6 +790,21 @@ export default function ServerDetailsPage() {
     counts[service.status] = (counts[service.status] || 0) + 1;
     return counts;
   }, {});
+  const scriptRunStatusClass = (status?: ScriptRunState['status']) => {
+    switch (status) {
+    case 'completed':
+      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300';
+    case 'failed':
+    case 'expired':
+    case 'timed_out':
+      return 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300';
+    case 'pending':
+    case 'processing':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+    default:
+      return 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]';
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1130,6 +1253,93 @@ export default function ServerDetailsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'scripts' && (
+        <div className="space-y-5">
+          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
+            <div className="flex flex-col gap-3 border-b border-[var(--border-color)] p-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-semibold text-[var(--foreground)]">
+                  <TerminalSquare className="h-4 w-4 text-[var(--accent-primary)]" />
+                  Allowlisted Script Library
+                </h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--color-muted)]">
+                  Scripts are predefined by the control plane, validated by backend policy, executed with a per-script timeout and output cap, and audited as server tasks.
+                </p>
+              </div>
+              <span className="w-fit rounded-md border border-[var(--border-color)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
+                {scriptLibrary.length} allowlisted
+              </span>
+            </div>
+
+            {osFamily !== 'linux' ? (
+              <div className="p-8 text-sm leading-6 text-[var(--color-muted)]">
+                Script Library is currently enabled only for Linux agents. {osFamily === 'windows' ? 'Windows' : osFamily === 'macos' ? 'macOS' : 'Unknown OS'} agents stay read-only until a native allowlist is defined for that platform.
+              </div>
+            ) : scriptLibraryError ? (
+              <div className="p-8 text-sm font-medium text-rose-500">{scriptLibraryError}</div>
+            ) : scriptLibrary.length === 0 ? (
+              <div className="p-8 text-sm text-[var(--color-muted)]">No scripts are allowlisted for this server OS.</div>
+            ) : (
+              <div className="grid gap-4 p-5 xl:grid-cols-2">
+                {scriptLibrary.map(script => {
+                  const runState = scriptRuns[script.id] || { status: 'idle' as const };
+                  const running = runState.status === 'pending' || runState.status === 'processing';
+                  const disabled = running || server.status !== 'online';
+                  return (
+                    <article key={script.id} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-semibold text-[var(--foreground)]">{script.name}</h4>
+                            <span className="rounded border border-[var(--border-color)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">
+                              {script.category}
+                            </span>
+                            {script.requires_confirmation && (
+                              <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                                Confirmation required
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{script.description}</p>
+                          <div className="mt-3 flex flex-wrap gap-2 font-mono text-[11px] text-[var(--color-muted)]">
+                            <span>timeout={script.timeout_seconds}s</span>
+                            <span>output_limit={script.output_limit_bytes}B</span>
+                            <span>id={script.id}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => runAllowlistedScript(script)}
+                          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                          {running ? 'Running' : 'Run'}
+                        </button>
+                      </div>
+
+                      {runState.status !== 'idle' && (
+                        <div className="mt-4 overflow-hidden rounded-lg border border-[var(--border-color)]">
+                          <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--surface-2)] px-3 py-2">
+                            <span className={`rounded border px-2 py-0.5 text-[11px] font-semibold uppercase ${scriptRunStatusClass(runState.status)}`}>
+                              {runState.status}
+                            </span>
+                            {runState.taskId && <code className="text-[11px] text-[var(--color-muted)]">task {runState.taskId.slice(0, 8)}</code>}
+                          </div>
+                          <pre className="max-h-72 overflow-auto whitespace-pre-wrap bg-[var(--background)] p-3 font-mono text-xs leading-5 text-[var(--foreground)]">
+                            {runState.result || 'Waiting for output…'}
+                          </pre>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
       )}
 

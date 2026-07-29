@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
 type Handler struct {
 	svc Service
+	db  *database.DB
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, db *database.DB) *Handler {
+	return &Handler{svc: svc, db: db}
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +43,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditlog.Record(r.Context(), h.db, userID, "CREATE_WEBSITE", "WEBSITE", website.ID, map[string]any{
+		"name": website.Name,
+		"url":  website.URL,
+	})
 	response.Success(w, http.StatusCreated, website)
 }
 
@@ -77,5 +84,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditlog.Record(r.Context(), h.db, userID, "DELETE_WEBSITE", "WEBSITE", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"id": id, "status": "deleted"})
 }

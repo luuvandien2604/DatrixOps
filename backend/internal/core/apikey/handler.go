@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
@@ -59,7 +61,7 @@ func (h *Handler) CreateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rawKey := "dtx_" + hex.EncodeToString(b)
-	
+
 	// Hash it
 	hash := sha256.Sum256([]byte(rawKey))
 	keyHash := hex.EncodeToString(hash[:])
@@ -72,6 +74,9 @@ func (h *Handler) CreateKey(w http.ResponseWriter, r *http.Request) {
 
 	k.RawKey = rawKey // Only return the raw key once
 
+	auditlog.Record(r.Context(), h.repo.db, userID, "CREATE_API_KEY", "API_KEY", k.ID, map[string]any{
+		"name": k.Name,
+	})
 	response.Success(w, http.StatusCreated, k)
 }
 
@@ -84,9 +89,14 @@ func (h *Handler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	if err := h.repo.DeleteKey(r.Context(), id, userID); err != nil {
+		if errors.Is(err, ErrAPIKeyNotFound) {
+			response.Error(w, http.StatusNotFound, "API_KEY_NOT_FOUND", "API key not found")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete api key")
 		return
 	}
 
+	auditlog.Record(r.Context(), h.repo.db, userID, "DELETE_API_KEY", "API_KEY", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

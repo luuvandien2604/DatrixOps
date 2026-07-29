@@ -9,10 +9,10 @@
 **Ưu tiên gần (triển khai trước):**
 1. Hoàn thiện Cron Execution Telemetry UX: copy wrapper command, migration guide và trạng thái `Not instrumented`/`Reported`/`Failed`.
 2. Mở rộng Audit Log cho các thao tác rủi ro: Alerts, Websites, API Keys, script execution, terminal sessions và update policy.
-3. System Webhooks cho sự kiện vận hành: offline, degraded, cron failed, service down, update failed/resolved.
-4. Email Notification qua provider/SMTP cấu hình rõ ràng.
-5. Script Library dựa trên allowlist, audit, timeout và output limit.
-6. Realtime Log Viewer read-only cho `journalctl`, Nginx/MySQL và Docker logs.
+3. Polish Realtime Log Viewer read-only: live-tail theo phiên cho nguồn log đã chọn, không mở shell tuỳ ý.
+4. Thêm test delivery và health state cho Email SMTP channel.
+5. Mở rộng Script Library theo allowlist thực tế: ưu tiên diagnostics/dry-run trước thao tác thay đổi trạng thái.
+6. File Manager read-only hoặc Config Viewer nếu cần quan sát file cấu hình/log an toàn.
 
 **Ưu tiên sau khi nền bảo mật ổn định:**
 - Slack Notification.
@@ -82,15 +82,20 @@
 **Sprint 7: Alerting & Webhooks**
 - [x] Rule Engine: Đặt ngưỡng cảnh báo (vd: CPU > 90%, Server Offline, Service Down).
 - [x] Notification Channels: Telegram và Discord.
-- [ ] Notification Channels: Email trước, Slack sau.
-- [ ] System Webhooks: Webhook tổng quát cho hệ thống bên ngoài.
+- [x] Notification Channels: Email SMTP.
+  - Đã thêm SMTP config cho alert channel, validate `smtp_host`, `smtp_port`, `from`, `to`, hỗ trợ TLS/STARTTLS và không trả secret/password khi list channel.
+  - Còn lại nếu cần: nút test email riêng cho từng channel.
+- [x] System Webhooks: Webhook tổng quát cho hệ thống bên ngoài.
+  - Đã thêm DB schema, backend CRUD, HMAC-SHA256 signing, masked URL response, test delivery, delivery history và UI quản lý trong Workspace Settings.
+  - Đã nối dispatch tự động cho `server.offline`, `server.online`, `server.degraded`, `cron.failed`, `service.down`, `agent.update_failed` và `agent.update_resolved`.
+  - Đã thêm retry/backoff giới hạn, trạng thái `dead` sau khi hết retry và hiển thị attempt/next retry trong Settings.
 
 **Sprint 8: Quản trị viên & SaaS (Multi-Tenant & Audit)**
 - [x] Multi-Tenant SaaS & Roles: Hỗ trợ nhiều người dùng đăng ký, tạo Workspace độc lập. Roles: SuperAdmin, User.
 - [x] Nhóm Server (Group) & Gắn Tag (Production, Vietnam, DB).
 - [x] Team Access UI cho SuperAdmin (danh sách user, role và số server sở hữu).
 - [x] Audit Log nền tảng cho lifecycle server, metadata và remote task.
-- [ ] Mở rộng Audit Log sang Alerts, Websites và API Keys.
+- [x] Mở rộng Audit Log sang Alerts, Websites và API Keys.
 - [x] Public REST API Key: Cấp API Token cho bên thứ 3 gọi vào DatrixOps.
 
 **Sprint 9: Quản lý hạ tầng (Inventory & Scripts)**
@@ -99,7 +104,9 @@
 - [x] Technical Inventory: Agent ghi nhận hostname, OS/kernel, architecture, CPU, RAM, disk, private IP và agent version.
 - [x] Inventory Metadata: Provider, Region và Environment do operator quản lý.
 - [x] Remote Task Foundation: Allowlist, audit actor, idempotency, timeout, expiry và atomic task claiming.
-- [ ] Script Library: Thư viện kịch bản (Clean log, Restart Nginx, Backup DB) để chạy nhanh (One-click).
+- [x] Script Library: Thư viện kịch bản allowlist để chạy nhanh có kiểm soát.
+  - Đã thêm catalog DB, backend policy theo OS, confirmation bắt buộc cho script thay đổi trạng thái, timeout/output limit, UI chạy script trong server detail và audit queue/completion.
+  - Agent chỉ chạy script ID đã hardcode allowlist; không nhận command tuỳ ý từ UI/API.
 - [ ] Remote Command & Batch Execute (**tạm hoãn**: chỉ triển khai sau Script Library, audit, approval và command allowlist).
 - [ ] Config Management (**triển khai sau**): Đẩy file config có dry-run, validation, versioning và rollback.
 
@@ -110,7 +117,9 @@
 **Sprint 10: Tương tác trực tiếp (Interactive Tools)**
 - [x] **Web Terminal (Reverse Shell):** Terminal tương tác cho Linux, macOS và Windows qua outbound WebSocket của Agent; dùng one-time ticket, same-origin validation, thời hạn 30 phút, một session/server và audit metadata.
 - [ ] **File Manager:** Ưu tiên read-only trước; Upload/Edit/Chmod **tạm hoãn** vì rủi ro cao.
-- [ ] **Realtime Log Viewer:** `journalctl` streaming, xem log Nginx/MySQL realtime.
+- [~] **Realtime Log Viewer:** read-only log viewer.
+  - Đã thêm fetch read-only qua agent cho Linux `journalctl`, Nginx access/error với timeout/output cap và audit.
+  - Còn lại: live-tail streaming theo phiên và UI chọn Docker container/log source chi tiết.
 
 **Sprint 11: Thông minh & Tự động (Smart & Auto)**
 - [ ] **Timeline Sự kiện:** Liệt kê mọi thay đổi của VPS trên 1 trục thời gian (vd: Lúc 12h CPU tăng, 12h05 Service Restart).
@@ -127,3 +136,5 @@
 ---
 
 > **Nguyên lý thiết kế:** "Chế độ Lightweight" là kim chỉ nam. Agent luôn phải tiêu thụ < 20MB RAM và < 1% CPU khi nhàn rỗi. Tối đa hoá tính tiện dụng (One-click) cho SRE & DevOps.
+
+Checklist tiến độ chi tiết: [`docs/implementation-checklist.md`](implementation-checklist.md).

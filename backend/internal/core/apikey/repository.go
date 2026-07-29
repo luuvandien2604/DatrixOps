@@ -2,10 +2,14 @@ package apikey
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
+
+var ErrAPIKeyNotFound = errors.New("api key not found")
 
 type Repository struct {
 	db *database.DB
@@ -26,7 +30,7 @@ type APIKey struct {
 }
 
 func (r *Repository) ListKeys(ctx context.Context, userID string) ([]APIKey, error) {
-	rows, err := r.db.Pool.Query(ctx, 
+	rows, err := r.db.Pool.Query(ctx,
 		`SELECT id, user_id, name, last_used_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
 		userID,
 	)
@@ -62,8 +66,14 @@ func (r *Repository) CreateKey(ctx context.Context, userID, name, keyHash string
 }
 
 func (r *Repository) DeleteKey(ctx context.Context, id, userID string) error {
-	_, err := r.db.Pool.Exec(ctx, `DELETE FROM api_keys WHERE id = $1 AND user_id = $2`, id, userID)
-	return err
+	result, err := r.db.Pool.Exec(ctx, `DELETE FROM api_keys WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete api key: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrAPIKeyNotFound
+	}
+	return nil
 }
 
 func (r *Repository) VerifyKey(ctx context.Context, keyHash string) (*APIKey, error) {
@@ -75,9 +85,9 @@ func (r *Repository) VerifyKey(ctx context.Context, keyHash string) (*APIKey, er
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Update last used at
 	_, _ = r.db.Pool.Exec(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`, k.ID)
-	
+
 	return &k, nil
 }

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -458,12 +459,48 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 	var postAction string
 	var preparedUninstall *uninstall.Prepared
 
-	// payload depends on type
-	var payload map[string]string
-	_ = json.Unmarshal([]byte(task.Payload), &payload)
+	// payload depends on type. Decode into map[string]any first so boolean or
+	// numeric policy fields do not break string fields such as script_id.
+	var rawPayload map[string]any
+	_ = json.Unmarshal([]byte(task.Payload), &rawPayload)
+	payloadValue := func(key string) string {
+		value, ok := rawPayload[key]
+		if !ok || value == nil {
+			return ""
+		}
+		switch typed := value.(type) {
+		case string:
+			return typed
+		case float64:
+			return strconv.FormatInt(int64(typed), 10)
+		case bool:
+			if typed {
+				return "true"
+			}
+			return "false"
+		default:
+			return fmt.Sprint(typed)
+		}
+	}
+	payload := map[string]string{
+		"container_id":       payloadValue("container_id"),
+		"service_name":       payloadValue("service_name"),
+		"service_manager":    payloadValue("service_manager"),
+		"script_id":          payloadValue("script_id"),
+		"source":             payloadValue("source"),
+		"unit":               payloadValue("unit"),
+		"lines":              payloadValue("lines"),
+		"target_version":     payloadValue("target_version"),
+		"release_base_url":   payloadValue("release_base_url"),
+		"server_id":          payloadValue("server_id"),
+		"confirm_url":        payloadValue("confirm_url"),
+		"confirm_token":      payloadValue("confirm_token"),
+		"output_limit_bytes": payloadValue("output_limit_bytes"),
+	}
 	containerID := payload["container_id"]
 	serviceName := payload["service_name"]
 	serviceManager := payload["service_manager"]
+	scriptID := payload["script_id"]
 	isDockerTask := task.Type == "docker_start" || task.Type == "docker_stop" || task.Type == "docker_restart" || task.Type == "docker_logs"
 	serviceActions := map[string]string{
 		"service_start":   "start",
@@ -497,6 +534,25 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 			cmd = exec.CommandContext(taskContext, "docker", "restart", containerID)
 		case "docker_logs":
 			cmd = exec.CommandContext(taskContext, "docker", "logs", "--tail", "100", containerID)
+
+		case "script_run":
+			log.Printf("Received script_run task: %s", scriptID)
+			scriptResult, scriptErr := executeAllowlistedScript(taskContext, scriptID)
+			outputLimit := parseTaskOutputLimit(payload["output_limit_bytes"], 12000, 1024, 20000)
+			resultStr = limitTaskOutput(scriptResult, outputLimit)
+			if scriptErr != nil {
+				statusStr = "failed"
+				resultStr = limitTaskOutput(scriptResult+" Error: "+scriptErr.Error(), outputLimit)
+			}
+
+		case "log_read":
+			log.Printf("Received read-only log task")
+			logResult, logErr := executeReadOnlyLog(taskContext, payload)
+			resultStr = limitTaskOutput(logResult, 20000)
+			if logErr != nil {
+				statusStr = "failed"
+				resultStr = limitTaskOutput(logResult+" Error: "+logErr.Error(), 20000)
+			}
 
 		case "agent_update":
 			log.Println("Received agent_update task. Downloading the current release...")
@@ -602,4 +658,97 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 			}
 		}
 	}
+}
+
+func executeAllowlistedScript(ctx context.Context, scriptID string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("script library is currently supported only on Linux")
+	}
+	switch scriptID {
+	case "system_health_summary":
+		return combinedOutput(ctx, "sh", "-c", "printf '== uptime ==\\n'; uptime; printf '\\n== disk ==\\n'; df -hT -x tmpfs -x devtmpfs; printf '\\n== memory ==\\n'; free -m; printf '\\n== top cpu ==\\n'; ps -eo pid,user,comm,%cpu,%mem --sort=-%cpu | head -n 12")
+	case "journal_errors_recent":
+		return combinedOutput(ctx, "journalctl", "-p", "warning..alert", "-n", "120", "--no-pager", "-o", "short-iso")
+	case "restart_nginx":
+		return combinedOutput(ctx, "systemctl", "restart", "nginx")
+	default:
+		return "", fmt.Errorf("script is not allowlisted")
+	}
+}
+
+func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("read-only log viewer is currently supported only on Linux")
+	}
+	lines := payload["lines"]
+	if lines == "" {
+		lines = "200"
+	}
+	switch payload["source"] {
+	case "journal":
+		args := []string{"-n", lines, "--no-pager", "-o", "short-iso"}
+		if unit := strings.TrimSpace(payload["unit"]); unit != "" {
+			args = append([]string{"-u", unit}, args...)
+		}
+		return combinedOutput(ctx, "journalctl", args...)
+	case "nginx_access":
+		return combinedOutput(ctx, "tail", "-n", lines, "/var/log/nginx/access.log")
+	case "nginx_error":
+		return combinedOutput(ctx, "tail", "-n", lines, "/var/log/nginx/error.log")
+	case "mysql_error":
+		path := firstExistingLogPath(
+			"/var/log/mysql/error.log",
+			"/var/log/mysqld.log",
+			"/var/log/mariadb/mariadb.log",
+		)
+		if path == "" {
+			return "", fmt.Errorf("no supported MySQL or MariaDB error log path was found")
+		}
+		return combinedOutput(ctx, "tail", "-n", lines, path)
+	case "docker":
+		containerID := payload["container_id"]
+		if !containerIdentifierPattern.MatchString(containerID) {
+			return "", fmt.Errorf("invalid or missing container identifier")
+		}
+		return combinedOutput(ctx, "docker", "logs", "--tail", lines, containerID)
+	default:
+		return "", fmt.Errorf("unsupported read-only log source")
+	}
+}
+
+func combinedOutput(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+func firstExistingLogPath(paths ...string) string {
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
+}
+
+func limitTaskOutput(output string, limit int) string {
+	if limit <= 0 || len(output) <= limit {
+		return output
+	}
+	return output[:limit] + "\n...[truncated]"
+}
+
+func parseTaskOutputLimit(raw string, fallback, minLimit, maxLimit int) int {
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	if limit < minLimit {
+		return minLimit
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
 }

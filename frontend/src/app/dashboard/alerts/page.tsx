@@ -89,6 +89,13 @@ export default function AlertsPage() {
   const [channelToken, setChannelToken] = useState('');
   const [channelChatId, setChannelChatId] = useState('');
   const [channelWebhook, setChannelWebhook] = useState('');
+  const [channelSMTPHost, setChannelSMTPHost] = useState('');
+  const [channelSMTPPort, setChannelSMTPPort] = useState('587');
+  const [channelSMTPUsername, setChannelSMTPUsername] = useState('');
+  const [channelSMTPPassword, setChannelSMTPPassword] = useState('');
+  const [channelEmailFrom, setChannelEmailFrom] = useState('');
+  const [channelEmailTo, setChannelEmailTo] = useState('');
+  const [channelUseTLS, setChannelUseTLS] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -198,7 +205,17 @@ export default function AlertsPage() {
     try {
       const config = channelType === 'telegram'
         ? { bot_token: channelToken.trim(), chat_id: channelChatId.trim() }
-        : { webhook_url: channelWebhook.trim() };
+        : channelType === 'discord'
+          ? { webhook_url: channelWebhook.trim() }
+          : {
+              smtp_host: channelSMTPHost.trim(),
+              smtp_port: Number.parseInt(channelSMTPPort, 10) || 587,
+              username: channelSMTPUsername.trim(),
+              password: channelSMTPPassword,
+              from: channelEmailFrom.trim(),
+              to: channelEmailTo.trim(),
+              use_tls: channelUseTLS,
+            };
 
       const createdChannel = await apiClient('/alerts/channels', {
         method: 'POST',
@@ -217,6 +234,13 @@ export default function AlertsPage() {
       setChannelToken('');
       setChannelChatId('');
       setChannelWebhook('');
+      setChannelSMTPHost('');
+      setChannelSMTPPort('587');
+      setChannelSMTPUsername('');
+      setChannelSMTPPassword('');
+      setChannelEmailFrom('');
+      setChannelEmailTo('');
+      setChannelUseTLS(false);
       setActiveTab('rules');
       setSuccessMessage(`${createdChannel.name} is ready and selected for the new rule.`);
     } catch (error) {
@@ -608,6 +632,7 @@ export default function AlertsPage() {
                   options={[
                     { value: 'telegram', label: 'Telegram Bot' },
                     { value: 'discord', label: 'Discord Webhook' },
+                    { value: 'email', label: 'Email SMTP' },
                   ]}
                   className="w-full"
                 />
@@ -643,7 +668,7 @@ export default function AlertsPage() {
                     />
                   </div>
                 </>
-              ) : (
+              ) : channelType === 'discord' ? (
                 <div>
                   <label htmlFor="channel-webhook" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
                     Webhook URL
@@ -658,6 +683,107 @@ export default function AlertsPage() {
                     className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
                   />
                 </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_96px] gap-2">
+                    <div>
+                      <label htmlFor="channel-smtp-host" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                        SMTP host
+                      </label>
+                      <input
+                        id="channel-smtp-host"
+                        required
+                        value={channelSMTPHost}
+                        onChange={(event) => setChannelSMTPHost(event.target.value)}
+                        type="text"
+                        autoComplete="off"
+                        className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                        placeholder="smtp.example.com"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="channel-smtp-port" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                        Port
+                      </label>
+                      <input
+                        id="channel-smtp-port"
+                        required
+                        value={channelSMTPPort}
+                        onChange={(event) => setChannelSMTPPort(event.target.value)}
+                        type="number"
+                        min="1"
+                        max="65535"
+                        className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="channel-email-from" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                      From
+                    </label>
+                    <input
+                      id="channel-email-from"
+                      required
+                      value={channelEmailFrom}
+                      onChange={(event) => setChannelEmailFrom(event.target.value)}
+                      type="email"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                      placeholder="datrixops@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="channel-email-to" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                      Recipient
+                    </label>
+                    <input
+                      id="channel-email-to"
+                      required
+                      value={channelEmailTo}
+                      onChange={(event) => setChannelEmailTo(event.target.value)}
+                      type="email"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                      placeholder="ops@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="channel-smtp-username" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                      SMTP username
+                    </label>
+                    <input
+                      id="channel-smtp-username"
+                      value={channelSMTPUsername}
+                      onChange={(event) => setChannelSMTPUsername(event.target.value)}
+                      type="text"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="channel-smtp-password" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                      SMTP password
+                    </label>
+                    <input
+                      id="channel-smtp-password"
+                      value={channelSMTPPassword}
+                      onChange={(event) => setChannelSMTPPassword(event.target.value)}
+                      type="password"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+                    <input
+                      type="checkbox"
+                      checked={channelUseTLS}
+                      onChange={(event) => setChannelUseTLS(event.target.checked)}
+                      className="h-4 w-4 accent-[var(--accent-primary)]"
+                    />
+                    Use implicit TLS connection
+                  </label>
+                  <p className="text-xs text-[var(--color-muted)]">
+                    Port 587 will still use STARTTLS when the server advertises it. Enable implicit TLS for providers that require port 465.
+                  </p>
+                </>
               )}
 
               <button

@@ -82,6 +82,20 @@ type CronExecution struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+type ScriptPolicy struct {
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name"`
+	Description          string    `json:"description"`
+	OSFamily             string    `json:"os_family"`
+	Category             string    `json:"category"`
+	RequiresConfirmation bool      `json:"requires_confirmation"`
+	TimeoutSeconds       int       `json:"timeout_seconds"`
+	OutputLimitBytes     int       `json:"output_limit_bytes"`
+	Enabled              bool      `json:"enabled"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
 type ServerMetric struct {
 	ID            string    `json:"id"`
 	ServerID      string    `json:"server_id"`
@@ -530,6 +544,81 @@ func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) 
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
+}
+
+func (r *Repository) ListScripts(ctx context.Context, osFamily string) ([]ScriptPolicy, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id, name, description, os_family, category, requires_confirmation,
+		       timeout_seconds, output_limit_bytes, enabled, created_at, updated_at
+		FROM script_library
+		WHERE enabled = true
+		  AND os_family = $1
+		ORDER BY category, name
+	`, osFamily)
+	if err != nil {
+		return nil, fmt.Errorf("list script library: %w", err)
+	}
+	defer rows.Close()
+
+	scripts := make([]ScriptPolicy, 0)
+	for rows.Next() {
+		var script ScriptPolicy
+		if err := rows.Scan(
+			&script.ID,
+			&script.Name,
+			&script.Description,
+			&script.OSFamily,
+			&script.Category,
+			&script.RequiresConfirmation,
+			&script.TimeoutSeconds,
+			&script.OutputLimitBytes,
+			&script.Enabled,
+			&script.CreatedAt,
+			&script.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan script library: %w", err)
+		}
+		scripts = append(scripts, script)
+	}
+	return scripts, rows.Err()
+}
+
+func (r *Repository) ScriptPolicy(ctx context.Context, rawPayload string) (ScriptPolicy, error) {
+	var payload scriptTaskPayload
+	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
+		return ScriptPolicy{}, fmt.Errorf("invalid script task payload")
+	}
+	payload.ScriptID = strings.TrimSpace(payload.ScriptID)
+	if payload.ScriptID == "" {
+		return ScriptPolicy{}, fmt.Errorf("script_id is required")
+	}
+
+	var script ScriptPolicy
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT id, name, description, os_family, category, requires_confirmation,
+		       timeout_seconds, output_limit_bytes, enabled, created_at, updated_at
+		FROM script_library
+		WHERE id = $1 AND enabled = true
+	`, payload.ScriptID).Scan(
+		&script.ID,
+		&script.Name,
+		&script.Description,
+		&script.OSFamily,
+		&script.Category,
+		&script.RequiresConfirmation,
+		&script.TimeoutSeconds,
+		&script.OutputLimitBytes,
+		&script.Enabled,
+		&script.CreatedAt,
+		&script.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ScriptPolicy{}, fmt.Errorf("script is not allowlisted")
+	}
+	if err != nil {
+		return ScriptPolicy{}, fmt.Errorf("load script policy: %w", err)
+	}
+	return script, nil
 }
 
 // RequestAgentUninstall atomically validates server ownership, online state,

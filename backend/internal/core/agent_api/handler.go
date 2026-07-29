@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
@@ -24,10 +26,15 @@ const (
 type Handler struct {
 	db                  *database.DB
 	desiredAgentVersion string
+	dispatcher          *webhook.Dispatcher
 }
 
 func NewHandler(db *database.DB, desiredAgentVersion string) *Handler {
-	return &Handler{db: db, desiredAgentVersion: desiredAgentVersion}
+	return &Handler{
+		db:                  db,
+		desiredAgentVersion: desiredAgentVersion,
+		dispatcher:          webhook.NewDispatcher(db),
+	}
 }
 
 type TopProcess struct {
@@ -190,7 +197,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var serverID string
+	var serverID, userID, serverName string
 	err := h.db.Pool.QueryRow(ctx,
 		`UPDATE servers 
 		 SET status = 'online', 
@@ -202,9 +209,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		     last_seen_at = NOW(),
 		     updated_at = NOW() 
 		 WHERE agent_token = $2
-		 RETURNING id`,
+		 RETURNING id, user_id, name`,
 		osInfoStr, agentToken, snapshotStr, inventoryStr, publicIP,
-	).Scan(&serverID)
+	).Scan(&serverID, &userID, &serverName)
 
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -217,6 +224,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 
 	if req.Snapshot != nil && req.Snapshot.CronDiscoveryComplete {
 		_ = h.persistCronJobs(ctx, serverID, req.Snapshot.CronJobs)
+	}
+	if req.Snapshot != nil {
+		h.dispatchServiceStateChanges(ctx, userID, serverID, serverName, req.Snapshot.Services)
 	}
 
 	// Insert into server_metrics
@@ -237,7 +247,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	if req.Version != "" &&
 		h.desiredAgentVersion != "" &&
 		compareAgentVersions(req.Version, h.desiredAgentVersion) == 0 {
-		_, _ = h.db.Pool.Exec(ctx,
+		rows, _ := h.db.Pool.Query(ctx,
 			`UPDATE server_tasks
 			 SET status = 'completed',
 			     result = jsonb_build_object('output', $2::text),
@@ -245,9 +255,19 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			     updated_at = NOW()
 			 WHERE server_id = $1
 			   AND type = 'agent_update'
-			   AND status = 'processing'`,
+			   AND status = 'processing'
+			 RETURNING id`,
 			serverID, "Agent heartbeat confirmed the new version: "+req.Version,
 		)
+		if rows != nil {
+			for rows.Next() {
+				var taskID string
+				if err := rows.Scan(&taskID); err == nil {
+					h.dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, "agent.update_resolved", req.Version, "")
+				}
+			}
+			rows.Close()
+		}
 	}
 
 	// Auto-update remains a normal signed agent_update task. The Agent never
@@ -520,13 +540,13 @@ func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var executionID string
+	var executionID, cronJobID, serverID, userID, serverName, command, source string
 	err := h.db.Pool.QueryRow(ctx,
 		`WITH server_scope AS (
-		    SELECT id FROM servers WHERE agent_token = $1
+		    SELECT id, user_id, name FROM servers WHERE agent_token = $1
 		 ),
 		 target_job AS (
-		    SELECT cron_jobs.id
+		    SELECT cron_jobs.id, cron_jobs.command, cron_jobs.source
 		    FROM cron_jobs
 		    JOIN server_scope ON server_scope.id = cron_jobs.server_id
 		    WHERE cron_jobs.external_id = $2
@@ -546,11 +566,14 @@ func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
 		    WHERE id IN (SELECT cron_job_id FROM inserted)
 		    RETURNING id
 		 )
-		 SELECT inserted.id
+		 SELECT inserted.id, inserted.cron_job_id, server_scope.id, server_scope.user_id,
+		        server_scope.name, target_job.command, target_job.source
 		 FROM inserted
-		 JOIN updated_job ON updated_job.id = inserted.cron_job_id`,
+		 JOIN updated_job ON updated_job.id = inserted.cron_job_id
+		 JOIN server_scope ON true
+		 JOIN target_job ON target_job.id = inserted.cron_job_id`,
 		agentToken, req.ExternalID, req.StartedAt, req.CompletedAt, req.Status, req.ExitCode, req.Output,
-	).Scan(&executionID)
+	).Scan(&executionID, &cronJobID, &serverID, &userID, &serverName, &command, &source)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Cron job was not found for this agent token")
@@ -559,6 +582,7 @@ func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to record cron execution")
 		return
 	}
+	h.dispatchCronExecutionWebhook(ctx, userID, serverID, serverName, cronJobID, req.ExternalID, source, command, req)
 
 	response.Success(w, http.StatusCreated, map[string]string{"id": executionID})
 }
@@ -567,6 +591,108 @@ type ReportTaskRequest struct {
 	TaskID string `json:"task_id"`
 	Status string `json:"status"` // completed, failed
 	Result string `json:"result"`
+}
+
+func (h *Handler) dispatchServiceStateChanges(ctx context.Context, userID, serverID, serverName string, services []ServiceStatus) {
+	for _, service := range services {
+		serviceName := strings.TrimSpace(service.Name)
+		if serviceName == "" || strings.EqualFold(service.Status, "not_installed") {
+			continue
+		}
+
+		state := "up"
+		normalizedStatus := strings.ToLower(strings.TrimSpace(service.Status))
+		switch normalizedStatus {
+		case "running", "active", "ok":
+			state = "up"
+		default:
+			state = "down"
+		}
+
+		changed, err := h.dispatcher.TransitionEventState(ctx, userID, serverID, "service.down", "service:"+service.Source+":"+serviceName, state)
+		if err != nil || !changed || state != "down" {
+			continue
+		}
+
+		payload := webhook.EventPayload{
+			Test: false,
+			Resource: map[string]any{
+				"type":         "service",
+				"server_id":    serverID,
+				"server_name":  serverName,
+				"name":         serviceName,
+				"display_name": service.DisplayName,
+				"manager":      service.Source,
+			},
+			Metadata: map[string]any{
+				"status":     service.Status,
+				"sub_status": service.SubStatus,
+				"startup":    service.StartupType,
+			},
+		}
+		go h.dispatchWebhookEvent(userID, "service.down", payload)
+	}
+}
+
+func (h *Handler) dispatchCronExecutionWebhook(ctx context.Context, userID, serverID, serverName, cronJobID, externalID, source, command string, req CronExecutionReportRequest) {
+	state := "ok"
+	if req.Status == "failed" || req.Status == "timed_out" {
+		state = req.Status
+	}
+	changed, err := h.dispatcher.TransitionEventState(ctx, userID, serverID, "cron.failed", "cron:"+externalID, state)
+	if err != nil || !changed || state == "ok" {
+		return
+	}
+
+	payload := webhook.EventPayload{
+		Test: false,
+		Resource: map[string]any{
+			"type":        "cron_job",
+			"id":          cronJobID,
+			"external_id": externalID,
+			"server_id":   serverID,
+			"server_name": serverName,
+			"source":      source,
+		},
+		Metadata: map[string]any{
+			"status":     req.Status,
+			"exit_code":  req.ExitCode,
+			"started_at": req.StartedAt,
+			"command":    command,
+		},
+	}
+	go h.dispatchWebhookEvent(userID, "cron.failed", payload)
+}
+
+func (h *Handler) dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, eventType, version, result string) {
+	payload := webhook.EventPayload{
+		Test: false,
+		Resource: map[string]any{
+			"type":        "agent_update",
+			"server_id":   serverID,
+			"server_name": serverName,
+			"task_id":     taskID,
+		},
+		Metadata: map[string]any{
+			"version": version,
+			"result":  truncateForWebhook(result, 512),
+		},
+	}
+	go h.dispatchWebhookEvent(userID, eventType, payload)
+}
+
+func (h *Handler) dispatchWebhookEvent(userID, eventType string, payload webhook.EventPayload) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_ = h.dispatcher.Dispatch(ctx, userID, eventType, payload)
+}
+
+func truncateForWebhook(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "…"
 }
 
 // ReportTaskResult records an Agent task result. Agent updates remain in
@@ -603,7 +729,7 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var taskID, taskType, serverID string
+	var taskID, taskType, serverID, userID, serverName string
 	err = tx.QueryRow(r.Context(),
 		`UPDATE server_tasks
 		 SET status = CASE
@@ -621,9 +747,9 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		   AND server_tasks.status = 'processing'
 		   AND servers.id = server_tasks.server_id
 		   AND servers.agent_token = $4
-		 RETURNING server_tasks.id, server_tasks.type, server_tasks.server_id`,
+		 RETURNING server_tasks.id, server_tasks.type, server_tasks.server_id, servers.user_id, servers.name`,
 		req.Status, req.Result, req.TaskID, agentToken,
-	).Scan(&taskID, &taskType, &serverID)
+	).Scan(&taskID, &taskType, &serverID, &userID, &serverName)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Task not found or permission denied")
 		return
@@ -660,6 +786,22 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(r.Context()); err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to commit task result")
 		return
+	}
+	if taskType == "agent_update" && req.Status == "failed" {
+		h.dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, "agent.update_failed", h.desiredAgentVersion, req.Result)
+	}
+	if taskType == "script_run" || taskType == "log_read" {
+		action := "COMPLETE_SCRIPT_RUN"
+		if taskType == "log_read" {
+			action = "COMPLETE_LOG_READ"
+		}
+		auditlog.Record(r.Context(), h.db, userID, action, "SERVER", serverID, map[string]any{
+			"task_id":      taskID,
+			"task_type":    taskType,
+			"status":       req.Status,
+			"server_name":  serverName,
+			"output_bytes": len(req.Result),
+		})
 	}
 
 	response.Success(w, http.StatusOK, map[string]string{"status": "recorded", "task_id": taskID})

@@ -3,10 +3,12 @@ package alert
 import (
 	"encoding/json"
 	"errors"
+	"net/mail"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
@@ -81,6 +83,15 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "CREATE_ALERT_RULE", "ALERT_RULE", rule.ID, map[string]any{
+		"name":             rule.Name,
+		"metric":           rule.Metric,
+		"operator":         rule.Operator,
+		"threshold":        rule.Threshold,
+		"duration_minutes": rule.DurationMinutes,
+		"server_id":        rule.ServerID,
+		"channel_ids":      rule.ChannelIDs,
+	})
 	response.Success(w, http.StatusCreated, rule)
 }
 
@@ -93,9 +104,14 @@ func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 	if err := h.repo.DeleteRule(r.Context(), id, userID); err != nil {
+		if errors.Is(err, ErrRuleNotFound) {
+			response.Error(w, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", "Alert rule not found")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete alert rule")
 		return
 	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "DELETE_ALERT_RULE", "ALERT_RULE", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -111,10 +127,13 @@ func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list notification channels")
 		return
 	}
+	for i := range channels {
+		channels[i].Config = sanitizedChannelConfig(channels[i])
+	}
 	response.Success(w, http.StatusOK, channels)
 }
 
-// CreateChannel tạo Telegram hoặc Discord channel mới.
+// CreateChannel tạo Telegram, Discord hoặc Email channel mới.
 func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -140,6 +159,10 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create notification channel")
 		return
 	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "CREATE_ALERT_CHANNEL", "ALERT_CHANNEL", channel.ID, map[string]any{
+		"name": channel.Name,
+		"type": channel.Type,
+	})
 	response.Success(w, http.StatusCreated, channel)
 }
 
@@ -162,6 +185,7 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "DELETE_ALERT_CHANNEL", "ALERT_CHANNEL", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -282,8 +306,59 @@ func validateChannel(channel AlertChannel) string {
 		if strings.TrimSpace(webhookURL) == "" {
 			return "Discord webhook URL is required"
 		}
+	case "email":
+		host, _ := channel.Config["smtp_host"].(string)
+		from, _ := channel.Config["from"].(string)
+		to, _ := channel.Config["to"].(string)
+		if strings.TrimSpace(host) == "" {
+			return "SMTP host is required"
+		}
+		if _, err := mail.ParseAddress(strings.TrimSpace(from)); err != nil {
+			return "A valid From email address is required"
+		}
+		if _, err := mail.ParseAddress(strings.TrimSpace(to)); err != nil {
+			return "A valid recipient email address is required"
+		}
+		if rawPort, ok := channel.Config["smtp_port"].(float64); ok {
+			port := int(rawPort)
+			if port < 1 || port > 65535 {
+				return "SMTP port must be between 1 and 65535"
+			}
+		}
 	default:
 		return "Unsupported notification channel type"
+	}
+	return ""
+}
+
+func sanitizedChannelConfig(channel AlertChannel) map[string]interface{} {
+	switch channel.Type {
+	case "telegram":
+		return map[string]interface{}{
+			"chat_id": channel.Config["chat_id"],
+		}
+	case "discord":
+		return map[string]interface{}{
+			"webhook_url": "configured",
+		}
+	case "email":
+		return map[string]interface{}{
+			"smtp_host": channel.Config["smtp_host"],
+			"smtp_port": channel.Config["smtp_port"],
+			"from":      channel.Config["from"],
+			"to":        channel.Config["to"],
+			"use_tls":   channel.Config["use_tls"],
+			"username":  maskConfiguredString(channel.Config["username"]),
+			"password":  maskConfiguredString(channel.Config["password"]),
+		}
+	default:
+		return map[string]interface{}{}
+	}
+}
+
+func maskConfiguredString(value interface{}) string {
+	if raw, ok := value.(string); ok && strings.TrimSpace(raw) != "" {
+		return "configured"
 	}
 	return ""
 }
