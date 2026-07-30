@@ -10,7 +10,9 @@ The objective is to run the Agent under the native service manager so it starts 
 Copy the tokenized command from **Servers → Add Server**. Its structure is:
 
 ```bash
-curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>"
 ```
 
 The installer detects `x86_64/amd64` or `aarch64/arm64`, installs `/usr/local/bin/datrixops-agent`, creates `datrixops-agent.service`, enables it, and restarts the service.
@@ -27,7 +29,9 @@ sudo journalctl -u datrixops-agent -n 100 --no-pager
 Run the command provided by the Dashboard:
 
 ```bash
-curl -sL https://monitor.example.com/install-mac.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -fsSL https://monitor.example.com/install-mac.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>"
 ```
 
 The installer supports Intel and Apple Silicon, creates the `com.datrixops.agent` LaunchDaemon, and writes logs to `/var/log/datrixops-agent.log`.
@@ -42,7 +46,7 @@ tail -n 100 /var/log/datrixops-agent.log
 Open PowerShell with **Run as Administrator**, download the Dashboard-provided script, and pass the token:
 
 ```powershell
-.\install.ps1 -Token "<AGENT_TOKEN>"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>"
 Get-ScheduledTask -TaskName "DatrixOpsAgent"
 ```
 
@@ -55,11 +59,14 @@ The Agent is installed in `C:\Program Files\DatrixOps` and runs as a Scheduled T
 The optional services argument replaces the operating-system defaults:
 
 ```bash
-curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>" "nginx,postgresql,docker"
+curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>" \
+  --services "nginx,postgresql,docker"
 ```
 
 ```powershell
-.\install.ps1 -Token "<AGENT_TOKEN>" -Services "EventLog,Schedule,WinRM"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -Services "EventLog,Schedule,WinRM"
 ```
 
 ## Confirm the connection
@@ -103,5 +110,4 @@ Uninstalling the Agent does not delete historical Dashboard data. Delete the ser
 - **Unsupported architecture:** check `uname -m`; Windows ARM is not currently published.
 - **Network timeout/TLS:** check DNS, proxy, firewall, CA certificates, and system time.
 - **Service does not start:** inspect the native service logs before reinstalling.
-- **Invalid token:** use the original command for that server instead of guessing or reusing another token.
-
+- **Invalid/expired/used token:** create a new server entry to receive a new single-use enrollment token.

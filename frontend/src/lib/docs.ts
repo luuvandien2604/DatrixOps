@@ -40,6 +40,13 @@ const viNavigation: DocsNavigation = [
     ],
   },
   {
+    label: 'Triển khai',
+    slug: 'deployment',
+    items: [
+      { slug: 'deployment/self-hosted-and-managed', title: 'Self-hosted và Managed', description: 'Phân biệt hai mô hình, cài Control Plane và xác định nơi lưu dữ liệu.', group: 'deployment', order: 15 },
+    ],
+  },
+  {
     label: 'Bắt đầu',
     slug: 'getting-started',
     items: [
@@ -94,6 +101,13 @@ const enNavigation: DocsNavigation = [
     slug: 'introduction',
     items: [
       { slug: 'introduction/what-is-datrixops', title: 'What is DatrixOps?', description: 'Architecture, components, supported platforms, and requirements.', group: 'introduction', order: 10 },
+    ],
+  },
+  {
+    label: 'Deployment',
+    slug: 'deployment',
+    items: [
+      { slug: 'deployment/self-hosted-and-managed', title: 'Self-hosted and Managed', description: 'Compare both models, install the Control Plane, and understand data ownership.', group: 'deployment', order: 15 },
     ],
   },
   {

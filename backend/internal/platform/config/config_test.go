@@ -61,6 +61,9 @@ func TestLoadAcceptsRequiredProductionConfig(t *testing.T) {
 	if cfg.AgentReleaseURL != "https://ops.example.com/releases" {
 		t.Fatalf("expected release URL to be derived from PUBLIC_URL, got %q", cfg.AgentReleaseURL)
 	}
+	if cfg.DeploymentMode != "self-hosted" {
+		t.Fatalf("expected self-hosted deployment mode by default, got %q", cfg.DeploymentMode)
+	}
 }
 
 func TestLoadRejectsInsecurePublicURL(t *testing.T) {
@@ -94,5 +97,17 @@ func TestLoadFeatureFlagsDefaultOffAndRetentionBounded(t *testing.T) {
 	}
 	if cfg.MetricsRetentionDays != 7 {
 		t.Fatalf("expected invalid retention to fall back to 7 days, got %d", cfg.MetricsRetentionDays)
+	}
+}
+
+func TestLoadRejectsUnknownDeploymentMode(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/datrixops?sslmode=disable")
+	t.Setenv("JWT_SECRET", strings.Repeat("z", 48))
+	t.Setenv("PUBLIC_URL", "https://ops.example.com")
+	t.Setenv("DEPLOYMENT_MODE", "desktop")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "DEPLOYMENT_MODE") {
+		t.Fatalf("expected deployment mode validation error, got %v", err)
 	}
 }

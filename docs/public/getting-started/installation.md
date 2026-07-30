@@ -10,7 +10,9 @@ Mục tiêu là cài Agent dưới service manager của hệ điều hành mà 
 Trong **Servers → Add Server**, sao chép lệnh có token của server. Dạng lệnh tương ứng:
 
 ```bash
-curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>"
 ```
 
 Installer nhận diện `x86_64/amd64` hoặc `aarch64/arm64`, đặt binary tại `/usr/local/bin/datrixops-agent`, tạo `datrixops-agent.service`, bật tự khởi động và restart service.
@@ -27,7 +29,9 @@ sudo journalctl -u datrixops-agent -n 100 --no-pager
 Chạy lệnh dashboard cung cấp trong Terminal:
 
 ```bash
-curl -sL https://monitor.example.com/install-mac.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -fsSL https://monitor.example.com/install-mac.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>"
 ```
 
 Installer hỗ trợ Intel và Apple Silicon, tạo LaunchDaemon `com.datrixops.agent` và ghi log vào `/var/log/datrixops-agent.log`.
@@ -44,7 +48,7 @@ tail -n 100 /var/log/datrixops-agent.log
 Mở PowerShell bằng **Run as Administrator**, tải script theo lệnh dashboard và truyền token:
 
 ```powershell
-.\install.ps1 -Token "<AGENT_TOKEN>"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>"
 Get-ScheduledTask -TaskName "DatrixOpsAgent"
 ```
 
@@ -57,11 +61,14 @@ Agent được đặt trong `C:\Program Files\DatrixOps` và chạy bằng Sched
 Tham số dịch vụ là tùy chọn và thay thế danh sách mặc định theo OS:
 
 ```bash
-curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>" "nginx,postgresql,docker"
+curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
+  --server https://monitor.example.com \
+  --token "<ENROLLMENT_TOKEN>" \
+  --services "nginx,postgresql,docker"
 ```
 
 ```powershell
-.\install.ps1 -Token "<AGENT_TOKEN>" -Services "EventLog,Schedule,WinRM"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -Services "EventLog,Schedule,WinRM"
 ```
 
 ## Xác nhận Agent kết nối
@@ -105,5 +112,4 @@ Gỡ Agent không tự xóa lịch sử trên dashboard. Xóa server record riê
 - **Unsupported architecture:** kiểm tra `uname -m`; hiện không có Windows ARM artifact.
 - **Network timeout/TLS:** kiểm tra DNS, proxy, firewall và đồng hồ hệ thống.
 - **Service không chạy:** xem log service tương ứng trước khi cài lại.
-- **Token sai:** tạo server mới hoặc dùng lại đúng lệnh cài của server hiện tại; không sửa token bằng phỏng đoán.
-
+- **Token sai/hết hạn/đã dùng:** tạo server mới để nhận enrollment token mới; token này chỉ dùng một lần.

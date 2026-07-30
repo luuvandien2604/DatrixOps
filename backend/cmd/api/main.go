@@ -18,6 +18,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/setup"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/systeminfo"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/terminal"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
@@ -94,6 +95,7 @@ func main() {
 	// --- Register Modules ---
 	auth.RegisterRoutes(mux, c.DB, c.Config)
 	setup.RegisterRoutes(mux, c.DB, c.Config)
+	systeminfo.RegisterRoutes(mux, c.DB, c.Config, Version, Commit)
 	server.RegisterRoutes(mux, c.DB, c.Config)
 	agent_api.RegisterRoutes(mux, c.DB, c.Config)
 	terminal.RegisterRoutes(mux, c.DB, c.Config)

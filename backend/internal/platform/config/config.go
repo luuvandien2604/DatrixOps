@@ -17,6 +17,7 @@ type Config struct {
 	AllowedOrigins           string
 	PublicURL                string
 	AgentReleaseURL          string
+	DeploymentMode           string
 	PublicRegistration       bool
 	EnableWebTerminal        bool
 	EnableRemoteScripts      bool
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 		AllowedOrigins:           strings.TrimSpace(getEnv("ALLOWED_ORIGINS", "")),
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
 		AgentReleaseURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_RELEASE_BASE_URL")), "/"),
+		DeploymentMode:           strings.ToLower(strings.TrimSpace(getEnv("DEPLOYMENT_MODE", "self-hosted"))),
 		PublicRegistration:       envBool("ENABLE_PUBLIC_REGISTRATION"),
 		EnableWebTerminal:        envBool("ENABLE_WEB_TERMINAL"),
 		EnableRemoteScripts:      envBool("ENABLE_REMOTE_SCRIPTS"),
@@ -86,6 +88,9 @@ func Load() (*Config, error) {
 	}
 	if err := validatePublicURL(cfg.AgentReleaseURL); err != nil {
 		return nil, fmt.Errorf("AGENT_RELEASE_BASE_URL: %w", err)
+	}
+	if cfg.DeploymentMode != "self-hosted" && cfg.DeploymentMode != "managed" {
+		return nil, fmt.Errorf("DEPLOYMENT_MODE must be self-hosted or managed")
 	}
 
 	return cfg, nil

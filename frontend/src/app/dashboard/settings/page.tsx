@@ -2,7 +2,27 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/lib/apiClient';
-import { Activity, Check, Copy, Play, Plus, RotateCcw, Settings2, Trash2, Webhook } from 'lucide-react';
+import { Activity, Check, Copy, Database, ExternalLink, Play, Plus, RotateCcw, ServerCog, Settings2, ShieldCheck, Trash2, Webhook } from 'lucide-react';
+
+interface DeploymentInfo {
+  deployment_mode: 'self-hosted' | 'managed';
+  data_ownership: 'customer-controlled' | 'provider-managed';
+  system_name: string;
+  timezone: string;
+  public_url: string;
+  agent_release_url: string;
+  agent_version: string;
+  setup_completed: boolean;
+  registration_enabled: boolean;
+  control_plane: { version: string; commit: string };
+  retention: { metrics_days: number; operational_days: number };
+  features: {
+    web_terminal: boolean;
+    remote_scripts: boolean;
+    service_controls: boolean;
+    read_only_logs: boolean;
+  };
+}
 
 interface WebhookEndpoint {
   id: string;
@@ -50,10 +70,12 @@ export default function SettingsPage() {
   const [webhooks, setWebhooks] = useState<WebhookEndpoint[]>([]);
   const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
   const [allowedEvents, setAllowedEvents] = useState<string[]>([]);
+  const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [copiedSecretId, setCopiedSecretId] = useState<string | null>(null);
+  const [copiedPublicURL, setCopiedPublicURL] = useState(false);
   const [form, setForm] = useState({
     name: '',
     url: '',
@@ -71,13 +93,15 @@ export default function SettingsPage() {
   const refresh = async () => {
     try {
       setLoading(true);
-      const [webhookData, deliveryData] = await Promise.all([
+      const [webhookData, deliveryData, systemData] = await Promise.all([
         apiClient('/webhooks'),
         apiClient('/webhooks/deliveries?limit=20'),
+        apiClient('/system/info'),
       ]);
       setWebhooks(Array.isArray(webhookData.items) ? webhookData.items : []);
       setAllowedEvents(Array.isArray(webhookData.allowed_events) ? webhookData.allowed_events : []);
       setDeliveries(Array.isArray(deliveryData) ? deliveryData : []);
+      setDeploymentInfo(systemData);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to load webhooks');
     } finally {
@@ -169,6 +193,13 @@ export default function SettingsPage() {
     window.setTimeout(() => setCopiedSecretId((current) => current === webhook.id ? null : current), 2000);
   };
 
+  const copyPublicURL = async () => {
+    if (!deploymentInfo?.public_url) return;
+    await navigator.clipboard.writeText(deploymentInfo.public_url);
+    setCopiedPublicURL(true);
+    window.setTimeout(() => setCopiedPublicURL(false), 2000);
+  };
+
   const renderStatus = (status?: string) => {
     if (!status) return <span className="text-[var(--text-tertiary)]">No deliveries</span>;
     const tone = status === 'delivered' ? 'var(--status-healthy)' : 'var(--status-critical)';
@@ -211,6 +242,99 @@ export default function SettingsPage() {
         <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-primary)]">
           {message}
         </div>
+      )}
+
+      {deploymentInfo && (
+        <section className="ops-panel">
+          <div className="flex flex-col gap-4 border-b border-[var(--border-default)] p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ServerCog className="h-5 w-5 text-[var(--accent-primary)]" />
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Deployment & data ownership</h2>
+                <span className="status-badge">
+                  {deploymentInfo.deployment_mode === 'self-hosted' ? 'SELF-HOSTED' : 'MANAGED'}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {deploymentInfo.deployment_mode === 'self-hosted'
+                  ? 'This control plane and its PostgreSQL data are operated on infrastructure controlled by your organization.'
+                  : 'This control plane is operated as a managed service; confirm data residency and support terms with the provider.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void copyPublicURL()} className="ops-button secondary">
+                {copiedPublicURL ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copiedPublicURL ? 'Copied' : 'Copy public URL'}
+              </button>
+              <a href="/docs/deployment/self-hosted-and-managed" className="ops-button primary">
+                <ExternalLink className="h-4 w-4" />
+                Deployment guide
+              </a>
+            </div>
+          </div>
+
+          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">
+                <ServerCog className="h-4 w-4" /> Control plane
+              </div>
+              <div className="mt-3 break-all font-mono text-sm font-semibold text-[var(--text-primary)]">{deploymentInfo.public_url}</div>
+              <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                {deploymentInfo.system_name} · {deploymentInfo.timezone}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">
+                <Database className="h-4 w-4" /> Data ownership
+              </div>
+              <div className="mt-3 text-sm font-semibold text-[var(--text-primary)]">
+                {deploymentInfo.data_ownership === 'customer-controlled' ? 'Customer controlled' : 'Provider managed'}
+              </div>
+              <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                Metrics {deploymentInfo.retention.metrics_days}d · Operations {deploymentInfo.retention.operational_days}d
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">
+                <ShieldCheck className="h-4 w-4" /> Access policy
+              </div>
+              <div className="mt-3 text-sm font-semibold text-[var(--text-primary)]">
+                Registration {deploymentInfo.registration_enabled ? 'enabled' : 'closed'}
+              </div>
+              <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                Initial setup {deploymentInfo.setup_completed ? 'completed' : 'required'}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">
+                <Activity className="h-4 w-4" /> Release
+              </div>
+              <div className="mt-3 font-mono text-sm font-semibold text-[var(--text-primary)]">Agent {deploymentInfo.agent_version}</div>
+              <div className="mt-2 font-mono text-xs text-[var(--text-secondary)]">
+                Control plane {deploymentInfo.control_plane.version}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--border-default)] px-5 py-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.06em] text-[var(--text-secondary)]">Advanced feature policy</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['Web Terminal', deploymentInfo.features.web_terminal],
+                ['Remote scripts', deploymentInfo.features.remote_scripts],
+                ['Service controls', deploymentInfo.features.service_controls],
+                ['Read-only logs', deploymentInfo.features.read_only_logs],
+              ].map(([label, enabled]) => (
+                <span key={String(label)} className={`status-badge ${enabled ? 'healthy' : 'disabled'}`}>
+                  {String(label)} · {enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
       <section className="ops-panel">
