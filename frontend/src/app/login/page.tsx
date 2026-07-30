@@ -120,9 +120,9 @@ export default function LoginPage() {
           
           <div className="text-center pt-4">
             <p className="text-[var(--color-muted)] text-sm">
-              Don't have an account?{' '}
-              <Link href="/register" className="auth-link">
-                Register here
+              New self-hosted installation?{' '}
+              <Link href="/setup" className="auth-link">
+                Run initial setup
               </Link>
             </p>
           </div>

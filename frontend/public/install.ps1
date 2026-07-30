@@ -1,6 +1,8 @@
 param (
     [Parameter(Mandatory=$true)]
     [string]$Token,
+    [Parameter(Mandatory=$true)]
+    [string]$ServerUrl,
     [Parameter(Mandatory=$false)]
     [string]$Services = ""
 )
@@ -21,7 +23,11 @@ if (-not $isAdmin) {
     exit 1
 }
 
-$ServerUrl = "https://datrixops.vandien.space"
+$ServerUrl = $ServerUrl.TrimEnd("/")
+if ($ServerUrl -notmatch '^https://[A-Za-z0-9._:-]+$' -and $ServerUrl -notmatch '^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$') {
+    Write-Error "ServerUrl must be an HTTPS origin. HTTP is allowed only for localhost."
+    exit 1
+}
 $ApiUrl = "$ServerUrl/api/v1"
 $BinaryUrl = "$ServerUrl/datrixops-agent-windows-amd64.exe"
 $InstallDir = "C:\Program Files\DatrixOps"
@@ -31,6 +37,23 @@ $BatPath = "$InstallDir\run_agent.bat"
 # Create directory
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
+}
+
+Write-Host "[*] Enrolling this machine..."
+$EnrollmentBody = @{
+    token = $Token
+    os_family = "windows"
+    architecture = "amd64"
+} | ConvertTo-Json -Compress
+$Enrollment = Invoke-RestMethod `
+    -Method Post `
+    -Uri "$ApiUrl/agent/enroll" `
+    -ContentType "application/json" `
+    -Body $EnrollmentBody `
+    -TimeoutSec 30
+$AgentToken = [string]$Enrollment.data.agent_token
+if ($AgentToken -notmatch '^[A-Za-z0-9_-]{32,256}$') {
+    throw "Control plane returned an invalid Agent credential."
 }
 
 # During an update this installer can be launched by the running agent. Wait for
@@ -53,11 +76,12 @@ $LogPath = "$InstallDir\agent.log"
 $BatContent = @(
     "@echo off",
     "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
-    "set `"DATRIXOPS_AGENT_TOKEN=$Token`"",
+    "set `"DATRIXOPS_AGENT_TOKEN=$AgentToken`"",
     "set `"DATRIXOPS_SERVICES=$Services`"",
     "`"$ExePath`" >> `"$LogPath`" 2>&1"
 )
 $BatContent | Set-Content -Path $BatPath -Encoding ASCII
+& icacls.exe $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
 
 Write-Host "[*] Creating Scheduled Task to run agent on startup..."
 

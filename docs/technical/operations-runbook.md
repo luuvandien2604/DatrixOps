@@ -192,8 +192,8 @@ Không hiển thị **Delete Record Only** như lựa chọn ngang hàng khi Age
 ## Kiểm tra release
 
 ```bash
-curl -fsS "https://datrixops.vandien.space/releases/<VERSION>/manifest.json"
-curl -fsS -o /tmp/manifest.sig "https://datrixops.vandien.space/releases/<VERSION>/manifest.sig"
+curl -fsS "https://monitor.example.com/releases/<VERSION>/manifest.json"
+curl -fsS -o /tmp/manifest.sig "https://monitor.example.com/releases/<VERSION>/manifest.sig"
 wc -c /tmp/manifest.sig
 sha256sum frontend/public/releases/<VERSION>/*
 ```

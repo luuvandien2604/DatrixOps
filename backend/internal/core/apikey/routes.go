@@ -10,13 +10,13 @@ import (
 func RegisterRoutes(mux *http.ServeMux, handler *Handler, db *database.DB, jwtSecret []byte) {
 	authMiddleware := middleware.RequireAuth(jwtSecret, db)
 
-	withAuth := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
+	withAdmin := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			authMiddleware(http.HandlerFunc(handlerFunc)).ServeHTTP(w, r)
+			authMiddleware(middleware.RequireRole("admin")(http.HandlerFunc(handlerFunc))).ServeHTTP(w, r)
 		}
 	}
 
-	mux.HandleFunc("GET /api/v1/apikeys", withAuth(handler.ListKeys))
-	mux.HandleFunc("POST /api/v1/apikeys", withAuth(handler.CreateKey))
-	mux.HandleFunc("DELETE /api/v1/apikeys/{id}", withAuth(handler.DeleteKey))
+	mux.HandleFunc("GET /api/v1/apikeys", withAdmin(handler.ListKeys))
+	mux.HandleFunc("POST /api/v1/apikeys", withAdmin(handler.CreateKey))
+	mux.HandleFunc("DELETE /api/v1/apikeys/{id}", withAdmin(handler.DeleteKey))
 }

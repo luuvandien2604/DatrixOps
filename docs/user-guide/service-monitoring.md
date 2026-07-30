@@ -87,13 +87,13 @@ the command.
 Run the same command directly on any existing Linux or macOS installation:
 
 ```bash
-curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh
+curl -fsSL https://monitor.example.com/update-agent.sh | sudo sh
 ```
 
 For Windows, open PowerShell as Administrator:
 
 ```powershell
-irm https://datrixops.vandien.space/update-agent.ps1 | iex
+irm https://monitor.example.com/update-agent.ps1 | iex
 ```
 
 These update scripts do not accept or modify an agent token. They detect the

@@ -1,3 +1,7 @@
+param(
+    [string]$ServerUrl = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 # Token-free in-place updater for an installed Windows agent. The existing
@@ -10,10 +14,24 @@ if (-not $isAdmin) {
     throw "Run PowerShell as Administrator."
 }
 
-$binaryUrl = "https://datrixops.vandien.space/datrixops-agent-windows-amd64.exe"
 $taskName = "DatrixOpsAgent"
 $binaryPath = "C:\Program Files\DatrixOps\datrixops-agent.exe"
 $stagedPath = "$binaryPath.update"
+$wrapperPath = "C:\Program Files\DatrixOps\run-agent.cmd"
+
+if ([string]::IsNullOrWhiteSpace($ServerUrl) -and (Test-Path $wrapperPath)) {
+    $serverLine = Get-Content $wrapperPath |
+        Where-Object { $_ -match '^set "DATRIXOPS_SERVER_URL=' } |
+        Select-Object -First 1
+    if ($serverLine) {
+        $ServerUrl = ($serverLine -replace '^set "DATRIXOPS_SERVER_URL=', '') -replace '"$', ''
+    }
+}
+$ServerUrl = $ServerUrl.TrimEnd('/') -replace '/api/v1$', ''
+if ($ServerUrl -notmatch '^https://') {
+    throw "Unable to determine a secure DatrixOps Server URL. Pass -ServerUrl https://monitor.example.com."
+}
+$binaryUrl = "$ServerUrl/datrixops-agent-windows-amd64.exe"
 
 if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
     throw "The DatrixOpsAgent Scheduled Task is not installed."

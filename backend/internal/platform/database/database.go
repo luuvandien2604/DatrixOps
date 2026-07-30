@@ -2,6 +2,9 @@ package database
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -47,6 +51,16 @@ func Connect(ctx context.Context, databaseURL string, log *slog.Logger) (*DB, er
 
 // AutoMigrate reads and executes .sql files in the migrations directory.
 func (db *DB) AutoMigrate(ctx context.Context, log *slog.Logger) error {
+	if _, err := db.Pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version TEXT PRIMARY KEY,
+			checksum TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	files, err := os.ReadDir("migrations")
 	if err != nil {
 		log.Warn("no migrations directory found, skipping auto-migration")
@@ -54,7 +68,7 @@ func (db *DB) AutoMigrate(ctx context.Context, log *slog.Logger) error {
 	}
 
 	for _, file := range files {
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".sql") {
+		if file.IsDir() || !isMigrationFile(file.Name()) {
 			continue
 		}
 
@@ -63,13 +77,51 @@ func (db *DB) AutoMigrate(ctx context.Context, log *slog.Logger) error {
 			return fmt.Errorf("read migration %s: %w", file.Name(), err)
 		}
 
-		_, err = db.Pool.Exec(ctx, string(content))
+		sum := sha256.Sum256(content)
+		checksum := hex.EncodeToString(sum[:])
+
+		var recordedChecksum string
+		err = db.Pool.QueryRow(ctx,
+			`SELECT checksum FROM schema_migrations WHERE version = $1`,
+			file.Name(),
+		).Scan(&recordedChecksum)
+		switch {
+		case err == nil:
+			if recordedChecksum != checksum {
+				return fmt.Errorf("migration %s checksum changed after it was applied", file.Name())
+			}
+			continue
+		case !errors.Is(err, pgx.ErrNoRows):
+			return fmt.Errorf("read migration state %s: %w", file.Name(), err)
+		}
+
+		tx, err := db.Pool.Begin(ctx)
 		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", file.Name(), err)
+		}
+		if _, err = tx.Exec(ctx, string(content)); err != nil {
+			_ = tx.Rollback(ctx)
 			return fmt.Errorf("execute migration %s: %w", file.Name(), err)
+		}
+		if _, err = tx.Exec(ctx,
+			`INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)`,
+			file.Name(), checksum,
+		); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("record migration %s: %w", file.Name(), err)
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit migration %s: %w", file.Name(), err)
 		}
 		log.Info("applied migration", "file", file.Name())
 	}
 	return nil
+}
+
+func isMigrationFile(name string) bool {
+	// Finder and some archive tools can create AppleDouble files such as
+	// ._20260712_001_create_auth_tables.sql. They are binary metadata, not SQL.
+	return !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".sql")
 }
 
 // VerifySchema checks that the application was migrated before the API starts.
@@ -81,6 +133,10 @@ func (db *DB) VerifySchema(ctx context.Context) error {
 		"websites",
 		"alert_rules",
 		"server_tasks",
+		"schema_migrations",
+		"system_settings",
+		"system_runtime",
+		"website_checks",
 	}
 	for _, table := range requiredTables {
 		var exists bool

@@ -28,6 +28,8 @@ type Server struct {
 	GroupName             *string          `json:"group_name,omitempty"`
 	Tags                  []string         `json:"tags"`
 	AgentToken            string           `json:"agent_token,omitempty"` // only shown on creation
+	EnrollmentToken       string           `json:"enrollment_token,omitempty"`
+	EnrollmentExpiresAt   *time.Time       `json:"enrollment_expires_at,omitempty"`
 	LatestAgentVersion    string           `json:"latest_agent_version"`
 	UpdateAvailable       bool             `json:"update_available"`
 	AutoUpdateAgent       bool             `json:"auto_update_agent"`
@@ -164,7 +166,7 @@ type DashboardOverview struct {
 }
 
 // Create inserts a new server and returns it.
-func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentToken string) (*Server, error) {
+func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, enrollmentTokenHash string, enrollmentExpiresAt time.Time) (*Server, error) {
 	var s Server
 	var ip *string
 	if ipAddress != "" {
@@ -172,15 +174,19 @@ func (r *Repository) Create(ctx context.Context, userID, name, ipAddress, agentT
 	}
 
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO servers (user_id, name, ip_address, agent_token, tags)
-		 VALUES ($1, $2, $3, $4, '[]'::jsonb)
-		 RETURNING id, user_id, name, ip_address, group_name, agent_token,
+		`INSERT INTO servers (
+		     user_id, name, ip_address, agent_token, enrollment_token_hash,
+		     enrollment_token_expires_at, tags
+		 )
+		 VALUES ($1, $2, $3, NULL, $4, $5, '[]'::jsonb)
+		 RETURNING id, user_id, name, ip_address, group_name,
+		           enrollment_token_expires_at,
 		           auto_update_agent, status, last_seen_at,
 		           deletion_status, deletion_requested_at, deletion_error,
 		           created_at, updated_at`,
-		userID, name, ip, agentToken,
+		userID, name, ip, enrollmentTokenHash, enrollmentExpiresAt,
 	).Scan(
-		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.AgentToken,
+		&s.ID, &s.UserID, &s.Name, &s.IPAddress, &s.GroupName, &s.EnrollmentExpiresAt,
 		&s.AutoUpdateAgent, &s.Status, &s.LastSeenAt,
 		&s.DeletionStatus, &s.DeletionRequestedAt, &s.DeletionError,
 		&s.CreatedAt, &s.UpdatedAt,

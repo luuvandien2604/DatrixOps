@@ -52,13 +52,13 @@ Very old Agents do not understand the current response envelope or updater. They
 Linux/macOS:
 
 ```bash
-curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh
+curl -fsSL https://monitor.example.com/update-agent.sh | sudo sh
 ```
 
 Windows PowerShell Administrator:
 
 ```powershell
-irm https://datrixops.vandien.space/update-agent.ps1 | iex
+irm https://monitor.example.com/update-agent.ps1 | iex
 ```
 
 These scripts preserve the existing token and service configuration. The installer-compatible manual updater validates executable format, while the newer self-update path performs signed-manifest verification.

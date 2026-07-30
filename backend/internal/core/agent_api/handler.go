@@ -2,7 +2,9 @@ package agent_api
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,20 +21,21 @@ import (
 )
 
 const (
-	agentReleaseBaseURL           = "https://datrixops.vandien.space/releases"
 	minimumAutomaticUpdateVersion = "1.3.0"
 )
 
 type Handler struct {
 	db                  *database.DB
 	desiredAgentVersion string
+	agentReleaseURL     string
 	dispatcher          *webhook.Dispatcher
 }
 
-func NewHandler(db *database.DB, desiredAgentVersion string) *Handler {
+func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL string) *Handler {
 	return &Handler{
 		db:                  db,
 		desiredAgentVersion: desiredAgentVersion,
+		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
 		dispatcher:          webhook.NewDispatcher(db),
 	}
 }
@@ -136,6 +139,15 @@ type CronExecutionReportRequest struct {
 	Output      string     `json:"output,omitempty"`
 }
 
+type EnrollmentRequest struct {
+	Token        string `json:"token"`
+	Hostname     string `json:"hostname"`
+	OSFamily     string `json:"os_family"`
+	OSName       string `json:"os_name"`
+	Architecture string `json:"architecture"`
+	Version      string `json:"version"`
+}
+
 func agentTokenFromRequest(r *http.Request) (string, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -149,7 +161,106 @@ func agentTokenFromRequest(r *http.Request) (string, bool) {
 	return token, token != ""
 }
 
+func hashAgentCredential(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// Enroll exchanges a short-lived, one-time enrollment token for a permanent
+// per-Agent credential. Only the credential hash is persisted.
+func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	var req EnrollmentRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid enrollment request")
+		return
+	}
+
+	req.Token = strings.TrimSpace(req.Token)
+	req.Hostname = strings.TrimSpace(req.Hostname)
+	req.OSFamily = strings.ToLower(strings.TrimSpace(req.OSFamily))
+	req.OSName = strings.TrimSpace(req.OSName)
+	req.Architecture = strings.ToLower(strings.TrimSpace(req.Architecture))
+	req.Version = strings.TrimSpace(req.Version)
+	if req.Token == "" || len(req.Token) > 256 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "A valid enrollment token is required")
+		return
+	}
+	if len(req.Hostname) > 255 || len(req.OSFamily) > 40 || len(req.OSName) > 255 || len(req.Architecture) > 80 || len(req.Version) > 80 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Enrollment metadata is too long")
+		return
+	}
+
+	rawCredentialBytes := make([]byte, 32)
+	if _, err := rand.Read(rawCredentialBytes); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to generate Agent credential")
+		return
+	}
+	rawCredential := base64.RawURLEncoding.EncodeToString(rawCredentialBytes)
+	credentialHash := hashAgentCredential(rawCredential)
+	enrollmentHash := hashAgentCredential(req.Token)
+
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to start enrollment")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var serverID string
+	err = tx.QueryRow(r.Context(),
+		`SELECT id
+		 FROM servers
+		 WHERE enrollment_token_hash = $1
+		   AND enrollment_used_at IS NULL
+		   AND enrollment_token_expires_at > NOW()
+		   AND COALESCE(deletion_status, 'active') = 'active'
+		 FOR UPDATE`,
+		enrollmentHash,
+	).Scan(&serverID)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, "INVALID_ENROLLMENT_TOKEN", "Enrollment token is invalid, expired, or already used")
+		return
+	}
+
+	_, err = tx.Exec(r.Context(),
+		`UPDATE servers
+		 SET agent_token = NULL,
+		     agent_token_hash = $2,
+		     enrollment_used_at = NOW(),
+		     enrolled_at = NOW(),
+		     hostname = NULLIF($3, ''),
+		     architecture = NULLIF($4, ''),
+		     updated_at = NOW(),
+		     os_info = COALESCE(os_info, '{}'::jsonb) || jsonb_build_object(
+		         'version', $5::text,
+		         'os_family', $6::text,
+		         'os_name', $7::text,
+		         'architecture', $4::text
+		     )
+		 WHERE id = $1`,
+		serverID, credentialHash, req.Hostname, req.Architecture, req.Version, req.OSFamily, req.OSName,
+	)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to activate Agent credential")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, http.StatusConflict, "ENROLLMENT_CONFLICT", "Enrollment token was already consumed")
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	response.Success(w, http.StatusCreated, map[string]string{
+		"server_id":   serverID,
+		"agent_token": rawCredential,
+	})
+}
+
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 	// 1. Extract and validate Agent Token from header
 	agentToken, ok := agentTokenFromRequest(r)
 	if !ok {
@@ -196,6 +307,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	agentTokenHash := hashAgentCredential(agentToken)
 
 	var serverID, userID, serverName string
 	err := h.db.Pool.QueryRow(ctx,
@@ -208,9 +320,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		     inventory_updated_at = CASE WHEN $4 = '{}' THEN inventory_updated_at ELSE NOW() END,
 		     last_seen_at = NOW(),
 		     updated_at = NOW() 
-		 WHERE agent_token = $2
+		 WHERE agent_token = $2 OR agent_token_hash = $6
 		 RETURNING id, user_id, name`,
-		osInfoStr, agentToken, snapshotStr, inventoryStr, publicIP,
+		osInfoStr, agentToken, snapshotStr, inventoryStr, publicIP, agentTokenHash,
 	).Scan(&serverID, &userID, &serverName)
 
 	if err != nil {
@@ -276,7 +388,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	if updateAvailable && compareAgentVersions(req.Version, minimumAutomaticUpdateVersion) >= 0 {
 		payload, payloadErr := json.Marshal(map[string]string{
 			"target_version":   strings.TrimSpace(h.desiredAgentVersion),
-			"release_base_url": agentReleaseBaseURL,
+			"release_base_url": h.agentReleaseURL,
 			"trigger":          "automatic",
 		})
 		if payloadErr == nil {
@@ -497,6 +609,7 @@ func (h *Handler) persistCronJobs(ctx context.Context, serverID string, jobs []C
 }
 
 func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	agentToken, ok := agentTokenFromRequest(r)
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
@@ -539,11 +652,14 @@ func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	agentTokenHash := hashAgentCredential(agentToken)
 
 	var executionID, cronJobID, serverID, userID, serverName, command, source string
 	err := h.db.Pool.QueryRow(ctx,
 		`WITH server_scope AS (
-		    SELECT id, user_id, name FROM servers WHERE agent_token = $1
+		    SELECT id, user_id, name
+		    FROM servers
+		    WHERE agent_token = $1 OR agent_token_hash = $8
 		 ),
 		 target_job AS (
 		    SELECT cron_jobs.id, cron_jobs.command, cron_jobs.source
@@ -572,7 +688,7 @@ func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
 		 JOIN updated_job ON updated_job.id = inserted.cron_job_id
 		 JOIN server_scope ON true
 		 JOIN target_job ON target_job.id = inserted.cron_job_id`,
-		agentToken, req.ExternalID, req.StartedAt, req.CompletedAt, req.Status, req.ExitCode, req.Output,
+		agentToken, req.ExternalID, req.StartedAt, req.CompletedAt, req.Status, req.ExitCode, req.Output, agentTokenHash,
 	).Scan(&executionID, &cronJobID, &serverID, &userID, &serverName, &command, &source)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -699,6 +815,7 @@ func truncateForWebhook(value string, limit int) string {
 // processing until a new-version heartbeat arrives. Agent uninstall completion
 // moves the server into uninstalling while the detached helper removes files.
 func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 512<<10)
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Missing Authorization header")
@@ -711,6 +828,7 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agentToken := parts[1]
+	agentTokenHash := hashAgentCredential(agentToken)
 
 	var req ReportTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -746,9 +864,9 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		 WHERE server_tasks.id = $3
 		   AND server_tasks.status = 'processing'
 		   AND servers.id = server_tasks.server_id
-		   AND servers.agent_token = $4
+		   AND (servers.agent_token = $4 OR servers.agent_token_hash = $5)
 		 RETURNING server_tasks.id, server_tasks.type, server_tasks.server_id, servers.user_id, servers.name`,
-		req.Status, req.Result, req.TaskID, agentToken,
+		req.Status, req.Result, req.TaskID, agentToken, agentTokenHash,
 	).Scan(&taskID, &taskType, &serverID, &userID, &serverName)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Task not found or permission denied")
@@ -820,6 +938,7 @@ type ConfirmUninstallRequest struct {
 // ConfirmUninstall validates the one-time token and then hard-deletes the
 // server on success. On failure it preserves the record for operator recovery.
 func (h *Handler) ConfirmUninstall(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var req ConfirmUninstallRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")

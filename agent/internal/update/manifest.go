@@ -2,6 +2,8 @@ package update
 
 import (
 	"fmt"
+	"net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -63,6 +65,19 @@ func (a Artifact) Validate() error {
 
 	if strings.TrimSpace(a.URL) == "" {
 		return fmt.Errorf("URL is required")
+	}
+	parsedURL, err := url.Parse(strings.TrimSpace(a.URL))
+	if err != nil {
+		return fmt.Errorf("URL is invalid")
+	}
+	if parsedURL.IsAbs() {
+		if parsedURL.Scheme != "https" || parsedURL.Host == "" || parsedURL.User != nil {
+			return fmt.Errorf("absolute URL must use HTTPS and must not contain credentials")
+		}
+	} else if parsedURL.RawQuery != "" || parsedURL.Fragment != "" ||
+		parsedURL.Path != path.Base(parsedURL.Path) ||
+		parsedURL.Path == "." || parsedURL.Path == ".." {
+		return fmt.Errorf("relative URL must be a single artifact filename")
 	}
 
 	if len(strings.TrimSpace(a.SHA256)) != 64 {

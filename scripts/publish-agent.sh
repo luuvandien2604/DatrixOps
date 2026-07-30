@@ -321,6 +321,8 @@ verify_release_files() {
         "datrixops-agent-windows-amd64.exe"
         "manifest.json"
         "manifest.sig"
+        "checksums.txt"
+        "install-agent.sh"
     )
 
     local filename
@@ -431,7 +433,9 @@ release_filenames() {
         "datrixops-agent-darwin-arm64" \
         "datrixops-agent-windows-amd64.exe" \
         "manifest.json" \
-        "manifest.sig"
+        "manifest.sig" \
+        "checksums.txt" \
+        "install-agent.sh"
 }
 
 activate_frontend_release_mount() {
@@ -741,6 +745,21 @@ main() {
     AGENT_RELEASE_BASE_URL="$AGENT_RELEASE_BASE_URL" \
     AGENT_SIGNING_PRIVATE_KEY="$AGENT_SIGNING_PRIVATE_KEY" \
         go run ./tools/sign-release
+
+    cp "$PUBLIC_DIR/install.sh" "$STAGING_DIR/install-agent.sh"
+    chmod 0755 "$STAGING_DIR/install-agent.sh"
+    (
+        cd "$STAGING_DIR"
+        sha256sum \
+            datrixops-agent-linux-amd64 \
+            datrixops-agent-linux-arm64 \
+            datrixops-agent-darwin-amd64 \
+            datrixops-agent-darwin-arm64 \
+            datrixops-agent-windows-amd64.exe \
+            manifest.json \
+            manifest.sig \
+            install-agent.sh >checksums.txt
+    )
 
     verify_release_files
     publish_release_directory

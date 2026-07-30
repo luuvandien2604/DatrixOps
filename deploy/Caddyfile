@@ -1,17 +1,21 @@
 {
-	auto_https off
 	admin off
 }
 
-:80 {
+{$DATRIXOPS_DOMAIN::80} {
+	encode zstd gzip
+
 	header {
 		X-DatrixOps-Gateway "caddy"
 		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
 	# API and both reverse-terminal WebSocket channels go straight to Go.
 	# Caddy preserves Upgrade/Connection and X-Forwarded-Host automatically.
-	@health path /health /ready
+	@health path /health /ready /health/live /health/ready
 	reverse_proxy @health backend:8080 {
 		header_up X-DatrixOps-Gateway "caddy"
 	}

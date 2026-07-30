@@ -9,8 +9,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -22,12 +24,15 @@ func TestProbeWebsiteValidTLS(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result := probeWebsite(context.Background(), server.URL, time.Second, time.Now())
+	result := probeWebsiteWithClient(context.Background(), server.URL, trustedTestClient(t, server), time.Now())
 	if result.status != "UP" {
 		t.Fatalf("expected UP, got status=%s failure=%s", result.status, result.failureKind)
 	}
 	if result.sslValidTo == nil {
 		t.Fatal("expected TLS certificate metadata")
+	}
+	if result.statusCode == nil || *result.statusCode != http.StatusOK {
+		t.Fatalf("expected HTTP 200 metadata, got %v", result.statusCode)
 	}
 }
 
@@ -70,18 +75,44 @@ func TestProbeWebsiteDetectsHostnameMismatch(t *testing.T) {
 		pool.AddCert(leaf)
 	}
 
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	target.Host = net.JoinHostPort("wrong.invalid", target.Port())
+	serverAddress := server.Listener.Addr().String()
 	client := &http.Client{
 		Timeout: time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				RootCAs:    pool,
-				ServerName: "wrong.example.com",
+				RootCAs: pool,
+			},
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, serverAddress)
 			},
 		},
 	}
-	result := probeWebsiteWithClient(context.Background(), server.URL, client, time.Now())
+	result := probeWebsiteWithClient(context.Background(), target.String(), client, time.Now())
 	if result.status != "DOWN" || result.failureKind != "tls_hostname_mismatch" {
 		t.Fatalf("expected hostname mismatch, got status=%s failure=%s", result.status, result.failureKind)
+	}
+}
+
+func trustedTestClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	pool := x509.NewCertPool()
+	for _, cert := range server.TLS.Certificates {
+		leaf, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			t.Fatalf("parse test certificate: %v", err)
+		}
+		pool.AddCert(leaf)
+	}
+	return &http.Client{
+		Timeout: time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool},
+		},
 	}
 }
 

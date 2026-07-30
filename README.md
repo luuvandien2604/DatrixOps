@@ -1,65 +1,66 @@
 # DatrixOps
 
-> **Build small. Design for growth.**
-> **Only implement what you need today. Design so tomorrow is easy.**
+DatrixOps is a self-hosted infrastructure monitoring control plane for Linux
+servers, websites and TLS certificates. It includes a Go API and worker,
+PostgreSQL, a Next.js dashboard, Caddy and a lightweight Agent.
 
-Personal Infrastructure Manager — Công cụ quản lý hạ tầng cá nhân dành cho những người quản lý VPS/Cloud Server.
+## Quick start
 
-## Mục tiêu
-
-Thay vì SSH vào từng máy để kiểm tra CPU, RAM, Disk, Docker containers hay SSL certificates, DatrixOps tập trung tất cả vào một dashboard duy nhất.
-
-## Tech Stack
-
-| Thành phần | Công nghệ |
-| :--- | :--- |
-| Frontend | Next.js + TypeScript + Tailwind CSS |
-| Core API | Go (`net/http` Go 1.22+) |
-| Agent | Go (single binary) |
-| Database | PostgreSQL |
-| Deploy | Docker Compose |
-| CI/CD | GitHub Actions |
-
-## Kiến trúc
-
-```
-                 Browser
-                    │
-             Next.js Dashboard
-                    │
-              REST API (Go)
-                    │
-              PostgreSQL
-                    │
-        ┌───────────┴───────────┐
-        │                       │
-   Agent (Go)              Scheduler
-```
-
-## Tài liệu
-
-- [Public Documentation](docs/public/)
-- [Technical Administration Documentation](docs/technical/README.md)
-- [System Overview](docs/architecture/system-overview.md)
-- [Database Schema](docs/database/schema.md)
-- [REST API](docs/api/rest-api.md)
-- [Coding Style](docs/development/coding-style.md)
-- [Roadmap](docs/roadmap.md)
-- [ADRs](docs/adr/)
-
-## Development
+Requirements: Ubuntu 22.04/24.04 or Debian 12, Docker Engine with Compose v2,
+a DNS name pointing at the host, and inbound TCP 80/443.
 
 ```bash
-# Khởi động PostgreSQL
-docker compose up -d
-
-# Chạy backend
-cd backend && go run ./cmd/api
-
-# Chạy frontend
-cd frontend && npm run dev
+git clone https://github.com/luuvandien2604/DatrixOps.git
+cd DatrixOps
+cp deploy/.env.example .env
+./deploy/generate-secrets.sh
 ```
 
-## License
+Edit `.env`, set `DATRIXOPS_DOMAIN`, `PUBLIC_URL`, `ALLOWED_ORIGINS` and a
+released `AGENT_VERSION`, then run:
 
-MIT
+```bash
+./deploy/install.sh
+```
+
+Open `https://your-domain.example/setup`, create the initial administrator,
+then use **Servers → Add Server** to generate a 15-minute, single-use Agent
+enrollment command.
+
+High-risk Agent features (Web Terminal, remote scripts and service controls)
+are disabled by default. Monitoring, Agent enrollment, website checks, alerts,
+notifications, backups and upgrades do not require them.
+
+## Operations
+
+```bash
+./deploy/backup.sh
+./deploy/upgrade.sh
+./deploy/restore.sh /path/to/datrixops-backup-YYYY-MM-DD-HHMMSS.tar.gz --yes
+```
+
+PostgreSQL is stored in the `postgres_data` named volume. Upgrade never runs
+`docker compose down -v`.
+
+## Documentation
+
+- [Installation](docs/INSTALLATION.md)
+- [Agent installation](docs/AGENT_INSTALLATION.md)
+- [Upgrade](docs/UPGRADE.md)
+- [Backup and restore](docs/BACKUP_RESTORE.md)
+- [Alerts](docs/ALERTS.md)
+- [Notifications](docs/NOTIFICATIONS.md)
+- [Security](docs/SECURITY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Development](docs/DEVELOPMENT.md)
+- [Release process](docs/RELEASE_PROCESS.md)
+- [Implementation audit](docs/AUDIT.md)
+
+## Supported scope
+
+The current target is a single self-hosted instance. Linux headless is the
+primary Agent platform. Windows and macOS collectors remain secondary. See the
+audit for partial features and validation still required before calling a
+release production-ready.
+
+License: MIT.

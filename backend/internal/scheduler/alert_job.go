@@ -3,10 +3,13 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
@@ -200,8 +203,21 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 	rows.Close()
 
 	for _, server := range servers {
-		isFiring, currentValue := j.evaluateCondition(ctx, rule, server.ID, server.LastSeen)
+		isFiring, currentValue, hasData := j.evaluateCondition(ctx, rule, server.ID, server.LastSeen)
+		if !hasData {
+			// Missing telemetry is not a numeric zero and must not auto-resolve
+			// an existing incident. Dedicated no-data rules are handled separately.
+			continue
+		}
 		if isFiring {
+			ready, err := j.conditionSatisfiedLongEnough(ctx, rule, server.ID)
+			if err != nil {
+				j.logger.Warn("failed to persist pending alert condition", "rule_id", rule.ID, "server_id", server.ID, "error", err)
+				continue
+			}
+			if !ready {
+				continue
+			}
 			j.handleFiring(ctx, rule, server.ID, server.Name, currentValue, channels)
 			continue
 		}
@@ -210,14 +226,25 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 }
 
 // evaluateCondition tính giá trị hiện tại và kết luận rule có đang firing hay không.
-func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, serverID string, lastSeen *time.Time) (bool, float64) {
+func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, serverID string, lastSeen *time.Time) (bool, float64, bool) {
 	if rule.Metric == "status" {
-		return lastSeen == nil || time.Since(*lastSeen) > time.Minute, 0
+		return lastSeen == nil || time.Since(*lastSeen) > time.Minute, 0, true
 	}
 
 	metricExpression := "cpu_usage"
 	if rule.Metric == "ram" {
 		metricExpression = "memory_used * 100.0 / NULLIF(memory_total, 0)"
+	}
+	if rule.Metric == "disk" {
+		var currentValue float64
+		if err := j.db.Pool.QueryRow(ctx, `
+			SELECT NULLIF(os_info->>'disk_usage', '')::double precision
+			FROM servers
+			WHERE id = $1
+		`, serverID).Scan(&currentValue); err != nil {
+			return false, 0, false
+		}
+		return compareAlertValue(rule.Operator, currentValue, rule.Threshold), currentValue, true
 	}
 
 	var currentValue float64
@@ -229,17 +256,47 @@ func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, 
 		LIMIT 1
 	`, metricExpression)
 	if err := j.db.Pool.QueryRow(ctx, query, serverID).Scan(&currentValue); err != nil {
-		return false, 0
+		return false, 0, false
 	}
 
-	switch rule.Operator {
+	return compareAlertValue(rule.Operator, currentValue, rule.Threshold), currentValue, true
+}
+
+func compareAlertValue(operator string, currentValue, threshold float64) bool {
+	switch operator {
 	case ">":
-		return currentValue > rule.Threshold, currentValue
+		return currentValue > threshold
 	case "<":
-		return currentValue < rule.Threshold, currentValue
+		return currentValue < threshold
 	default:
-		return false, currentValue
+		return false
 	}
+}
+
+// conditionSatisfiedLongEnough stores the first observation of a problem.
+// This makes duration semantics durable across worker restarts.
+func (j *AlertJob) conditionSatisfiedLongEnough(ctx context.Context, rule alert.AlertRule, serverID string) (bool, error) {
+	var status string
+	var startedAt time.Time
+	err := j.db.Pool.QueryRow(ctx, `
+		INSERT INTO alert_state (rule_id, server_id, status, condition_started_at)
+		VALUES ($1, $2, 'pending', NOW())
+		ON CONFLICT (rule_id, server_id)
+		DO UPDATE SET
+			status = CASE
+				WHEN alert_state.status = 'firing' THEN 'firing'
+				ELSE 'pending'
+			END,
+			condition_started_at = COALESCE(alert_state.condition_started_at, NOW())
+		RETURNING status, condition_started_at
+	`, rule.ID, serverID).Scan(&status, &startedAt)
+	if err != nil {
+		return false, err
+	}
+	if status == "firing" {
+		return true, nil
+	}
+	return !time.Now().Before(startedAt.Add(time.Duration(rule.DurationMinutes) * time.Minute)), nil
 }
 
 // handleFiring chuyển state sang firing đúng một lần, tạo dashboard notification,
@@ -256,7 +313,10 @@ func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serve
 		INSERT INTO alert_state (rule_id, server_id, status, last_triggered_at)
 		VALUES ($1, $2, 'firing', NOW())
 		ON CONFLICT (rule_id, server_id)
-		DO UPDATE SET status = 'firing', last_triggered_at = NOW()
+		DO UPDATE SET
+			status = 'firing',
+			last_triggered_at = NOW(),
+			condition_started_at = COALESCE(alert_state.condition_started_at, NOW())
 		WHERE alert_state.status IS DISTINCT FROM 'firing'
 	`, rule.ID, serverID)
 	if err != nil {
@@ -313,18 +373,36 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	result, err := tx.Exec(ctx, `
+	var previousStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT status
+		FROM alert_state
+		WHERE rule_id = $1 AND server_id = $2
+		FOR UPDATE
+	`, rule.ID, serverID).Scan(&previousStatus); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return
+		}
+		j.logger.Error("failed to read alert state", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		return
+	}
+
+	_, err = tx.Exec(ctx, `
 		UPDATE alert_state
-		SET status = 'ok', last_triggered_at = NOW()
+		SET status = 'ok',
+		    condition_started_at = NULL,
+		    last_triggered_at = CASE WHEN status = 'firing' THEN NOW() ELSE last_triggered_at END
 		WHERE rule_id = $1
 		  AND server_id = $2
-		  AND status = 'firing'
 	`, rule.ID, serverID)
 	if err != nil {
 		j.logger.Error("failed to update resolved state", "rule_id", rule.ID, "server_id", serverID, "error", err)
 		return
 	}
-	if result.RowsAffected() == 0 {
+	if previousStatus != "firing" {
+		if err := tx.Commit(ctx); err != nil {
+			j.logger.Error("failed to reset pending alert state", "rule_id", rule.ID, "server_id", serverID, "error", err)
+		}
 		return
 	}
 
@@ -465,6 +543,8 @@ func metricLabel(metric string) string {
 		return "CPU usage"
 	case "ram":
 		return "Memory usage"
+	case "disk":
+		return "Disk usage"
 	default:
 		return metric
 	}

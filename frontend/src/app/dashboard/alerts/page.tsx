@@ -80,6 +80,7 @@ export default function AlertsPage() {
   const [ruleMetric, setRuleMetric] = useState('cpu');
   const [ruleOperator, setRuleOperator] = useState('>');
   const [ruleThreshold, setRuleThreshold] = useState('90');
+  const [ruleDuration, setRuleDuration] = useState('1');
   const [selectedServerId, setSelectedServerId] = useState('all');
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
 
@@ -164,6 +165,11 @@ export default function AlertsPage() {
       setErrorMessage('Threshold must be between 0 and 100.');
       return;
     }
+    const duration = Number.parseInt(ruleDuration, 10);
+    if (!Number.isFinite(duration) || duration < 1 || duration > 1440) {
+      setErrorMessage('Duration must be between 1 and 1440 minutes.');
+      return;
+    }
 
     setSavingRule(true);
     try {
@@ -174,7 +180,7 @@ export default function AlertsPage() {
           metric: ruleMetric,
           operator: ruleOperator,
           threshold: ruleMetric === 'status' ? 0 : threshold,
-          duration_minutes: 1,
+          duration_minutes: duration,
           server_id: selectedServerId === 'all' ? null : selectedServerId,
           channel_ids: selectedChannelIds,
         }),
@@ -183,6 +189,7 @@ export default function AlertsPage() {
       setRules((current) => [createdRule, ...current]);
       setRuleName('');
       setRuleThreshold('90');
+      setRuleDuration('1');
       setSelectedServerId('all');
       setSelectedChannelIds([]);
       setSuccessMessage('Alert rule created with its notification channels.');
@@ -412,6 +419,7 @@ export default function AlertsPage() {
                   options={[
                     { value: 'cpu', label: 'CPU Usage' },
                     { value: 'ram', label: 'RAM Usage' },
+                    { value: 'disk', label: 'Disk Usage' },
                     { value: 'status', label: 'Offline status' },
                   ]}
                   className="w-full"
@@ -452,6 +460,25 @@ export default function AlertsPage() {
                   </div>
                 </div>
               )}
+
+              <div>
+                <label htmlFor="rule-duration" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
+                  Condition duration (minutes)
+                </label>
+                <input
+                  id="rule-duration"
+                  required
+                  min="1"
+                  max="1440"
+                  value={ruleDuration}
+                  onChange={(event) => setRuleDuration(event.target.value)}
+                  type="number"
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                />
+                <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+                  The condition must remain true for this long before an incident is opened.
+                </p>
+              </div>
 
               <div>
                 <div className="mb-2 flex items-center justify-between gap-3">

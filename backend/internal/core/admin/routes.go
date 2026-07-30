@@ -9,14 +9,14 @@ import (
 
 func RegisterRoutes(mux *http.ServeMux, handler *Handler, db *database.DB, jwtSecret []byte) {
 	mux.Handle("GET /api/v1/admin/users", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("superadmin")(
+		middleware.RequireRole("admin")(
 			http.HandlerFunc(handler.ListUsers),
 		),
 	))
 	mux.Handle("GET /api/v1/admin/servers", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("superadmin")(http.HandlerFunc(handler.ListFleetServers)),
+		middleware.RequireRole("admin")(http.HandlerFunc(handler.ListFleetServers)),
 	))
 	mux.Handle("POST /api/v1/admin/servers/{id}/tasks", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("superadmin")(http.HandlerFunc(handler.QueueFleetTask)),
+		middleware.RequireRole("admin")(http.HandlerFunc(handler.QueueFleetTask)),
 	))
 }

@@ -96,7 +96,6 @@ func run() error {
 	manifest, err := buildManifest(
 		version,
 		releaseDir,
-		releaseBaseURL,
 	)
 	if err != nil {
 		return err
@@ -304,7 +303,6 @@ func decodePrivateKey(encoded string) (ed25519.PrivateKey, error) {
 func buildManifest(
 	version string,
 	releaseDir string,
-	baseURL string,
 ) (*update.Manifest, error) {
 	releaseInfo, err := os.Stat(releaseDir)
 	if err != nil {
@@ -343,25 +341,15 @@ func buildManifest(
 			)
 		}
 
-		artifactURL, err := url.JoinPath(
-			baseURL,
-			version,
-			target.Filename,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"build URL for %s: %w",
-				target.Filename,
-				err,
-			)
-		}
-
 		manifest.Artifacts = append(
 			manifest.Artifacts,
 			update.Artifact{
-				OS:     target.OS,
-				Arch:   target.Arch,
-				URL:    artifactURL,
+				OS:   target.OS,
+				Arch: target.Arch,
+				// Relative artifact paths keep a signed release portable across
+				// self-hosted domains. The Agent resolves them against the
+				// verified manifest directory.
+				URL:    target.Filename,
 				SHA256: checksum,
 				Size:   size,
 			},

@@ -51,7 +51,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <Link href="/login" className="hidden px-3 py-2 text-[11px] text-white/70 transition hover:text-white sm:block">Sign in</Link>
-          <Link href="/register" className="landing-pill">Start monitoring <ArrowRight className="h-3.5 w-3.5" /></Link>
+          <Link href="/setup" className="landing-pill">Start monitoring <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
       </header>
 
@@ -62,7 +62,7 @@ export default function LandingPage() {
             <h1>See every signal.<br /><em>Control every server.</em></h1>
             <p>One quiet control plane for your entire infrastructure. DatrixOps turns lightweight agent telemetry into clear answers before incidents become outages.</p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link href="/register" className="landing-cta primary">Connect your first server <ArrowRight className="h-4 w-4" /></Link>
+              <Link href="/setup" className="landing-cta primary">Connect your first server <ArrowRight className="h-4 w-4" /></Link>
               <Link href="/dashboard" className="landing-cta secondary">Explore the control plane <ChevronRight className="h-4 w-4" /></Link>
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function LandingPage() {
             <span className="text-[9px] uppercase tracking-[.25em] text-[#8ef0d0]">Your infrastructure is speaking</span>
             <h2>Start listening<br /><em>before it gets loud.</em></h2>
             <p>Connect your first server in minutes. No credit card, no complicated collectors.</p>
-            <Link href="/register" className="landing-cta primary mt-7">Start monitoring free <ArrowRight className="h-4 w-4" /></Link>
+            <Link href="/setup" className="landing-cta primary mt-7">Start monitoring free <ArrowRight className="h-4 w-4" /></Link>
           </div>
         </section>
       </main>

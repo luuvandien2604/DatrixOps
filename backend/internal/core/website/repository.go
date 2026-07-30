@@ -13,6 +13,7 @@ type Repository interface {
 	Delete(ctx context.Context, id string, userID string) error
 	ListAll(ctx context.Context) ([]Website, error)
 	UpdateStatus(ctx context.Context, w *Website) error
+	RecordCheck(ctx context.Context, result CheckResult) error
 }
 
 type repository struct {
@@ -98,5 +99,17 @@ func (r *repository) UpdateStatus(ctx context.Context, w *Website) error {
 		WHERE id = $6
 	`
 	_, err := r.db.Pool.Exec(ctx, query, w.Status, w.SSLIssuer, w.SSLValidTo, w.SSLDaysRemaining, w.LastCheck, w.ID)
+	return err
+}
+
+func (r *repository) RecordCheck(ctx context.Context, result CheckResult) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO website_checks (
+			website_id, status, status_code, response_time_ms,
+			failure_kind, ssl_days_remaining, checked_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, result.WebsiteID, result.Status, result.StatusCode, result.ResponseTimeMS,
+		result.FailureKind, result.SSLDaysRemaining, result.CheckedAt)
 	return err
 }

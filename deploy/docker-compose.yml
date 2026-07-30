@@ -1,0 +1,139 @@
+name: datrixops
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend-environment: &backend-environment
+  DATABASE_URL: postgres://datrixops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/datrixops?sslmode=disable
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+  AGENT_VERSION: ${AGENT_VERSION:?AGENT_VERSION is required}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+  PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
+  AGENT_RELEASE_BASE_URL: ${AGENT_RELEASE_BASE_URL:-}
+  ENABLE_PUBLIC_REGISTRATION: ${ENABLE_PUBLIC_REGISTRATION:-false}
+  ENABLE_WEB_TERMINAL: ${ENABLE_WEB_TERMINAL:-false}
+  ENABLE_REMOTE_SCRIPTS: ${ENABLE_REMOTE_SCRIPTS:-false}
+  ENABLE_SERVICE_CONTROLS: ${ENABLE_SERVICE_CONTROLS:-false}
+  ENABLE_READ_ONLY_LOGS: ${ENABLE_READ_ONLY_LOGS:-false}
+  METRICS_RETENTION_DAYS: ${METRICS_RETENTION_DAYS:-7}
+  OPERATIONAL_RETENTION_DAYS: ${OPERATIONAL_RETENTION_DAYS:-90}
+
+services:
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      backend: { condition: service_healthy }
+      frontend: { condition: service_healthy }
+    environment:
+      DATRIXOPS_DOMAIN: ${DATRIXOPS_DOMAIN:?DATRIXOPS_DOMAIN is required}
+    ports:
+      - "${DATRIXOPS_HTTP_PORT:-80}:80"
+      - "${DATRIXOPS_HTTPS_PORT:-443}:443"
+      - "${DATRIXOPS_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health/live >/dev/null || wget -qO- --no-check-certificate https://127.0.0.1/health/live >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: datrixops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: datrixops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datrixops -d datrixops"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+  migrate:
+    build: { context: ../backend, dockerfile: Dockerfile }
+    restart: "no"
+    depends_on:
+      database: { condition: service_healthy }
+    environment: *backend-environment
+    command: ["./migrate_server"]
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+  backend:
+    build: { context: ../backend, dockerfile: Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      database: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      <<: *backend-environment
+      PORT: "8080"
+      DATRIXOPS_RUN_SCHEDULERS: "false"
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+  worker:
+    build: { context: ../backend, dockerfile: Dockerfile }
+    restart: unless-stopped
+    depends_on:
+      database: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      <<: *backend-environment
+      WORKER_HEALTH_PORT: "8081"
+    command: ["./worker_server"]
+    expose: ["8081"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health/live >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL is required}
+    depends_on:
+      backend: { condition: service_healthy }
+    expose: ["3000"]
+    volumes:
+      - ../docs:/app/docs:ro
+      - ../frontend/public:/app/public:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

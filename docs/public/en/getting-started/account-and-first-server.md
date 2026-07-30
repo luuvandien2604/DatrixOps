@@ -9,7 +9,7 @@ The goal of this guide is to create a server record and obtain the installation 
 
 - Access to the DatrixOps application.
 - Administrative access to the machine where the Agent will run.
-- Outbound HTTPS access to `datrixops.vandien.space`.
+- Outbound HTTPS access to your DatrixOps public domain.
 
 ## Create an account and sign in
 
@@ -36,4 +36,3 @@ The command contains a unique Agent Token. Do not paste it into a public chat, s
 The server may remain **Offline** before installation. After a successful installation, the first heartbeat normally changes it to **Online** shortly afterward. IP address, operating system, and resource data then begin to appear.
 
 If the server does not come online, continue with [Install the Agent](/docs/en/getting-started/installation) and [Troubleshooting](/docs/en/troubleshooting/common-issues).
-

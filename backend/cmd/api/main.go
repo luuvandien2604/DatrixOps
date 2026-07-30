@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/audit"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/auth"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/setup"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/terminal"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
@@ -85,10 +87,13 @@ func main() {
 	// System endpoints (no auth required)
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("GET /ready", handleReady(c))
+	mux.HandleFunc("GET /health/live", handleHealth)
+	mux.HandleFunc("GET /health/ready", handleReady(c))
 	mux.HandleFunc("GET /api/v1/version", handleVersion)
 
 	// --- Register Modules ---
 	auth.RegisterRoutes(mux, c.DB, c.Config)
+	setup.RegisterRoutes(mux, c.DB, c.Config)
 	server.RegisterRoutes(mux, c.DB, c.Config)
 	agent_api.RegisterRoutes(mux, c.DB, c.Config)
 	terminal.RegisterRoutes(mux, c.DB, c.Config)
@@ -125,6 +130,10 @@ func main() {
 		webhookRetryJob := scheduler.NewWebhookRetryJob(c.DB, log)
 		webhookRetryJob.Start()
 		defer webhookRetryJob.Stop()
+
+		retentionJob := scheduler.NewRetentionJob(c.DB, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
+		retentionJob.Start()
+		defer retentionJob.Stop()
 	} else {
 		log.Info("background schedulers disabled for this API process")
 	}
@@ -204,6 +213,6 @@ func handleVersion(w http.ResponseWriter, r *http.Request) {
 		"version":    Version,
 		"commit":     Commit,
 		"build_time": BuildTime,
-		"go_version": "go1.22",
+		"go_version": runtime.Version(),
 	})
 }

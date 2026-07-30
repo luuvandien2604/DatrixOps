@@ -34,15 +34,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const doc = getDocBySlug(contentSlug, locale);
   if (!doc) return { title: locale === 'en' ? 'Documentation not found | DatrixOps' : 'Không tìm thấy tài liệu | DatrixOps' };
   const alternatePrefix = locale === 'en' ? '/docs' : '/docs/en';
-  const siteURL = 'https://datrixops.vandien.space';
   return {
     title: `${doc.title} | DatrixOps Docs`,
     description: doc.description,
     alternates: {
-      canonical: `${siteURL}${prefix}/${doc.slug}`,
+      canonical: `${prefix}/${doc.slug}`,
       languages: {
-        'vi-VN': `${siteURL}${locale === 'vi' ? prefix : alternatePrefix}/${doc.slug}`,
-        'en-US': `${siteURL}${locale === 'en' ? prefix : alternatePrefix}/${doc.slug}`,
+        'vi-VN': `${locale === 'vi' ? prefix : alternatePrefix}/${doc.slug}`,
+        'en-US': `${locale === 'en' ? prefix : alternatePrefix}/${doc.slug}`,
       },
     },
     openGraph: { title: doc.title, description: doc.description, type: 'article' },

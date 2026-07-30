@@ -5,10 +5,10 @@ export const metadata: Metadata = {
   title: 'DatrixOps Documentation',
   description: 'Guides for installing DatrixOps, monitoring servers, managing Agents, and troubleshooting.',
   alternates: {
-    canonical: 'https://datrixops.vandien.space/docs/en',
+    canonical: '/docs/en',
     languages: {
-      'vi-VN': 'https://datrixops.vandien.space/docs',
-      'en-US': 'https://datrixops.vandien.space/docs/en',
+      'vi-VN': '/docs',
+      'en-US': '/docs/en',
     },
   },
 };

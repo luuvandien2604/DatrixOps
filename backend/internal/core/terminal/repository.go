@@ -2,6 +2,8 @@ package terminal
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"time"
 
@@ -26,10 +28,12 @@ func (r *repository) ownsServer(ctx context.Context, serverID, userID string) (b
 }
 
 func (r *repository) serverIDForAgentToken(ctx context.Context, token string) (string, error) {
+	sum := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(sum[:])
 	var serverID string
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT id FROM servers WHERE agent_token = $1`,
-		token,
+		`SELECT id FROM servers WHERE agent_token = $1 OR agent_token_hash = $2`,
+		token, tokenHash,
 	).Scan(&serverID)
 	return serverID, err
 }

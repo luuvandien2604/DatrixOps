@@ -19,8 +19,13 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, jwtSecret string) {
 			authMiddleware(http.HandlerFunc(handlerFunc)).ServeHTTP(w, r)
 		}
 	}
+	withAdmin := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			authMiddleware(middleware.RequireRole("admin")(http.HandlerFunc(handlerFunc))).ServeHTTP(w, r)
+		}
+	}
 
 	mux.Handle("GET /api/v1/websites", withAuth(h.List))
-	mux.Handle("POST /api/v1/websites", withAuth(h.Create))
-	mux.Handle("DELETE /api/v1/websites/{id}", withAuth(h.Delete))
+	mux.Handle("POST /api/v1/websites", withAdmin(h.Create))
+	mux.Handle("DELETE /api/v1/websites/{id}", withAdmin(h.Delete))
 }

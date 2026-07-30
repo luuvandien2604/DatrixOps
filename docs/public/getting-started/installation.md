@@ -10,7 +10,7 @@ Mục tiêu là cài Agent dưới service manager của hệ điều hành mà 
 Trong **Servers → Add Server**, sao chép lệnh có token của server. Dạng lệnh tương ứng:
 
 ```bash
-curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>"
 ```
 
 Installer nhận diện `x86_64/amd64` hoặc `aarch64/arm64`, đặt binary tại `/usr/local/bin/datrixops-agent`, tạo `datrixops-agent.service`, bật tự khởi động và restart service.
@@ -27,7 +27,7 @@ sudo journalctl -u datrixops-agent -n 100 --no-pager
 Chạy lệnh dashboard cung cấp trong Terminal:
 
 ```bash
-curl -sL https://datrixops.vandien.space/install-mac.sh | sudo bash -s -- "<AGENT_TOKEN>"
+curl -sL https://monitor.example.com/install-mac.sh | sudo bash -s -- "<AGENT_TOKEN>"
 ```
 
 Installer hỗ trợ Intel và Apple Silicon, tạo LaunchDaemon `com.datrixops.agent` và ghi log vào `/var/log/datrixops-agent.log`.
@@ -57,7 +57,7 @@ Agent được đặt trong `C:\Program Files\DatrixOps` và chạy bằng Sched
 Tham số dịch vụ là tùy chọn và thay thế danh sách mặc định theo OS:
 
 ```bash
-curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- "<AGENT_TOKEN>" "nginx,postgresql,docker"
+curl -sL https://monitor.example.com/install.sh | sudo bash -s -- "<AGENT_TOKEN>" "nginx,postgresql,docker"
 ```
 
 ```powershell

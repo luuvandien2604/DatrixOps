@@ -52,13 +52,13 @@ Các Agent rất cũ không hiểu đầy đủ response envelope hoặc updater
 Linux/macOS:
 
 ```bash
-curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh
+curl -fsSL https://monitor.example.com/update-agent.sh | sudo sh
 ```
 
 Windows PowerShell Administrator:
 
 ```powershell
-irm https://datrixops.vandien.space/update-agent.ps1 | iex
+irm https://monitor.example.com/update-agent.ps1 | iex
 ```
 
 Script này giữ Agent Token và service configuration hiện tại, nhưng updater thủ công tương thích installer chỉ kiểm tra định dạng executable; chuỗi signed-manifest đầy đủ nằm trong self-update của Agent mới.

@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	agentReleaseBaseURL        = "https://datrixops.vandien.space/releases"
-	agentUninstallConfirmURL   = "https://datrixops.vandien.space/api/v1/agent/uninstall/confirm"
 	minimumScriptAgentVersion  = "1.5.2"
 	minimumLogReadAgentVersion = "1.5.2"
 )
 
 type Handler struct {
-	svc *Service
+	svc                   *Service
+	enableRemoteScripts   bool
+	enableServiceControls bool
+	enableReadOnlyLogs    bool
 }
 
 var allowedTaskTypes = map[string]struct{}{
@@ -54,8 +55,13 @@ var (
 	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
 )
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, enableRemoteScripts, enableServiceControls, enableReadOnlyLogs bool) *Handler {
+	return &Handler{
+		svc:                   svc,
+		enableRemoteScripts:   enableRemoteScripts,
+		enableServiceControls: enableServiceControls,
+		enableReadOnlyLogs:    enableReadOnlyLogs,
+	}
 }
 
 type CreateRequest struct {
@@ -179,7 +185,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		id,
 		userID,
-		agentUninstallConfirmURL,
+		h.svc.publicURL+"/api/v1/agent/uninstall/confirm",
 	)
 	if err != nil {
 		switch {
@@ -270,7 +276,7 @@ func (h *Handler) normalizedTaskPayload(taskType, rawPayload string) (string, er
 	}
 	if strings.TrimSpace(h.svc.desiredAgentVersion) != "" {
 		payload["target_version"] = strings.TrimSpace(h.svc.desiredAgentVersion)
-		payload["release_base_url"] = agentReleaseBaseURL
+		payload["release_base_url"] = h.svc.agentReleaseURL
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -321,6 +327,18 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, allowed := allowedTaskTypes[req.Type]; !allowed {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Unsupported task type")
+		return
+	}
+	if _, serviceTask := serviceTaskTypes[req.Type]; serviceTask && !h.enableServiceControls {
+		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Service controls are disabled by the system administrator")
+		return
+	}
+	if req.Type == "script_run" && !h.enableRemoteScripts {
+		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Remote scripts are disabled by the system administrator")
+		return
+	}
+	if req.Type == "log_read" && !h.enableReadOnlyLogs {
+		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Read-only agent logs are disabled by the system administrator")
 		return
 	}
 	normalizedPayload, err := h.normalizedTaskPayload(req.Type, req.Payload)
@@ -461,6 +479,10 @@ func validateAgentFeatureVersion(server *Server, minimumVersion string, featureN
 }
 
 func (h *Handler) ListScripts(w http.ResponseWriter, r *http.Request) {
+	if !h.enableRemoteScripts {
+		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Remote scripts are disabled by the system administrator")
+		return
+	}
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")

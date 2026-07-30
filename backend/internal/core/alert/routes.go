@@ -19,14 +19,19 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 			authMiddleware(http.HandlerFunc(handlerFunc)).ServeHTTP(w, r)
 		}
 	}
+	withAdmin := func(handlerFunc http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			authMiddleware(middleware.RequireRole("admin")(http.HandlerFunc(handlerFunc))).ServeHTTP(w, r)
+		}
+	}
 
 	mux.HandleFunc("GET /api/v1/alerts/rules", withAuth(handler.ListRules))
-	mux.HandleFunc("POST /api/v1/alerts/rules", withAuth(handler.CreateRule))
-	mux.HandleFunc("DELETE /api/v1/alerts/rules/{id}", withAuth(handler.DeleteRule))
+	mux.HandleFunc("POST /api/v1/alerts/rules", withAdmin(handler.CreateRule))
+	mux.HandleFunc("DELETE /api/v1/alerts/rules/{id}", withAdmin(handler.DeleteRule))
 
 	mux.HandleFunc("GET /api/v1/alerts/channels", withAuth(handler.ListChannels))
-	mux.HandleFunc("POST /api/v1/alerts/channels", withAuth(handler.CreateChannel))
-	mux.HandleFunc("DELETE /api/v1/alerts/channels/{id}", withAuth(handler.DeleteChannel))
+	mux.HandleFunc("POST /api/v1/alerts/channels", withAdmin(handler.CreateChannel))
+	mux.HandleFunc("DELETE /api/v1/alerts/channels/{id}", withAdmin(handler.DeleteChannel))
 
 	mux.HandleFunc("GET /api/v1/alerts/notifications", withAuth(handler.ListNotifications))
 	mux.HandleFunc("PATCH /api/v1/alerts/notifications/{id}/read", withAuth(handler.MarkNotificationRead))

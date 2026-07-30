@@ -9,6 +9,6 @@ import (
 
 func RegisterRoutes(mux *http.ServeMux, handler *Handler, db *database.DB, jwtSecret []byte) {
 	mux.Handle("GET /api/v1/audit-logs", middleware.RequireAuth(jwtSecret, db)(
-		http.HandlerFunc(handler.ListLogs),
+		middleware.RequireRole("admin")(http.HandlerFunc(handler.ListLogs)),
 	))
 }

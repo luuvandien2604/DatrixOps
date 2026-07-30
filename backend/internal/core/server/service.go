@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -37,6 +38,8 @@ var (
 type Service struct {
 	repo                *Repository
 	desiredAgentVersion string
+	publicURL           string
+	agentReleaseURL     string
 }
 
 // AgentUninstallRequestResult is returned after a remote uninstall task has
@@ -49,23 +52,32 @@ type AgentUninstallRequestResult struct {
 }
 
 // NewService constructs the server domain service.
-func NewService(repo *Repository, desiredAgentVersion string) *Service {
-	return &Service{repo: repo, desiredAgentVersion: strings.TrimSpace(desiredAgentVersion)}
+func NewService(repo *Repository, desiredAgentVersion, publicURL, agentReleaseURL string) *Service {
+	return &Service{
+		repo:                repo,
+		desiredAgentVersion: strings.TrimSpace(desiredAgentVersion),
+		publicURL:           strings.TrimRight(strings.TrimSpace(publicURL), "/"),
+		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
+	}
 }
 
-// CreateServer generates a cryptographically secure Agent token and creates a
-// user-owned server record.
+// CreateServer creates a short-lived, one-time enrollment token. The permanent
+// Agent credential is generated only after successful enrollment.
 func (s *Service) CreateServer(ctx context.Context, userID, name, ipAddress string) (*Server, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("generate agent_token: %w", err)
+	enrollmentToken, enrollmentTokenHash, err := generateOneTimeToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate enrollment token: %w", err)
 	}
-	agentToken := hex.EncodeToString(b)
+	enrollmentExpiresAt := time.Now().Add(15 * time.Minute)
 
-	server, err := s.repo.Create(ctx, userID, name, ipAddress, agentToken)
+	server, err := s.repo.Create(ctx, userID, name, ipAddress, enrollmentTokenHash, enrollmentExpiresAt)
 	if err != nil {
 		return nil, err
 	}
+	server.EnrollmentToken = enrollmentToken
+	// Temporary response alias for older frontends. This is an enrollment token,
+	// never the permanent Agent credential.
+	server.AgentToken = enrollmentToken
 	s.decorateAgentRelease(server)
 	return server, nil
 }

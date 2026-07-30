@@ -9,7 +9,7 @@ Mục tiêu của hướng dẫn này là tạo một server record và nhận l
 
 - Có quyền truy cập trang DatrixOps.
 - Có quyền quản trị trên máy sẽ cài Agent.
-- Máy cho phép kết nối HTTPS outbound tới `datrixops.vandien.space`.
+- Máy cho phép kết nối HTTPS outbound tới domain DatrixOps của bạn.
 
 ## Tạo tài khoản và đăng nhập
 
@@ -36,4 +36,3 @@ Lệnh chứa Agent Token duy nhất. Không gửi lệnh đó vào chat công k
 Trước khi cài Agent, server có thể hiển thị **Offline**. Sau khi cài thành công, heartbeat đầu tiên thường làm trạng thái đổi sang **Online** trong một khoảng ngắn. Danh sách server sẽ bắt đầu có IP, hệ điều hành và số liệu tài nguyên.
 
 Nếu server không online, tiếp tục với [Cài đặt Agent](/docs/getting-started/installation) và [Xử lý sự cố](/docs/troubleshooting/common-issues).
-

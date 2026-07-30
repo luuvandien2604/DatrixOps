@@ -45,7 +45,7 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 				}
 				hash := sha256.Sum256([]byte(tokenStr))
 				keyHash := hex.EncodeToString(hash[:])
-				
+
 				var uID, rRole string
 				err := db.Pool.QueryRow(r.Context(),
 					`SELECT a.user_id, u.role 
@@ -53,28 +53,28 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 					 WHERE a.key_hash = $1`,
 					keyHash,
 				).Scan(&uID, &rRole)
-				
+
 				if err != nil {
 					response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid API Key")
 					return
 				}
-				
+
 				// Update last used (fire and forget)
 				go func() {
 					_, _ = db.Pool.Exec(context.Background(), `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, keyHash)
 				}()
-				
+
 				userID = uID
 				role = rRole
 			} else {
 				// JWT mode
 				token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-				// Validate signing method
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return jwtSecret, nil
-			})
+					// Validate signing method
+					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, jwt.ErrSignatureInvalid
+					}
+					return jwtSecret, nil
+				})
 
 				if err != nil || !token.Valid {
 					response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired access token")
@@ -117,8 +117,9 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 				return
 			}
 
+			userRole = normalizeRole(userRole)
 			for _, role := range allowedRoles {
-				if role == userRole {
+				if normalizeRole(role) == userRole {
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -126,5 +127,20 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 
 			response.Error(w, http.StatusForbidden, "FORBIDDEN", "You do not have permission to perform this action")
 		})
+	}
+}
+
+func normalizeRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "superadmin":
+		return "admin"
+	case "user":
+		// Preserve permissions for accounts created by older releases while
+		// new installations use explicit admin/operator/viewer roles.
+		return "operator"
+	case "admin", "operator", "viewer":
+		return strings.ToLower(strings.TrimSpace(role))
+	default:
+		return "unknown"
 	}
 }

@@ -12,7 +12,7 @@ Linux:
 ```bash
 sudo systemctl status datrixops-agent --no-pager
 sudo journalctl -u datrixops-agent -n 200 --no-pager
-curl -I https://datrixops.vandien.space
+curl -I https://monitor.example.com
 ```
 
 macOS:

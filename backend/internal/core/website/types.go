@@ -20,3 +20,13 @@ type CreateWebsiteRequest struct {
 	Name string `json:"name" validate:"required"`
 	URL  string `json:"url" validate:"required,url"`
 }
+
+type CheckResult struct {
+	WebsiteID        string
+	Status           string
+	StatusCode       *int
+	ResponseTimeMS   int
+	FailureKind      *string
+	SSLDaysRemaining *int
+	CheckedAt        time.Time
+}

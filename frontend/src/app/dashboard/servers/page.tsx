@@ -277,16 +277,17 @@ export default function ServersPage() {
   }, [selectedOs, customServices, generatedAgentToken]);
 
   const getInstallCommand = () => {
+    const controlPlaneOrigin = typeof window === 'undefined' ? '' : window.location.origin;
     const services = customServices.trim();
-    const shellServicesArgument = services ? ` "${services}"` : '';
+    const shellServicesArgument = services ? ` --services "${services}"` : '';
     const powershellServicesArgument = services ? ` -Services "${services}"` : '';
     switch (selectedOs) {
       case 'linux':
-        return `curl -sL https://datrixops.vandien.space/install.sh | sudo bash -s -- ${generatedAgentToken}${shellServicesArgument}`;
+        return `curl -fsSL ${controlPlaneOrigin}/install.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken}${shellServicesArgument}`;
       case 'macos':
-        return `curl -sL https://datrixops.vandien.space/install-mac.sh | sudo bash -s -- ${generatedAgentToken}${shellServicesArgument}`;
+        return `curl -fsSL ${controlPlaneOrigin}/install-mac.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken}${shellServicesArgument}`;
       case 'windows':
-        return `Invoke-WebRequest -Uri "https://datrixops.vandien.space/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}"${powershellServicesArgument}`;
+        return `Invoke-WebRequest -Uri "${controlPlaneOrigin}/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}" -ServerUrl "${controlPlaneOrigin}"${powershellServicesArgument}`;
       default:
         return '';
     }
@@ -1010,7 +1011,7 @@ export default function ServersPage() {
                         if (!newServerName.trim()) return;
                         try {
                           const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
-                          setGeneratedAgentToken(res.agent_token);
+                          setGeneratedAgentToken(res.enrollment_token || res.agent_token);
                           toast.success('Installation command created successfully!');
                         } catch (err: any) {
                           toast.error(err.message || 'Unable to create installation token');

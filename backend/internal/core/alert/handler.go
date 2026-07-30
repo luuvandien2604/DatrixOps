@@ -262,15 +262,15 @@ func validateRule(rule AlertRule) string {
 	if rule.Name == "" {
 		return "Alert name is required"
 	}
-	if rule.DurationMinutes <= 0 {
-		return "Duration must be greater than zero"
+	if rule.DurationMinutes <= 0 || rule.DurationMinutes > 1440 {
+		return "Duration must be between 1 and 1440 minutes"
 	}
 	if len(rule.ChannelIDs) == 0 {
 		return "Select at least one notification channel"
 	}
 
 	switch rule.Metric {
-	case "cpu", "ram":
+	case "cpu", "ram", "disk":
 		if rule.Operator != ">" && rule.Operator != "<" {
 			return "Unsupported alert condition"
 		}

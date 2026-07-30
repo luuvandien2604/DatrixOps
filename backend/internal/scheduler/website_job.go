@@ -106,6 +106,21 @@ func (j *WebsiteJob) checkWebsite(parent context.Context, w website.Website) {
 	if err := j.repo.UpdateStatus(context.Background(), &w); err != nil {
 		j.logger.Error("failed to update website status", "id", w.ID, "error", err)
 	}
+	var failureKind *string
+	if result.failureKind != "" {
+		failureKind = &result.failureKind
+	}
+	if err := j.repo.RecordCheck(context.Background(), website.CheckResult{
+		WebsiteID:        w.ID,
+		Status:           result.status,
+		StatusCode:       result.statusCode,
+		ResponseTimeMS:   result.responseTimeMS,
+		FailureKind:      failureKind,
+		SSLDaysRemaining: result.sslDaysRemaining,
+		CheckedAt:        result.checkedAt,
+	}); err != nil {
+		j.logger.Error("failed to record website check", "id", w.ID, "error", err)
+	}
 }
 
 type websiteProbeResult struct {
@@ -115,6 +130,8 @@ type websiteProbeResult struct {
 	sslValidTo       *time.Time
 	sslDaysRemaining *int
 	checkedAt        time.Time
+	statusCode       *int
+	responseTimeMS   int
 }
 
 func probeWebsite(ctx context.Context, rawURL string, timeout time.Duration, now time.Time) websiteProbeResult {
@@ -130,11 +147,15 @@ func probeWebsite(ctx context.Context, rawURL string, timeout time.Duration, now
 	return probeWebsiteWithClient(ctx, rawURL, client, now)
 }
 
-func probeWebsiteWithClient(ctx context.Context, rawURL string, client *http.Client, now time.Time) websiteProbeResult {
-	result := websiteProbeResult{
+func probeWebsiteWithClient(ctx context.Context, rawURL string, client *http.Client, now time.Time) (result websiteProbeResult) {
+	startedAt := time.Now()
+	result = websiteProbeResult{
 		status:    "UP",
 		checkedAt: now,
 	}
+	defer func() {
+		result.responseTimeMS = int(time.Since(startedAt).Milliseconds())
+	}()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -150,6 +171,7 @@ func probeWebsiteWithClient(ctx context.Context, rawURL string, client *http.Cli
 		return result
 	}
 	defer resp.Body.Close()
+	result.statusCode = &resp.StatusCode
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 
 	if resp.StatusCode >= http.StatusBadRequest {

@@ -4,7 +4,7 @@ set -eu
 # Token-free in-place updater for an installed Linux or macOS agent.
 # Existing service definitions and environment variables remain untouched.
 
-BASE_URL="https://datrixops.vandien.space"
+BASE_URL="${DATRIXOPS_SERVER_URL:-${1:-}}"
 BINARY_PATH="/usr/local/bin/datrixops-agent"
 STAGED_PATH="/usr/local/bin/.datrixops-agent.update"
 
@@ -12,6 +12,24 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "Run this updater with sudo." >&2
     exit 1
 fi
+
+if [ -z "$BASE_URL" ] && [ -r /etc/datrixops/agent.env ]; then
+    BASE_URL="$(sed -n 's/^DATRIXOPS_SERVER_URL=//p' /etc/datrixops/agent.env | head -n 1)"
+fi
+if [ -z "$BASE_URL" ] && [ -x /usr/libexec/PlistBuddy ] &&
+    [ -r /Library/LaunchDaemons/com.datrixops.agent.plist ]; then
+    BASE_URL="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:DATRIXOPS_SERVER_URL' /Library/LaunchDaemons/com.datrixops.agent.plist 2>/dev/null || true)"
+fi
+BASE_URL="${BASE_URL%/api/v1}"
+BASE_URL="${BASE_URL%/}"
+case "$BASE_URL" in
+    https://*) ;;
+    http://localhost*|http://127.0.0.1*) ;;
+    *)
+        echo "Unable to determine a secure DatrixOps Server URL. Pass it as the first argument." >&2
+        exit 1
+        ;;
+esac
 
 os="$(uname -s)"
 arch="$(uname -m)"

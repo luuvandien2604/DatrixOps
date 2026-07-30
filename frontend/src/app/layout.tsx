@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.PUBLIC_URL || "http://localhost:3000"),
   title: "DatrixOps — Server Observability",
   description: "Real-time server and agent monitoring control plane.",
 };

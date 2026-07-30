@@ -754,9 +754,10 @@ export default function ServerDetailsPage() {
   const totalMemoryUsage = parsedOSInfo.memory_total && parsedOSInfo.memory_total > 0
     ? (Number(parsedOSInfo.memory_used || 0) / Number(parsedOSInfo.memory_total)) * 100
     : undefined;
+  const controlPlaneOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const manualUpdateCommand = osFamily === 'windows'
-    ? 'irm https://datrixops.vandien.space/update-agent.ps1 | iex'
-    : 'curl -fsSL https://datrixops.vandien.space/update-agent.sh | sudo sh';
+    ? `& ([scriptblock]::Create((irm ${controlPlaneOrigin}/update-agent.ps1))) -ServerUrl ${controlPlaneOrigin}`
+    : `curl -fsSL ${controlPlaneOrigin}/update-agent.sh | sudo sh -s -- ${controlPlaneOrigin}`;
   const terminalDisabledReason = (() => {
     if (terminalEnvironmentUnsupported) {
       if (terminalUnsupportedReasonReported) {

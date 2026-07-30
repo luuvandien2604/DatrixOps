@@ -20,6 +20,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - run: test -z "$(gofmt -l $(find . -name '*.go'))"
       - run: go test ./...
+      - run: go test -race ./...
       - run: go vet ./...
 
   agent:
@@ -36,6 +37,7 @@ jobs:
           cache-dependency-path: agent/go.sum
       - run: test -z "$(gofmt -l $(find . -name '*.go'))"
       - run: go test ./...
+      - run: go test -race ./...
       - run: go vet ./...
 
   frontend:
@@ -67,11 +69,12 @@ jobs:
             echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
             echo "JWT_SECRET=$(openssl rand -base64 48)"
             echo "ALLOWED_ORIGINS=https://ops.example.com"
+            echo "PUBLIC_URL=https://ops.example.com"
             echo "AGENT_VERSION=ci"
             echo "NEXT_PUBLIC_API_URL=/api/v1"
           } > .env
-      - run: docker compose -f docker-compose.prod.yml config
-      - run: docker compose -f docker-compose.prod.yml build
+      - run: docker compose --env-file .env -f docker-compose.yml config
+      - run: docker compose --env-file .env -f docker-compose.yml build
 
   secret-scan:
     name: Secret scan
@@ -83,3 +86,11 @@ jobs:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4

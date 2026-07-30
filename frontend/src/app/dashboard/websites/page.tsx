@@ -279,7 +279,7 @@ export default function WebsitesPage() {
               </div>
               <div>
                 <label htmlFor="website-url" className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Target URL (including https://)</label>
-                <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-[var(--foreground)] focus:border-blue-500 outline-none" placeholder="https://datrixops.vandien.space" />
+                <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-[var(--foreground)] focus:border-blue-500 outline-none" placeholder="https://service.example.com" />
               </div>
               <div className="pt-2 flex justify-end gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-[var(--color-muted)] hover:text-white">Cancel</button>

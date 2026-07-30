@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -40,8 +41,6 @@ var (
 	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
 )
-
-const defaultAgentReleaseBaseURL = "https://datrixops.vandien.space/releases"
 
 func main() {
 	// Detached uninstall helpers reuse the Agent binary but must bypass normal
@@ -290,7 +289,7 @@ func agentBinaryURL(ctx context.Context, payload agentUpdatePayload) (string, st
 	if targetVersion != "" {
 		baseURL := strings.TrimRight(strings.TrimSpace(payload.ReleaseBaseURL), "/")
 		if baseURL == "" {
-			baseURL = defaultAgentReleaseBaseURL
+			return "", "", 0, fmt.Errorf("agent update payload is missing release_base_url")
 		}
 		publicKey, err := agentupdate.ReleasePublicKey()
 		if err != nil {
@@ -310,29 +309,21 @@ func agentBinaryURL(ctx context.Context, payload agentUpdatePayload) (string, st
 		if err != nil {
 			return "", "", 0, err
 		}
-		return artifact.URL, artifact.SHA256, artifact.Size, nil
+		artifactURL := artifact.URL
+		parsedArtifactURL, err := url.Parse(artifactURL)
+		if err != nil {
+			return "", "", 0, fmt.Errorf("parse artifact URL: %w", err)
+		}
+		if !parsedArtifactURL.IsAbs() {
+			artifactURL, err = url.JoinPath(baseURL, targetVersion, artifactURL)
+			if err != nil {
+				return "", "", 0, fmt.Errorf("resolve artifact URL: %w", err)
+			}
+		}
+		return artifactURL, artifact.SHA256, artifact.Size, nil
 	}
 
-	baseURL := "https://datrixops.vandien.space"
-	switch runtime.GOOS {
-	case "linux":
-		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-			return "", "", 0, fmt.Errorf("unsupported Linux architecture %s", runtime.GOARCH)
-		}
-		return fmt.Sprintf("%s/datrixops-agent-linux-%s", baseURL, runtime.GOARCH), "", 0, nil
-	case "darwin":
-		if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-			return "", "", 0, fmt.Errorf("unsupported macOS architecture %s", runtime.GOARCH)
-		}
-		return fmt.Sprintf("%s/datrixops-agent-darwin-%s", baseURL, runtime.GOARCH), "", 0, nil
-	case "windows":
-		if runtime.GOARCH != "amd64" {
-			return "", "", 0, fmt.Errorf("unsupported Windows architecture %s", runtime.GOARCH)
-		}
-		return baseURL + "/datrixops-agent-windows-amd64.exe", "", 0, nil
-	default:
-		return "", "", 0, fmt.Errorf("unsupported operating system %s", runtime.GOOS)
-	}
+	return "", "", 0, fmt.Errorf("agent update payload is missing target_version")
 }
 
 func writeWindowsUpdateScript(executablePath, updatePath string) error {
