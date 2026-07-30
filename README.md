@@ -45,15 +45,12 @@ PostgreSQL is stored in the `postgres_data` named volume. Upgrade never runs
 ## Documentation
 
 - [Installation](docs/INSTALLATION.md)
-- [Agent installation](docs/AGENT_INSTALLATION.md)
 - [Upgrade](docs/UPGRADE.md)
 - [Backup and restore](docs/BACKUP_RESTORE.md)
-- [Alerts](docs/ALERTS.md)
-- [Notifications](docs/NOTIFICATIONS.md)
 - [Security](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Development](docs/DEVELOPMENT.md)
-- [Release process](docs/RELEASE_PROCESS.md)
+- [Technical Architecture](docs/technical/system-overview.md)
 - [Implementation audit](docs/AUDIT.md)
 
 ## Supported scope

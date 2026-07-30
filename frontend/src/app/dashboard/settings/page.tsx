@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { apiClient } from '@/lib/apiClient';
 import { Activity, Check, Copy, Database, ExternalLink, Play, Plus, RotateCcw, ServerCog, Settings2, ShieldCheck, Trash2, Webhook } from 'lucide-react';
 
@@ -84,13 +85,7 @@ export default function SettingsPage() {
     enabled: true,
   });
 
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  const activeCount = useMemo(() => webhooks.filter((webhook) => webhook.enabled).length, [webhooks]);
-
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       setLoading(true);
       const [webhookData, deliveryData, systemData] = await Promise.all([
@@ -107,7 +102,13 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const activeCount = useMemo(() => webhooks.filter((webhook) => webhook.enabled).length, [webhooks]);
 
   const toggleEvent = (event: string) => {
     setForm((current) => ({
@@ -266,10 +267,10 @@ export default function SettingsPage() {
                 {copiedPublicURL ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copiedPublicURL ? 'Copied' : 'Copy public URL'}
               </button>
-              <a href="/docs/deployment/self-hosted-and-managed" className="ops-button primary">
+              <Link href="/docs/deployment/self-hosted-and-managed" className="ops-button primary">
                 <ExternalLink className="h-4 w-4" />
                 Deployment guide
-              </a>
+              </Link>
             </div>
           </div>
 
