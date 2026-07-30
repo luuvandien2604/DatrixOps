@@ -4,11 +4,18 @@
 *.dll
 *.so
 *.dylib
+/agent/agent
+/agent/sign-release
+/frontend/public/datrixops-agent
+/frontend/public/datrixops-agent-*
+/frontend/public/releases/
+*.patch
 
 # Go
 /backend/tmp/
 /agent/tmp/
 /.tmp/
+coverage.out
 
 # Node / Next.js
 node_modules/

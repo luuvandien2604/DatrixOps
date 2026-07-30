@@ -61,8 +61,14 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := db.AutoMigrate(context.Background(), log); err != nil {
-		log.Error("failed to auto-migrate database", "error", err)
+	if envBool("DATRIXOPS_AUTO_MIGRATE") {
+		log.Warn("DATRIXOPS_AUTO_MIGRATE is enabled; production deployments should run the migrate service instead")
+		if err := db.AutoMigrate(context.Background(), log); err != nil {
+			log.Error("failed to auto-migrate database", "error", err)
+			os.Exit(1)
+		}
+	} else if err := db.VerifySchema(context.Background()); err != nil {
+		log.Error("database schema verification failed", "error", err)
 		os.Exit(1)
 	}
 
@@ -106,18 +112,22 @@ func main() {
 	webhook.RegisterRoutes(mux, webhookHandler, c.DB, []byte(c.Config.JWTSecret))
 
 	// --- Scheduler ---
-	websiteRepo := website.NewRepository(c.DB)
-	websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
-	websiteJob.Start()
-	defer websiteJob.Stop()
+	if envBool("DATRIXOPS_RUN_SCHEDULERS") {
+		websiteRepo := website.NewRepository(c.DB)
+		websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
+		websiteJob.Start()
+		defer websiteJob.Stop()
 
-	alertJob := scheduler.NewAlertJob(c.DB, log)
-	alertJob.Start()
-	defer alertJob.Stop()
+		alertJob := scheduler.NewAlertJob(c.DB, log)
+		alertJob.Start()
+		defer alertJob.Stop()
 
-	webhookRetryJob := scheduler.NewWebhookRetryJob(c.DB, log)
-	webhookRetryJob.Start()
-	defer webhookRetryJob.Stop()
+		webhookRetryJob := scheduler.NewWebhookRetryJob(c.DB, log)
+		webhookRetryJob.Start()
+		defer webhookRetryJob.Stop()
+	} else {
+		log.Info("background schedulers disabled for this API process")
+	}
 
 	// --- Middleware ---
 	var handler http.Handler = mux
@@ -156,6 +166,15 @@ func main() {
 	}
 
 	log.Info("server stopped")
+}
+
+func envBool(key string) bool {
+	switch os.Getenv(key) {
+	case "1", "true", "TRUE", "yes", "YES", "on", "ON":
+		return true
+	default:
+		return false
+	}
 }
 
 // --- System Handlers ---

@@ -11,6 +11,11 @@
 
 	# API and both reverse-terminal WebSocket channels go straight to Go.
 	# Caddy preserves Upgrade/Connection and X-Forwarded-Host automatically.
+	@health path /health /ready
+	reverse_proxy @health backend:8080 {
+		header_up X-DatrixOps-Gateway "caddy"
+	}
+
 	@api path /api/v1 /api/v1/*
 	reverse_proxy @api backend:8080 {
 		header_up X-DatrixOps-Gateway "caddy"

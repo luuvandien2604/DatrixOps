@@ -30,7 +30,10 @@ Không dùng `git reset --hard` để xử lý local changes trên VPS. Xem `git
 Deploy cả Backend và Frontend:
 
 ```bash
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build backend frontend
+cp .env.example .env
+nano .env
+docker compose --env-file .env -f docker-compose.prod.yml run --rm migrate
+docker compose --env-file .env -f docker-compose.prod.yml up -d --build
 ```
 
 Chỉ recreate Backend sau khi đổi env:
@@ -44,6 +47,7 @@ docker compose --env-file .env -f docker-compose.prod.yml up -d --force-recreate
 ```bash
 docker compose --env-file .env -f docker-compose.prod.yml ps
 docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 backend
+docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 worker
 docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 frontend
 curl -fsS http://127.0.0.1:8080/health
 curl -fsS http://127.0.0.1:8080/ready
@@ -65,7 +69,25 @@ Production Compose mount `./docs:/app/docs:ro`, vì vậy Markdown trong `docs/p
 
 Compose hiện build local và không gắn image tag immutable. Để rollback đáng tin cậy, production nên lưu image theo Git SHA trong registry; đây chưa phải workflow được source hiện tại triển khai.
 
-## Rủi ro cấu hình Compose hiện tại
+## Production configuration requirements
 
-`docker-compose.prod.yml` chứa password/JWT mặc định minh họa yếu và expose PostgreSQL `5432`. Production phải override bằng secret mạnh, giới hạn network/port và không commit `.env`. Reverse proxy/TLS không nằm trong repo nên cần runbook hạ tầng riêng.
+`docker-compose.prod.yml` now fails fast when required values are missing:
 
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+- `ALLOWED_ORIGINS`
+- `AGENT_VERSION`
+
+`JWT_SECRET` must be a strong random value of at least 32 characters. Do not use
+sample values from old docs or chat transcripts. PostgreSQL remains bound to
+`127.0.0.1:5432` for host-local administration only; public traffic should enter
+through the gateway.
+
+API startup verifies that the schema exists. It does not run migrations unless
+`DATRIXOPS_AUTO_MIGRATE=true` is explicitly set for a controlled development
+environment. Production should use the `migrate` service before starting or
+recreating API/worker containers.
+
+Schedulers run in the dedicated `worker` service. Keep
+`DATRIXOPS_RUN_SCHEDULERS=false` on API containers when scaling the backend to
+avoid duplicate website checks, alert evaluations and webhook retries.

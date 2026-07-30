@@ -72,6 +72,28 @@ func (db *DB) AutoMigrate(ctx context.Context, log *slog.Logger) error {
 	return nil
 }
 
+// VerifySchema checks that the application was migrated before the API starts.
+func (db *DB) VerifySchema(ctx context.Context) error {
+	requiredTables := []string{
+		"users",
+		"servers",
+		"server_metrics",
+		"websites",
+		"alert_rules",
+		"server_tasks",
+	}
+	for _, table := range requiredTables {
+		var exists bool
+		if err := db.Pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {
+			return fmt.Errorf("check table %s: %w", table, err)
+		}
+		if !exists {
+			return fmt.Errorf("database schema is not migrated: missing table %s", table)
+		}
+	}
+	return nil
+}
+
 // Ping checks if the database is reachable.
 func (db *DB) Ping(ctx context.Context) error {
 	return db.Pool.Ping(ctx)

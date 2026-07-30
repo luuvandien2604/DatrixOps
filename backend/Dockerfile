@@ -1,34 +1,30 @@
-# Stage 1: Build
-FROM golang:alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Copy go mod and sum files
 COPY go.mod go.sum ./
-
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
 RUN go mod download
 
-# Copy the source code
 COPY . .
 
-# Build the Go app statically
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api_server ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o api_server ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o migrate_server ./cmd/migrate
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o worker_server ./cmd/worker
 
-# Stage 2: Run
-FROM alpine:latest  
+FROM alpine:3.22
 
 RUN apk --no-cache add ca-certificates tzdata
+RUN addgroup -S datrixops && adduser -S -G datrixops datrixops
 
-WORKDIR /root/
+WORKDIR /app
 
-# Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/api_server .
-# Copy migrations if any
+COPY --from=builder /app/migrate_server .
+COPY --from=builder /app/worker_server .
 COPY --from=builder /app/migrations ./migrations
 
-# Expose port 8080 to the outside world
+USER datrixops
+
 EXPOSE 8080
 
-# Command to run the executable
 CMD ["./api_server"]

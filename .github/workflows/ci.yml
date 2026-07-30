@@ -1,0 +1,85 @@
+name: DatrixOps CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: backend/go.sum
+      - run: test -z "$(gofmt -l $(find . -name '*.go'))"
+      - run: go test ./...
+      - run: go vet ./...
+
+  agent:
+    name: Agent tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: agent/go.sum
+      - run: test -z "$(gofmt -l $(find . -name '*.go'))"
+      - run: go test ./...
+      - run: go vet ./...
+
+  frontend:
+    name: Frontend lint, typecheck, build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit --incremental false
+      - run: npm run build
+
+  docker:
+    name: Docker Compose validation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
+            echo "JWT_SECRET=$(openssl rand -base64 48)"
+            echo "ALLOWED_ORIGINS=https://ops.example.com"
+            echo "AGENT_VERSION=ci"
+            echo "NEXT_PUBLIC_API_URL=/api/v1"
+          } > .env
+      - run: docker compose -f docker-compose.prod.yml config
+      - run: docker compose -f docker-compose.prod.yml build
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD

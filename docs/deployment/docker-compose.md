@@ -34,6 +34,20 @@ internal-only on `frontend:3000`; Caddy sends `/api/v1/*` directly to
 `backend:8080` and sends all other requests to Frontend. Keep the existing
 Cloudflare Tunnel or external TLS proxy pointed at `http://127.0.0.1:3000`.
 
+Production startup is migration-first:
+
+```bash
+cp .env.example .env
+nano .env
+docker compose --env-file .env -f docker-compose.prod.yml run --rm migrate
+docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env -f docker-compose.prod.yml ps
+```
+
+The `worker` service owns background jobs such as website checks, alert
+evaluation and webhook retries. Do not enable schedulers in additional API
+replicas unless a database lock/broker is introduced.
+
 When upgrading a deployment that previously exposed Frontend directly on port
 3000, stop that old container before starting the new gateway:
 
