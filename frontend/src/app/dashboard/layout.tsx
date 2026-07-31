@@ -365,7 +365,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ))}
           </div>
 
-          {role === 'superadmin' && (
+          {(role === 'admin' || role === 'superadmin') && (
             <>
               <p
                 className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
