@@ -68,6 +68,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
+  const [userEmail, setUserEmail] = useState('');
   const [fleetSummary, setFleetSummary] = useState<{
     total_servers: number;
     online_servers: number;
@@ -98,8 +99,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setRole(getUserRole());
     apiClient('/auth/me')
       .then((user) => {
-        if (user && user.role) {
-          setRole(user.role);
+        if (user) {
+          if (user.role) setRole(user.role);
+          if (user.email) setUserEmail(user.email);
         }
       })
       .catch(() => {
@@ -592,14 +594,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
 
               <div className="hidden sm:block">
-                {/* Tên người dùng rõ hơn. */}
-                <p className="text-[11px] font-semibold text-[var(--foreground)]">
-                  {role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator'}
+                {/* Tên / Email người dùng */}
+                <p className="text-[11px] font-semibold text-[var(--foreground)] max-w-[140px] truncate" title={userEmail}>
+                  {userEmail || (role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator')}
                 </p>
 
-                {/* Trạng thái đăng nhập tăng nhẹ weight. */}
-                <p className="text-[9px] font-medium text-[var(--mint)]">
-                  ● Authenticated
+                {/* Vai trò người dùng (Đã bỏ Authenticated) */}
+                <p className="text-[10px] font-medium text-[var(--color-muted)]">
+                  {role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator'}
                 </p>
               </div>
             </div>

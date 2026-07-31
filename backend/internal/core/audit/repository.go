@@ -43,9 +43,7 @@ func (r *Repository) ListLogs(ctx context.Context, userID string) ([]AuditLog, e
 	rows, err := r.db.Pool.Query(ctx, 
 		`SELECT id, user_id, action, resource_type, resource_id, details, created_at 
 		 FROM audit_logs 
-		 WHERE user_id = $1 
 		 ORDER BY created_at DESC LIMIT 100`,
-		userID,
 	)
 	if err != nil {
 		return nil, err

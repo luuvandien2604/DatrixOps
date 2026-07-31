@@ -62,10 +62,8 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 		FROM alert_rules r
 		LEFT JOIN servers s
 		  ON s.id = r.server_id
-		 AND s.user_id = r.user_id
-		WHERE r.user_id = $1
 		ORDER BY r.created_at DESC
-	`, userID)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("list alert rules: %w", err)
 	}
@@ -116,9 +114,8 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 		FROM alert_rule_channels arc
 		JOIN alert_rules r ON r.id = arc.alert_rule_id
 		JOIN alert_channels c ON c.id = arc.alert_channel_id
-		WHERE r.user_id = $1
 		ORDER BY c.name ASC
-	`, userID)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("list channels for alert rules: %w", err)
 	}
@@ -248,8 +245,8 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 func (r *Repository) DeleteRule(ctx context.Context, id, userID string) error {
 	result, err := r.db.Pool.Exec(ctx, `
 		DELETE FROM alert_rules
-		WHERE id = $1 AND user_id = $2
-	`, id, userID)
+		WHERE id = $1
+	`, id)
 	if err != nil {
 		return fmt.Errorf("delete alert rule: %w", err)
 	}
@@ -279,9 +276,8 @@ func (r *Repository) ListChannels(ctx context.Context, userID string) ([]AlertCh
 			c.created_at,
 			c.updated_at
 		FROM alert_channels c
-		WHERE c.user_id = $1
 		ORDER BY c.created_at DESC
-	`, userID)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("list alert channels: %w", err)
 	}
@@ -413,9 +409,8 @@ func (r *Repository) ListNotifications(ctx context.Context, userID string, limit
 	if err := r.db.Pool.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM dashboard_notifications
-		WHERE user_id = $1
-		  AND read_at IS NULL
-	`, userID).Scan(&result.UnreadCount); err != nil {
+		WHERE read_at IS NULL
+	`).Scan(&result.UnreadCount); err != nil {
 		return result, fmt.Errorf("count unread dashboard notifications: %w", err)
 	}
 
@@ -434,11 +429,9 @@ func (r *Repository) ListNotifications(ctx context.Context, userID string, limit
 		FROM dashboard_notifications n
 		LEFT JOIN servers s
 		  ON s.id = n.server_id
-		 AND s.user_id = n.user_id
-		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
-		LIMIT $2
-	`, userID, limit)
+		LIMIT $1
+	`, limit)
 	if err != nil {
 		return result, fmt.Errorf("list dashboard notifications: %w", err)
 	}

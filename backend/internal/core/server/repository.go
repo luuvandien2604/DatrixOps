@@ -234,11 +234,10 @@ func (r *Repository) ListByUser(ctx context.Context, userID string) ([]*Server, 
 			           LIMIT 1
 			       ) AS active_agent_update_task
 			FROM servers
-			WHERE user_id = $1
 		) servers
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Pool.Query(ctx, query, userID)
+	rows, err := r.db.Pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list servers query: %w", err)
 	}
@@ -359,8 +358,8 @@ func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, gr
 		     region = NULLIF($4, ''),
 		     environment = NULLIF($5, ''),
 		     updated_at = NOW()
-		 WHERE id = $6 AND user_id = $7`,
-		groupName, tagsJSON, provider, region, environment, id, userID,
+		 WHERE id = $6`,
+		groupName, tagsJSON, provider, region, environment, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update server meta: %w", err)
@@ -385,8 +384,8 @@ func (r *Repository) SetAgentAutoUpdate(ctx context.Context, id, userID string, 
 		`UPDATE servers
 		 SET auto_update_agent = $1,
 		     updated_at = NOW()
-		 WHERE id = $2 AND user_id = $3`,
-		enabled, id, userID,
+		 WHERE id = $2`,
+		enabled, id,
 	)
 	if err != nil {
 		return fmt.Errorf("update auto-update policy: %w", err)
@@ -448,8 +447,8 @@ func (r *Repository) GetByID(ctx context.Context, id, userID string) (*Server, e
 				         task.created_at DESC
 				LIMIT 1
 			) AS active_agent_update_task
-		 FROM servers WHERE id = $1 AND user_id = $2`,
-		id, userID,
+		 FROM servers WHERE id = $1`,
+		id,
 	)
 	var tagsBytes []byte
 	var activeTaskJSON *string
@@ -519,9 +518,9 @@ func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) 
 		        ), '[]'::jsonb) AS executions
 		 FROM cron_jobs job
 		 JOIN servers server ON server.id = job.server_id
-		 WHERE job.server_id = $1 AND server.user_id = $2
+		 WHERE job.server_id = $1
 		 ORDER BY job.enabled DESC, job.source, job.schedule, job.command`,
-		serverID, userID,
+		serverID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list cron jobs: %w", err)
@@ -655,9 +654,9 @@ func (r *Repository) RequestAgentUninstall(
 		        COALESCE(os_info->>'remote_uninstall_supported', 'false') = 'true' AS remote_uninstall_supported,
 		        COALESCE(deletion_status, 'active')
 		 FROM servers
-		 WHERE id = $1 AND user_id = $2
+		 WHERE id = $1
 		 FOR UPDATE`,
-		id, userID,
+		id,
 	).Scan(&online, &osIdentity, &remoteUninstallSupported, &deletionStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrServerNotFound
@@ -686,8 +685,8 @@ func (r *Repository) RequestAgentUninstall(
 		     uninstall_token_hash = $3,
 		     uninstall_token_expires_at = NOW() + INTERVAL '15 minutes',
 		     updated_at = NOW()
-		 WHERE id = $1 AND user_id = $2`,
-		id, userID, tokenHash,
+		 WHERE id = $1`,
+		id, tokenHash,
 	); err != nil {
 		return "", fmt.Errorf("mark server deletion pending: %w", err)
 	}
@@ -727,7 +726,7 @@ func (r *Repository) RequestAgentUninstall(
 // Delete permanently removes a server and all ON DELETE CASCADE child data.
 // It intentionally does not contact the Agent and is reserved for force delete.
 func (r *Repository) Delete(ctx context.Context, id, userID string) error {
-	tag, err := r.db.Pool.Exec(ctx, "DELETE FROM servers WHERE id = $1 AND user_id = $2", id, userID)
+	tag, err := r.db.Pool.Exec(ctx, "DELETE FROM servers WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete server: %w", err)
 	}
@@ -756,7 +755,7 @@ func isLinuxOSIdentity(identity string) bool {
 func (r *Repository) ListMetrics(ctx context.Context, serverID, userID, timeRange string) ([]*ServerMetric, error) {
 	// Verify ownership first
 	var count int
-	err := r.db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM servers WHERE id = $1 AND user_id = $2", serverID, userID).Scan(&count)
+	err := r.db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM servers WHERE id = $1", serverID).Scan(&count)
 	if err != nil || count == 0 {
 		return nil, fmt.Errorf("server not found or no permission")
 	}
@@ -879,9 +878,8 @@ func (r *Repository) GetDashboardOverview(ctx context.Context, userID, timeRange
 			ORDER BY created_at DESC
 			LIMIT 1
 		) lm ON true
-		WHERE s.user_id = $1
 		ORDER BY s.created_at DESC
-	`, userID)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard servers query: %w", err)
 	}
@@ -917,13 +915,12 @@ func (r *Repository) GetDashboardOverview(ctx context.Context, userID, timeRange
 			COALESCE(SUM(sm.memory_used) * 100.0 / NULLIF(SUM(sm.memory_total), 0), 0) AS memory_usage
 		FROM server_metrics sm
 		JOIN servers s ON s.id = sm.server_id
-		WHERE s.user_id = $1
-		  AND sm.created_at >= NOW() - INTERVAL '%s'
+		WHERE sm.created_at >= NOW() - INTERVAL '%s'
 		GROUP BY bucket_time
 		ORDER BY bucket_time ASC
 	`, bucketSeconds, bucketSeconds, interval)
 
-	metricRows, err := r.db.Pool.Query(ctx, metricQuery, userID)
+	metricRows, err := r.db.Pool.Query(ctx, metricQuery)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard metrics query: %w", err)
 	}
@@ -955,12 +952,10 @@ func (r *Repository) GetDashboardOverview(ctx context.Context, userID, timeRange
 		FROM alert_state state
 		JOIN alert_rules rule ON rule.id = state.rule_id
 		JOIN servers server ON server.id = state.server_id
-		WHERE rule.user_id = $1
-		  AND server.user_id = $1
-		  AND rule.enabled = true
+		WHERE rule.enabled = true
 		  AND state.status = 'firing'
 		ORDER BY state.last_triggered_at DESC NULLS LAST
-	`, userID)
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard incidents query: %w", err)
 	}
