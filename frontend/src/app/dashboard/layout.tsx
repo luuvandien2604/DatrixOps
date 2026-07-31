@@ -563,12 +563,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             {unread && (
                               <button
                                 type="button"
-                                onClick={() => void markNotificationRead(notification.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  void markNotificationRead(notification.id);
+                                }}
                                 title="Mark as read"
                                 aria-label={`Mark ${notification.title} as read`}
-                                className="mt-0.5 h-8 w-8 shrink-0 rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"
+                                className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
                               >
-                                <CircleCheck className="mx-auto h-4 w-4" />
+                                <CircleCheck className="h-4 w-4" />
                               </button>
                             )}
                           </div>
