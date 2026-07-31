@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getUserRole } from '@/lib/apiClient';
 import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
   UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search, Filter,
@@ -61,6 +61,22 @@ export default function ServersPage() {
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
   const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, { id: string; status: string; result?: string }>>({});
   const [updatingAutoUpdatePolicyId, setUpdatingAutoUpdatePolicyId] = useState<string | null>(null);
+
+  // Role permissions
+  const [userRole, setUserRole] = useState<string>('user');
+
+  useEffect(() => {
+    setUserRole(getUserRole());
+    apiClient('/auth/me')
+      .then((u) => {
+        if (u?.role) setUserRole(u.role);
+      })
+      .catch(() => {});
+  }, []);
+
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  const isOperator = userRole === 'operator';
+  const isViewer = userRole === 'viewer';
 
   const router = useRouter();
 
@@ -125,6 +141,10 @@ export default function ServersPage() {
   // Toggle Auto-Update Policy for a single server
   const toggleAutoUpdatePolicy = async (serverId: string, currentEnabled: boolean, event?: React.MouseEvent) => {
     if (event) event.stopPropagation();
+    if (!isAdmin) {
+      toast.error('Changing auto-update policy requires Admin role permission.');
+      return;
+    }
     try {
       setUpdatingAutoUpdatePolicyId(serverId);
       const newStatus = !currentEnabled;
@@ -144,6 +164,10 @@ export default function ServersPage() {
   // Bulk set auto update policy
   const handleBulkAutoUpdate = async (enable: boolean) => {
     if (!selectedServerIds.length) return;
+    if (!isAdmin) {
+      toast.error('Changing auto-update policy requires Admin role permission.');
+      return;
+    }
     setIsBulkProcessing(true);
     let successCount = 0;
     try {
@@ -160,8 +184,12 @@ export default function ServersPage() {
           }
         })
       );
-      toast.success(`Auto-update ${enable ? 'enabled' : 'disabled'} for ${successCount} server(s)`);
-      fetchServers(true);
+      if (successCount > 0) {
+        toast.success(`Auto-update ${enable ? 'enabled' : 'disabled'} for ${successCount} server(s)`);
+        fetchServers(true);
+      } else {
+        toast.error('Failed to update auto-update policy. Check your permissions.');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Bulk auto-update policy error');
     } finally {
@@ -172,6 +200,10 @@ export default function ServersPage() {
   // Bulk update agents
   const handleBulkUpdateAgents = async () => {
     if (!selectedServerIds.length) return;
+    if (isViewer) {
+      toast.error('Triggering agent updates requires Operator or Admin role permission.');
+      return;
+    }
     setIsBulkProcessing(true);
     let queuedCount = 0;
     try {
@@ -189,8 +221,12 @@ export default function ServersPage() {
           }
         })
       );
-      toast.success(`Queued agent update for ${queuedCount} server(s)`);
-      fetchServers(true);
+      if (queuedCount > 0) {
+        toast.success(`Queued agent update for ${queuedCount} server(s)`);
+        fetchServers(true);
+      } else {
+        toast.error('Failed to queue agent updates. Check your permissions.');
+      }
     } catch (err: any) {
       toast.error(err.message || 'Bulk agent update error');
     } finally {
@@ -324,7 +360,8 @@ export default function ServersPage() {
           <button
             type="button"
             onClick={() => setIsUpdateAllOpen(true)}
-            disabled={servers.length === 0 || isUpdatingAll}
+            disabled={!isAdmin || servers.length === 0 || isUpdatingAll}
+            title={!isAdmin ? 'Updating all agents requires Admin role permission' : ''}
             className="ops-button secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
             <UploadCloud className="h-4 w-4" />
@@ -336,7 +373,9 @@ export default function ServersPage() {
           </button>
           <button
             onClick={() => setIsAddServerModalOpen(true)}
-            className="ops-button primary">
+            disabled={!isAdmin}
+            title={!isAdmin ? 'Adding servers requires Admin role permission' : ''}
+            className="ops-button primary disabled:cursor-not-allowed disabled:opacity-50">
             <Server className="w-4 h-4" />
             + Add Server
           </button>
@@ -414,24 +453,27 @@ export default function ServersPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleBulkAutoUpdate(true)}
-              disabled={isBulkProcessing}
-              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] dark:text-emerald-300 dark:hover:bg-emerald-500/25"
+              disabled={!isAdmin || isBulkProcessing}
+              title={!isAdmin ? 'Changing auto-update policy requires Admin role' : ''}
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed dark:text-emerald-300 dark:hover:bg-emerald-500/25"
             >
               <ToggleRight className="w-3.5 h-3.5" />
               Enable Auto-Update
             </button>
             <button
               onClick={() => handleBulkAutoUpdate(false)}
-              disabled={isBulkProcessing}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)]"
+              disabled={!isAdmin || isBulkProcessing}
+              title={!isAdmin ? 'Changing auto-update policy requires Admin role' : ''}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed"
             >
               <ToggleLeft className="w-3.5 h-3.5" />
               Disable Auto-Update
             </button>
             <button
               onClick={handleBulkUpdateAgents}
-              disabled={isBulkProcessing}
-              className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/12 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] dark:text-amber-300 dark:hover:bg-amber-500/25"
+              disabled={isViewer || isBulkProcessing}
+              title={isViewer ? 'Triggering agent updates requires Operator or Admin role' : ''}
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/35 bg-amber-500/12 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/18 disabled:border-[var(--border-default)] disabled:bg-[var(--surface-3)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed dark:text-amber-300 dark:hover:bg-amber-500/25"
             >
               <UploadCloud className="w-3.5 h-3.5" />
               Trigger Agent Update
@@ -624,14 +666,14 @@ export default function ServersPage() {
                         <td className="py-4 px-6">
                           <button
                             type="button"
-                            disabled={updatingAutoUpdatePolicyId === server.id}
+                            disabled={!isAdmin || updatingAutoUpdatePolicyId === server.id}
                             onClick={e => toggleAutoUpdatePolicy(server.id, Boolean(server.auto_update_agent), e)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
                               server.auto_update_agent
                                 ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
                                 : 'border-gray-500/30 bg-gray-500/10 text-gray-400 hover:bg-gray-500/20'
-                            }`}
-                            title={server.auto_update_agent ? 'Click to disable auto-update' : 'Click to enable auto-update'}
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            title={!isAdmin ? 'Changing auto-update policy requires Admin role' : server.auto_update_agent ? 'Click to disable auto-update' : 'Click to enable auto-update'}
                           >
                             {updatingAutoUpdatePolicyId === server.id ? (
                               <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
@@ -662,8 +704,10 @@ export default function ServersPage() {
                         <td className="py-4 px-6 text-right">
                           <div className="server-quick-actions flex items-center justify-end gap-2">
                             <button
+                              disabled={!isAdmin}
                               onClick={event => {
                                 event.stopPropagation();
+                                if (!isAdmin) return;
                                 setEditMetaServer(server);
                                 setEditGroupName(server.group_name || '');
                                 setEditTags((server.tags || []).join(', '));
@@ -671,18 +715,20 @@ export default function ServersPage() {
                                 setEditRegion(server.region || '');
                                 setEditEnvironment(server.environment || '');
                               }}
-                              className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors"
-                              title="Edit Group & Tags"
+                              className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 rounded border border-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={!isAdmin ? 'Editing server metadata requires Admin role' : 'Edit Group & Tags'}
                             >
                               <FileText className="w-4 h-4" />
                             </button>
                             <button
+                              disabled={isViewer}
                               onClick={event => {
                                 event.stopPropagation();
+                                if (isViewer) return;
                                 router.push(`/dashboard/servers/${server.id}?view=terminal`);
                               }}
-                              className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300"
-                              title="Open Web Terminal"
+                              className="p-1.5 rounded border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors hover:bg-blue-500/20 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={isViewer ? 'Terminal access requires Operator or Admin role' : 'Open Web Terminal'}
                             >
                               <TerminalSquare className="w-4 h-4" />
                             </button>
@@ -699,37 +745,43 @@ export default function ServersPage() {
                             <button
                               onClick={event => {
                                 event.stopPropagation();
+                                if (isViewer) return;
                                 setServerToUpdate({ id: server.id, name: server.name });
                               }}
-                              disabled={updateInProgress}
-                              className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${
+                              disabled={isViewer || updateInProgress}
+                              className={`rounded border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                 updateAvailable || updateInProgress || updateFailed
                                   ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-300'
                                   : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                               }`}
                               title={
-                                updateInProgress
-                                  ? 'Updating agent...'
-                                  : updateAvailable
-                                    ? `Update Agent to ${latestAgentVersion}`
-                                    : 'Reinstall Agent release'
+                                isViewer
+                                  ? 'Updating agent requires Operator or Admin role'
+                                  : updateInProgress
+                                    ? 'Updating agent...'
+                                    : updateAvailable
+                                      ? `Update Agent to ${latestAgentVersion}`
+                                      : 'Reinstall Agent release'
                               }
                             >
                               <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
                             </button>
                             <button
+                              disabled={isViewer}
                               onClick={event => {
                                 event.stopPropagation();
+                                if (isViewer) return;
                                 setServerToRestart({ id: server.id, name: server.name });
                               }}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors"
-                              title="Restart"
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={isViewer ? 'Executing commands requires Operator or Admin role' : 'Restart'}
                             >
                               <Play className="w-4 h-4 rotate-180" />
                             </button>
                             <button
                               onClick={event => {
                                 event.stopPropagation();
+                                if (!isAdmin) return;
                                 setServerToDelete({
                                   id: server.id,
                                   name: server.name,
@@ -738,9 +790,9 @@ export default function ServersPage() {
                                   uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
                                 });
                               }}
-                              disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50"
-                              title="Delete"
+                              disabled={!isAdmin || ['pending', 'uninstalling'].includes(server.deletion_status)}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={!isAdmin ? 'Deleting servers requires Admin role' : 'Delete'}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

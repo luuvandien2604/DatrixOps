@@ -11,7 +11,7 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getUserRole } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 
 interface RuleChannel {
@@ -97,6 +97,13 @@ export default function AlertsPage() {
   const [channelEmailFrom, setChannelEmailFrom] = useState('');
   const [channelEmailTo, setChannelEmailTo] = useState('');
   const [channelUseTLS, setChannelUseTLS] = useState(false);
+
+  const [userRole, setUserRole] = useState<string>('user');
+  useEffect(() => {
+    setUserRole(getUserRole());
+    apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
+  }, []);
+  const isViewer = userRole === 'viewer';
 
   useEffect(() => {
     const loadData = async () => {
@@ -260,6 +267,10 @@ export default function AlertsPage() {
 
   // deleteRule xóa rule; bảng liên kết channel được database cascade tự động.
   const deleteRule = async (id: string) => {
+    if (isViewer) {
+      setErrorMessage('Deleting alert rules requires Operator or Admin role permission.');
+      return;
+    }
     if (!confirm('Delete this alert rule?')) return;
     setErrorMessage('');
 
@@ -275,6 +286,10 @@ export default function AlertsPage() {
   // deleteChannel chỉ chặn ở giao diện khi backend xác nhận usage_count > 0.
   // Mọi lỗi khác được hiển thị đúng thông báo thay vì mặc định kết luận channel đang được dùng.
   const deleteChannel = async (id: string) => {
+    if (isViewer) {
+      setErrorMessage('Deleting notification channels requires Operator or Admin role permission.');
+      return;
+    }
     const channel = channels.find((item) => item.id === id);
     if (!channel) return;
 

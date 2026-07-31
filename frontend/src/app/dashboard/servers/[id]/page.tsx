@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
@@ -205,6 +205,14 @@ export default function ServerDetailsPage() {
   const [scriptRuns, setScriptRuns] = useState<Record<string, ScriptRunState>>({});
   const [scriptLibraryError, setScriptLibraryError] = useState<string | null>(null);
 
+  const [userRole, setUserRole] = useState<string>('user');
+  useEffect(() => {
+    setUserRole(getUserRole());
+    apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
+  }, []);
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  const isViewer = userRole === 'viewer';
+
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
       setActiveTab('terminal');
@@ -273,6 +281,10 @@ export default function ServerDetailsPage() {
   };
 
   const handleDockerAction = async (action: string, containerId: string) => {
+    if (isViewer) {
+      toast.error('Docker container actions require Operator or Admin role permission.');
+      return;
+    }
     try {
       if (action === 'docker_logs') {
         setLogsModal({isOpen: true, containerId, logs: 'Requesting container logs...', loading: true});
@@ -317,6 +329,10 @@ export default function ServerDetailsPage() {
 
   const handleServiceAction = async () => {
     if (!serviceActionRequest?.service.source) return;
+    if (isViewer) {
+      toast.error('System service actions require Operator or Admin role permission.');
+      return;
+    }
 
     const { action, service } = serviceActionRequest;
     setServiceActionBusy(true);
@@ -404,6 +420,10 @@ export default function ServerDetailsPage() {
 
   const queueAgentUpdate = async () => {
     if (!server) return;
+    if (isViewer) {
+      toast.error('Agent update requires Operator or Admin role permission.');
+      return;
+    }
     setQueueingAgentUpdate(true);
     try {
       await apiClient(`/servers/${server.id}/tasks`, {

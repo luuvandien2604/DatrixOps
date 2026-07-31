@@ -5,7 +5,7 @@ import {
   Globe, Plus, Trash2, CheckCircle2, XCircle, Shield, ShieldAlert,
   ShieldCheck, RefreshCw, Clock, Activity, Zap, ExternalLink
 } from 'lucide-react';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 
 interface Website {
@@ -31,6 +31,13 @@ export default function WebsitesPage() {
   const [newUrl, setNewUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const [userRole, setUserRole] = useState<string>('user');
+  useEffect(() => {
+    setUserRole(getUserRole());
+    apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
+  }, []);
+  const isViewer = userRole === 'viewer';
 
   useEffect(() => {
     fetchWebsites();
@@ -120,8 +127,16 @@ export default function WebsitesPage() {
             Refresh
           </button>
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20"
+            onClick={() => {
+              if (isViewer) {
+                toast.error('Adding websites requires Operator or Admin role');
+                return;
+              }
+              setIsModalOpen(true);
+            }}
+            disabled={isViewer}
+            title={isViewer ? 'Adding websites requires Operator or Admin role' : ''}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" /> Add Website
           </button>
@@ -198,9 +213,13 @@ export default function WebsitesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(w.id, w.name)}
-                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg text-rose-400 transition-colors border border-rose-500/20"
-                        title="Delete"
+                        disabled={isViewer}
+                        onClick={() => {
+                          if (isViewer) return;
+                          handleDelete(w.id, w.name);
+                        }}
+                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg text-rose-400 transition-colors border border-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isViewer ? 'Deleting websites requires Operator or Admin role' : 'Delete'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
