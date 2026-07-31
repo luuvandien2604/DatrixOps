@@ -3,10 +3,13 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
+
+var ErrNotFound = errors.New("user not found")
 
 type Repository struct {
 	db *database.DB
@@ -100,4 +103,51 @@ func (r *Repository) QueueFleetTask(ctx context.Context, serverID, userID, taskT
 		serverID, taskType, userID,
 	).Scan(&taskID)
 	return taskID, err
+}
+
+func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role string) (*UserWithStats, error) {
+	var u UserWithStats
+	err := r.db.Pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3)
+		 RETURNING id, email, role, created_at`,
+		email, passwordHash, role,
+	).Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	u.ServerCount = 0
+	return &u, nil
+}
+
+func (r *Repository) UpdateUserRole(ctx context.Context, id, role string) error {
+	tag, err := r.db.Pool.Exec(ctx, `UPDATE users SET role = $2 WHERE id = $1`, id, role)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) UpdateUserPassword(ctx context.Context, id, passwordHash string) error {
+	tag, err := r.db.Pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

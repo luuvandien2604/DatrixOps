@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
@@ -126,4 +127,25 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// Always return 200 OK for logout even if token was invalid/missing
 	response.Success(w, http.StatusOK, nil)
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not authenticated")
+		return
+	}
+
+	user, err := h.svc.repo.FindUserByID(r.Context(), userID)
+	if err != nil || user == nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "User not found")
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]interface{}{
+		"id":         user.ID,
+		"email":      user.Email,
+		"role":       user.Role,
+		"created_at": user.CreatedAt,
+	})
 }

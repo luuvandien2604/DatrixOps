@@ -35,7 +35,23 @@ export default function ManageServersPage() {
     }
   }, []);
 
-  useEffect(() => setIsSuperadmin(getUserRole() === 'superadmin'), []);
+  useEffect(() => {
+    const currentRole = getUserRole();
+    if (currentRole === 'admin' || currentRole === 'superadmin') {
+      setIsSuperadmin(true);
+    }
+    apiClient('/auth/me')
+      .then((user) => {
+        if (user && user.role) {
+          setIsSuperadmin(user.role === 'admin' || user.role === 'superadmin');
+        }
+      })
+      .catch(() => {
+        if (isSuperadmin == null) {
+          setIsSuperadmin(currentRole === 'admin' || currentRole === 'superadmin');
+        }
+      });
+  }, []);
   useEffect(() => {
     if (isSuperadmin == null) return;
     if (isSuperadmin) void fetchServers(); else setLoading(false);

@@ -8,15 +8,16 @@ import (
 )
 
 func RegisterRoutes(mux *http.ServeMux, handler *Handler, db *database.DB, jwtSecret []byte) {
-	mux.Handle("GET /api/v1/admin/users", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("admin")(
-			http.HandlerFunc(handler.ListUsers),
-		),
-	))
-	mux.Handle("GET /api/v1/admin/servers", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("admin")(http.HandlerFunc(handler.ListFleetServers)),
-	))
-	mux.Handle("POST /api/v1/admin/servers/{id}/tasks", middleware.RequireAuth(jwtSecret, db)(
-		middleware.RequireRole("admin")(http.HandlerFunc(handler.QueueFleetTask)),
-	))
+	withAdmin := func(h http.HandlerFunc) http.Handler {
+		return middleware.RequireAuth(jwtSecret, db)(middleware.RequireRole("admin")(h))
+	}
+
+	mux.Handle("GET /api/v1/admin/users", withAdmin(handler.ListUsers))
+	mux.Handle("POST /api/v1/admin/users", withAdmin(handler.CreateUser))
+	mux.Handle("PUT /api/v1/admin/users/{id}/role", withAdmin(handler.UpdateUserRole))
+	mux.Handle("PUT /api/v1/admin/users/{id}/password", withAdmin(handler.UpdateUserPassword))
+	mux.Handle("DELETE /api/v1/admin/users/{id}", withAdmin(handler.DeleteUser))
+
+	mux.Handle("GET /api/v1/admin/servers", withAdmin(handler.ListFleetServers))
+	mux.Handle("POST /api/v1/admin/servers/{id}/tasks", withAdmin(handler.QueueFleetTask))
 }

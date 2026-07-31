@@ -38,4 +38,5 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.Handle("POST /api/v1/auth/login", rl(http.HandlerFunc(h.Login)))
 	mux.HandleFunc("POST /api/v1/auth/refresh", h.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.Logout)
+	mux.Handle("GET /api/v1/auth/me", middleware.RequireAuth([]byte(cfg.JWTSecret), db)(http.HandlerFunc(h.Me)))
 }

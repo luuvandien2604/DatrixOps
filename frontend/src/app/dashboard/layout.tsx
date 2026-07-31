@@ -94,7 +94,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  useEffect(() => setRole(getUserRole()), []);
+  useEffect(() => {
+    setRole(getUserRole());
+    apiClient('/auth/me')
+      .then((user) => {
+        if (user && user.role) {
+          setRole(user.role);
+        }
+      })
+      .catch(() => {
+        // Fallback to JWT role if /auth/me fails
+      });
+  }, []);
   useEffect(() => {
     let active = true;
     let requestInFlight = false;
@@ -577,13 +588,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <div className="ops-control ml-1 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3">
               <div className="operator-avatar">
-                {role === 'superadmin' ? 'SA' : 'OP'}
+                {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
               </div>
 
               <div className="hidden sm:block">
                 {/* Tên người dùng rõ hơn. */}
                 <p className="text-[11px] font-semibold text-[var(--foreground)]">
-                  {role === 'superadmin' ? 'Superadmin' : 'Operator'}
+                  {role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator'}
                 </p>
 
                 {/* Trạng thái đăng nhập tăng nhẹ weight. */}
