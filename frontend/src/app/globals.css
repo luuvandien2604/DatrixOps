@@ -328,7 +328,6 @@ button:disabled {
 }
 
 .ops-popover {
-  position: relative;
   overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);

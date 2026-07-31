@@ -483,8 +483,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </button>
 
               {notificationsOpen && (
-                <div className="ops-popover absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden">
-                  <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3">
+                <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
                     <div>
                       <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
                       <p className="text-[11px] font-medium text-[var(--color-muted)]">
@@ -495,7 +495,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       type="button"
                       onClick={() => void markAllNotificationsRead()}
                       disabled={unreadNotificationCount === 0}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-[var(--violet-strong)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <CheckCheck className="h-3.5 w-3.5" />
                       Mark all as read
