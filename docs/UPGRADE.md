@@ -1,20 +1,39 @@
-# Upgrade
+# Upgrade Guide
 
-Run upgrades from a clean working tree:
+DatrixOps provides an automated, zero-downtime upgrade path for self-hosted instances.
+
+## Upgrading DatrixOps
+
+To upgrade DatrixOps to the latest release, run the upgrade script from your installation directory:
 
 ```bash
 ./deploy/upgrade.sh
 ```
 
-The script creates a logical database/config backup, fast-forwards source,
-fetches the configured signed Agent release, rebuilds images, runs the single
-migration container, starts services and waits for readiness. If readiness
-fails it rebuilds the previous revision.
+Or run the 1-liner upgrade command directly:
 
-Migrations are recorded in `schema_migrations` with a SHA-256 checksum and run
-inside a transaction. Never edit a migration that has shipped; add a new
-versioned migration.
+```bash
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
+```
 
-Upgrade does not remove named volumes. Never use `docker compose down -v` for
-an upgrade. Review release notes and migration notes before changing major
-versions.
+## How the Upgrade Process Works
+
+1. **Automated Backup:**
+   Before making any changes, `./deploy/upgrade.sh` runs `./deploy/backup.sh` to create a timestamped compressed backup (`datrixops-backup-YYYY-MM-DD-HHMMSS.tar.gz`) containing your `.env` configuration and a PostgreSQL database dump.
+
+2. **Dual-Mode Codebase Update:**
+   - **Git Mode:** If the project directory is a Git repository, it pulls the latest commit via `git pull --ff-only`.
+   - **Git-less / HTTPS Release Mode:** If Git is not installed or Git SSH credentials are absent, it automatically downloads the latest release tarball over HTTPS, preserving `.env` and custom data.
+
+3. **Agent Artifact Update:**
+   Fetches updated pre-compiled signed Agent release binaries (`fetch-agent-release.sh`) for all supported operating systems.
+
+4. **Database Migrations:**
+   Executes `docker compose run --rm migrate` to apply any new database schema migrations safely.
+
+5. **Container Upgrade & Health Verification:**
+   Restarts containers using updated images (`docker compose up -d`) and performs health checks against the `/health/ready` endpoint.
+
+## Data Safety Guarantee
+
+- Upgrades never perform `docker compose down -v`. Your PostgreSQL database volume (`postgres_data`) and configuration remain completely untouched and safe.

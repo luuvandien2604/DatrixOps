@@ -1,49 +1,46 @@
 # Installation
 
-## Host prerequisites
+## Host Requirements
 
-- Ubuntu 22.04/24.04 or Debian 12.
-- Docker Engine and Docker Compose v2.
-- At least 2 CPU, 2 GB RAM and 20 GB persistent disk for a small deployment.
-- A DNS A/AAAA record pointing to the host.
-- TCP 80 and 443 inbound; outbound HTTPS for images and Agent releases.
+- Ubuntu 20.04/22.04/24.04, Debian 12, or CentOS/RHEL/Rocky Linux.
+- At least 1 CPU, 2 GB RAM and 20 GB persistent disk space for a standard deployment.
+- Inbound TCP ports 80 and 443; outbound HTTPS access for downloading container images and Agent release packages.
 
-PostgreSQL and Backend are internal Compose services. Do not publish port 5432
-or 8080. Only Caddy exposes 80/443.
+## Automated Installation (Recommended)
 
-## Install
+Run the automated 1-liner installer as root on your VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/install.sh | sudo bash
+```
+
+The installer script automatically handles the entire setup:
+1. Installs Docker Engine, Docker Compose v2, and Nginx if they are not already installed on the server.
+2. Auto-detects your VPS Public IP address (or prompts for a custom domain) and configures `.env` with secure generated secrets.
+3. Downloads pre-compiled, signed Agent release binaries or compiles them locally if online releases are unavailable.
+4. Executes database migrations and starts DatrixOps containers in detached mode (`docker compose up -d`).
+
+## Manual / Git Installation
+
+If you are setting up a development instance or cloning the repository manually:
 
 ```bash
 git clone https://github.com/luuvandien2604/DatrixOps.git
 cd DatrixOps
-cp deploy/.env.example .env
-./deploy/generate-secrets.sh
+./deploy/install.sh
 ```
 
-Set these values in `.env`:
+## Initial Setup Wizard
 
-```dotenv
-DATRIXOPS_DOMAIN=monitor.example.com
-PUBLIC_URL=https://monitor.example.com
-ALLOWED_ORIGINS=https://monitor.example.com
-AGENT_VERSION=1.0.0
-```
+1. Open `http://<your-vps-ip>/setup` (or `https://<your-domain>/setup`) in your web browser.
+2. The setup wizard verifies database connectivity, locks public registration, and creates the first administrator account.
+3. Once created, log in to access the DatrixOps Control Plane.
 
-Then run `./deploy/install.sh`. The script validates configuration, downloads
-and verifies the versioned Agent artifacts, runs the migration container,
-builds the application and prints service state.
+## Storage and Logs
 
-Open `/setup`. The one-time wizard verifies the database, creates the first
-administrator, and stores the system name, IANA timezone and public URL.
-Public registration is disabled by default and setup locks after the first
-account exists.
+- **Database:** Stored in named Docker volume `postgres_data`.
+- **Caddy Certificates:** Stored in `caddy_data` and `caddy_config`.
+- **Configuration:** Stored in `.env` (mode 0600).
+- **View Container Logs:** `docker compose -f deploy/docker-compose.yml logs -f`
 
-## Storage and logs
-
-- Database: Compose volume `postgres_data`.
-- Caddy certificates/state: `caddy_data` and `caddy_config`.
-- Application configuration: `.env` (mode 0600).
-- Logs: `docker compose -f deploy/docker-compose.yml logs`.
-- Container logs rotate at 10 MB, five files per container.
-
-Keep `.env` and backups outside public web roots.
+Container logs are configured to automatically rotate at 10 MB per file, keeping up to 5 historical log files per container.
