@@ -42,7 +42,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-latest}
     restart: "no"
     depends_on:
       db:
@@ -61,7 +60,6 @@ services:
     build: 
       context: ./backend
       dockerfile: Dockerfile
-    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-latest}
     restart: always
     depends_on:
       db:
@@ -98,7 +96,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-latest}
     restart: always
     depends_on:
       db:
@@ -129,7 +126,6 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
-    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-latest}
     restart: always
     depends_on:
       backend:
