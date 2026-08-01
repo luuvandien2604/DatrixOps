@@ -1963,28 +1963,119 @@ html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hove
   position: relative;
   min-height: 330px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .1);
+  border: 1px solid rgba(255, 255, 255, .12);
   border-radius: 16px;
-  background: #080d14;
+  background: #090d16;
+  color: #ffffff;
   padding: 20px;
   box-shadow: var(--shadow-raised);
 }
 
-.demo-toolbar { position: relative; z-index: 2; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255, 255, 255, .06); padding-bottom: 14px; color: rgba(255, 255, 255, .5); font-size: 10px; }
+.demo-toolbar { position: relative; z-index: 2; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255, 255, 255, .08); padding-bottom: 14px; color: rgba(255, 255, 255, .6); font-size: 10px; }
 .demo-toolbar i { margin-left: auto; border-radius: var(--radius-pill); background: var(--mint-wash); padding: 4px 8px; color: var(--mint); font-size: 8px; font-style: normal; }
 .demo-wave { position: relative; z-index: 2; height: 195px; margin-top: 22px; }
 .demo-wave svg { width: 100%; height: 100%; }
-.demo-metrics { position: relative; z-index: 2; display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, .06); padding-top: 14px; color: rgba(255, 255, 255, .3); font-size: 9px; }
-.demo-metrics b { margin-right: 4px; color: rgba(255, 255, 255, .78); font-family: var(--font-mono); font-size: 11px; }
+.demo-metrics { position: relative; z-index: 2; display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, .08); padding-top: 14px; color: rgba(255, 255, 255, .4); font-size: 9px; }
+.demo-metrics b { margin-right: 4px; color: rgba(255, 255, 255, .88); font-family: var(--font-mono); font-size: 11px; }
 .alert-stack { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 11px; margin-top: 24px; }
-.demo-alert { display: flex; align-items: center; gap: 11px; border: 1px solid rgba(255, 255, 255, .065); border-radius: var(--radius-md); background: rgba(8, 10, 13, .5); padding: 14px; opacity: .58; transition: transform .5s var(--ease-out), border-color .5s, background .5s, opacity .5s; }
-.demo-alert.is-active { border-color: var(--accent-primary); background: var(--surface-selected); opacity: 1; }
+.demo-alert { display: flex; align-items: center; gap: 11px; border: 1px solid rgba(255, 255, 255, .08); border-radius: var(--radius-md); background: rgba(15, 23, 42, .6); padding: 14px; opacity: .65; color: #ffffff; transition: transform .5s var(--ease-out), border-color .5s, background .5s, opacity .5s; }
+.demo-alert.is-active { border-color: rgba(56, 189, 248, 0.5); background: rgba(14, 165, 233, 0.18); opacity: 1; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
 .demo-alert-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 11px; }
-.demo-alert-icon.red { background: rgba(255, 141, 161, .1); color: var(--rose); }
-.demo-alert-icon.amber { background: rgba(241, 202, 123, .1); color: var(--amber); }
+.demo-alert-icon.red { background: rgba(255, 141, 161, .15); color: var(--rose); }
+.demo-alert-icon.amber { background: rgba(241, 202, 123, .15); color: var(--amber); }
 .demo-alert-icon.green { background: var(--mint-wash); color: var(--mint); }
-.demo-alert b { font-size: 10px; font-weight: 600; }
-.demo-alert p { margin-top: 4px; color: rgba(255, 255, 255, .28); font-size: 9px; }
+.demo-alert b { font-size: 10.5px; font-weight: 600; color: #ffffff; }
+.demo-alert p { margin-top: 4px; color: rgba(255, 255, 255, .55); font-size: 9.5px; }
+
+/* Light Mode Overrides for Public Landing Page */
+html.light .public-shell {
+  background: var(--background-root);
+  color: var(--text-primary);
+}
+
+html.light .landing-header {
+  border-bottom: 1px solid var(--border-default);
+  background: rgba(248, 250, 252, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+html.light .landing-hero h1,
+html.light .agent-section h2,
+html.light .landing-final h2,
+html.light .feature-copy h3,
+html.light .landing-section-head h2 {
+  color: var(--text-primary);
+}
+
+html.light .landing-hero h1 em,
+html.light .agent-section h2 em,
+html.light .landing-final h2 em,
+html.light .landing-section-head h2 em {
+  color: var(--accent-primary);
+}
+
+html.light .landing-hero > div > p,
+html.light .landing-section-head p,
+html.light .agent-section p,
+html.light .landing-final p,
+html.light .feature-copy p,
+html.light .workflow-item p {
+  color: var(--text-secondary);
+}
+
+html.light .feature-link {
+  border-bottom-color: var(--border-default);
+  color: var(--accent-primary);
+}
+html.light .feature-link:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-hover);
+}
+
+html.light .workflow-grid {
+  border-block-color: var(--border-default);
+}
+html.light .workflow-item {
+  border-right-color: var(--border-default);
+}
+html.light .workflow-item h3 {
+  color: var(--text-primary);
+}
+html.light .workflow-item > div > span {
+  color: var(--text-tertiary);
+}
+
+html.light .landing-proof {
+  border-block-color: var(--border-default);
+}
+html.light .landing-proof div {
+  border-right-color: var(--border-default);
+}
+html.light .landing-proof strong {
+  color: var(--text-primary);
+}
+html.light .landing-proof span {
+  color: var(--text-secondary);
+}
+
+html.light .install-command {
+  border-color: var(--border-default);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+}
+html.light .install-command code {
+  color: var(--text-primary);
+}
+html.light .install-command button {
+  border-color: var(--border-default);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+html.light .landing-footer {
+  border-top-color: var(--border-default);
+  color: var(--text-secondary);
+}
 
 .agent-section {
   position: relative;

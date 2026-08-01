@@ -42,15 +42,15 @@ export default function LandingPage() {
           <span className="brand-orbit"><Command className="h-4 w-4" /></span>
           <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--violet)]">OPS</span></span>
         </Link>
-        <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-[11px] text-white/60 md:flex">
-          <a href="#platform" className="transition hover:text-white">Platform</a>
-          <a href="#workflow" className="transition hover:text-white">Workflow</a>
-          <a href="#agents" className="transition hover:text-white">Agent</a>
-          <Link href="/docs" className="transition hover:text-white">Docs</Link>
+        <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-[11px] text-[var(--text-secondary)] md:flex">
+          <a href="#platform" className="transition hover:text-[var(--text-primary)]">Platform</a>
+          <a href="#workflow" className="transition hover:text-[var(--text-primary)]">Workflow</a>
+          <a href="#agents" className="transition hover:text-[var(--text-primary)]">Agent</a>
+          <Link href="/docs" className="transition hover:text-[var(--text-primary)]">Docs</Link>
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/login" className="hidden px-3 py-2 text-[11px] text-white/70 transition hover:text-white sm:block">Sign in</Link>
+          <Link href="/login" className="hidden px-3 py-2 text-[11px] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] sm:block">Sign in</Link>
           <Link href="/setup" className="landing-pill">Start monitoring <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
       </header>
