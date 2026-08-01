@@ -33,7 +33,7 @@ if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --services 2>/d
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" \
-    pg_dump -U datrixops -d datrixops -Fc >"${STAGING_DIR}/database.dump"
+    pg_dump -U datrixops -d datrixops -Fc < /dev/null >"${STAGING_DIR}/database.dump"
 test -s "${STAGING_DIR}/database.dump" || {
     echo "ERROR: PostgreSQL dump is empty." >&2
     exit 1

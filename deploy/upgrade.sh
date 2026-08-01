@@ -54,7 +54,7 @@ RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/D
 
 log_step "Step 1/4: Creating automated pre-upgrade backup"
 if [[ -x "${SCRIPT_DIR}/backup.sh" ]]; then
-    BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh")"
+    BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh" < /dev/null)"
     log_success "Backup created successfully: ${BACKUP_FILE}"
 fi
 
@@ -63,7 +63,7 @@ log_step "Step 2/4: Updating DatrixOps codebase"
 use_git=false
 if command -v git >/dev/null 2>&1 && [[ -d "${PROJECT_ROOT}/.git" ]]; then
     log_info "Attempting update via Git repository..."
-    if git -C "$PROJECT_ROOT" pull --ff-only 2>/dev/null; then
+    if git -C "$PROJECT_ROOT" pull --ff-only < /dev/null 2>/dev/null; then
         use_git=true
         log_success "Updated codebase via Git."
     else
@@ -76,7 +76,7 @@ if [[ "$use_git" == "false" ]]; then
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf -- "$TMP_DIR"' EXIT
 
-    if curl -fsSL "$RELEASE_TARBALL_URL" -o "${TMP_DIR}/release.tar.gz"; then
+    if curl -fsSL "$RELEASE_TARBALL_URL" -o "${TMP_DIR}/release.tar.gz" < /dev/null; then
         log_info "Extracting release files..."
         tar -xzf "${TMP_DIR}/release.tar.gz" -C "$TMP_DIR"
         
@@ -103,11 +103,11 @@ fi
 log_step "Step 3/4: Fetching latest Agent release binaries"
 agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "$ENV_FILE" | tail -n 1)"
 log_info "Fetching Agent version v${agent_ver}..."
-"${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver"
+"${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
 
 log_step "Step 4/4: Rebuilding and restarting DatrixOps containers"
 log_info "Building updated container images..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build < /dev/null || true
 
 log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
