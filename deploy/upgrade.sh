@@ -94,9 +94,8 @@ if [[ "$use_git" == "false" ]]; then
             exit 1
         fi
     else
-        log_error "Failed to download update tarball from ${RELEASE_TARBALL_URL}."
-        log_info "Ensure your VPS has internet access or set DATRIXOPS_UPDATE_URL to a custom mirror."
-        exit 1
+        log_warn "Could not download raw source tarball (repository is Private)."
+        log_info "Proceeding with pre-built container update from GitHub Container Registry (GHCR)..."
     fi
 fi
 
