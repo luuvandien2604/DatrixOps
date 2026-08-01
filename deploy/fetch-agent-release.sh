@@ -74,7 +74,7 @@ else
         echo "INFO: Compiling Agent binaries using Go Docker container..."
         for item in "${targets[@]}"; do
             IFS="/" read -r os arch filename <<< "$item"
-            docker run --rm \
+            docker run -i=false --rm < /dev/null \
                 -e CGO_ENABLED=0 \
                 -e GOOS="$os" \
                 -e GOARCH="$arch" \
