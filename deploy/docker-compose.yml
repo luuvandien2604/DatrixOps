@@ -40,7 +40,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health/live >/dev/null || wget -qO- --no-check-certificate https://127.0.0.1/health/live >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health/live >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 10

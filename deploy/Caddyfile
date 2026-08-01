@@ -1,9 +1,9 @@
 {
 	admin off
+	auto_https off
 }
 
-:80, :443 {
-	tls internal
+:80 {
 	encode zstd gzip
 
 	header {
