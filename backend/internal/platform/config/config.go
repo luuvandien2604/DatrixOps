@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -114,10 +115,17 @@ func validatePublicURL(value string) error {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("PUBLIC_URL must not contain credentials, a query, or a fragment")
 	}
-	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
-		return fmt.Errorf("PUBLIC_URL must use HTTPS outside localhost")
+	if parsed.Scheme != "https" && !isLocalOrIPHost(parsed.Hostname()) {
+		return fmt.Errorf("PUBLIC_URL must use HTTPS when using a domain name")
 	}
 	return nil
+}
+
+func isLocalOrIPHost(host string) bool {
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	return net.ParseIP(host) != nil
 }
 
 func envBool(key string) bool {
