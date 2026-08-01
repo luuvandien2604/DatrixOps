@@ -85,6 +85,8 @@ services:
       PORT: "8080"
       DATRIXOPS_RUN_SCHEDULERS: "false"
     expose: ["8080"]
+    volumes:
+      - /etc/datrixops:/etc/datrixops:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health/ready >/dev/null"]
       interval: 5s
