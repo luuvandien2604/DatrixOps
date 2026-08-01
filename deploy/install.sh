@@ -44,6 +44,70 @@ get_pkg_manager() {
     fi
 }
 
+detect_public_ip() {
+    local ip=""
+    ip="$(curl -fsSL -m 4 https://api.ipify.org 2>/dev/null || true)"
+    if [[ -z "$ip" ]]; then
+        ip="$(curl -fsSL -m 4 https://ifconfig.me 2>/dev/null || true)"
+    fi
+    if [[ -z "$ip" ]]; then
+        ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    fi
+    if [[ -z "$ip" ]]; then
+        ip="127.0.0.1"
+    fi
+    echo "$ip"
+}
+
+set_env_value() {
+    local key="$1"
+    local value="$2"
+    local escaped="${value//\\/\\\\}"
+    escaped="${escaped//&/\\&}"
+    escaped="${escaped//|/\\|}"
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        sed -i.bak "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
+        rm -f -- "${ENV_FILE}.bak"
+    else
+        printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+    fi
+}
+
+auto_configure_domain() {
+    local current_domain
+    current_domain="$(sed -n "s/^DATRIXOPS_DOMAIN=//p" "$ENV_FILE" | tail -n 1)"
+    
+    if [[ -z "$current_domain" || "$current_domain" == "monitor.example.com" || "$current_domain" == "https://monitor.example.com" ]]; then
+        local detected_ip
+        detected_ip="$(detect_public_ip)"
+        local target_domain=""
+
+        if [ -t 0 ]; then
+            log_info "VPS Public IP detected: ${detected_ip}"
+            printf "${CYAN}Enter domain or IP for DatrixOps [Press ENTER for '${detected_ip}']: ${NC}"
+            read -r target_domain || true
+        fi
+
+        target_domain="${target_domain:-$detected_ip}"
+        target_domain="${target_domain#http://}"
+        target_domain="${target_domain#https://}"
+        target_domain="${target_domain%/}"
+
+        log_info "Configuring DatrixOps domain/IP: ${target_domain}"
+
+        set_env_value "DATRIXOPS_DOMAIN" "$target_domain"
+        
+        if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
+            set_env_value "PUBLIC_URL" "http://${target_domain}"
+            set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
+        else
+            set_env_value "PUBLIC_URL" "https://${target_domain}"
+            set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
+        fi
+        log_success "Configured ${ENV_FILE} with DATRIXOPS_DOMAIN=${target_domain}."
+    fi
+}
+
 check_and_install_prereqs() {
     if ! command -v openssl >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
         log_info "Prerequisite tools (openssl, curl) are missing. Installing automatically..."
@@ -159,6 +223,7 @@ check_and_install_nginx
 log_step "Step 2/5: Generating environment configuration and security secrets"
 "${SCRIPT_DIR}/generate-secrets.sh" "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
+auto_configure_domain
 
 log_step "Step 3/5: Validating environment configuration"
 required_keys=(POSTGRES_PASSWORD JWT_SECRET DATRIXOPS_DOMAIN PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
