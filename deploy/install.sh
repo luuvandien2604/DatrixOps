@@ -258,6 +258,9 @@ log_step "Step 5/5: Deploying DatrixOps containers"
 log_info "Validating docker-compose setup..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/dev/null
 
+log_info "Building container images..."
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build < /dev/null || true
+
 log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 
