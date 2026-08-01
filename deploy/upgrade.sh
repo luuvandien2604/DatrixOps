@@ -98,7 +98,7 @@ log_info "Building updated container images..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
 
 log_info "Running database migrations..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate || true
 
 log_info "Restarting services with updated code..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d

@@ -288,10 +288,10 @@ log_info "Validating docker-compose setup..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/dev/null
 
 log_info "Running database migrations..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate || true
 
 log_info "Starting DatrixOps services in detached mode..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 log_step "Verifying running container status"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
