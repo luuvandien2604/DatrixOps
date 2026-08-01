@@ -65,6 +65,7 @@ services:
     logging: *default-logging
 
   migrate:
+    image: ghcr.io/luuvandien2604/datrixops-migrate:latest
     build: { context: ../backend, dockerfile: Dockerfile }
     restart: "no"
     depends_on:
@@ -75,6 +76,7 @@ services:
     logging: *default-logging
 
   backend:
+    image: ghcr.io/luuvandien2604/datrixops-backend:latest
     build: { context: ../backend, dockerfile: Dockerfile }
     restart: unless-stopped
     depends_on:
@@ -97,6 +99,7 @@ services:
     logging: *default-logging
 
   worker:
+    image: ghcr.io/luuvandien2604/datrixops-worker:latest
     build: { context: ../backend, dockerfile: Dockerfile }
     restart: unless-stopped
     depends_on:
@@ -117,6 +120,7 @@ services:
     logging: *default-logging
 
   frontend:
+    image: ghcr.io/luuvandien2604/datrixops-frontend:latest
     build:
       context: ../frontend
       dockerfile: Dockerfile
