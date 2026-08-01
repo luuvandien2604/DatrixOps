@@ -79,9 +79,10 @@ else
                 -e GOOS="$os" \
                 -e GOARCH="$arch" \
                 -v "${PROJECT_ROOT}:/app" \
+                -v "${STAGING_DIR}:/out" \
                 -w /app/agent \
                 golang:1.24-alpine \
-                go build -ldflags="-s -w -X main.version=${VERSION}" -o "/app/frontend/public/releases/${VERSION}/${filename}" ./cmd/agent >/dev/null 2>&1 || true
+                go build -ldflags="-s -w -X main.version=${VERSION}" -o "/out/${filename}" ./cmd/agent >/dev/null 2>&1 || true
         done
     fi
 
