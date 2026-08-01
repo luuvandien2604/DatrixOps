@@ -46,9 +46,8 @@ if [[ "$EUID" -ne 0 ]]; then
     echo "ERROR: Run this installer as root (use sudo)." >&2
     exit 1
 fi
-if [[ ! "$SERVER_URL" =~ ^https://[A-Za-z0-9._:-]+$ ]] &&
-   [[ ! "$SERVER_URL" =~ ^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$ ]]; then
-    echo "ERROR: --server must be an HTTPS origin (HTTP is allowed only for localhost)." >&2
+if [[ ! "$SERVER_URL" =~ ^https?://[A-Za-z0-9._:-]+$ ]]; then
+    echo "ERROR: --server must be a valid HTTP or HTTPS URL." >&2
     exit 1
 fi
 if [[ ! "$ENROLLMENT_TOKEN" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then

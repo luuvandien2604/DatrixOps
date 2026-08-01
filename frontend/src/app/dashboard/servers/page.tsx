@@ -342,6 +342,29 @@ export default function ServersPage() {
     }
   };
 
+  const handleSelfMonitorClick = async () => {
+    if (!isAdmin) return;
+    try {
+      setLoading(true);
+      const hostName = 'DatrixOps Control Plane (Self-Host)';
+      const createdServer = await apiClient('/servers', {
+        method: 'POST',
+        body: JSON.stringify({ name: hostName, tags: ['self-host', 'control-plane'] })
+      });
+      if (createdServer && (createdServer.enrollment_token || createdServer.agent_token)) {
+        setGeneratedAgentToken(createdServer.enrollment_token || createdServer.agent_token);
+        setNewServerName(hostName);
+        setSelectedOs('linux');
+        setIsAddServerModalOpen(true);
+        toast.success('Generated self-monitoring token! Run the command on your VPS.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate self-monitoring token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
@@ -357,6 +380,16 @@ export default function ServersPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleSelfMonitorClick}
+            disabled={!isAdmin}
+            title={!isAdmin ? 'Self-monitoring requires Admin role permission' : ''}
+            className="ops-button secondary flex items-center gap-2 border-[var(--accent-primary)]/40 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10"
+          >
+            <ShieldCheck className="h-4 w-4 text-[var(--accent-primary)]" />
+            Self-Monitor This VPS
+          </button>
           <button
             type="button"
             onClick={() => setIsUpdateAllOpen(true)}
