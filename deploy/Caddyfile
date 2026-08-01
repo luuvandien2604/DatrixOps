@@ -2,7 +2,8 @@
 	admin off
 }
 
-{$DATRIXOPS_DOMAIN::80} {
+http://{$DATRIXOPS_DOMAIN}, https://{$DATRIXOPS_DOMAIN} {
+	tls internal
 	encode zstd gzip
 
 	header {
