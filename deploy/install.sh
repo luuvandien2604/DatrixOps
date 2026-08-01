@@ -93,6 +93,10 @@ auto_configure_domain() {
         target_domain="${target_domain#https://}"
         target_domain="${target_domain%/}"
 
+        if [[ -z "$target_domain" || "$target_domain" == "monitor.example.com" ]]; then
+            target_domain="$detected_ip"
+        fi
+
         log_info "Configuring DatrixOps domain/IP: ${target_domain}"
 
         set_env_value "DATRIXOPS_DOMAIN" "$target_domain"
@@ -230,7 +234,7 @@ required_keys=(POSTGRES_PASSWORD JWT_SECRET DATRIXOPS_DOMAIN PUBLIC_URL ALLOWED_
 missing_vars=()
 for key in "${required_keys[@]}"; do
     value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)"
-    if [[ -z "$value" || "$value" == "monitor.example.com" || "$value" == "https://monitor.example.com" ]]; then
+    if [[ -z "$value" ]]; then
         missing_vars+=("$key")
     fi
 done
