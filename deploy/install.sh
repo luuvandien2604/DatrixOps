@@ -285,9 +285,26 @@ auto_self_enroll_host() {
 
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
         psql -U datrixops -d datrixops -c "
-            INSERT INTO servers (name, ip_address, agent_token, enrollment_token_hash, enrollment_token_expires_at, tags)
-            SELECT 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', '', '${token_hash}', NOW() + INTERVAL '24 hours', ARRAY['self-host', 'control-plane']
-            WHERE NOT EXISTS (SELECT 1 FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%');
+            DO \$\$
+            DECLARE
+                v_user_id UUID;
+                v_server_id UUID;
+            BEGIN
+                SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
+                IF v_user_id IS NOT NULL THEN
+                    SELECT id INTO v_server_id FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%' LIMIT 1;
+                    IF v_server_id IS NULL THEN
+                        INSERT INTO servers (user_id, name, ip_address, agent_token, enrollment_token_hash, enrollment_token_expires_at, tags)
+                        VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', '', '${token_hash}', NOW() + INTERVAL '24 hours', ARRAY['self-host', 'control-plane']);
+                    ELSE
+                        UPDATE servers
+                        SET enrollment_token_hash = '${token_hash}',
+                            enrollment_token_expires_at = NOW() + INTERVAL '24 hours',
+                            enrollment_used_at = NULL
+                        WHERE id = v_server_id AND (status != 'online' OR enrolled_at IS NULL);
+                    END IF;
+                END IF;
+            END \$\$;
         " < /dev/null 2>/dev/null || true
 
     if [[ -f "${PROJECT_ROOT}/frontend/public/install.sh" ]]; then
