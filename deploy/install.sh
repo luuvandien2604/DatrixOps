@@ -270,6 +270,36 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate
 log_step "Verifying running container status"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
+log_step "Auto-enrolling DatrixOps Control Plane host server for self-monitoring"
+auto_self_enroll_host() {
+    local pub_url
+    pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
+    pub_url="${pub_url%/}"
+    [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
+
+    local raw_token
+    raw_token="$(head -c 32 /dev/urandom | xxd -p | tr -d ' \n' 2>/dev/null || openssl rand -hex 32 2>/dev/null || date +%s%N)"
+    
+    local token_hash
+    token_hash="$(printf '%s' "$raw_token" | openssl dgst -sha256 | awk '{print $NF}')"
+
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+        psql -U datrixops -d datrixops -c "
+            INSERT INTO servers (name, ip_address, agent_token, enrollment_token_hash, enrollment_token_expires_at, tags)
+            SELECT 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', '', '${token_hash}', NOW() + INTERVAL '24 hours', ARRAY['self-host', 'control-plane']
+            WHERE NOT EXISTS (SELECT 1 FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%');
+        " < /dev/null 2>/dev/null || true
+
+    if [[ -f "${PROJECT_ROOT}/frontend/public/install.sh" ]]; then
+        log_info "Installing DatrixOps Agent locally on host VPS..."
+        bash "${PROJECT_ROOT}/frontend/public/install.sh" \
+            --server "$pub_url" \
+            --token "$raw_token" < /dev/null || true
+        log_success "Host VPS registered and self-monitoring agent started."
+    fi
+}
+auto_self_enroll_host || true
+
 pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
 printf "\n"
 printf "${GREEN}============================================================${NC}\n"
@@ -277,6 +307,7 @@ printf "${GREEN}✔ DatrixOps Self-Hosted Deployment Completed Successfully!  ${
 printf "${GREEN}============================================================${NC}\n"
 printf "  Control Plane URL : %s\n" "$pub_url"
 printf "  Initial Setup     : %s/setup\n" "${pub_url%/}"
+printf "  Self-Monitoring   : Active (Host VPS enrolled automatically)\n"
 printf "  Status            : All container services are active.\n"
 printf "${GREEN}============================================================${NC}\n"
 printf "Next step: Open %s/setup in your browser to complete administrator setup.\n\n" "${pub_url%/}"

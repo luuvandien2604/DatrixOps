@@ -127,6 +127,33 @@ for _ in $(seq 1 24); do
 done
 
 if [[ "$healthy" == "true" ]]; then
+    auto_self_enroll_host() {
+        local pub_url
+        pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
+        pub_url="${pub_url%/}"
+        [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
+
+        local raw_token
+        raw_token="$(head -c 32 /dev/urandom | xxd -p | tr -d ' \n' 2>/dev/null || openssl rand -hex 32 2>/dev/null || date +%s%N)"
+        local token_hash
+        token_hash="$(printf '%s' "$raw_token" | openssl dgst -sha256 | awk '{print $NF}')"
+
+        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+            psql -U datrixops -d datrixops -c "
+                INSERT INTO servers (name, ip_address, agent_token, enrollment_token_hash, enrollment_token_expires_at, tags)
+                SELECT 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', '', '${token_hash}', NOW() + INTERVAL '24 hours', ARRAY['self-host', 'control-plane']
+                WHERE NOT EXISTS (SELECT 1 FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%');
+            " < /dev/null 2>/dev/null || true
+
+        if [[ -f "${PROJECT_ROOT}/frontend/public/install.sh" ]]; then
+            log_info "Ensuring DatrixOps Agent is running locally for self-monitoring..."
+            bash "${PROJECT_ROOT}/frontend/public/install.sh" \
+                --server "$pub_url" \
+                --token "$raw_token" < /dev/null || true
+        fi
+    }
+    auto_self_enroll_host || true
+
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"
     printf "${GREEN}✔ DatrixOps Upgraded Successfully!                          ${NC}\n"
