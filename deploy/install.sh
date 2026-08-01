@@ -15,8 +15,47 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
+
+if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
+    INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
+    mkdir -p "${INSTALL_DIR}"
+    cd "${INSTALL_DIR}"
+    SCRIPT_DIR="${INSTALL_DIR}"
+    PROJECT_ROOT="${INSTALL_DIR}"
+
+    log_info "Deploying DatrixOps to ${INSTALL_DIR}..."
+    BASE_URL="https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy"
+    deploy_files=(
+        "docker-compose.yml"
+        "Caddyfile"
+        ".env.example"
+        "generate-secrets.sh"
+        "fetch-agent-release.sh"
+        "backup.sh"
+        "restore.sh"
+        "upgrade.sh"
+        "uninstall.sh"
+    )
+
+    for f in "${deploy_files[@]}"; do
+        if [[ ! -f "${INSTALL_DIR}/${f}" ]]; then
+            log_info "Fetching ${f}..."
+            curl -fsSL "${BASE_URL}/${f}" -o "${INSTALL_DIR}/${f}" || {
+                log_error "Failed to fetch ${f} from ${BASE_URL}/${f}"
+                exit 1
+            }
+        fi
+    done
+    chmod +x "${INSTALL_DIR}/"*.sh 2>/dev/null || true
+else
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${PROJECT_ROOT}/.env"
 

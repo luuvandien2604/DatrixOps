@@ -15,8 +15,22 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
+    if [[ ! -d "$SCRIPT_DIR" && -d "$(pwd)" && -f "$(pwd)/docker-compose.yml" ]]; then
+        SCRIPT_DIR="$(pwd)"
+    fi
+fi
+
+if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+    PROJECT_ROOT="$SCRIPT_DIR"
+    cd "$SCRIPT_DIR"
+else
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${PROJECT_ROOT}/.env"
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
