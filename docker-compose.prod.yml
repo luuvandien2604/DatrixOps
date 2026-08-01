@@ -15,10 +15,11 @@ services:
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health/live >/dev/null || wget -qO- --no-check-certificate https://127.0.0.1/health/live >/dev/null"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 10
+      start_period: 10s
 
   db:
     image: postgres:16-alpine

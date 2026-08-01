@@ -2,7 +2,7 @@
 	admin off
 }
 
-http://{$DATRIXOPS_DOMAIN}, https://{$DATRIXOPS_DOMAIN} {
+:80, :443 {
 	tls internal
 	encode zstd gzip
 

@@ -265,7 +265,7 @@ log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 
 log_info "Starting DatrixOps services in detached mode..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate
 
 log_step "Verifying running container status"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps

@@ -113,7 +113,7 @@ log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 
 log_info "Restarting services with updated code..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate < /dev/null
 
 log_info "Performing health checks..."
 healthy=false
