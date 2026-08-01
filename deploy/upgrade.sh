@@ -18,20 +18,32 @@ log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
-    SCRIPT_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    if [[ ! -d "$SCRIPT_DIR" && -d "$(pwd)" && -f "$(pwd)/docker-compose.yml" ]]; then
+    if [[ -d "/opt/datrixops/deploy" ]]; then
+        SCRIPT_DIR="/opt/datrixops/deploy"
+    else
         SCRIPT_DIR="$(pwd)"
     fi
 fi
 
-if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
-    PROJECT_ROOT="$SCRIPT_DIR"
-    cd "$SCRIPT_DIR"
-else
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    PROJECT_ROOT="${SCRIPT_DIR}"
+elif [[ -f "$(cd "${SCRIPT_DIR}/.." && pwd)/.env" ]]; then
     PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+    PROJECT_ROOT="${SCRIPT_DIR}"
 fi
 
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+elif [[ -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
+    COMPOSE_FILE="${PROJECT_ROOT}/deploy/docker-compose.yml"
+    SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+elif [[ -f "${PROJECT_ROOT}/docker-compose.prod.yml" ]]; then
+    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+else
+    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+fi
+
 ENV_FILE="${PROJECT_ROOT}/.env"
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
 
