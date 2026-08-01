@@ -327,7 +327,7 @@ auto_self_enroll_host() {
                 END IF;
 
                 SELECT id INTO v_server_id FROM servers
-                WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%'
+                WHERE tags @> '"self-host"'::jsonb OR name LIKE '%Control Plane%'
                 LIMIT 1;
 
                 IF v_server_id IS NULL THEN
@@ -341,7 +341,7 @@ auto_self_enroll_host() {
                         'offline',
                         '${credential_hash}',
                         NOW(),
-                        ARRAY['self-host', 'control-plane']
+                        '["self-host", "control-plane"]'::jsonb
                     );
                     RAISE NOTICE 'Self-host server record created.';
                 ELSE

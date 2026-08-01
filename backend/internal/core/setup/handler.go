@@ -202,13 +202,13 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 
 	var existingID string
 	err = h.db.Pool.QueryRow(ctx,
-		`SELECT id FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%' LIMIT 1`,
+		`SELECT id FROM servers WHERE tags @> '"self-host"'::jsonb OR name LIKE '%Control Plane%' LIMIT 1`,
 	).Scan(&existingID)
 
 	if err != nil {
 		_, _ = h.db.Pool.Exec(ctx,
 			`INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-			 VALUES ($1, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', $2, NOW(), ARRAY['self-host', 'control-plane'])`,
+			 VALUES ($1, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', $2, NOW(), '["self-host", "control-plane"]'::jsonb)`,
 			userID, credentialHash,
 		)
 	} else {
