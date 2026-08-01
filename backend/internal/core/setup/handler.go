@@ -1,10 +1,17 @@
 package setup
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -149,11 +156,69 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-claim and register host self-monitoring agent for superadmin
+	h.ensureSelfHostRegistration(r.Context(), userID, req.PublicURL)
+
 	w.Header().Set("Cache-Control", "no-store")
 	response.Success(w, http.StatusCreated, map[string]string{
 		"status":  "configured",
 		"user_id": userID,
 	})
+}
+
+func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, publicURL string) {
+	var token string
+	envContent, err := os.ReadFile("/etc/datrixops/agent.env")
+	if err == nil {
+		lines := strings.Split(string(envContent), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "DATRIXOPS_AGENT_TOKEN=") {
+				token = strings.TrimSpace(strings.TrimPrefix(line, "DATRIXOPS_AGENT_TOKEN="))
+				break
+			}
+		}
+	}
+
+	if token == "" {
+		buffer := make([]byte, 32)
+		if _, err := rand.Read(buffer); err == nil {
+			token = base64.RawURLEncoding.EncodeToString(buffer)
+			_ = os.MkdirAll("/etc/datrixops", 0700)
+			pub := strings.TrimRight(strings.TrimSpace(publicURL), "/")
+			if pub != "" {
+				envBody := fmt.Sprintf("DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n", pub, token)
+				_ = os.WriteFile("/etc/datrixops/agent.env", []byte(envBody), 0600)
+			}
+		}
+	}
+
+	if token == "" {
+		return
+	}
+
+	sum := sha256.Sum256([]byte(token))
+	credentialHash := hex.EncodeToString(sum[:])
+
+	var existingID string
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT id FROM servers WHERE 'self-host' = ANY(tags) OR name LIKE '%Control Plane%' LIMIT 1`,
+	).Scan(&existingID)
+
+	if err != nil {
+		_, _ = h.db.Pool.Exec(ctx,
+			`INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
+			 VALUES ($1, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', $2, NOW(), ARRAY['self-host', 'control-plane'])`,
+			userID, credentialHash,
+		)
+	} else {
+		_, _ = h.db.Pool.Exec(ctx,
+			`UPDATE servers
+			 SET user_id = $1, agent_token_hash = $2, enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW()
+			 WHERE id = $3`,
+			userID, credentialHash, existingID,
+		)
+	}
 }
 
 func validateCompleteRequest(req completeRequest) string {

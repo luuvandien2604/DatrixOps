@@ -344,6 +344,13 @@ export default function ServersPage() {
 
   const handleSelfMonitorClick = async () => {
     if (!isAdmin) return;
+    const existingSelfHost = servers.find(
+      s => s.name?.toLowerCase().includes('control plane') || s.tags?.includes('self-host')
+    );
+    if (existingSelfHost && existingSelfHost.status === 'online') {
+      toast.success('Control Plane host server is already monitored and currently ONLINE!');
+      return;
+    }
     try {
       setLoading(true);
       const hostName = 'DatrixOps Control Plane (Self-Host)';

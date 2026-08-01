@@ -272,12 +272,6 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 log_step "Auto-enrolling DatrixOps Control Plane host server for self-monitoring"
 auto_self_enroll_host() {
-    # Skip if agent is already running and healthy
-    if systemctl is-active datrixops-agent &>/dev/null; then
-        log_info "DatrixOps Agent is already running on this host. Skipping."
-        return 0
-    fi
-
     local pub_url
     pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
     pub_url="${pub_url%/}"
@@ -306,9 +300,14 @@ auto_self_enroll_host() {
         return 0
     fi
 
-    # Generate a permanent agent credential (raw + SHA-256 hash)
-    local raw_credential
-    raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
+    # Reuse existing credential if agent.env exists, otherwise generate a new permanent agent credential
+    local raw_credential=""
+    if [[ -f /etc/datrixops/agent.env ]]; then
+        raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/agent.env | tr -d '\r\n')"
+    fi
+    if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
+        raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
+    fi
     local credential_hash
     credential_hash="$(printf '%s' "$raw_credential" | sha256sum | awk '{print $1}')"
 
@@ -354,7 +353,7 @@ auto_self_enroll_host() {
                     RAISE NOTICE 'Self-host server record updated.';
                 END IF;
             END \$\$;
-        " < /dev/null || { log_warn "Database registration failed. Self-monitoring skipped."; return 0; }
+        " < /dev/null || log_warn "Database registration notice (will auto-bind upon setup completion)."
 
     # Install agent binary
     log_info "Installing DatrixOps Agent binary on host..."

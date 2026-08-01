@@ -128,11 +128,6 @@ done
 
 if [[ "$healthy" == "true" ]]; then
     auto_self_enroll_host() {
-        if systemctl is-active datrixops-agent &>/dev/null; then
-            log_info "DatrixOps Agent is already running on this host."
-            return 0
-        fi
-
         local pub_url
         pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
         pub_url="${pub_url%/}"
@@ -156,8 +151,13 @@ if [[ "$healthy" == "true" ]]; then
         done
         [[ -n "$agent_binary" ]] || return 0
 
-        local raw_credential
-        raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
+        local raw_credential=""
+        if [[ -f /etc/datrixops/agent.env ]]; then
+            raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/agent.env | tr -d '\r\n')"
+        fi
+        if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
+            raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
+        fi
         local credential_hash
         credential_hash="$(printf '%s' "$raw_credential" | sha256sum | awk '{print $1}')"
 

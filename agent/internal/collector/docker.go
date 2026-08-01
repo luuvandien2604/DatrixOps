@@ -31,9 +31,9 @@ func collectDockerContainers() []DockerContainer {
 
 	// 2. Get list of containers with state/status
 	psCmd := exec.CommandContext(ctx, cmdPath, "ps", "-a", "--format", `{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}"}`)
-	psOut, err := psCmd.CombinedOutput()
+	psOut, err := psCmd.Output()
 	if err != nil {
-		log.Printf("Docker collector: failed to run docker ps: %v, output: %s", err, string(psOut))
+		log.Printf("Docker collector: failed to run docker ps: %v", err)
 		return nil
 	}
 
