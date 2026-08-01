@@ -201,51 +201,22 @@ check_and_install_docker() {
 }
 
 check_and_install_nginx() {
-    if ! command -v nginx >/dev/null 2>&1; then
-        log_info "Nginx web server is not installed. Installing Nginx automatically..."
-        ensure_root
-
-        local pkg_mgr
-        pkg_mgr="$(get_pkg_manager)"
-        case "$pkg_mgr" in
-            apt)
-                log_info "Installing Nginx package via apt-get..."
-                apt-get update -qq && apt-get install -y -qq nginx
-                ;;
-            dnf)
-                log_info "Installing Nginx package via dnf..."
-                dnf install -y -q nginx
-                ;;
-            yum)
-                log_info "Installing Nginx package via yum..."
-                yum install -y -q epel-release || true
-                yum install -y -q nginx
-                ;;
-            pacman)
-                log_info "Installing Nginx package via pacman..."
-                pacman -Sy --noconfirm nginx
-                ;;
-            apk)
-                log_info "Installing Nginx package via apk..."
-                apk add --no-cache nginx
-                ;;
-            *)
-                log_warn "Package manager '$pkg_mgr' is not supported for automatic Nginx installation."
-                ;;
-        esac
-
-        if command -v systemctl >/dev/null 2>&1; then
-            systemctl enable --now nginx >/dev/null 2>&1 || true
-        elif command -v service >/dev/null 2>&1; then
-            service nginx start >/dev/null 2>&1 || true
+    if command -v systemctl >/dev/null 2>&1; then
+        if systemctl is-active --quiet nginx 2>/dev/null; then
+            log_info "Stopping host Nginx service to free port 80/443 for Caddy Gateway..."
+            systemctl stop nginx 2>/dev/null || true
+            systemctl disable nginx 2>/dev/null || true
         fi
+        if systemctl is-active --quiet apache2 2>/dev/null; then
+            log_info "Stopping host Apache service to free port 80/443 for Caddy Gateway..."
+            systemctl stop apache2 2>/dev/null || true
+            systemctl disable apache2 2>/dev/null || true
+        fi
+    elif command -v service >/dev/null 2>&1; then
+        service nginx stop 2>/dev/null || true
+        service apache2 stop 2>/dev/null || true
     fi
-
-    if command -v nginx >/dev/null 2>&1; then
-        log_success "Nginx web server is ready."
-    else
-        log_warn "Nginx was not installed automatically. Make sure your reverse proxy is configured manually."
-    fi
+    log_success "Port 80/443 is clear for Caddy Gateway."
 }
 
 log_step "Step 1/5: Checking and installing system dependencies (Docker, Docker Compose, Nginx)"

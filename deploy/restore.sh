@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+if [[ ! -f "$COMPOSE_FILE" && -f "${PROJECT_ROOT}/docker-compose.prod.yml" ]]; then
+    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+fi
 ENV_FILE="${PROJECT_ROOT}/.env"
 BACKUP_FILE="${1:-}"
 CONFIRM="${2:-}"
@@ -37,11 +44,18 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "Restored ${ENV_FILE} from the backup archive. Protect this file because it contains secrets."
 fi
 
+DB_SERVICE="database"
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --services 2>/dev/null | grep -q "^database$"; then
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --services 2>/dev/null | grep -q "^db$"; then
+        DB_SERVICE="db"
+    fi
+fi
+
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" stop backend worker
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d database
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d "$DB_SERVICE"
 database_ready=false
 for _ in $(seq 1 30); do
-    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" \
         pg_isready -U datrixops -d datrixops >/dev/null 2>&1; then
         database_ready=true
         break
@@ -52,10 +66,10 @@ if [[ "$database_ready" != "true" ]]; then
     echo "ERROR: PostgreSQL did not become ready within 60 seconds." >&2
     exit 1
 fi
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" \
     pg_restore -U datrixops -d datrixops --clean --if-exists --no-owner \
     <"${STAGING_DIR}/database.dump"
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 echo "Restore completed. Verify the dashboard and Agent connectivity."

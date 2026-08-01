@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR="$(pwd)"
+fi
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+if [[ ! -f "$COMPOSE_FILE" && -f "${PROJECT_ROOT}/docker-compose.prod.yml" ]]; then
+    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
+fi
 ENV_FILE="${PROJECT_ROOT}/.env"
 BACKUP_DIR="${DATRIXOPS_BACKUP_DIR:-${PROJECT_ROOT}/backups}"
 TIMESTAMP="$(date -u +%Y-%m-%d-%H%M%S)"
@@ -18,7 +25,14 @@ trap 'rm -rf -- "$STAGING_DIR"' EXIT
 mkdir -p "$BACKUP_DIR"
 umask 077
 
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+DB_SERVICE="database"
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --services 2>/dev/null | grep -q "^database$"; then
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --services 2>/dev/null | grep -q "^db$"; then
+        DB_SERVICE="db"
+    fi
+fi
+
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" \
     pg_dump -U datrixops -d datrixops -Fc >"${STAGING_DIR}/database.dump"
 test -s "${STAGING_DIR}/database.dump" || {
     echo "ERROR: PostgreSQL dump is empty." >&2
