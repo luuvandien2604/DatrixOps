@@ -289,14 +289,24 @@ auto_self_enroll_host() {
     local agent_binary=""
     for candidate in \
         "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
-        "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}"; do
+        "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}" \
+        "/usr/local/bin/datrixops-agent"; do
         if [[ -f "$candidate" && -s "$candidate" ]]; then
             agent_binary="$candidate"
             break
         fi
     done
     if [[ -z "$agent_binary" ]]; then
-        log_warn "Agent binary not found. Self-monitoring skipped."
+        log_info "Downloading Agent binary for self-host monitoring..."
+        local tmp_bin="/tmp/datrixops-agent-download"
+        if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+            agent_binary="$tmp_bin"
+        elif curl -fsSL "https://github.com/luuvandien2604/datrixops-agent/releases/latest/download/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+            agent_binary="$tmp_bin"
+        fi
+    fi
+    if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+        log_warn "DatrixOps Agent binary could not be found or downloaded for self-monitoring."
         return 0
     fi
 

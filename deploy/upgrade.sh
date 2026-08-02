@@ -165,13 +165,28 @@ if [[ "$healthy" == "true" ]]; then
         local agent_binary=""
         for candidate in \
             "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
-            "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}"; do
+            "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}" \
+            "/usr/local/bin/datrixops-agent"; do
             if [[ -f "$candidate" && -s "$candidate" ]]; then
                 agent_binary="$candidate"
                 break
             fi
         done
-        [[ -n "$agent_binary" ]] || return 0
+
+        if [[ -z "$agent_binary" ]]; then
+            log_info "Downloading Agent binary for self-host monitoring..."
+            local tmp_bin="/tmp/datrixops-agent-download"
+            if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+                agent_binary="$tmp_bin"
+            elif curl -fsSL "https://github.com/luuvandien2604/datrixops-agent/releases/latest/download/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+                agent_binary="$tmp_bin"
+            fi
+        fi
+
+        if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+            log_warn "DatrixOps Agent binary could not be found or downloaded for self-monitoring."
+            return 0
+        fi
 
         local raw_credential=""
         if [[ -f /etc/datrixops/agent.env ]]; then
@@ -195,12 +210,13 @@ if [[ "$healthy" == "true" ]]; then
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
                         VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                     ELSE
-                        UPDATE servers SET agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
+                        UPDATE servers SET user_id = v_user_id, agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
                     END IF;
                 END \$\$;
             " < /dev/null || return 0
 
         install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
+        rm -f /tmp/datrixops-agent-download 2>/dev/null || true
         install -d -m 0700 /etc/datrixops
         printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/agent.env
         chmod 0600 /etc/datrixops/agent.env
