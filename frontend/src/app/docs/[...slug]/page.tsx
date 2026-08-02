@@ -23,9 +23,9 @@ const legacyRoutes: Record<string, string> = {
 };
 
 function localizedParams(slug: string[]): { locale: DocLocale; contentSlug: string[]; prefix: string } {
-  if (slug[0] === 'en') return { locale: 'en', contentSlug: slug.slice(1), prefix: '/docs/en' };
-  if (slug[0] === 'vi') return { locale: 'vi', contentSlug: slug.slice(1), prefix: '/docs' };
-  return { locale: 'vi', contentSlug: slug, prefix: '/docs' };
+  if (slug[0] === 'vi') return { locale: 'vi', contentSlug: slug.slice(1), prefix: '/docs/vi' };
+  if (slug[0] === 'en') return { locale: 'en', contentSlug: slug.slice(1), prefix: '/docs' };
+  return { locale: 'en', contentSlug: slug, prefix: '/docs' };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string[] }> }): Promise<Metadata> {
@@ -33,15 +33,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { locale, contentSlug, prefix } = localizedParams(slug);
   const doc = getDocBySlug(contentSlug, locale);
   if (!doc) return { title: locale === 'en' ? 'Documentation not found | DatrixOps' : 'Không tìm thấy tài liệu | DatrixOps' };
-  const alternatePrefix = locale === 'en' ? '/docs' : '/docs/en';
+  const alternatePrefix = locale === 'vi' ? '/docs/vi' : '/docs';
   return {
     title: `${doc.title} | DatrixOps Docs`,
     description: doc.description,
     alternates: {
       canonical: `${prefix}/${doc.slug}`,
       languages: {
-        'vi-VN': `${locale === 'vi' ? prefix : alternatePrefix}/${doc.slug}`,
-        'en-US': `${locale === 'en' ? prefix : alternatePrefix}/${doc.slug}`,
+        'en-US': `${locale === 'en' ? prefix : '/docs'}/${doc.slug}`,
+        'vi-VN': `${locale === 'vi' ? prefix : '/docs/vi'}/${doc.slug}`,
       },
     },
     openGraph: { title: doc.title, description: doc.description, type: 'article' },
@@ -51,7 +51,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function DocPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = await params;
   const { locale, contentSlug, prefix } = localizedParams(slug);
-  if (slug[0] === 'vi' && contentSlug.length === 0) redirect('/docs');
+  if (slug[0] === 'en' && contentSlug.length === 0) redirect('/docs');
   const legacyTarget = legacyRoutes[contentSlug.join('/')];
   if (legacyTarget) redirect(`${prefix}/${legacyTarget}`);
   const doc = getDocBySlug(contentSlug, locale);

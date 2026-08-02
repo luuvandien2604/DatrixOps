@@ -23,7 +23,7 @@ export default function DocsShell({
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchInput = useRef<HTMLInputElement>(null);
-  const locale: DocLocale = pathname === '/docs/en' || pathname.startsWith('/docs/en/') ? 'en' : 'vi';
+  const locale: DocLocale = pathname === '/docs/vi' || pathname.startsWith('/docs/vi/') ? 'vi' : 'en';
   const navigation = navigationByLocale[locale];
   const searchIndex = searchIndexByLocale[locale];
   const copy = locale === 'en' ? {
@@ -50,14 +50,14 @@ export default function DocsShell({
     language: 'Ngôn ngữ tài liệu',
   };
 
-  const localizedPath = (slug: string) => locale === 'en' ? `/docs/en/${slug}` : `/docs/${slug}`;
+  const localizedPath = (slug: string) => locale === 'vi' ? `/docs/vi/${slug}` : `/docs/${slug}`;
   const switchLocale = (nextLocale: DocLocale) => {
     if (nextLocale === locale) return;
-    const contentPath = locale === 'en'
-      ? pathname.replace(/^\/docs\/en\/?/, '')
-      : pathname.replace(/^\/docs\/?/, '');
-    const target = nextLocale === 'en'
-      ? `/docs/en${contentPath ? `/${contentPath}` : ''}`
+    const contentPath = locale === 'vi'
+      ? pathname.replace(/^\/docs\/vi\/?/, '')
+      : pathname.replace(/^\/docs\/en\/?/, '').replace(/^\/docs\/?/, '');
+    const target = nextLocale === 'vi'
+      ? `/docs/vi${contentPath ? `/${contentPath}` : ''}`
       : `/docs${contentPath ? `/${contentPath}` : ''}`;
     router.push(target);
   };
@@ -106,8 +106,8 @@ export default function DocsShell({
               <Languages aria-hidden="true" />
               <span className="sr-only">{copy.language}</span>
               <select value={locale} onChange={(event) => switchLocale(event.target.value as DocLocale)} aria-label={copy.language}>
-                <option value="vi">Tiếng Việt</option>
                 <option value="en">English</option>
+                <option value="vi">Tiếng Việt</option>
               </select>
             </label>
             <ThemeToggle />
