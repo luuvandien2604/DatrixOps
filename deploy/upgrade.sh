@@ -124,16 +124,26 @@ fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
 
-target_agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "${PROJECT_ROOT}/deploy/.env.example" 2>/dev/null | tail -n 1)"
+target_agent_ver="$(grep -m 1 -h '^[[:space:]]*AGENT_VERSION=' \
+    "${PROJECT_ROOT}/deploy/.env.example" \
+    "${PROJECT_ROOT}/.env.example" \
+    "${SCRIPT_DIR}/.env.example" \
+    2>/dev/null | cut -d'=' -f2 | tr -d ' "\r\n')"
+
 if [[ -n "$target_agent_ver" ]]; then
-    if grep -q '^AGENT_VERSION=' "$ENV_FILE"; then
-        sed -i "s/^AGENT_VERSION=.*/AGENT_VERSION=${target_agent_ver}/" "$ENV_FILE"
-    else
-        echo "AGENT_VERSION=${target_agent_ver}" >> "$ENV_FILE"
-    fi
+    for env_target in "$ENV_FILE" "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"; do
+        if [[ -f "$env_target" ]]; then
+            if grep -q '^[[:space:]]*AGENT_VERSION=' "$env_target"; then
+                sed -i "s/^[[:space:]]*AGENT_VERSION=.*/AGENT_VERSION=${target_agent_ver}/" "$env_target"
+            else
+                echo "AGENT_VERSION=${target_agent_ver}" >> "$env_target"
+            fi
+        fi
+    done
+    log_info "Synced AGENT_VERSION=${target_agent_ver} to environment configuration."
 fi
 
-agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "$ENV_FILE" | tail -n 1)"
+agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
 [[ -n "$agent_ver" ]] || agent_ver="1.5.3"
 log_info "Fetching Agent version v${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
