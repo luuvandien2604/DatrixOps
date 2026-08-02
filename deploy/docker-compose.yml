@@ -9,7 +9,7 @@ x-logging: &default-logging
 x-backend-environment: &backend-environment
   DATABASE_URL: postgres://datrixops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/datrixops?sslmode=disable
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-  AGENT_VERSION: ${AGENT_VERSION:-1.0.0}
+  AGENT_VERSION: ${AGENT_VERSION:-1.5.3}
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
   PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
   DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self-hosted}

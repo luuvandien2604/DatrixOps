@@ -686,6 +686,30 @@ update_backend_agent_version() {
     echo "Backend now reports AGENT_VERSION=${backend_version}"
 }
 
+update_tracked_version_configs() {
+    info "Updating version in tracked configuration files..."
+
+    if [[ -f "$PROJECT_ROOT/deploy/.env.example" ]]; then
+        set_env_value "$PROJECT_ROOT/deploy/.env.example" "AGENT_VERSION" "$AGENT_VERSION"
+    fi
+    if [[ -f "$PROJECT_ROOT/.env.example" ]]; then
+        set_env_value "$PROJECT_ROOT/.env.example" "AGENT_VERSION" "$AGENT_VERSION"
+    fi
+
+    local cfile
+    local compose_files=(
+        "$PROJECT_ROOT/docker-compose.yml"
+        "$PROJECT_ROOT/deploy/docker-compose.yml"
+        "$PROJECT_ROOT/docker-compose.prod.yml"
+    )
+    for cfile in "${compose_files[@]}"; do
+        if [[ -f "$cfile" ]]; then
+            sed -i "s/AGENT_VERSION: \${AGENT_VERSION:-[^\}]*}/AGENT_VERSION: \${AGENT_VERSION:-${AGENT_VERSION}}/" "$cfile"
+            sed -i "s/AGENT_VERSION=\${AGENT_VERSION:-[^\}]*}/AGENT_VERSION=\${AGENT_VERSION:-${AGENT_VERSION}}/" "$cfile"
+        fi
+    done
+}
+
 main() {
     load_release_environment
     read_arguments "$@"
@@ -767,6 +791,7 @@ main() {
     activate_frontend_release_mount
     verify_public_release
     update_backend_agent_version
+    update_tracked_version_configs
 
     unset AGENT_SIGNING_PRIVATE_KEY
 
