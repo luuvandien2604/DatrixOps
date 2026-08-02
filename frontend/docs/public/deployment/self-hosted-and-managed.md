@@ -44,10 +44,20 @@ Sau khi cài xong, mở `http://<IP-VPS-CUA-BAN>/setup` để tạo tài khoản
 
 ## Nâng cấp hệ thống Self-Hosted
 
-Khi có phiên bản mới, chỉ cần chạy:
+Quy trình nâng cấp phiên bản Self-Hosted gồm 2 bước linh hoạt:
+
+### 1. Nâng cấp Control Plane (VPS chính)
+Khi có phiên bản mới, chạy lệnh sau trên VPS cài đặt DatrixOps để cập nhật Web Dashboard, Backend API và Agent tự giám sát của VPS chính:
 
 ```bash
-./deploy/upgrade.sh
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
 ```
 
 Hệ thống sẽ tự động sao lưu dữ liệu, tải bản cập nhật mới nhất, chạy migration và khởi động lại dịch vụ mượt mà.
+
+### 2. Nâng cấp các Agent vệ tinh (Target Servers / Nodes)
+👉 **Không cần SSH vào từng máy chủ vệ tinh!**
+
+- Ngay sau khi Control Plane nâng cấp lên phiên bản mới, Dashboard Web sẽ so sánh và hiển thị nhãn **`Update available`** cho các máy chủ vệ tinh đang chạy bản Agent cũ.
+- Người vận hành chỉ cần nhấn nút **"Update Agent"** (hoặc chọn hàng loạt và nhấn **"Update all agents"**) trực tiếp trên Dashboard Web.
+- Control Plane sẽ gửi tác vụ cập nhật ngầm. Agent vệ tinh tự động tải bản binary mới từ Control Plane, nâng cấp tại chỗ (In-Place Update) và khởi động lại dịch vụ hoàn toàn tự động.

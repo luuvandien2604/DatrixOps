@@ -2,19 +2,26 @@
 
 DatrixOps provides an automated, zero-downtime upgrade path for self-hosted instances.
 
-## Upgrading DatrixOps
+## Upgrading Self-Hosted DatrixOps
 
-To upgrade DatrixOps to the latest release, run the upgrade script from your installation directory:
+DatrixOps features a 2-tier architecture for seamless upgrades:
 
-```bash
-./deploy/upgrade.sh
-```
+### 1. Control Plane & Self-Monitoring Agent Upgrade
 
-Or run the 1-liner upgrade command directly:
+To upgrade the DatrixOps Control Plane (Web Dashboard, Backend API, and the host's own self-monitoring agent), run the 1-liner upgrade command directly on the host VPS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
 ```
+
+### 2. Remote Agent Nodes Upgrade (Zero SSH Required)
+
+For all remote servers/nodes monitored by your DatrixOps instance:
+
+1. As soon as the Control Plane is upgraded, the Web Dashboard automatically checks remote agent heartbeats against the new `AGENT_VERSION`.
+2. Any server running an older agent version will display an **Update available** badge on the **Servers** page (`/dashboard/servers`).
+3. Operators can trigger an in-place upgrade by clicking **Update Agent** or **Update all agents** directly in the Dashboard UI.
+4. The Control Plane dispatches a signed `agent_update` task. The remote Agent automatically downloads the new binary from the Control Plane and performs a seamless background restart without interrupting monitoring.
 
 ## How the Upgrade Process Works
 

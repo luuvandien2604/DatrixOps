@@ -43,10 +43,20 @@ After installation completes, open `http://<your-vps-ip>/setup` in your browser 
 
 ## Upgrading Self-Hosted DatrixOps
 
-To upgrade to the latest version, run:
+The self-hosted upgrade workflow consists of two streamlined steps:
+
+### 1. Upgrade the Control Plane Host
+To upgrade the Control Plane (Web Dashboard, Backend API, and host self-monitoring agent) to the latest version, run:
 
 ```bash
-./deploy/upgrade.sh
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
 ```
 
 The script automatically backs up your database, fetches the latest release, applies migrations, and restarts services safely.
+
+### 2. Upgrade Remote Monitored Agents (Satellite Nodes)
+👉 **No SSH access required for remote servers!**
+
+- Once the Control Plane is upgraded, the Web Dashboard automatically detects any remote target servers running older Agent versions and labels them **`Update available`**.
+- Operators simply click **"Update Agent"** (or select multiple servers and click **"Update all agents"**) directly from the Web Dashboard.
+- The Control Plane queues an in-place update task. Remote Agents download the signed binary from the Control Plane and restart automatically in the background.
