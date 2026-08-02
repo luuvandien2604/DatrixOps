@@ -38,9 +38,9 @@ func NewClient(publicKey ed25519.PublicKey) *Client {
 					return fmt.Errorf("too many update redirects")
 				}
 
-				if request.URL.Scheme != "https" {
+				if request.URL.Scheme != "https" && request.URL.Scheme != "http" {
 					return fmt.Errorf(
-						"update redirect must use HTTPS",
+						"update redirect must use HTTP or HTTPS",
 					)
 				}
 
@@ -248,9 +248,9 @@ func validateUpdateURL(rawURL string) error {
 		)
 	}
 
-	if parsedURL.Scheme != "https" {
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
 		return fmt.Errorf(
-			"update URL must use HTTPS: %s",
+			"update URL must use HTTP or HTTPS: %s",
 			rawURL,
 		)
 	}
