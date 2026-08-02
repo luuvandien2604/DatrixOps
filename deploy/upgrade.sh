@@ -164,9 +164,9 @@ if [[ "$healthy" == "true" ]]; then
 
         local agent_binary=""
         for candidate in \
+            "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
             "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
-            "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}" \
-            "/usr/local/bin/datrixops-agent"; do
+            "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}"; do
             if [[ -f "$candidate" && -s "$candidate" ]]; then
                 agent_binary="$candidate"
                 break
