@@ -141,7 +141,7 @@ log_info "Performing health checks..."
 healthy=false
 for _ in $(seq 1 24); do
     if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
-        wget -qO- http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+        wget -qO- http://127.0.0.1:8080/health/ready < /dev/null >/dev/null 2>&1; then
         healthy=true
         break
     fi
@@ -176,7 +176,9 @@ if [[ "$healthy" == "true" ]]; then
         if [[ -z "$agent_binary" ]]; then
             log_info "Downloading Agent binary for self-host monitoring..."
             local tmp_bin="/tmp/datrixops-agent-download"
-            if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+            if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
+                agent_binary="$tmp_bin"
+            elif curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
                 agent_binary="$tmp_bin"
             elif curl -fsSL "https://github.com/luuvandien2604/datrixops-agent/releases/latest/download/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
                 agent_binary="$tmp_bin"
