@@ -123,7 +123,18 @@ if [[ "$use_git" == "false" ]]; then
 fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
+
+target_agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "${PROJECT_ROOT}/deploy/.env.example" 2>/dev/null | tail -n 1)"
+if [[ -n "$target_agent_ver" ]]; then
+    if grep -q '^AGENT_VERSION=' "$ENV_FILE"; then
+        sed -i "s/^AGENT_VERSION=.*/AGENT_VERSION=${target_agent_ver}/" "$ENV_FILE"
+    else
+        echo "AGENT_VERSION=${target_agent_ver}" >> "$ENV_FILE"
+    fi
+fi
+
 agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "$ENV_FILE" | tail -n 1)"
+[[ -n "$agent_ver" ]] || agent_ver="1.5.3"
 log_info "Fetching Agent version v${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
 
