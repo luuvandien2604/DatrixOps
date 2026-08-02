@@ -1,46 +1,58 @@
-# Installation
+# Installation Guide
 
-## Host Requirements
+DatrixOps can be deployed in two simple ways: as a **Self-Hosted Control Plane** on your primary server, and by installing the **Open-Source DatrixOps Agent** on target Linux hosts.
 
-- Ubuntu 20.04/22.04/24.04, Debian 12, or CentOS/RHEL/Rocky Linux.
-- At least 1 CPU, 2 GB RAM and 20 GB persistent disk space for a standard deployment.
-- Inbound TCP ports 80 and 443; outbound HTTPS access for downloading container images and Agent release packages.
+---
 
-## Automated Installation (Recommended)
+## 🖥️ 1. Control Plane Server Installation
 
-Run the automated 1-liner installer as root on your VPS:
+### Host Requirements
+- **OS**: Ubuntu 20.04 / 22.04 / 24.04, Debian 12, CentOS / RHEL / Rocky Linux.
+- **Hardware**: Minimum 1 CPU Core, 2 GB RAM, 20 GB Disk space.
+- **Network**: Inbound TCP ports `80` and `443` open; outbound HTTPS access.
+
+### Automated 1-Click Installer (Recommended)
+
+Run the following command as `root` or with `sudo` on your server:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/install.sh | sudo bash
 ```
 
-The installer script automatically handles the entire setup:
-1. Installs Docker Engine, Docker Compose v2, and Nginx if they are not already installed on the server.
-2. Auto-detects your VPS Public IP address (or prompts for a custom domain) and configures `.env` with secure generated secrets.
-3. Downloads pre-compiled, signed Agent release binaries or compiles them locally if online releases are unavailable.
-4. Executes database migrations and starts DatrixOps containers in detached mode (`docker compose up -d`).
+#### What the installer does:
+1. Installs Docker Engine, Docker Compose v2, and Nginx if missing.
+2. Auto-detects your server's Public IP address and generates strong random passwords for PostgreSQL and JWT auth in `/opt/datrixops/.env`.
+3. Pulls pre-built production container images from GitHub Container Registry (`ghcr.io/luuvandien2604/*`).
+4. Launches the database, runs schema migrations automatically, and starts backend and frontend services via Docker Compose.
 
-## Manual / Git Installation
+### Initial Web Setup Wizard
+1. Open your browser and navigate to `http://<your-vps-ip>/setup`.
+2. The initial wizard verifies database health, locks registration, and creates the primary Administrator account.
+3. Log in to access your DatrixOps Control Plane dashboard.
 
-If you are setting up a development instance or cloning the repository manually:
+---
+
+## 🤖 2. Agent Installation on Target VPS
+
+To monitor remote Linux servers:
+
+1. Log in to your DatrixOps Dashboard and navigate to **Servers** ➔ **Add Server**.
+2. Copy the generated 1-click Agent Installation command:
 
 ```bash
-git clone https://github.com/luuvandien2604/DatrixOps.git
-cd DatrixOps
-./deploy/install.sh
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/install-agent.sh | sudo bash -s -- --token <YOUR_AGENT_TOKEN> --server https://<your-vps-ip>/api/v1
 ```
 
-## Initial Setup Wizard
+The agent runs as a lightweight `systemd` service (`datrix-agent`), consuming less than 15MB RAM and under 0.5% CPU.
 
-1. Open `http://<your-vps-ip>/setup` (or `https://<your-domain>/setup`) in your web browser.
-2. The setup wizard verifies database connectivity, locks public registration, and creates the first administrator account.
-3. Once created, log in to access the DatrixOps Control Plane.
+---
 
-## Storage and Logs
+## 📂 Configuration & Storage Locations
 
-- **Database:** Stored in named Docker volume `postgres_data`.
-- **Caddy Certificates:** Stored in `caddy_data` and `caddy_config`.
-- **Configuration:** Stored in `.env` (mode 0600).
-- **View Container Logs:** `docker compose -f deploy/docker-compose.yml logs -f`
-
-Container logs are configured to automatically rotate at 10 MB per file, keeping up to 5 historical log files per container.
+- **System Path**: `/opt/datrixops`
+- **Environment & Secrets**: `/opt/datrixops/.env` (Mode 0600)
+- **Database Storage**: Docker Volume `postgres_data`
+- **Logs Inspection**:
+  ```bash
+  cd /opt/datrixops && docker compose logs -f
+  ```
