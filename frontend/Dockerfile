@@ -10,6 +10,7 @@ RUN npm ci
 
 COPY src ./src
 COPY public ./public
+COPY docs ./docs
 COPY next.config.ts .
 COPY tsconfig.json .
 COPY postcss.config.mjs .
@@ -31,6 +32,7 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
