@@ -395,7 +395,11 @@ SERVICE_EOF
 
     log_success "Host VPS self-monitoring agent installed and started."
 }
-auto_self_enroll_host || log_warn "Self-monitoring setup encountered an issue (non-fatal)."
+if [[ -d "${PROJECT_ROOT}" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
+    ln -sf "${SCRIPT_DIR}/upgrade.sh" "${PROJECT_ROOT}/upgrade.sh" 2>/dev/null || true
+    ln -sf "${SCRIPT_DIR}/backup.sh" "${PROJECT_ROOT}/backup.sh" 2>/dev/null || true
+    ln -sf "${SCRIPT_DIR}/restore.sh" "${PROJECT_ROOT}/restore.sh" 2>/dev/null || true
+fi
 
 pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
 printf "\n"

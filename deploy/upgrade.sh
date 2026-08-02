@@ -15,40 +15,63 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    if [[ -d "/opt/datrixops/deploy" ]]; then
-        SCRIPT_DIR="/opt/datrixops/deploy"
+find_environment() {
+    local start_dir=""
+    if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+        start_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     else
-        SCRIPT_DIR="$(pwd)"
+        start_dir="$(pwd)"
     fi
-fi
 
-if [[ -f "${SCRIPT_DIR}/.env" ]]; then
-    PROJECT_ROOT="${SCRIPT_DIR}"
-elif [[ -f "$(cd "${SCRIPT_DIR}/.." && pwd)/.env" ]]; then
-    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-else
-    PROJECT_ROOT="${SCRIPT_DIR}"
-fi
+    ENV_FILE=""
+    PROJECT_ROOT=""
 
-if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
-    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-elif [[ -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
-    COMPOSE_FILE="${PROJECT_ROOT}/deploy/docker-compose.yml"
-    SCRIPT_DIR="${PROJECT_ROOT}/deploy"
-elif [[ -f "${PROJECT_ROOT}/docker-compose.prod.yml" ]]; then
-    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
-else
-    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-fi
+    if [[ -f "${start_dir}/.env" ]]; then
+        ENV_FILE="${start_dir}/.env"
+        PROJECT_ROOT="${start_dir}"
+    elif [[ -f "$(cd "${start_dir}/.." 2>/dev/null && pwd)/.env" && "$(basename "$start_dir")" == "deploy" ]]; then
+        PROJECT_ROOT="$(cd "${start_dir}/.." 2>/dev/null && pwd)"
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    elif [[ -f "${start_dir}/deploy/.env" ]]; then
+        PROJECT_ROOT="${start_dir}"
+        ENV_FILE="${start_dir}/deploy/.env"
+    elif [[ -f "/opt/datrixops/.env" ]]; then
+        PROJECT_ROOT="/opt/datrixops"
+        ENV_FILE="/opt/datrixops/.env"
+    elif [[ -f "/opt/datrixops/deploy/.env" ]]; then
+        PROJECT_ROOT="/opt/datrixops/deploy"
+        ENV_FILE="/opt/datrixops/deploy/.env"
+    elif [[ -f "$(pwd)/.env" ]]; then
+        PROJECT_ROOT="$(pwd)"
+        ENV_FILE="$(pwd)/.env"
+    fi
 
-ENV_FILE="${PROJECT_ROOT}/.env"
+    if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
+        PROJECT_ROOT="${PROJECT_ROOT:-${start_dir}}"
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    fi
+
+    if [[ -d "${PROJECT_ROOT}/deploy" && -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    elif [[ -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${PROJECT_ROOT}"
+        COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
+    elif [[ -f "${start_dir}/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${start_dir}"
+        COMPOSE_FILE="${start_dir}/docker-compose.yml"
+    else
+        SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    fi
+}
+find_environment
+
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
 
 [[ -f "$ENV_FILE" ]] || {
     log_error "Missing configuration file: ${ENV_FILE}"
+    log_info "Looked for .env in: ${PROJECT_ROOT}/.env, /opt/datrixops/.env"
     exit 1
 }
 
@@ -167,10 +190,10 @@ if [[ "$healthy" == "true" ]]; then
                 BEGIN
                     SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                     IF v_user_id IS NULL THEN RETURN; END IF;
-                    SELECT id INTO v_server_id FROM servers WHERE tags @> '"self-host"'::jsonb OR name LIKE '%Control Plane%' LIMIT 1;
+                    SELECT id INTO v_server_id FROM servers WHERE tags @> '\"self-host\"'::jsonb OR name LIKE '%Control Plane%' LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                        VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '["self-host", "control-plane"]'::jsonb);
+                        VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                     ELSE
                         UPDATE servers SET agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
                     END IF;

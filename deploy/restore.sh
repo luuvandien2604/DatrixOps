@@ -1,17 +1,58 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    SCRIPT_DIR="$(pwd)"
-fi
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-if [[ ! -f "$COMPOSE_FILE" && -f "${PROJECT_ROOT}/docker-compose.prod.yml" ]]; then
-    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
-fi
-ENV_FILE="${PROJECT_ROOT}/.env"
+find_environment() {
+    local start_dir=""
+    if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+        start_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    else
+        start_dir="$(pwd)"
+    fi
+
+    ENV_FILE=""
+    PROJECT_ROOT=""
+
+    if [[ -f "${start_dir}/.env" ]]; then
+        ENV_FILE="${start_dir}/.env"
+        PROJECT_ROOT="${start_dir}"
+    elif [[ -f "$(cd "${start_dir}/.." 2>/dev/null && pwd)/.env" && "$(basename "$start_dir")" == "deploy" ]]; then
+        PROJECT_ROOT="$(cd "${start_dir}/.." 2>/dev/null && pwd)"
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    elif [[ -f "${start_dir}/deploy/.env" ]]; then
+        PROJECT_ROOT="${start_dir}"
+        ENV_FILE="${start_dir}/deploy/.env"
+    elif [[ -f "/opt/datrixops/.env" ]]; then
+        PROJECT_ROOT="/opt/datrixops"
+        ENV_FILE="/opt/datrixops/.env"
+    elif [[ -f "/opt/datrixops/deploy/.env" ]]; then
+        PROJECT_ROOT="/opt/datrixops/deploy"
+        ENV_FILE="/opt/datrixops/deploy/.env"
+    elif [[ -f "$(pwd)/.env" ]]; then
+        PROJECT_ROOT="$(pwd)"
+        ENV_FILE="$(pwd)/.env"
+    fi
+
+    if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
+        PROJECT_ROOT="${PROJECT_ROOT:-${start_dir}}"
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    fi
+
+    if [[ -d "${PROJECT_ROOT}/deploy" && -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    elif [[ -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${PROJECT_ROOT}"
+        COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
+    elif [[ -f "${start_dir}/docker-compose.yml" ]]; then
+        SCRIPT_DIR="${start_dir}"
+        COMPOSE_FILE="${start_dir}/docker-compose.yml"
+    else
+        SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    fi
+}
+find_environment
+
 BACKUP_FILE="${1:-}"
 CONFIRM="${2:-}"
 STAGING_DIR="$(mktemp -d)"
