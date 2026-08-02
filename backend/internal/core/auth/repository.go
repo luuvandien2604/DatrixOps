@@ -139,3 +139,14 @@ func (r *Repository) DeleteExpiredTokens(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ClaimSelfHostServer assigns any self-host servers to the superadmin user.
+func (r *Repository) ClaimSelfHostServer(ctx context.Context, userID string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE servers 
+		 SET user_id = $1 
+		 WHERE tags @> '["self-host"]'::jsonb OR name LIKE '%Control Plane%'`,
+		userID,
+	)
+	return err
+}

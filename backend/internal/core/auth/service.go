@@ -65,6 +65,10 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 		return nil, fmt.Errorf("create user in db: %w", err)
 	}
 
+	if role == "superadmin" {
+		_ = s.repo.ClaimSelfHostServer(ctx, user.ID)
+	}
+
 	return user, nil
 }
 
