@@ -171,7 +171,7 @@ const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
 const MIN_SCRIPT_LIBRARY_AGENT_VERSION = '1.5.2';
 
 const versionAtLeast = (current: string | undefined, minimum: string) => {
-  if (!current) return false;
+  if (!current || current === 'dev') return true;
   const parse = (value: string) => value.replace(/^v/i, '').split('.').map(part => Number.parseInt(part, 10) || 0);
   const currentParts = parse(current);
   const minimumParts = parse(minimum);
@@ -760,7 +760,7 @@ export default function ServerDetailsPage() {
   const updateAvailable = Boolean(server.update_available && latestAgentVersion);
   const agentUpdateInProgress = Boolean(agentUpdateTask && ['pending', 'processing'].includes(agentUpdateTask.status));
   const agentUpdateStalled = Boolean(agentUpdateTask?.status === 'completed' && updateAvailable);
-  const agentUpdateFailed = Boolean(agentUpdateTask && (['failed', 'expired', 'timed_out'].includes(agentUpdateTask.status) || agentUpdateStalled));
+  const agentUpdateFailed = Boolean(agentUpdateTask && (['failed', 'expired', 'timed_out'].includes(agentUpdateTask.status) || agentUpdateStalled) && updateAvailable);
   const agentUpdateCompleted = Boolean(agentUpdateTask && !updateAvailable);
   const AgentUpdateIcon = agentUpdateInProgress ? LoaderCircle : agentUpdateCompleted ? CircleCheck : agentUpdateFailed ? CircleX : RefreshCw;
   const agentUpdateLabel = agentUpdateInProgress
@@ -899,46 +899,7 @@ export default function ServerDetailsPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {!supportsServiceControls && (
-            <section aria-labelledby="agent-update-required-title" className="rounded-2xl border border-amber-500/40 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="rounded-full border border-amber-500/30 bg-amber-500/15 p-2 text-[var(--amber)]">
-                    <RefreshCw className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 id="agent-update-required-title" className="text-base font-bold text-[var(--foreground)]">
-                        Agent update required
-                      </h2>
-                      <span className="rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-[var(--amber)]">
-                        Current: {reportedAgentVersion || 'Unknown'}
-                      </span>
-                      <span className="rounded-full border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-xs font-bold text-[var(--foreground)]">
-                        Required: {MIN_SERVICE_CONTROL_AGENT_VERSION}+
-                      </span>
-                    </div>
-                    <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-[var(--foreground)] opacity-80">
-                      Update this legacy agent once to enable Start, Stop, Restart, and Reload. The in-place updater preserves its token, registration, environment, and monitored services.
-                    </p>
-                    <div className="mt-4 flex max-w-3xl flex-col gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-2 sm:flex-row sm:items-center sm:pl-4">
-                      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap px-2 py-1 text-xs font-bold text-[var(--foreground)] sm:text-sm">
-                        {manualUpdateCommand}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => copyUpdateCommand(manualUpdateCommand)}
-                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--background-card)] px-4 py-2 text-sm font-bold text-[var(--foreground)] transition-colors hover:border-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-                      >
-                        <Copy className="h-4 w-4" />
-                        {copiedUpdateCommand ? 'Copied' : 'Copy command'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
+
           {supportsServiceControls && updateAvailable && (
             <section aria-labelledby="agent-update-available-title" className="rounded-2xl border border-amber-500/35 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

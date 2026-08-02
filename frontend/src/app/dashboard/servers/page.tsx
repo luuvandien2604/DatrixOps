@@ -593,7 +593,7 @@ export default function ServersPage() {
                     const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
                     const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
                     const updateConfirmed = Boolean(updateTask && !updateAvailable);
-                    const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
+                    const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled) && updateAvailable);
                     const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
                     const updateBadgeLabel = updateInProgress
                       ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
