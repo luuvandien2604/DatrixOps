@@ -38,6 +38,17 @@ curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deplo
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash -s -- --check
 ```
 
+## Automatic Release Detection & Dashboard Notifications
+
+Self-hosted DatrixOps instances automatically monitor for new releases in the background:
+
+1. **Background Version Checker (`UpdateJob`):**
+   The Control Plane backend queries `https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/version.json` every 6 hours (and on startup).
+2. **Web Dashboard Notifications:**
+   When a newer version (e.g., `v1.5.4`) is published online, the Control Plane automatically marks `update_available = true` and updates `/api/v1/system/info`.
+3. **Zero-Downtime Upgrade:**
+   Administrators can run the standard `upgrade.sh` command at any time to apply the latest release smoothly.
+
 ## How the Upgrade Process Works
 
 1. **Automated Backup:**

@@ -60,3 +60,18 @@ The script automatically backs up your database, fetches the latest release, app
 - Once the Control Plane is upgraded, the Web Dashboard automatically detects any remote target servers running older Agent versions and labels them **`Update available`**.
 - Operators simply click **"Update Agent"** (or select multiple servers and click **"Update all agents"**) directly from the Web Dashboard.
 - The Control Plane queues an in-place update task. Remote Agents download the signed binary from the Control Plane and restart automatically in the background.
+
+## Background Release Detection & Optional Auto-Updates
+
+Self-hosted DatrixOps Control Planes feature an automated background version checker:
+
+- **Automatic Check**: The Control Plane periodically queries `https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/version.json` every 6 hours. When a new release is published online, the Web Dashboard highlights the new version alert.
+- **Check Status via CLI**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash -s -- --check
+  ```
+- **Optional Daily Auto-Upgrade Cronjob**:
+  ```bash
+  # Enable daily 03:00 AM automated background upgrade
+  curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --enable-auto-update
+  ```

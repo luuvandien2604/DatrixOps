@@ -43,10 +43,22 @@ After installation completes, open `http://<your-vps-ip>/setup` in your browser 
 
 ## Upgrading Self-Hosted DatrixOps
 
-To upgrade to the latest version, run:
+To upgrade the Control Plane and Host Agent to the latest version, run the 1-liner upgrade script:
 
 ```bash
-./deploy/upgrade.sh
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
 ```
 
-The script automatically backs up your database, fetches the latest release, applies migrations, and restarts services safely.
+The script automatically backs up your database, fetches the latest release tarball/git changes, updates pre-compiled Agent release binaries, applies schema migrations, and restarts containers safely.
+
+### Background Version Checker & Auto-Updates
+
+- **Background Checker**: Control Plane automatically checks `deploy/version.json` online every 6 hours and displays update banners on the Web Dashboard when a new release is available.
+- **Check Update Status**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash -s -- --check
+  ```
+- **Enable Daily Automated Upgrade**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --enable-auto-update
+  ```
