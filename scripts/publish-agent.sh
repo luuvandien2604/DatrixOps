@@ -593,6 +593,10 @@ print_release_summary() {
     else
         echo "Backend   : not updated (AUTO_UPDATE_BACKEND=$AUTO_UPDATE_BACKEND)"
     fi
+
+    echo
+    echo "To push version changes to GitHub, run:"
+    echo "  git add -A && git commit -m \"release: publish agent v${AGENT_VERSION}\" && git push origin main"
 }
 
 set_env_value() {
