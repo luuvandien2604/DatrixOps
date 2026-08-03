@@ -50,7 +50,7 @@ and CI/deployment files present in this repository.
 | `docs/EDITION_STRATEGY.md` | CE/Cloud split strategy | Yes | Yes | Product boundary | No | SHARED | Keep |
 | `docs/CLOUD_COMPATIBILITY.md` | Shared protocol/version contract | Yes | Yes | Yes | No | SHARED | Keep |
 | `docs/REPOSITORY_SPLIT_AUDIT.md` | This audit | Yes | Yes | Governance | No | SHARED | Keep |
-| `/private/tmp/DatrixOps-cloud` | Private Cloud overlay clone | No | Yes | Version pin and contracts | Placeholders only | CLOUD_ONLY | Commit only to private Cloud repo |
+| `/Users/luuvandien/VIETNIX/DatrixOps-cloud` | Private Cloud overlay clone | No | Yes | Version pin and contracts | Placeholders only | CLOUD_ONLY | Commit only to private Cloud repo |
 | `README.md` | CE product entrypoint | Yes | Link only | Product boundary | No | COMMUNITY | Clarify self-host CE |
 | `.env.example`, `deploy/.env.example` | CE placeholders | Yes | No | Config contract | Placeholder config | COMMUNITY | Keep placeholders only |
 
