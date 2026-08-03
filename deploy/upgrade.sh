@@ -89,6 +89,39 @@ if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
     exit 0
 fi
 
+if [[ "${1:-}" == "--setup-cron" || "${1:-}" == "--enable-auto-update" ]]; then
+    log_info "Configuring daily automated background update cronjob..."
+    CRON_FILE="/etc/cron.d/datrixops-auto-update"
+    
+    if [[ $EUID -ne 0 ]]; then
+        log_error "Setting up auto-update cronjob requires root privileges. Please run with sudo."
+        exit 1
+    fi
+
+    cat <<'EOF' > "$CRON_FILE"
+# DatrixOps Automated Server & Agent Upgrade Task
+# Runs daily at 03:00 AM system time
+0 3 * * * root curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash > /var/log/datrixops-auto-upgrade.log 2>&1
+EOF
+    chmod 0644 "$CRON_FILE"
+    log_success "Automated daily update cronjob created at ${CRON_FILE}"
+    log_info "Server (Control Plane) & Agents will automatically check and upgrade daily at 03:00 AM."
+    log_info "Logs are written to /var/log/datrixops-auto-upgrade.log"
+    exit 0
+fi
+
+if [[ "${1:-}" == "--disable-auto-update" || "${1:-}" == "--remove-cron" ]]; then
+    log_info "Removing automated background update cronjob..."
+    CRON_FILE="/etc/cron.d/datrixops-auto-update"
+    if [[ -f "$CRON_FILE" ]]; then
+        rm -f "$CRON_FILE"
+        log_success "Removed ${CRON_FILE}"
+    else
+        log_info "No automated update cronjob found."
+    fi
+    exit 0
+fi
+
 [[ -f "$ENV_FILE" ]] || {
     log_error "Missing configuration file: ${ENV_FILE}"
     log_info "Looked for .env in: ${PROJECT_ROOT}/.env, /opt/datrixops/.env"

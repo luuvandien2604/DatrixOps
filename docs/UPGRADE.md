@@ -23,6 +23,21 @@ For all remote servers/nodes monitored by your DatrixOps instance:
 3. Operators can trigger an in-place upgrade by clicking **Update Agent** or **Update all agents** directly in the Dashboard UI.
 4. The Control Plane dispatches a signed `agent_update` task. The remote Agent automatically downloads the new binary from the Control Plane and performs a seamless background restart without interrupting monitoring.
 
+## Automated Background Updates (Cronjob)
+
+To keep both your **Control Plane Server** and **Host Agent** continuously up-to-date automatically, you can enable daily background updates:
+
+```bash
+# Enable automated daily updates (runs daily at 03:00 AM)
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --enable-auto-update
+
+# Disable automated daily updates
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --disable-auto-update
+
+# Quick check if a new release is available (no changes applied)
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash -s -- --check
+```
+
 ## How the Upgrade Process Works
 
 1. **Automated Backup:**
