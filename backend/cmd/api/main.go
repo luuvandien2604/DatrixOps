@@ -136,6 +136,10 @@ func main() {
 		retentionJob := scheduler.NewRetentionJob(c.DB, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
 		retentionJob.Start()
 		defer retentionJob.Stop()
+
+		updateJob := scheduler.NewUpdateJob(cfg, log)
+		updateJob.Start()
+		defer updateJob.Stop()
 	} else {
 		log.Info("background schedulers disabled for this API process")
 	}

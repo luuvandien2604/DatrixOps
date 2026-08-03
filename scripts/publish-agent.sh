@@ -712,6 +712,15 @@ update_tracked_version_configs() {
             sed -i "s/AGENT_VERSION=\${AGENT_VERSION:-[^\}]*}/AGENT_VERSION=\${AGENT_VERSION:-${AGENT_VERSION}}/" "$cfile"
         fi
     done
+
+    cat <<EOF > "$PROJECT_ROOT/deploy/version.json"
+{
+  "version": "${AGENT_VERSION}",
+  "agent_version": "${AGENT_VERSION}",
+  "release_date": "$(date -u +%Y-%m-%d)",
+  "changelog_url": "https://github.com/luuvandien2604/DatrixOps/releases"
+}
+EOF
 }
 
 main() {

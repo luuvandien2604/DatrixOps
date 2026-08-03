@@ -7,6 +7,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/scheduler"
 )
 
 type Handler struct {
@@ -50,6 +51,7 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 		"agent_release_url":   h.cfg.AgentReleaseURL,
 		"agent_version":       h.cfg.AgentVersion,
 		"control_plane":       map[string]string{"version": h.version, "commit": h.commit},
+		"update_check":        scheduler.GetUpdateStatus(),
 		"setup_completed":     setupCompletedAt != nil,
 		"registration_enabled": h.cfg.PublicRegistration,
 		"retention": map[string]int{
