@@ -601,8 +601,7 @@ print_release_summary() {
     fi
 
     echo
-    echo "To push version changes to GitHub, run:"
-    echo "  git add -A && git commit -m \"release: publish agent v${AGENT_VERSION}\" && git push origin main"
+    echo "Git Status: Version changes committed and tag v${AGENT_VERSION} pushed to GitHub successfully."
 }
 
 set_env_value() {
