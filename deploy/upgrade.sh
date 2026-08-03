@@ -209,7 +209,7 @@ log_info "Fetching Agent version v${agent_ver}..."
 
 log_step "Step 4/4: Pulling latest pre-built container images & updating services"
 log_info "Pulling pre-built container images from registry..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null || docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build < /dev/null || true
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null || true
 
 log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
