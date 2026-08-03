@@ -69,6 +69,26 @@ find_environment
 
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
 
+if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
+    local_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    [[ -n "$local_ver" ]] || local_ver="unknown"
+    remote_ver="$(curl -fsSL --max-time 10 https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/.env.example 2>/dev/null | grep -m 1 '^[[:space:]]*AGENT_VERSION=' | cut -d'=' -f2 | tr -d ' "\r\n')"
+    [[ -n "$remote_ver" ]] || remote_ver="unknown"
+
+    echo "============================================================"
+    echo "  DatrixOps Release Update Check"
+    echo "============================================================"
+    echo "  Installed Version : v${local_ver}"
+    echo "  Latest Version    : v${remote_ver}"
+    echo "============================================================"
+    if [[ "$local_ver" != "$remote_ver" && "$remote_ver" != "unknown" ]]; then
+        log_warn "New version v${remote_ver} is available! Run upgrade to apply."
+    else
+        log_success "System is fully up-to-date (v${local_ver})."
+    fi
+    exit 0
+fi
+
 [[ -f "$ENV_FILE" ]] || {
     log_error "Missing configuration file: ${ENV_FILE}"
     log_info "Looked for .env in: ${PROJECT_ROOT}/.env, /opt/datrixops/.env"
