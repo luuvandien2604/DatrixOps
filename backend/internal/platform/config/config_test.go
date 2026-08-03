@@ -64,6 +64,9 @@ func TestLoadAcceptsRequiredProductionConfig(t *testing.T) {
 	if cfg.DeploymentMode != "self-hosted" {
 		t.Fatalf("expected self-hosted deployment mode by default, got %q", cfg.DeploymentMode)
 	}
+	if cfg.Edition != "community" {
+		t.Fatalf("expected community edition by default, got %q", cfg.Edition)
+	}
 }
 
 func TestLoadRejectsInsecurePublicURL(t *testing.T) {
@@ -109,5 +112,17 @@ func TestLoadRejectsUnknownDeploymentMode(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "DEPLOYMENT_MODE") {
 		t.Fatalf("expected deployment mode validation error, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnknownEdition(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/datrixops?sslmode=disable")
+	t.Setenv("JWT_SECRET", strings.Repeat("z", 48))
+	t.Setenv("PUBLIC_URL", "https://ops.example.com")
+	t.Setenv("DATRIXOPS_EDITION", "enterprise")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "DATRIXOPS_EDITION") {
+		t.Fatalf("expected edition validation error, got %v", err)
 	}
 }

@@ -43,16 +43,17 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	response.Success(w, http.StatusOK, map[string]any{
-		"deployment_mode":     h.cfg.DeploymentMode,
-		"data_ownership":      dataOwnership,
-		"system_name":         systemName,
-		"timezone":            timezone,
-		"public_url":          h.cfg.PublicURL,
-		"agent_release_url":   h.cfg.AgentReleaseURL,
-		"agent_version":       h.cfg.AgentVersion,
-		"control_plane":       map[string]string{"version": h.version, "commit": h.commit},
-		"update_check":        scheduler.GetUpdateStatus(),
-		"setup_completed":     setupCompletedAt != nil,
+		"edition":              h.cfg.Edition,
+		"deployment_mode":      h.cfg.DeploymentMode,
+		"data_ownership":       dataOwnership,
+		"system_name":          systemName,
+		"timezone":             timezone,
+		"public_url":           h.cfg.PublicURL,
+		"agent_release_url":    h.cfg.AgentReleaseURL,
+		"agent_version":        h.cfg.AgentVersion,
+		"control_plane":        map[string]string{"version": h.version, "commit": h.commit},
+		"update_check":         scheduler.GetUpdateStatus(),
+		"setup_completed":      setupCompletedAt != nil,
 		"registration_enabled": h.cfg.PublicRegistration,
 		"retention": map[string]int{
 			"metrics_days":     h.cfg.MetricsRetentionDays,

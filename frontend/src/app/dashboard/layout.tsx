@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
+import { editionLabel } from '@/lib/edition';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { CommandPalette } from '@/components/CommandPalette';
 
@@ -69,6 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
   const [userEmail, setUserEmail] = useState('');
+  const [workspaceEdition, setWorkspaceEdition] = useState('community');
   const [fleetSummary, setFleetSummary] = useState<{
     total_servers: number;
     online_servers: number;
@@ -97,6 +99,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     setRole(getUserRole());
+    apiClient('/system/info')
+      .then((info) => {
+        if (typeof info?.edition === 'string') setWorkspaceEdition(info.edition);
+      })
+      .catch(() => {});
     apiClient('/auth/me')
       .then((user) => {
         if (user) {
@@ -438,7 +445,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="shell-surface app-header">
           {/* Breadcrumb tăng độ rõ và weight. */}
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
-            <span className="font-semibold text-[var(--foreground)]">Datrix Cloud</span>
+            <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
             <span className="text-[var(--color-muted)]">/</span>
             <span className="text-[var(--color-muted)]">Production</span>
           </div>

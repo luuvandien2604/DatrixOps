@@ -3,8 +3,6 @@ name: Build and Push Docker Images to GHCR
 on:
   push:
     branches: [main]
-    tags:
-      - "v*.*.*"
 
 permissions:
   contents: read
@@ -27,6 +25,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute development image tag
+        run: echo "IMAGE_TAG=main-${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
       - name: Build and push Backend, Migrate, Worker
         uses: docker/build-push-action@v5
         with:
@@ -34,9 +35,9 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ghcr.io/luuvandien2604/datrixops-backend:latest
-            ghcr.io/luuvandien2604/datrixops-migrate:latest
-            ghcr.io/luuvandien2604/datrixops-worker:latest
+            ghcr.io/luuvandien2604/datrixops-backend:${{ env.IMAGE_TAG }}
+            ghcr.io/luuvandien2604/datrixops-migrate:${{ env.IMAGE_TAG }}
+            ghcr.io/luuvandien2604/datrixops-worker:${{ env.IMAGE_TAG }}
 
       - name: Build and push Frontend
         uses: docker/build-push-action@v5
@@ -47,4 +48,4 @@ jobs:
             NEXT_PUBLIC_API_URL=/api/v1
           push: true
           tags: |
-            ghcr.io/luuvandien2604/datrixops-frontend:latest
+            ghcr.io/luuvandien2604/datrixops-frontend:${{ env.IMAGE_TAG }}

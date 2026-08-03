@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/apiClient';
+import { dataOwnershipLabel, deploymentLabel, DatrixOpsEdition, DeploymentMode } from '@/lib/edition';
 import { Activity, Check, Copy, Database, ExternalLink, Play, Plus, RotateCcw, ServerCog, Settings2, ShieldCheck, Trash2, Webhook } from 'lucide-react';
 
 interface DeploymentInfo {
-  deployment_mode: 'self-hosted' | 'managed';
+  edition: DatrixOpsEdition;
+  deployment_mode: DeploymentMode;
   data_ownership: 'customer-controlled' | 'provider-managed';
   system_name: string;
   timezone: string;
@@ -253,7 +255,10 @@ export default function SettingsPage() {
                 <ServerCog className="h-5 w-5 text-[var(--accent-primary)]" />
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Deployment & data ownership</h2>
                 <span className="status-badge">
-                  {deploymentInfo.deployment_mode === 'self-hosted' ? 'SELF-HOSTED' : 'MANAGED'}
+                  {deploymentInfo.edition === 'cloud' ? 'CLOUD' : 'COMMUNITY'}
+                </span>
+                <span className="status-badge">
+                  {deploymentLabel(deploymentInfo.deployment_mode).toUpperCase()}
                 </span>
               </div>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
@@ -290,7 +295,7 @@ export default function SettingsPage() {
                 <Database className="h-4 w-4" /> Data ownership
               </div>
               <div className="mt-3 text-sm font-semibold text-[var(--text-primary)]">
-                {deploymentInfo.data_ownership === 'customer-controlled' ? 'Customer controlled' : 'Provider managed'}
+                {dataOwnershipLabel(deploymentInfo.data_ownership)}
               </div>
               <div className="mt-2 text-xs text-[var(--text-secondary)]">
                 Metrics {deploymentInfo.retention.metrics_days}d · Operations {deploymentInfo.retention.operational_days}d

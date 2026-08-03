@@ -15,6 +15,19 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
+set_env_value() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+
+    [[ -f "$file" ]] || return 0
+    if grep -q "^[[:space:]]*${key}=" "$file"; then
+        sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
+    fi
+}
+
 find_environment() {
     local start_dir=""
     if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
@@ -70,9 +83,15 @@ find_environment
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
 
 if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
-    local_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    local_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    if [[ -z "$local_ver" ]]; then
+        local_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    fi
     [[ -n "$local_ver" ]] || local_ver="unknown"
-    remote_ver="$(curl -fsSL --max-time 10 https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/.env.example 2>/dev/null | grep -m 1 '^[[:space:]]*AGENT_VERSION=' | cut -d'=' -f2 | tr -d ' "\r\n')"
+    remote_ver="$(curl -fsSL --max-time 10 https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/version.json 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 | tr -d ' "\r\n')"
+    if [[ -z "$remote_ver" ]]; then
+        remote_ver="$(curl -fsSL --max-time 10 https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/.env.example 2>/dev/null | grep -m 1 '^[[:space:]]*DATRIXOPS_VERSION=' | cut -d'=' -f2 | tr -d ' "\r\n')"
+    fi
     [[ -n "$remote_ver" ]] || remote_ver="unknown"
 
     echo "============================================================"
@@ -177,6 +196,23 @@ fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
 
+target_app_ver="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${PROJECT_ROOT}/deploy/version.json" \
+    "${SCRIPT_DIR}/version.json" \
+    2>/dev/null | head -n 1 | tr -d ' "\r\n')"
+
+if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    target_app_ver="$(grep -h '^[[:space:]]*DATRIXOPS_VERSION=' \
+        "${PROJECT_ROOT}/deploy/.env.example" \
+        "${PROJECT_ROOT}/.env.example" \
+        "${SCRIPT_DIR}/.env.example" \
+        2>/dev/null | head -n 1 | cut -d'=' -f2 | tr -d ' "\r\n')"
+fi
+
+if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    target_app_ver="1.5.5"
+fi
+
 target_agent_ver="$(grep -h '^[[:space:]]*AGENT_VERSION=' \
     "${PROJECT_ROOT}/deploy/.env.example" \
     "${PROJECT_ROOT}/.env.example" \
@@ -189,14 +225,10 @@ fi
 
 if [[ -n "$target_agent_ver" ]]; then
     for env_target in "$ENV_FILE" "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"; do
-        if [[ -f "$env_target" ]]; then
-            if grep -q '^[[:space:]]*AGENT_VERSION=' "$env_target"; then
-                sed -i "s/^[[:space:]]*AGENT_VERSION=.*/AGENT_VERSION=${target_agent_ver}/" "$env_target"
-            else
-                echo "AGENT_VERSION=${target_agent_ver}" >> "$env_target"
-            fi
-        fi
+        set_env_value "$env_target" "DATRIXOPS_VERSION" "$target_app_ver"
+        set_env_value "$env_target" "AGENT_VERSION" "$target_agent_ver"
     done
+    log_info "Synced DATRIXOPS_VERSION=${target_app_ver} to environment configuration."
     log_info "Synced AGENT_VERSION=${target_agent_ver} to environment configuration."
 fi
 

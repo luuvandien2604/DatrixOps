@@ -19,6 +19,19 @@
 
 `backend/api`, `backend/api_server`, `agent/agent` và `agent/sign-release` là binary/artifact có trong working tree, không phải source entrypoint. Không dựa vào chúng để review logic.
 
+## Ranh giới edition
+
+Runtime hiện phân biệt edition bằng:
+
+```env
+DATRIXOPS_EDITION=community
+DEPLOYMENT_MODE=self-hosted
+```
+
+`DATRIXOPS_EDITION=community` là bản CE public/self-host. `DATRIXOPS_EDITION=cloud` dành cho private Cloud overlay do DatrixOps vận hành. `DEPLOYMENT_MODE` chỉ mô tả trách nhiệm vận hành (`self-hosted` hoặc `managed`), không tự bật tính năng Cloud.
+
+Không đưa billing, AI automation, managed backup, rollout nội bộ hoặc secret vận hành SaaS vào CE source. Nếu cần tích hợp Cloud, ưu tiên module/package riêng và explicit edition checks thay vì trộn logic Cloud vào path CE.
+
 ## Yêu cầu môi trường
 
 - Go theo version hỗ trợ trong `go.mod`/toolchain của từng module.
@@ -84,4 +97,3 @@ Lưu ý: source hiện không định nghĩa CLI flag `--version`; binary sẽ s
 - Database: SQL read-only để xác minh `servers`, `server_metrics`, `server_tasks`.
 
 Không tắt TypeScript/ESLint để qua build. Migration mới phải có SQL idempotent vì AutoMigrate hiện chạy lại mọi file mỗi startup và không có bảng migration ledger.
-

@@ -18,6 +18,7 @@ type Config struct {
 	AllowedOrigins           string
 	PublicURL                string
 	AgentReleaseURL          string
+	Edition                  string
 	DeploymentMode           string
 	PublicRegistration       bool
 	EnableWebTerminal        bool
@@ -48,6 +49,7 @@ func Load() (*Config, error) {
 		AllowedOrigins:           strings.TrimSpace(getEnv("ALLOWED_ORIGINS", "")),
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
 		AgentReleaseURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_RELEASE_BASE_URL")), "/"),
+		Edition:                  strings.ToLower(strings.TrimSpace(getEnv("DATRIXOPS_EDITION", "community"))),
 		DeploymentMode:           strings.ToLower(strings.TrimSpace(getEnv("DEPLOYMENT_MODE", "self-hosted"))),
 		PublicRegistration:       envBool("ENABLE_PUBLIC_REGISTRATION"),
 		EnableWebTerminal:        envBool("ENABLE_WEB_TERMINAL"),
@@ -92,6 +94,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.DeploymentMode != "self-hosted" && cfg.DeploymentMode != "managed" {
 		return nil, fmt.Errorf("DEPLOYMENT_MODE must be self-hosted or managed")
+	}
+	if cfg.Edition != "community" && cfg.Edition != "cloud" {
+		return nil, fmt.Errorf("DATRIXOPS_EDITION must be community or cloud")
 	}
 
 	return cfg, nil

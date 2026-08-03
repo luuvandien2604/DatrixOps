@@ -6,7 +6,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Containers-2496ED.svg)](https://www.docker.com)
 [![Open Source Agent](https://img.shields.io/badge/Agent-Open_Source_100%25-brightgreen.svg)](https://github.com/luuvandien2604/datrixops-agent)
 
-**DatrixOps** is an open-source, high-performance infrastructure monitoring and management control plane for Linux servers, websites, TLS certificates, and Docker containers. 
+**DatrixOps** is an open-source, self-hosted personal infrastructure manager for Linux servers and Docker. It also monitors websites, TLS certificates, alerts, logs, and remote operational workflows from one control plane.
 
 Built with **Go (Backend API & Agent)** and **Next.js 15 (Frontend Dashboard)**, DatrixOps offers 1-click automated setup, 100% data privacy, real-time alerting, remote log inspection, and an integrated Web Terminal.
 
@@ -38,6 +38,7 @@ Built with **Go (Backend API & Agent)** and **Next.js 15 (Frontend Dashboard)**,
 
 - **Open Source Agent Repo**: [`datrixops-agent`](https://github.com/luuvandien2604/datrixops-agent) — Inspect every line of telemetry code. Zero backdoors, zero telemetry tracking.
 - **Community Edition (Self-Hosted)**: Run your own complete monitoring stack locally on your VPS with 100% data privacy.
+- **Edition boundary**: Community defaults to `DATRIXOPS_EDITION=community` and `DEPLOYMENT_MODE=self-hosted`; Cloud deployments use `DATRIXOPS_EDITION=cloud` with managed operations in a private overlay.
 
 ---
 
@@ -99,6 +100,9 @@ sudo ./deploy/restore.sh /opt/datrixops/backups/datrixops-backup-YYYY-MM-DD-HHMM
 - [Backup and Restore Guide](docs/BACKUP_RESTORE.md)
 - [Security Architecture](docs/SECURITY.md)
 - [Development Guide](docs/DEVELOPMENT.md)
+- [Edition Strategy](docs/EDITION_STRATEGY.md)
+- [Cloud Compatibility Contracts](docs/CLOUD_COMPATIBILITY.md)
+- [Repository Split Audit](docs/REPOSITORY_SPLIT_AUDIT.md)
 
 ---
 

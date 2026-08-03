@@ -39,26 +39,22 @@ jobs:
         run: |
           (cd backend && go test ./...)
           (cd agent && go test ./...)
-          (cd frontend && npm ci && npm run lint && npx tsc --noEmit --incremental false && npm run build)
+          (cd frontend && npm ci && npm run lint && npm run typecheck && npm run build)
 
       - name: Build and push versioned images
         run: |
           docker buildx build --push \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-backend:${VERSION}" \
-            -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-backend:latest" \
             -f backend/Dockerfile backend
           docker buildx build --push \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-worker:${VERSION}" \
-            -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-worker:latest" \
             -f backend/Dockerfile backend
           docker buildx build --push \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-migrate:${VERSION}" \
-            -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-migrate:latest" \
             -f backend/Dockerfile backend
           docker buildx build --push \
             --build-arg NEXT_PUBLIC_API_URL=/api/v1 \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-frontend:${VERSION}" \
-            -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-frontend:latest" \
             -f frontend/Dockerfile frontend
 
       - name: Build signed Agent artifacts
