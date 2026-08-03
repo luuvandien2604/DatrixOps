@@ -66,7 +66,7 @@ else
         for item in "${targets[@]}"; do
             IFS="/" read -r os arch filename <<< "$item"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
-                -ldflags="-s -w -X main.version=${VERSION}" \
+                -ldflags="-s -w -X main.Version=${VERSION} -X main.VersionMarker=datrixops-agent-version=${VERSION}" \
                 -o "${STAGING_DIR}/${filename}" \
                 "${PROJECT_ROOT}/agent/cmd/agent" >/dev/null 2>&1 || true
         done
@@ -82,7 +82,7 @@ else
                 -v "${STAGING_DIR}:/out" \
                 -w /app/agent \
                 golang:1.24-alpine \
-                go build -ldflags="-s -w -X main.version=${VERSION}" -o "/out/${filename}" ./cmd/agent >/dev/null 2>&1 || true
+                go build -ldflags="-s -w -X main.Version=${VERSION} -X main.VersionMarker=datrixops-agent-version=${VERSION}" -o "/out/${filename}" ./cmd/agent >/dev/null 2>&1 || true
         done
     fi
 
