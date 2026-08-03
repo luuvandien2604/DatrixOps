@@ -285,12 +285,16 @@ auto_self_enroll_host() {
         *) log_warn "Unsupported architecture $(uname -m) for self-monitoring agent."; return 0 ;;
     esac
 
+    local agent_ver
+    agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    [[ -n "$agent_ver" ]] || agent_ver="1.5.3"
+
     # Find compiled agent binary
     local agent_binary=""
     for candidate in \
+        "${PROJECT_ROOT}/frontend/public/releases/${agent_ver}/datrixops-agent-linux-${agent_arch}" \
         "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
-        "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
-        "${PROJECT_ROOT}/frontend/public/releases"/*/datrixops-agent-linux-"${agent_arch}"; do
+        "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}"; do
         if [[ -f "$candidate" && -s "$candidate" ]]; then
             agent_binary="$candidate"
             break
