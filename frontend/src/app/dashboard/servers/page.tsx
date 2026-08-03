@@ -64,6 +64,29 @@ export default function ServersPage() {
 
   // Role permissions
   const [userRole, setUserRole] = useState<string>('user');
+  const [checkingUpdateServerId, setCheckingUpdateServerId] = useState<string | null>(null);
+
+  const handleCheckUpdateForServer = async (server: any) => {
+    try {
+      setCheckingUpdateServerId(server.id);
+      const systemData = await apiClient('/system/info');
+      await fetchServers(true);
+      const latestVer = systemData?.update_check?.latest_version || systemData?.agent_version || '';
+      let osInfo = null;
+      try { if (server.os_info) osInfo = typeof server.os_info === 'string' ? JSON.parse(server.os_info) : server.os_info; } catch(e) {}
+      const runningVer = osInfo?.version || server?.version || '1.5.5';
+
+      if (latestVer && runningVer && latestVer !== runningVer && Boolean(server.update_available)) {
+        toast.success(`New Agent update available: v${latestVer}!`);
+      } else {
+        toast.success(`Server "${server.name}" is running the latest Agent release (v${runningVer})`);
+      }
+    } catch (err: any) {
+      toast.error('Failed to check for updates');
+    } finally {
+      setCheckingUpdateServerId(null);
+    }
+  };
 
   useEffect(() => {
     setUserRole(getUserRole());
@@ -594,7 +617,27 @@ export default function ServersPage() {
                     const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
                     const updateConfirmed = Boolean(updateTask && !updateAvailable);
                     const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled) && updateAvailable);
-                    const UpdateIcon = updateInProgress ? LoaderCircle : updateConfirmed ? CircleCheck : RefreshCw;
+                    const isCheckingUpdate = checkingUpdateServerId === server.id;
+                    const UpdateIcon = updateInProgress || isCheckingUpdate
+                      ? LoaderCircle
+                      : updateFailed
+                        ? CircleX
+                        : updateAvailable
+                          ? UploadCloud
+                          : CircleCheck;
+
+                    const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
+                    const updateTitle = isViewer
+                      ? 'Updating agent requires Operator or Admin role'
+                      : updateInProgress
+                        ? 'Updating agent...'
+                        : isCheckingUpdate
+                          ? 'Checking for updates...'
+                          : updateFailed
+                            ? `Update failed: click to retry updating agent to ${latestAgentVersion || 'latest version'}`
+                            : updateAvailable
+                              ? `Update Agent to ${latestAgentVersion || 'latest version'}`
+                              : `Agent is up to date (${runningAgentVersion}). Click to check for updates`;
                     const updateBadgeLabel = updateInProgress
                       ? updateTask?.status === 'processing' ? 'Updating agent...' : 'Update queued...'
                       : updateFailed
@@ -606,7 +649,6 @@ export default function ServersPage() {
                     const liveInfo = isOffline ? null : osInfo;
                     const isCritical = liveInfo && liveInfo.cpu_usage > 90;
                     const isSelected = selectedServerIds.includes(server.id);
-                    const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
 
                     // Compute pure numerical text for CPU, RAM, Disk
                     const cpuText = liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—';
@@ -785,26 +827,24 @@ export default function ServersPage() {
                             <button
                               onClick={event => {
                                 event.stopPropagation();
-                                if (isViewer) return;
-                                setServerToUpdate({ id: server.id, name: server.name });
+                                if (isViewer || isCheckingUpdate || updateInProgress) return;
+                                if (updateAvailable || updateFailed) {
+                                  setServerToUpdate({ id: server.id, name: server.name });
+                                } else {
+                                  handleCheckUpdateForServer(server);
+                                }
                               }}
-                              disabled={isViewer || updateInProgress}
+                              disabled={isViewer || updateInProgress || isCheckingUpdate}
                               className={`rounded border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                updateAvailable || updateInProgress || updateFailed
+                                updateAvailable || updateFailed
                                   ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-300'
-                                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                                  : isCheckingUpdate || updateInProgress
+                                    ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                                    : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                               }`}
-                              title={
-                                isViewer
-                                  ? 'Updating agent requires Operator or Admin role'
-                                  : updateInProgress
-                                    ? 'Updating agent...'
-                                    : updateAvailable
-                                      ? `Update Agent to ${latestAgentVersion}`
-                                      : 'Reinstall Agent release'
-                              }
+                              title={updateTitle}
                             >
-                              <UpdateIcon className={`h-4 w-4 ${updateInProgress ? 'animate-spin' : ''}`} />
+                              <UpdateIcon className={`h-4 w-4 ${updateInProgress || isCheckingUpdate ? 'animate-spin' : ''}`} />
                             </button>
                             <button
                               disabled={isViewer}
@@ -880,12 +920,30 @@ export default function ServersPage() {
               const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
               const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
               const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled));
-              const UpdateIcon = updateInProgress ? LoaderCircle : updateTask && !updateAvailable ? CircleCheck : RefreshCw;
+              const isCheckingUpdate = checkingUpdateServerId === server.id;
+              const UpdateIcon = updateInProgress || isCheckingUpdate
+                ? LoaderCircle
+                : updateFailed
+                  ? CircleX
+                  : updateAvailable
+                    ? UploadCloud
+                    : CircleCheck;
 
               const liveInfo = isOffline ? null : osInfo;
               const isCritical = liveInfo && liveInfo.cpu_usage > 90;
               const isSelected = selectedServerIds.includes(server.id);
               const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
+              const updateTitle = isViewer
+                ? 'Updating agent requires Operator or Admin role'
+                : updateInProgress
+                  ? 'Updating agent...'
+                  : isCheckingUpdate
+                    ? 'Checking for updates...'
+                    : updateFailed
+                      ? `Update failed: click to retry updating agent to ${latestAgentVersion || 'latest version'}`
+                      : updateAvailable
+                        ? `Update Agent to ${latestAgentVersion || 'latest version'}`
+                        : `Agent is up to date (${runningAgentVersion}). Click to check for updates`;
 
               return (
                 <div
@@ -1014,23 +1072,24 @@ export default function ServersPage() {
                       <button
                         onClick={event => {
                           event.stopPropagation();
-                          setServerToUpdate({ id: server.id, name: server.name });
+                          if (isViewer || isCheckingUpdate || updateInProgress) return;
+                          if (updateAvailable || updateFailed) {
+                            setServerToUpdate({ id: server.id, name: server.name });
+                          } else {
+                            handleCheckUpdateForServer(server);
+                          }
                         }}
-                        disabled={updateInProgress}
-                        className={`rounded border p-1.5 transition-colors disabled:cursor-wait ${
-                          updateAvailable || updateInProgress || updateFailed
+                        disabled={isViewer || updateInProgress || isCheckingUpdate}
+                        className={`rounded border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          updateAvailable || updateFailed
                             ? 'border-amber-500/45 bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-300'
-                            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                            : isCheckingUpdate || updateInProgress
+                              ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                              : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                         }`}
-                        title={
-                          updateInProgress
-                            ? 'Updating agent...'
-                            : updateAvailable
-                              ? `Update Agent to ${latestAgentVersion}`
-                              : 'Reinstall Agent release'
-                        }
+                        title={updateTitle}
                       >
-                        <UpdateIcon className={`h-3.5 w-3.5 ${updateInProgress ? 'animate-spin' : ''}`} />
+                        <UpdateIcon className={`h-3.5 w-3.5 ${updateInProgress || isCheckingUpdate ? 'animate-spin' : ''}`} />
                       </button>
                       <button
                         onClick={e => { e.stopPropagation(); setServerToRestart({ id: server.id, name: server.name }); }}

@@ -27,6 +27,31 @@ files=(
     install-agent.sh
 )
 
+# Check 1: Release directory already present and populated
+if [[ -f "${RELEASE_DIR}/manifest.json" && -s "${RELEASE_DIR}/datrixops-agent-linux-amd64" ]]; then
+    echo "SUCCESS: Agent v${VERSION} release artifacts already present in ${RELEASE_DIR}."
+    for filename in datrixops-agent-linux-amd64 datrixops-agent-linux-arm64 datrixops-agent-darwin-amd64 datrixops-agent-darwin-arm64 datrixops-agent-windows-amd64.exe; do
+        if [[ -f "${RELEASE_DIR}/${filename}" ]]; then
+            cp -f "${RELEASE_DIR}/${filename}" "${PUBLIC_DIR}/${filename}" 2>/dev/null || true
+        fi
+    done
+    exit 0
+fi
+
+# Check 2: Pre-built binaries already present in frontend/public
+if [[ -f "${PUBLIC_DIR}/datrixops-agent-linux-amd64" && -s "${PUBLIC_DIR}/datrixops-agent-linux-amd64" ]]; then
+    echo "SUCCESS: Using pre-built Agent binaries in ${PUBLIC_DIR}."
+    mkdir -p "${RELEASE_DIR}"
+    for filename in "${files[@]}"; do
+        if [[ -f "${PUBLIC_DIR}/${filename}" ]]; then
+            cp -f "${PUBLIC_DIR}/${filename}" "${RELEASE_DIR}/${filename}" 2>/dev/null || true
+        fi
+    done
+    if [[ -f "${RELEASE_DIR}/datrixops-agent-linux-amd64" ]]; then
+        exit 0
+    fi
+fi
+
 download_success=true
 echo "INFO: Attempting to fetch Agent v${VERSION} release artifacts from GitHub Releases..."
 
