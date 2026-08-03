@@ -124,11 +124,15 @@ fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
 
-target_agent_ver="$(grep -m 1 -h '^[[:space:]]*AGENT_VERSION=' \
+target_agent_ver="$(grep -h '^[[:space:]]*AGENT_VERSION=' \
     "${PROJECT_ROOT}/deploy/.env.example" \
     "${PROJECT_ROOT}/.env.example" \
     "${SCRIPT_DIR}/.env.example" \
-    2>/dev/null | cut -d'=' -f2 | tr -d ' "\r\n')"
+    2>/dev/null | head -n 1 | cut -d'=' -f2 | tr -d ' "\r\n')"
+
+if [[ ! "$target_agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    target_agent_ver="1.5.3"
+fi
 
 if [[ -n "$target_agent_ver" ]]; then
     for env_target in "$ENV_FILE" "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"; do
@@ -144,7 +148,9 @@ if [[ -n "$target_agent_ver" ]]; then
 fi
 
 agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
-[[ -n "$agent_ver" ]] || agent_ver="1.5.3"
+if [[ ! "$agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    agent_ver="1.5.3"
+fi
 log_info "Fetching Agent version v${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
 

@@ -287,7 +287,9 @@ auto_self_enroll_host() {
 
     local agent_ver
     agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
-    [[ -n "$agent_ver" ]] || agent_ver="1.5.3"
+    if [[ ! "$agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        agent_ver="1.5.3"
+    fi
 
     # Find compiled agent binary
     local agent_binary=""
