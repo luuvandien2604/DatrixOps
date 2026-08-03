@@ -91,15 +91,21 @@ load_release_environment() {
 }
 
 read_arguments() {
-    if [[ $# -gt 1 ]]; then
-        die "cách dùng: $0 <version>"
-    fi
+    AGENT_FORCE="${AGENT_FORCE:-${RELEASE_FORCE:-${FORCE:-0}}}"
+    AGENT_VERSION=""
 
-    if [[ $# -eq 1 ]]; then
-        AGENT_VERSION="$1"
-    else
-        AGENT_VERSION="${AGENT_VERSION:-}"
-    fi
+    for arg in "$@"; do
+        case "$arg" in
+            --force|-f)
+                AGENT_FORCE=1
+                ;;
+            *)
+                AGENT_VERSION="${arg#v}"
+                ;;
+        esac
+    done
+
+    export AGENT_FORCE
 
     AGENT_RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL:-}"
     AGENT_SIGNING_PRIVATE_KEY="${AGENT_SIGNING_PRIVATE_KEY:-}"
@@ -723,6 +729,56 @@ update_tracked_version_configs() {
 EOF
 }
 
+create_git_and_github_release() {
+    echo
+    echo "============================================================"
+    echo "Creating Git Tag & GitHub Release v${AGENT_VERSION}..."
+    echo "============================================================"
+
+    (
+        cd "$PROJECT_ROOT"
+
+        # 1. Commit version config updates
+        git add -A
+        git commit -m "release: publish DatrixOps v${AGENT_VERSION}" 2>/dev/null || echo "No git changes to commit."
+
+        # 2. Tag handling
+        local tag_name="v${AGENT_VERSION}"
+        if git rev-parse "$tag_name" >/dev/null 2>&1; then
+            if [[ "${AGENT_FORCE:-0}" == "1" ]]; then
+                echo "Force mode: deleting existing local tag $tag_name..."
+                git tag -d "$tag_name" 2>/dev/null || true
+                echo "Force mode: deleting existing remote tag $tag_name..."
+                git push origin ":refs/tags/$tag_name" 2>/dev/null || true
+            else
+                echo "Git tag $tag_name already exists locally."
+            fi
+        fi
+
+        git tag -a "$tag_name" -m "DatrixOps Agent & Control Plane Release $tag_name" 2>/dev/null || true
+        echo "Pushing git commits & tags to GitHub..."
+        git push origin main --tags -f 2>/dev/null || echo "WARN: Failed to push to git origin."
+
+        # 3. GitHub Release upload via gh CLI if present
+        local release_dir="$RELEASE_ROOT/$AGENT_VERSION"
+        if command -v gh >/dev/null 2>&1; then
+            echo "Publishing release assets to GitHub Releases via gh CLI..."
+            if [[ "${AGENT_FORCE:-0}" == "1" ]]; then
+                gh release delete "$tag_name" --yes --cleanup-tag=false 2>/dev/null || true
+            fi
+            gh release create "$tag_name" \
+                "$release_dir"/* \
+                --title "DatrixOps Release $tag_name" \
+                --notes "Release $tag_name with pre-compiled signed agent binaries and database schema updates." \
+                --clobber 2>/dev/null || echo "WARN: gh release create encountered an issue."
+            echo "SUCCESS: GitHub Release $tag_name published with signed assets!"
+        else
+            echo "INFO: GitHub CLI (gh) not installed."
+            echo "Git tag $tag_name was pushed. GitHub Actions (.github/workflows/release.yml) will trigger online."
+        fi
+    )
+}
+
 main() {
     load_release_environment
     read_arguments "$@"
@@ -805,6 +861,7 @@ main() {
     verify_public_release
     update_backend_agent_version
     update_tracked_version_configs
+    create_git_and_github_release
 
     unset AGENT_SIGNING_PRIVATE_KEY
 
