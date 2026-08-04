@@ -46,4 +46,4 @@ if [[ -z "$(current_value JWT_SECRET)" ]]; then
 fi
 
 echo "Secrets generated in ${ENV_FILE}."
-echo "Set DATRIXOPS_DOMAIN, PUBLIC_URL, ALLOWED_ORIGINS and AGENT_VERSION before installation."
+echo "Set CADDY_SITE_ADDRESS, PUBLIC_URL, ALLOWED_ORIGINS and AGENT_VERSION before installation."

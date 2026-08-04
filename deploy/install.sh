@@ -103,13 +103,14 @@ set_env_value() {
 }
 
 auto_configure_domain() {
-    local current_domain
-    current_domain="$(sed -n "s/^DATRIXOPS_DOMAIN=//p" "$ENV_FILE" | tail -n 1)"
-    
-    if [[ -z "$current_domain" || "$current_domain" == "monitor.example.com" || "$current_domain" == "https://monitor.example.com" ]]; then
-        local detected_ip
-        detected_ip="$(detect_public_ip)"
-        local target_domain=""
+	local current_domain
+	current_domain="$(sed -n "s/^CADDY_SITE_ADDRESS=//p" "$ENV_FILE" | tail -n 1)"
+
+	if [[ -z "$current_domain" || "$current_domain" == "monitor.example.com" || "$current_domain" == "https://monitor.example.com" ]]; then
+		local detected_ip
+		detected_ip="$(detect_public_ip)"
+		local target_domain=""
+		local caddy_site_address=""
 
         if [ -t 0 ]; then
             log_info "VPS Public IP detected: ${detected_ip}"
@@ -126,19 +127,20 @@ auto_configure_domain() {
             target_domain="$detected_ip"
         fi
 
-        log_info "Configuring DatrixOps domain/IP: ${target_domain}"
+		log_info "Configuring DatrixOps domain/IP: ${target_domain}"
 
-        set_env_value "DATRIXOPS_DOMAIN" "$target_domain"
-        
-        if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
-            set_env_value "PUBLIC_URL" "http://${target_domain}"
-            set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
-        else
-            set_env_value "PUBLIC_URL" "https://${target_domain}"
-            set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
-        fi
-        log_success "Configured ${ENV_FILE} with DATRIXOPS_DOMAIN=${target_domain}."
-    fi
+		if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
+			caddy_site_address="http://${target_domain}"
+			set_env_value "PUBLIC_URL" "http://${target_domain}"
+			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
+		else
+			caddy_site_address="$target_domain"
+			set_env_value "PUBLIC_URL" "https://${target_domain}"
+			set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
+		fi
+		set_env_value "CADDY_SITE_ADDRESS" "$caddy_site_address"
+		log_success "Configured ${ENV_FILE} with CADDY_SITE_ADDRESS=${caddy_site_address}."
+	fi
 }
 
 check_and_install_prereqs() {
@@ -230,7 +232,7 @@ chmod 0600 "$ENV_FILE"
 auto_configure_domain
 
 log_step "Step 3/5: Validating environment configuration"
-required_keys=(POSTGRES_PASSWORD JWT_SECRET DATRIXOPS_DOMAIN PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
+required_keys=(POSTGRES_PASSWORD JWT_SECRET CADDY_SITE_ADDRESS PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
 missing_vars=()
 for key in "${required_keys[@]}"; do
     value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)"

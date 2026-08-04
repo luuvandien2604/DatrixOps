@@ -1,9 +1,8 @@
 {
 	admin off
-	auto_https off
 }
 
-:80 {
+{$CADDY_SITE_ADDRESS} {
 	encode zstd gzip
 
 	header {

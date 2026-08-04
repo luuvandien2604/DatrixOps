@@ -70,6 +70,7 @@ jobs:
             echo "JWT_SECRET=$(openssl rand -base64 48)"
             echo "ALLOWED_ORIGINS=https://ops.example.com"
             echo "PUBLIC_URL=https://ops.example.com"
+            echo "CADDY_SITE_ADDRESS=ops.example.com"
             echo "AGENT_VERSION=ci"
             echo "NEXT_PUBLIC_API_URL=/api/v1"
           } > .env
