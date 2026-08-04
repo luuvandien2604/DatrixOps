@@ -226,7 +226,7 @@ export default function SettingsPage() {
         <div>
           <div className="mb-2 flex items-center gap-3">
             <Settings2 className="h-6 w-6 text-[var(--accent-primary)]" />
-            <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">Workspace Settings</h1>
+            <h1 className="text-[30px] font-bold leading-tight tracking-[-0.02em] text-[var(--text-primary)]">Instance Settings</h1>
           </div>
           <p className="text-sm text-[var(--text-secondary)]">
             Configure outbound integrations and operational defaults for this control plane.

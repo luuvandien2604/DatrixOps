@@ -7,7 +7,7 @@ DatrixOps luôn gồm **Control Plane** và **Agent**. Mô hình triển khai qu
 
 ## Kiểm tra mô hình đang chạy
 
-Mở **Workspace settings → Deployment & data ownership**:
+Mở **Instance settings → Deployment & data ownership**:
 
 - **SELF-HOSTED:** Control Plane và PostgreSQL chạy trên hạ tầng do tổ chức của bạn quản lý.
 - **MANAGED:** một nhà cung cấp vận hành Control Plane cho bạn.

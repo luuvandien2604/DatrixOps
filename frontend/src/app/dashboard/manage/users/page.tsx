@@ -43,7 +43,7 @@ export default function ManageUsersPage() {
       setUsers(Array.isArray(data) ? data : []);
       setError('');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to load workspace users');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to load local users');
     } finally {
       setLoading(false);
     }
@@ -185,7 +185,7 @@ export default function ManageUsersPage() {
         <div>
           <p className="panel-kicker">Administration</p>
           <h1>Team & <em>User Management.</em></h1>
-          <p className="mt-3 text-[var(--color-muted)]">Manage accounts, assign roles (Admin, Operator, Viewer), and control workspace permissions.</p>
+          <p className="mt-3 text-[var(--color-muted)]">Manage local accounts, assign roles (Admin, Operator, Viewer), and control instance permissions.</p>
         </div>
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => void fetchUsers()} className="ops-button secondary" disabled={loading}>

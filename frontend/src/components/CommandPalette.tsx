@@ -83,7 +83,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     },
     {
       id: 'nav-settings',
-      title: 'Workspace Settings',
+      title: 'Instance Settings',
       subtitle: 'Configure account and API keys',
       category: 'Navigation',
       icon: Settings2,

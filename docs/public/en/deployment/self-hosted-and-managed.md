@@ -7,7 +7,7 @@ DatrixOps always consists of a **Control Plane** and one or more **Agents**. The
 
 ## Check the Active Deployment Model
 
-Open **Workspace settings → Deployment & data ownership**:
+Open **Instance settings → Deployment & data ownership**:
 
 - **SELF-HOSTED:** the Control Plane and PostgreSQL run on infrastructure controlled by your organization.
 - **MANAGED:** a provider operates the Control Plane for you.

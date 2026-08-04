@@ -351,7 +351,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               collapsed ? 'text-center' : ''
             }`}
           >
-            {collapsed ? '•' : 'Workspace'}
+            {collapsed ? '•' : 'Instance'}
           </p>
 
           <div className="space-y-1">
@@ -411,7 +411,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             }`}
           >
             <CircleUserRound className="h-[18px] w-[18px] text-[var(--color-muted)]" />
-            {!collapsed && <span>Workspace settings</span>}
+            {!collapsed && <span>Instance settings</span>}
           </Link>
 
           <button
