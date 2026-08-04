@@ -61,6 +61,7 @@ jobs:
         env:
           AGENT_SIGNING_PRIVATE_KEY: ${{ secrets.AGENT_SIGNING_PRIVATE_KEY }}
           AGENT_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          AGENT_RELEASE_BASE_URL_INCLUDES_VERSION: "1"
           AUTO_UPDATE_BACKEND: "0"
           VERIFY_PUBLIC_RELEASE: "0"
         run: ./scripts/publish-agent.sh "$VERSION"

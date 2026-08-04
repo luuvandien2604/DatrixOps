@@ -87,6 +87,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	releaseBaseIncludesVersion, err := optionalBooleanEnv("AGENT_RELEASE_BASE_URL_INCLUDES_VERSION")
+	if err != nil {
+		return err
+	}
 
 	privateKey, err := decodePrivateKey(privateKeyBase64)
 	if err != nil {
@@ -97,6 +101,7 @@ func run() error {
 		version,
 		releaseDir,
 		releaseBaseURL,
+		releaseBaseIncludesVersion,
 	)
 	if err != nil {
 		return err
@@ -192,6 +197,17 @@ func requiredEnv(name string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func optionalBooleanEnv(name string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "", "0", "false":
+		return false, nil
+	case "1", "true":
+		return true, nil
+	default:
+		return false, fmt.Errorf("environment variable %s must be 0, 1, false, or true", name)
+	}
 }
 
 func validateVersion(version string) error {
@@ -305,6 +321,7 @@ func buildManifest(
 	version string,
 	releaseDir string,
 	releaseBaseURL string,
+	releaseBaseIncludesVersion bool,
 ) (*update.Manifest, error) {
 	releaseInfo, err := os.Stat(releaseDir)
 	if err != nil {
@@ -343,7 +360,7 @@ func buildManifest(
 			)
 		}
 
-		artifactURL, err := url.JoinPath(releaseBaseURL, version, target.Filename)
+		artifactURL, err := buildArtifactURL(releaseBaseURL, version, target.Filename, releaseBaseIncludesVersion)
 		if err != nil {
 			return nil, fmt.Errorf("build artifact URL: %w", err)
 		}
@@ -361,6 +378,13 @@ func buildManifest(
 	}
 
 	return manifest, nil
+}
+
+func buildArtifactURL(releaseBaseURL, version, filename string, releaseBaseIncludesVersion bool) (string, error) {
+	if releaseBaseIncludesVersion {
+		return url.JoinPath(releaseBaseURL, filename)
+	}
+	return url.JoinPath(releaseBaseURL, version, filename)
 }
 
 func hashFile(path string) (string, int64, error) {
