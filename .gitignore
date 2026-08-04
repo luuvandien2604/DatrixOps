@@ -5,6 +5,7 @@
 *.so
 *.dylib
 /agent/agent
+/agent/bin/
 /agent/sign-release
 /frontend/public/datrixops-agent
 /frontend/public/datrixops-agent-*
