@@ -10,6 +10,10 @@ import (
 )
 
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
+	if cfg.Edition != "community" || cfg.DeploymentMode != "self-hosted" {
+		return
+	}
+
 	handler := NewHandler(db, cfg)
 	completeLimiter := middleware.NewRateLimiter(rate.Limit(0.2), 3)
 

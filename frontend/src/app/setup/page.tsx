@@ -51,6 +51,12 @@ export default function SetupPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!status?.configured) return;
+    const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+    router.replace(token ? '/dashboard' : '/login');
+  }, [router, status?.configured]);
+
   const completeSetup = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -88,13 +94,7 @@ export default function SetupPage() {
   if (status?.configured) {
     return (
       <main id="main-content" className="auth-shell">
-        <ThemeToggle className="auth-theme-toggle" />
-        <section className="auth-card ops-panel text-center">
-          <div className="auth-icon"><ShieldCheck className="h-5 w-5" /></div>
-          <h1>Setup is <em>locked.</em></h1>
-          <p>The initial administrator already exists. Setup cannot be run again.</p>
-          <Link href="/login" className="auth-submit mt-7">Continue to sign in</Link>
-        </section>
+        <Loader2 className="h-7 w-7 animate-spin text-[var(--accent-primary)]" aria-label="Redirecting from setup" />
       </main>
     );
   }

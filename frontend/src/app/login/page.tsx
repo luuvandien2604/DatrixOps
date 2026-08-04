@@ -54,8 +54,8 @@ export default function LoginPage() {
             <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--mint)]">OPS</span></span>
           </Link>
           <div className="auth-icon"><LockKeyhole className="h-5 w-5" /></div>
-          <h1>Welcome <em>back.</em></h1>
-          <p>Sign in to your infrastructure control plane.</p>
+          <h1>Sign in to this <em>DatrixOps instance.</em></h1>
+          <p>Use the local account created by your instance administrator.</p>
         </div>
 
         {error && (
@@ -120,9 +120,9 @@ export default function LoginPage() {
           
           <div className="text-center pt-4">
             <p className="text-[var(--color-muted)] text-sm">
-              New self-hosted installation?{' '}
+              First installation?{' '}
               <Link href="/setup" className="auth-link">
-                Run initial setup
+                Complete setup
               </Link>
             </p>
           </div>
