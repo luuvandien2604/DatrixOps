@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -30,18 +33,54 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; use a new version." >&2
+            exit 1
+          fi
           printf 'VERSION=%s\n' "$VERSION" >> "$GITHUB_ENV"
+          printf 'AGENT_RELEASE_DIR=%s\n' "$RUNNER_TEMP/agent-release-$VERSION" >> "$GITHUB_ENV"
+          printf 'FRONTEND_IMAGE=ghcr.io/%s/datrixops-frontend:%s\n' "${GITHUB_REPOSITORY_OWNER,,}" "$VERSION" >> "$GITHUB_ENV"
 
       - name: Test source
         run: |
-          (cd backend && go test ./...)
-          (cd agent && go test ./...)
-          (cd frontend && npm ci && npm run lint && npm run typecheck && npm run build)
+          (cd backend && go test ./... && go vet ./...)
+          (cd agent && go test ./... && go vet ./...)
+          (cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build)
+          bash -n scripts/*.sh frontend/public/*.sh
+          bash tests/release-pipeline.sh
 
-      - name: Build and push versioned images
+      - name: Build signed Agent release
+        env:
+          AGENT_SIGNING_PRIVATE_KEY: ${{ secrets.AGENT_SIGNING_PRIVATE_KEY }}
+          AGENT_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          AGENT_RELEASE_BASE_URL_INCLUDES_VERSION: "1"
+        run: scripts/build-agent-release.sh "$VERSION" "$AGENT_RELEASE_DIR"
+
+      - name: Stage verified Agent artifacts in frontend
+        run: |
+          RELEASE_PUBLIC_DIR="frontend/public/releases/$VERSION"
+          mkdir -p "$RELEASE_PUBLIC_DIR"
+          cp -R "$AGENT_RELEASE_DIR/." "$RELEASE_PUBLIC_DIR/"
+          for artifact in \
+            datrixops-agent-linux-amd64 \
+            datrixops-agent-linux-arm64 \
+            datrixops-agent-darwin-amd64 \
+            datrixops-agent-darwin-arm64 \
+            datrixops-agent-windows-amd64.exe; do
+            install -m 0755 "$AGENT_RELEASE_DIR/$artifact" "frontend/public/$artifact"
+            install -m 0644 "$AGENT_RELEASE_DIR/$artifact.sha256" "frontend/public/$artifact.sha256"
+            install -m 0644 "$AGENT_RELEASE_DIR/$artifact.size" "frontend/public/$artifact.size"
+          done
+          install -m 0644 "$AGENT_RELEASE_DIR/agent-release.version" frontend/public/agent-release.version
+          install -m 0644 "$AGENT_RELEASE_DIR/manifest.json" frontend/public/agent-release-manifest.json
+          install -m 0644 "$AGENT_RELEASE_DIR/manifest.sig" frontend/public/agent-release-manifest.sig
+
+      - name: Build and push backend images
         run: |
           docker buildx build --push \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-backend:${VERSION}" \
@@ -52,25 +91,47 @@ jobs:
           docker buildx build --push \
             -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-migrate:${VERSION}" \
             -f backend/Dockerfile backend
-          docker buildx build --push \
+
+      - name: Build frontend image with Agent artifacts
+        run: |
+          docker buildx build --load \
             --build-arg NEXT_PUBLIC_API_URL=/api/v1 \
-            -t "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/datrixops-frontend:${VERSION}" \
+            -t "$FRONTEND_IMAGE" \
             -f frontend/Dockerfile frontend
 
-      - name: Build signed Agent artifacts
-        env:
-          AGENT_SIGNING_PRIVATE_KEY: ${{ secrets.AGENT_SIGNING_PRIVATE_KEY }}
-          AGENT_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
-          AGENT_RELEASE_BASE_URL_INCLUDES_VERSION: "1"
-          AUTO_UPDATE_BACKEND: "0"
-          VERIFY_PUBLIC_RELEASE: "0"
-        run: ./scripts/publish-agent.sh "$VERSION"
+      - name: Verify frontend image Agent artifacts
+        run: |
+          docker run --rm --entrypoint sh "$FRONTEND_IMAGE" -ec '
+            version="$1"
+            for file in \
+              /app/public/datrixops-agent-linux-amd64 \
+              /app/public/datrixops-agent-linux-arm64 \
+              /app/public/datrixops-agent-darwin-amd64 \
+              /app/public/datrixops-agent-darwin-arm64 \
+              /app/public/datrixops-agent-windows-amd64.exe \
+              /app/public/agent-release.version \
+              "/app/public/releases/$version/manifest.json" \
+              "/app/public/releases/$version/manifest.sig"; do
+              test -s "$file"
+            done
+            for artifact in \
+              datrixops-agent-linux-amd64 \
+              datrixops-agent-linux-arm64 \
+              datrixops-agent-darwin-amd64 \
+              datrixops-agent-darwin-arm64 \
+              datrixops-agent-windows-amd64.exe; do
+              test -s "/app/public/releases/$version/$artifact"
+            done
+          ' sh "$VERSION"
+
+      - name: Push verified frontend image
+        run: docker push "$FRONTEND_IMAGE"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "frontend/public/releases/${VERSION}/"* \
+            "$AGENT_RELEASE_DIR/"* \
             --generate-notes \
             --verify-tag

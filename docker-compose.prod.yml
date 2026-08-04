@@ -145,7 +145,6 @@ services:
       - "3000"
     volumes:
       - ./docs:/app/docs:ro
-      - ./frontend/public:/app/public:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null"]
       interval: 5s

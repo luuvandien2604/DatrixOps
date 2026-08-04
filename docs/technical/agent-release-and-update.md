@@ -35,7 +35,6 @@ Ví dụ an toàn:
 ```dotenv
 AGENT_SIGNING_PRIVATE_KEY_FILE=/root/.datrixops/agent-signing-key.base64
 AGENT_RELEASE_BASE_URL=https://example.invalid/releases
-AUTO_UPDATE_BACKEND=1
 ```
 
 ## Publish signed release
@@ -44,29 +43,25 @@ AUTO_UPDATE_BACKEND=1
 ./scripts/publish-agent.sh 1.5.0
 ```
 
-Script thực hiện:
+Wrapper gọi `scripts/build-agent-release.sh` và chỉ thực hiện:
 
 1. Load `.env.release`, validate SemVer, HTTPS base URL và key.
-2. Chạy test cho updater/signing tool.
-3. Tạo staging directory `.VERSION.tmp.*`.
-4. Cross-build năm artifact: Linux amd64/arm64, Darwin amd64/arm64, Windows amd64.
-5. Verify version marker từng binary.
-6. Tool `sign-release` tính size/SHA-256, tạo `manifest.json`, ký raw bytes thành `manifest.sig` 64 byte và verify.
-7. Verify đủ bảy file rồi atomically move vào `frontend/public/releases/<version>/`.
-8. Copy năm binary sang root `frontend/public` để installer/legacy updater tương thích.
-9. Nếu `AUTO_UPDATE_BACKEND=1`, ghi `AGENT_VERSION` vào `.env`, recreate Backend và verify env trong container.
+2. Tạo staging directory `.VERSION.tmp.*`.
+3. Cross-build năm artifact: Linux amd64/arm64, Darwin amd64/arm64, Windows amd64.
+4. Verify version marker từng binary.
+5. Tool `sign-release` tính size/SHA-256, tạo `manifest.json`, ký raw bytes thành `manifest.sig` 64 byte và verify.
+6. Verify toàn bộ release rồi atomically move vào output directory được chỉ định.
 
-`AGENT_FORCE=1` cho phép thay release directory đã tồn tại, nhưng policy production là **không tái sử dụng version** khi binary thay đổi. Dùng patch version mới. `MIN_SELF_UPDATING_VERSION` hiện hard-code `1.3.0`.
+Script không sửa tracked source, commit, tag, push, tạo GitHub Release hoặc restart container. Output directory đã tồn tại sẽ bị từ chối; luôn dùng patch version mới. GitHub Actions stage output đã verify vào frontend image và là nơi duy nhất tạo GitHub Release.
 
 ## Environment release
 
 | Biến | Ý nghĩa |
 |---|---|
 | `AGENT_RELEASE_BASE_URL` | HTTPS base dùng tạo artifact URL trong manifest. |
-| `AGENT_SIGNING_PRIVATE_KEY_FILE` | File Base64 private key, khuyến nghị. |
+| `AGENT_SIGNING_PRIVATE_KEY_FILE` | Đường dẫn tới private key Base64 mode `0600`; khuyến nghị cho local wrapper. |
 | `AGENT_SIGNING_PRIVATE_KEY` | Private key trực tiếp; secret, chỉ fallback. |
-| `AUTO_UPDATE_BACKEND` | `1`: update `.env` và recreate Backend; `0`: chỉ publish artifact. |
-| `AGENT_FORCE` | `1`: cho phép thay version directory đã có; tránh dùng production. |
+| `AGENT_RELEASE_BASE_URL_INCLUDES_VERSION` | `1` khi base URL đã chứa tag/version, như GitHub Releases. |
 
 ## Update workflow và trạng thái implementation
 
@@ -83,7 +78,7 @@ Chưa hoàn thiện:
 - Agent chưa enforce semantic-version anti-downgrade.
 - Linux/macOS thay binary cũ trực tiếp, chưa giữ `.bak` bền vững.
 - Không có watchdog tự rollback nếu binary mới không heartbeat.
-- Root updater token-free chỉ kiểm tra executable magic, không dùng signed manifest.
+- Bootstrap installer CE chưa trực tiếp verify Ed25519; client-side signature verification là hardening tương lai.
 - Release public key rotation chưa hỗ trợ trust overlap hai key.
 
 ## Rollback Agent

@@ -64,12 +64,10 @@ Heartbeat `os_info` có các capability phục vụ UI/Backend, gồm trạng th
 | `DATRIXOPS_SERVICES` | Agent | Rỗng = OS defaults | Không | Restart Agent |
 | `DATRIXOPS_TERMINAL_MODE` | Agent Linux | `auto` khi rỗng; hỗ trợ `server/enabled`, `desktop/disabled/off` | Không | Restart Agent |
 | `AGENT_RELEASE_BASE_URL` | Publish tool | Bắt buộc HTTPS | Không | Lần publish kế |
-| `AGENT_SIGNING_PRIVATE_KEY_FILE` | Publish tool | Khuyến nghị | Đường dẫn nhạy cảm | Lần publish kế |
+| `AGENT_SIGNING_PRIVATE_KEY_FILE` | Publish tool local | Khuyến nghị | Đường dẫn nhạy cảm | Lần build kế |
 | `AGENT_SIGNING_PRIVATE_KEY` | Publish tool | Tùy chọn | **Có** | Lần publish kế |
-| `AUTO_UPDATE_BACKEND` | Publish script | `1` | Không | Lần publish kế |
-| `AGENT_FORCE` | Publish script | `0` | Không | Lần publish kế |
+| `AGENT_RELEASE_BASE_URL_INCLUDES_VERSION` | Signing tool | `0` | Không | Lần publish kế |
 | `AGENT_VERSION` | Signing tool/script | Script truyền | Không | Lần publish kế |
 | `AGENT_RELEASE_DIR` | Signing tool | Script truyền staging path | Không | Lần publish kế |
 
 `NODE_ENV`, `NEXT_TELEMETRY_DISABLED`, `HOSTNAME` và `PORT` trong Frontend Dockerfile là runtime container settings cố định. `MIN_SELF_UPDATING_VERSION` là shell constant, không phải environment override.
-

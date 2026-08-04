@@ -109,3 +109,14 @@ func TestVerifyReleaseDirectoryRejectsMalformedSHA256(t *testing.T) {
 		t.Fatal("expected malformed SHA-256 to fail")
 	}
 }
+
+func TestVerifyReleaseDirectoryRejectsWrongSigningKey(t *testing.T) {
+	dir, _, _, _ := createSignedTestRelease(t)
+	officialPublicKey, err := ReleasePublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyReleaseDirectory(dir, "1.2.3", officialPublicKey); err == nil {
+		t.Fatal("expected a release signed by a different key to fail")
+	}
+}

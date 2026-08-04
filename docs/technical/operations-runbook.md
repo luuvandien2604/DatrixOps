@@ -202,7 +202,7 @@ Signature raw phải 64 byte. Dùng tool `agent/tools/sign-release`/updater test
 
 ## Các lỗi release thường gặp
 
-- **Directory exists:** tăng version; chỉ dùng `AGENT_FORCE=1` cho recovery kiểm soát trước khi release bị tiêu thụ.
+- **Directory exists:** tăng version; release builder không ghi đè output/version cũ.
 - **Version embedding failed:** kiểm tra đủ hai `-X main.Version` và `-X main.VersionMarker`; không dùng pipeline `strings | grep -q` với `pipefail`.
 - **Git mode 100644/100755:** `git ls-files -s scripts/publish-agent.sh`; sửa bằng `chmod +x` và commit mode.
 - **git pull blocked:** `git status`, xử lý local changes có chủ đích; không reset phá hủy.
@@ -244,16 +244,15 @@ git pull --ff-only
 ./scripts/publish-agent.sh <NEW_SEMVER>
 ```
 
-Script mặc định thực hiện release theo thứ tự an toàn:
+Local wrapper chỉ build, ký, verify và ghi artifact vào `dist/agent-releases/<VERSION>`.
+Nó không commit, tag, push, publish release hoặc restart service. Release production chạy qua GitHub Actions theo thứ tự:
 
-1. build, ký và chép release vào `frontend/public/releases/<VERSION>`;
-2. recreate Frontend để áp dụng runtime mount `frontend/public`;
-3. kiểm tra manifest/signature qua public HTTPS và kiểm tra URL của mọi artifact;
-4. chỉ sau khi các bước trên thành công mới đổi `AGENT_VERSION` và recreate Backend.
+1. test source, build, ký và verify release bằng public key chính thức;
+2. stage verified artifacts vào `frontend/public` trước khi build image;
+3. build frontend image và kiểm tra đủ binary/manifest ngay trong image;
+4. push image đã kiểm tra và tạo GitHub Release đúng một lần.
 
-Backend không được phép quảng bá version mới trước khi release có thể tải công khai. Nếu bước kiểm tra public thất bại, script dừng và giữ nguyên `AGENT_VERSION`; vì vậy dashboard sẽ không phát task trỏ tới artifact chưa tồn tại.
-
-Nếu `AUTO_UPDATE_BACKEND=0`, operator phải tự kiểm tra release URL, đặt `AGENT_VERSION` và recreate Backend. Chỉ dùng `VERIFY_PUBLIC_RELEASE=0` trong tình huống recovery có kiểm soát vì tùy chọn này bỏ qua release gate.
+Backend không được phép quảng bá version mới trước khi workflow release và image validation thành công.
 
 ### Build không cache
 

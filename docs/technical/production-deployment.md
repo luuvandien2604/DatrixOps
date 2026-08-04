@@ -24,7 +24,7 @@ Không dùng `git reset --hard` để xử lý local changes trên VPS. Xem `git
 | Frontend source, public docs, installer/artifact nằm trong image | Build/recreate Frontend image. |
 | Chỉ `AGENT_VERSION` env | `--force-recreate backend`, không cần build image. |
 | Chỉ database data | Không build; thao tác DB theo runbook. |
-| Chỉ `scripts/publish-agent.sh` | Không build container cho bản thân script. Khi chạy publish, artifact và env có thể kéo theo bước khác. |
+| Chỉ release tooling | Không build container; production release phải đi qua GitHub Actions release workflow. |
 | Dockerfile/dependency/lockfile | Build lại image thành phần tương ứng; dùng `--no-cache` chỉ khi cache thực sự nghi lỗi. |
 
 Deploy cả Backend và Frontend:
@@ -72,6 +72,10 @@ Compose hiện build local và không gắn image tag immutable. Để rollback 
 ## Production configuration requirements
 
 `docker-compose.prod.yml` now fails fast when required values are missing:
+
+The production frontend serves Agent release files embedded in its verified
+image. Do not bind-mount `frontend/public` over `/app/public`, because that hides
+the signed binaries and manifest packaged by the release workflow.
 
 - `POSTGRES_PASSWORD`
 - `JWT_SECRET`
