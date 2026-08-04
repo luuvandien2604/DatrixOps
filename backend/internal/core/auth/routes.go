@@ -28,13 +28,9 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	// Rate limit: 5 requests per second, burst 10
 	rl := middleware.NewRateLimiter(rate.Limit(5), 10)
 
-	if cfg.PublicRegistration {
-		mux.Handle("POST /api/v1/auth/register", rl(http.HandlerFunc(h.Register)))
-	} else {
-		mux.HandleFunc("POST /api/v1/auth/register", func(w http.ResponseWriter, _ *http.Request) {
-			response.Error(w, http.StatusForbidden, "REGISTRATION_DISABLED", "Public registration is disabled. Use the initial setup wizard or an administrator-managed account.")
-		})
-	}
+	mux.HandleFunc("POST /api/v1/auth/register", func(w http.ResponseWriter, _ *http.Request) {
+		response.Error(w, http.StatusForbidden, "REGISTRATION_DISABLED", "Public registration is disabled. Use the initial setup wizard or an administrator-managed account.")
+	})
 	mux.Handle("POST /api/v1/auth/login", rl(http.HandlerFunc(h.Login)))
 	mux.HandleFunc("POST /api/v1/auth/refresh", h.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.Logout)

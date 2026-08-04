@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Command, Database, Loader2, ShieldCheck } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';

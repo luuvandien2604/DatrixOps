@@ -1,8 +1,20 @@
 export type DatrixOpsEdition = 'community' | 'cloud';
 export type DeploymentMode = 'self-hosted' | 'managed';
 
+export function getEdition(): DatrixOpsEdition {
+  return process.env.NEXT_PUBLIC_DATRIXOPS_EDITION === 'cloud' ? 'cloud' : 'community';
+}
+
+export function isCommunityEdition(): boolean {
+  return getEdition() === 'community';
+}
+
+export function isCloudEdition(): boolean {
+  return getEdition() === 'cloud';
+}
+
 export function editionLabel(edition?: string) {
-  return edition === 'cloud' ? 'DatrixOps Cloud' : 'Community Edition';
+  return (edition ?? getEdition()) === 'cloud' ? 'DatrixOps Cloud' : 'Community Edition';
 }
 
 export function deploymentLabel(mode?: string) {
