@@ -78,7 +78,26 @@ CONFIG_DIR="/etc/datrixops"
 ENV_FILE="${CONFIG_DIR}/agent.env"
 SERVICE_FILE="/etc/systemd/system/datrixops-agent.service"
 TEMP_DIR="$(mktemp -d)"
+BOOTSTRAP_ROLLBACK_TOKEN=""
+rollback_bootstrap() {
+    if [[ -n "${BOOTSTRAP_ROLLBACK_TOKEN:-}" ]]; then
+        echo "Cleaning up partial Agent installation and rolling back enrollment..." >&2
+        systemctl stop datrixops-agent 2>/dev/null || true
+        systemctl disable datrixops-agent 2>/dev/null || true
+        rm -f "$SERVICE_FILE" "$ENV_FILE" "${INSTALL_DIR}/datrixops-agent" 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+        curl --silent --show-error \
+            --connect-timeout 5 --max-time 15 \
+            --header 'Content-Type: application/json' \
+            --data "{\"rollback_token\":\"${BOOTSTRAP_ROLLBACK_TOKEN}\"}" \
+            "${API_URL}/agent/enroll/rollback" >/dev/null 2>&1 || true
+    fi
+}
 cleanup() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        rollback_bootstrap
+    fi
     rm -rf -- "$TEMP_DIR"
 }
 trap cleanup EXIT
@@ -109,6 +128,9 @@ fi
 
 AGENT_TOKEN="$(
     sed -n 's/.*"agent_token":"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
+)"
+BOOTSTRAP_ROLLBACK_TOKEN="$(
+    sed -n 's/.*"bootstrap_rollback_token":"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
 )"
 if [[ ! "$AGENT_TOKEN" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
     echo "ERROR: Control plane returned an invalid Agent credential." >&2

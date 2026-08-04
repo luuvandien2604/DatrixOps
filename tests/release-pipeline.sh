@@ -29,3 +29,21 @@ if grep -q 'frontend/public:/app/public' "$PRODUCTION_COMPOSE"; then
     echo "ERROR: production Compose must not hide Agent artifacts embedded in the frontend image" >&2
     exit 1
 fi
+
+grep -Eq 'go-version: ?"1\.25' "$WORKFLOW" || {
+    echo "ERROR: CE workflow must specify Go 1.25" >&2
+    exit 1
+}
+
+for installer in "${PROJECT_ROOT}/frontend/public/install.sh" "${PROJECT_ROOT}/frontend/public/install-mac.sh"; do
+    if ! grep -q 'bootstrap_rollback_token' "$installer" || ! grep -q 'agent/enroll/rollback' "$installer"; then
+        echo "ERROR: installer missing bootstrap rollback support: $installer" >&2
+        exit 1
+    fi
+done
+
+if ! grep -q 'bootstrap_rollback_token' "${PROJECT_ROOT}/frontend/public/install.ps1" || ! grep -q 'agent/enroll/rollback' "${PROJECT_ROOT}/frontend/public/install.ps1"; then
+    echo "ERROR: install.ps1 missing bootstrap rollback support" >&2
+    exit 1
+fi
+

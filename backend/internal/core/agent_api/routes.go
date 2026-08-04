@@ -15,6 +15,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	enrollmentLimiter := middleware.NewRateLimiter(rate.Limit(1), 5)
 
 	mux.Handle("POST /api/v1/agent/enroll", enrollmentLimiter(http.HandlerFunc(h.Enroll)))
+	mux.Handle("POST /api/v1/agent/enroll/rollback", enrollmentLimiter(http.HandlerFunc(h.EnrollRollback)))
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", h.Heartbeat)
 	mux.HandleFunc("POST /api/v1/agent/cron/executions", h.ReportCronExecution)
 	mux.HandleFunc("POST /api/v1/agent/tasks/result", h.ReportTaskResult)

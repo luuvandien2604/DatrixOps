@@ -73,14 +73,16 @@ Script không sửa tracked source, commit, tag, push, tạo GitHub Release ho�
 - Atomic task claim, một active update/server, timeout/expiry.
 - Backend chỉ complete khi heartbeat đúng desired version.
 
-Chưa hoàn thiện:
+## Bootstrap Trust Guarantees
 
-- Agent chưa enforce semantic-version anti-downgrade.
-- Linux/macOS thay binary cũ trực tiếp, chưa giữ `.bak` bền vững.
-- Không có watchdog tự rollback nếu binary mới không heartbeat.
-- Bootstrap installer CE chưa trực tiếp verify Ed25519; client-side signature verification là hardening tương lai.
-- Release public key rotation chưa hỗ trợ trust overlap hai key.
+Các đảm bảo bảo mật cho Agent release và installer:
 
-## Rollback Agent
+- **CE/Cloud Release Pipeline**: Thực hiện kiểm tra toàn vẹn và ký Ed25519 trên toàn bộ 5 binaries qua tool `sign-release` và `verify-release` trước khi đưa vào frontend image hoặc publish GitHub Release.
+- **Bootstrap Installers (`install.sh`, `install-mac.sh`, `install.ps1`)**: Kiểm tra định dạng nhị phân (ELF/executable header), dung lượng file khác 0, và mã phản hồi HTTP. Installer hiện chưa trực tiếp thực hiện xác thực chữ ký số Ed25519 `manifest.sig` ở phía client machine trong quá trình bootstrap ban đầu.
+- **Lưu ý nâng cấp tương lai**: Việc bổ sung client-side Ed25519 signature verification trực tiếp trong installer script được ghi nhận là một hạng mục hardening kỹ thuật trong tương lai.
 
-Không ghi đè release lỗi. Tăng patch version với fix và publish mới nếu Agent cũ còn online. Nếu binary không khởi động, thay thủ công bằng artifact release tốt đã lưu, restart service và kiểm tra heartbeat. Control plane không thể sửa một Agent hoàn toàn mất kết nối.
+## Rollback Agent và Bootstrap Rollback
+
+- **Bootstrap Rollback**: Khi gọi `/api/v1/agent/enroll`, hệ thống cấp credential tạm thời `bootstrap_rollback_token` có thời hạn tối đa 5 phút. Nếu việc tải binary hoặc khởi chạy dịch vụ thất bại, installer sẽ dọn dẹp dịch vụ dở dang và gọi `POST /api/v1/agent/enroll/rollback` để giải phóng token đăng ký ban đầu. Sau khi Agent gửi heartbeat thành công lần đầu tiên, `bootstrap_completed_at` sẽ được ghi nhận và vô hiệu hóa vĩnh viễn quyền rollback.
+- **Rollback Agent đã chạy**: Không ghi đè release lỗi. Tăng patch version với fix và publish mới nếu Agent cũ còn online. Nếu binary không khởi động, thay thủ công bằng artifact release tốt đã lưu, restart service và kiểm tra heartbeat. Control plane không thể sửa một Agent hoàn toàn mất kết nối.
+

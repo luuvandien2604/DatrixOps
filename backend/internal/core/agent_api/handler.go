@@ -200,6 +200,15 @@ func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
 	}
 	rawCredential := base64.RawURLEncoding.EncodeToString(rawCredentialBytes)
 	credentialHash := hashAgentCredential(rawCredential)
+
+	rawRollbackBytes := make([]byte, 32)
+	if _, err := rand.Read(rawRollbackBytes); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to generate Agent rollback credential")
+		return
+	}
+	rawRollbackToken := base64.RawURLEncoding.EncodeToString(rawRollbackBytes)
+	rollbackHash := hashAgentCredential(rawRollbackToken)
+
 	enrollmentHash := hashAgentCredential(req.Token)
 
 	tx, err := h.db.Pool.Begin(r.Context())
@@ -229,6 +238,9 @@ func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
 		`UPDATE servers
 		 SET agent_token = NULL,
 		     agent_token_hash = $2,
+		     bootstrap_rollback_token_hash = $8,
+		     bootstrap_rollback_expires_at = NOW() + INTERVAL '5 minutes',
+		     bootstrap_completed_at = NULL,
 		     enrollment_used_at = NOW(),
 		     enrolled_at = NOW(),
 		     hostname = NULLIF($3, ''),
@@ -241,7 +253,7 @@ func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
 		         'architecture', $4::text
 		     )
 		 WHERE id = $1`,
-		serverID, credentialHash, req.Hostname, req.Architecture, req.Version, req.OSFamily, req.OSName,
+		serverID, credentialHash, req.Hostname, req.Architecture, req.Version, req.OSFamily, req.OSName, rollbackHash,
 	)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to activate Agent credential")
@@ -254,8 +266,92 @@ func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	response.Success(w, http.StatusCreated, map[string]string{
-		"server_id":   serverID,
-		"agent_token": rawCredential,
+		"server_id":                 serverID,
+		"agent_token":               rawCredential,
+		"bootstrap_rollback_token":  rawRollbackToken,
+	})
+}
+
+type EnrollmentRollbackRequest struct {
+	RollbackToken string `json:"rollback_token"`
+	ServerID      string `json:"server_id,omitempty"`
+}
+
+// EnrollRollback invalidates a freshly enrolled Agent credential and reactivates
+// the original enrollment token IF and ONLY IF the short-lived rollback token
+// is valid, unexpired, and the server has not completed its first heartbeat.
+func (h *Handler) EnrollRollback(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	var req EnrollmentRollbackRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid rollback request")
+		return
+	}
+
+	req.RollbackToken = strings.TrimSpace(req.RollbackToken)
+	req.ServerID = strings.TrimSpace(req.ServerID)
+	if req.RollbackToken == "" || len(req.RollbackToken) > 256 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "A valid rollback token is required")
+		return
+	}
+	if len(req.ServerID) > 256 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "server_id is too long")
+		return
+	}
+
+	rollbackHash := hashAgentCredential(req.RollbackToken)
+
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to start enrollment rollback")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var targetServerID string
+	err = tx.QueryRow(r.Context(),
+		`SELECT id
+		 FROM servers
+		 WHERE bootstrap_rollback_token_hash = $1
+		   AND bootstrap_rollback_expires_at > NOW()
+		   AND bootstrap_completed_at IS NULL
+		   AND (NULLIF($2, '') IS NULL OR id = $2)
+		   AND COALESCE(deletion_status, 'active') = 'active'
+		 FOR UPDATE`,
+		rollbackHash, req.ServerID,
+	).Scan(&targetServerID)
+	if err != nil {
+		response.Error(w, http.StatusUnauthorized, "INVALID_ROLLBACK_TOKEN", "Rollback token is invalid, expired, or bootstrap is already completed")
+		return
+	}
+
+	_, err = tx.Exec(r.Context(),
+		`UPDATE servers
+		 SET agent_token = NULL,
+		     agent_token_hash = NULL,
+		     enrollment_used_at = NULL,
+		     bootstrap_rollback_token_hash = NULL,
+		     bootstrap_rollback_expires_at = NULL,
+		     updated_at = NOW()
+		 WHERE id = $1`,
+		targetServerID,
+	)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to release enrollment token")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, http.StatusConflict, "ROLLBACK_CONFLICT", "Enrollment rollback could not be completed")
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	response.Success(w, http.StatusOK, map[string]string{
+		"status":    "rolled_back",
+		"server_id": targetServerID,
 	})
 }
 
@@ -318,6 +414,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
 		     inventory = CASE WHEN $4 = '{}' THEN inventory ELSE $4::jsonb END,
 		     inventory_updated_at = CASE WHEN $4 = '{}' THEN inventory_updated_at ELSE NOW() END,
+		     bootstrap_completed_at = COALESCE(bootstrap_completed_at, NOW()),
+		     bootstrap_rollback_token_hash = NULL,
+		     bootstrap_rollback_expires_at = NULL,
 		     last_seen_at = NOW(),
 		     updated_at = NOW() 
 		 WHERE agent_token = $2 OR agent_token_hash = $6

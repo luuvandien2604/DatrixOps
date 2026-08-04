@@ -52,58 +52,72 @@ $Enrollment = Invoke-RestMethod `
     -Body $EnrollmentBody `
     -TimeoutSec 30
 $AgentToken = [string]$Enrollment.data.agent_token
+$BootstrapRollbackToken = [string]$Enrollment.data.bootstrap_rollback_token
 if ($AgentToken -notmatch '^[A-Za-z0-9_-]{32,256}$') {
     throw "Control plane returned an invalid Agent credential."
 }
 
-# During an update this installer can be launched by the running agent. Wait for
-# that process to exit instead of terminating the Scheduled Task and its child
-# updater before the new binary has been downloaded.
-$TaskName = "DatrixOpsAgent"
-Write-Host "[*] Waiting for the existing agent to exit (if running)..."
-Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+try {
+    # During an update this installer can be launched by the running agent. Wait for
+    # that process to exit instead of terminating the Scheduled Task and its child
+    # updater before the new binary has been downloaded.
+    $TaskName = "DatrixOpsAgent"
+    Write-Host "[*] Waiting for the existing agent to exit (if running)..."
+    Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
 
-Write-Host "[*] Downloading DatrixOps Agent..."
-$UpdatePath = "$ExePath.update"
-Invoke-WebRequest -Uri $BinaryUrl -OutFile $UpdatePath
-if ((Get-Item $UpdatePath).Length -eq 0) {
-    throw "Downloaded agent binary is empty."
+    Write-Host "[*] Downloading DatrixOps Agent..."
+    $UpdatePath = "$ExePath.update"
+    Invoke-WebRequest -Uri $BinaryUrl -OutFile $UpdatePath
+    if ((Get-Item $UpdatePath).Length -eq 0) {
+        throw "Downloaded agent binary is empty."
+    }
+    Move-Item -LiteralPath $UpdatePath -Destination $ExePath -Force
+
+    Write-Host "[*] Creating wrapper script..."
+    $LogPath = "$InstallDir\agent.log"
+    $BatContent = @(
+        "@echo off",
+        "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
+        "set `"DATRIXOPS_AGENT_TOKEN=$AgentToken`"",
+        "set `"DATRIXOPS_SERVICES=$Services`"",
+        "`"$ExePath`" >> `"$LogPath`" 2>&1"
+    )
+    $BatContent | Set-Content -Path $BatPath -Encoding ASCII
+    & icacls.exe $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+
+    Write-Host "[*] Creating Scheduled Task to run agent on startup..."
+
+    # Action: run agent via bat script so env vars are loaded properly
+    $Action = New-ScheduledTaskAction -Execute $BatPath
+
+    # Trigger: at startup
+    $Trigger = New-ScheduledTaskTrigger -AtStartup
+
+    # Keep the agent alive after an approved update or restart task.
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
+
+    # System account
+    $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+    # Register task
+    $TaskName = "DatrixOpsAgent"
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal | Out-Null
+
+    Write-Host "[*] Starting DatrixOps Agent..."
+    Start-ScheduledTask -TaskName $TaskName
+} catch {
+    if ($BootstrapRollbackToken) {
+        Write-Host "[!] Rolling back enrollment token..." -ForegroundColor Yellow
+        Unregister-ScheduledTask -TaskName "DatrixOpsAgent" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        Remove-Item -Path $ExePath, $BatPath, "$ExePath.update" -Force -ErrorAction SilentlyContinue | Out-Null
+        $RollbackBody = @{ rollback_token = $BootstrapRollbackToken } | ConvertTo-Json -Compress
+        try {
+            Invoke-RestMethod -Method Post -Uri "$ApiUrl/agent/enroll/rollback" -ContentType "application/json" -Body $RollbackBody -TimeoutSec 15 -ErrorAction SilentlyContinue | Out-Null
+        } catch {}
+    }
+    throw
 }
-Move-Item -LiteralPath $UpdatePath -Destination $ExePath -Force
-
-Write-Host "[*] Creating wrapper script..."
-$LogPath = "$InstallDir\agent.log"
-$BatContent = @(
-    "@echo off",
-    "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
-    "set `"DATRIXOPS_AGENT_TOKEN=$AgentToken`"",
-    "set `"DATRIXOPS_SERVICES=$Services`"",
-    "`"$ExePath`" >> `"$LogPath`" 2>&1"
-)
-$BatContent | Set-Content -Path $BatPath -Encoding ASCII
-& icacls.exe $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
-
-Write-Host "[*] Creating Scheduled Task to run agent on startup..."
-
-# Action: run agent via bat script so env vars are loaded properly
-$Action = New-ScheduledTaskAction -Execute $BatPath
-
-# Trigger: at startup
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-
-# Keep the agent alive after an approved update or restart task.
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
-
-# System account
-$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-# Register task
-$TaskName = "DatrixOpsAgent"
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal | Out-Null
-
-Write-Host "[*] Starting DatrixOps Agent..."
-Start-ScheduledTask -TaskName $TaskName
 
 Write-Host "[OK] DatrixOps Agent installed successfully!" -ForegroundColor Green
 Write-Host "[*] The agent is now running in the background and will auto-start on boot."
