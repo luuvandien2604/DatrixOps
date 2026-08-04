@@ -221,6 +221,10 @@ validate_configuration() {
     if [[ ! -d "$AGENT_DIR/tools/sign-release" ]]; then
         die "không tìm thấy release signing tool: $AGENT_DIR/tools/sign-release"
     fi
+
+    if [[ ! -d "$AGENT_DIR/tools/verify-release" ]]; then
+        die "không tìm thấy release verification tool: $AGENT_DIR/tools/verify-release"
+    fi
 }
 
 load_signing_key_from_file() {
@@ -800,6 +804,7 @@ main() {
 
     go test ./internal/update
     go test ./tools/sign-release
+    go test ./tools/verify-release
 
     echo
     echo "Building DatrixOps Agent ${AGENT_VERSION}..."
@@ -837,6 +842,10 @@ main() {
     AGENT_RELEASE_BASE_URL="$AGENT_RELEASE_BASE_URL" \
     AGENT_SIGNING_PRIVATE_KEY="$AGENT_SIGNING_PRIVATE_KEY" \
         go run ./tools/sign-release
+
+    go run ./tools/verify-release \
+        --release-dir "$STAGING_DIR" \
+        --version "$AGENT_VERSION"
 
     cp "$PUBLIC_DIR/install.sh" "$STAGING_DIR/install-agent.sh"
     chmod 0755 "$STAGING_DIR/install-agent.sh"
