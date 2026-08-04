@@ -81,6 +81,95 @@ func TestLoadRejectsInsecurePublicURL(t *testing.T) {
 	}
 }
 
+func TestValidatePublicURLProfiles(t *testing.T) {
+	tests := []struct {
+		name           string
+		rawURL         string
+		edition        string
+		deploymentMode string
+		wantErr        bool
+	}{
+		{
+			name:           "community allows public IP over HTTP",
+			rawURL:         "http://203.0.113.10",
+			edition:        "community",
+			deploymentMode: "self-hosted",
+		},
+		{
+			name:           "community allows localhost over HTTP",
+			rawURL:         "http://localhost:3000",
+			edition:        "community",
+			deploymentMode: "self-hosted",
+		},
+		{
+			name:           "community allows domain over HTTPS",
+			rawURL:         "https://monitor.example.com",
+			edition:        "community",
+			deploymentMode: "self-hosted",
+		},
+		{
+			name:           "community rejects domain over HTTP",
+			rawURL:         "http://monitor.example.com",
+			edition:        "community",
+			deploymentMode: "self-hosted",
+			wantErr:        true,
+		},
+		{
+			name:           "cloud allows domain over HTTPS",
+			rawURL:         "https://cloud.datrixops.com",
+			edition:        "cloud",
+			deploymentMode: "managed",
+		},
+		{
+			name:           "cloud rejects plain HTTP",
+			rawURL:         "http://cloud.datrixops.com",
+			edition:        "cloud",
+			deploymentMode: "managed",
+			wantErr:        true,
+		},
+		{
+			name:           "cloud rejects localhost",
+			rawURL:         "https://localhost",
+			edition:        "cloud",
+			deploymentMode: "managed",
+			wantErr:        true,
+		},
+		{
+			name:           "cloud rejects public IP",
+			rawURL:         "https://203.0.113.10",
+			edition:        "cloud",
+			deploymentMode: "managed",
+			wantErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePublicURL(tt.rawURL, tt.edition, tt.deploymentMode)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected URL to be valid, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsWildcardOriginsInCloudMode(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/datrixops?sslmode=disable")
+	t.Setenv("JWT_SECRET", strings.Repeat("z", 48))
+	t.Setenv("PUBLIC_URL", "https://cloud.datrixops.com")
+	t.Setenv("ALLOWED_ORIGINS", "*")
+	t.Setenv("DATRIXOPS_EDITION", "cloud")
+	t.Setenv("DEPLOYMENT_MODE", "managed")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "ALLOWED_ORIGINS") {
+		t.Fatalf("expected wildcard origin validation error, got %v", err)
+	}
+}
+
 func TestLoadFeatureFlagsDefaultOffAndRetentionBounded(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/datrixops?sslmode=disable")
 	t.Setenv("JWT_SECRET", strings.Repeat("z", 48))

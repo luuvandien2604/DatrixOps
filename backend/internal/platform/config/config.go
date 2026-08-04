@@ -83,20 +83,23 @@ func Load() (*Config, error) {
 	if cfg.PublicURL == "" {
 		return nil, fmt.Errorf("PUBLIC_URL is required")
 	}
-	if err := validatePublicURL(cfg.PublicURL); err != nil {
-		return nil, err
-	}
-	if cfg.AgentReleaseURL == "" {
-		cfg.AgentReleaseURL = cfg.PublicURL + "/releases"
-	}
-	if err := validatePublicURL(cfg.AgentReleaseURL); err != nil {
-		return nil, fmt.Errorf("AGENT_RELEASE_BASE_URL: %w", err)
-	}
 	if cfg.DeploymentMode != "self-hosted" && cfg.DeploymentMode != "managed" {
 		return nil, fmt.Errorf("DEPLOYMENT_MODE must be self-hosted or managed")
 	}
 	if cfg.Edition != "community" && cfg.Edition != "cloud" {
 		return nil, fmt.Errorf("DATRIXOPS_EDITION must be community or cloud")
+	}
+	if err := ValidatePublicURL(cfg.PublicURL, cfg.Edition, cfg.DeploymentMode); err != nil {
+		return nil, err
+	}
+	if err := validateAllowedOrigins(cfg.AllowedOrigins, cfg.Edition, cfg.DeploymentMode); err != nil {
+		return nil, err
+	}
+	if cfg.AgentReleaseURL == "" {
+		cfg.AgentReleaseURL = cfg.PublicURL + "/releases"
+	}
+	if err := ValidatePublicURL(cfg.AgentReleaseURL, cfg.Edition, cfg.DeploymentMode); err != nil {
+		return nil, fmt.Errorf("AGENT_RELEASE_BASE_URL: %w", err)
 	}
 
 	return cfg, nil
@@ -112,7 +115,9 @@ func firstOrigin(origins string) string {
 	return ""
 }
 
-func validatePublicURL(value string) error {
+// ValidatePublicURL applies the supported edition/deployment URL policy.
+func ValidatePublicURL(rawURL string, edition string, deploymentMode string) error {
+	value := strings.TrimRight(strings.TrimSpace(rawURL), "/")
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return fmt.Errorf("PUBLIC_URL must be an absolute HTTP or HTTPS URL")
@@ -120,8 +125,53 @@ func validatePublicURL(value string) error {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("PUBLIC_URL must not contain credentials, a query, or a fragment")
 	}
-	if parsed.Scheme != "https" && !isLocalOrIPHost(parsed.Hostname()) {
+
+	edition = strings.ToLower(strings.TrimSpace(edition))
+	deploymentMode = strings.ToLower(strings.TrimSpace(deploymentMode))
+	host := parsed.Hostname()
+	hostIsLocalOrIP := isLocalOrIPHost(host)
+
+	if edition == "cloud" || deploymentMode == "managed" {
+		if edition != "cloud" || deploymentMode != "managed" {
+			return fmt.Errorf("cloud deployments must use DATRIXOPS_EDITION=cloud and DEPLOYMENT_MODE=managed together")
+		}
+		if parsed.Scheme != "https" {
+			return fmt.Errorf("PUBLIC_URL must use HTTPS in Cloud managed mode")
+		}
+		if hostIsLocalOrIP {
+			return fmt.Errorf("PUBLIC_URL must use a valid domain in Cloud managed mode")
+		}
+		return nil
+	}
+
+	if edition != "community" || deploymentMode != "self-hosted" {
+		return fmt.Errorf("unsupported edition/deployment profile")
+	}
+
+	if parsed.Scheme != "https" && !hostIsLocalOrIP {
 		return fmt.Errorf("PUBLIC_URL must use HTTPS when using a domain name")
+	}
+	return nil
+}
+
+func validateAllowedOrigins(origins string, edition string, deploymentMode string) error {
+	if strings.TrimSpace(origins) == "" {
+		return nil
+	}
+	for _, raw := range strings.Split(origins, ",") {
+		origin := strings.TrimRight(strings.TrimSpace(raw), "/")
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			if edition == "cloud" || deploymentMode == "managed" {
+				return fmt.Errorf("ALLOWED_ORIGINS must not use wildcard in Cloud managed mode")
+			}
+			continue
+		}
+		if err := ValidatePublicURL(origin, edition, deploymentMode); err != nil {
+			return fmt.Errorf("ALLOWED_ORIGINS contains invalid origin %q: %w", origin, err)
+		}
 	}
 	return nil
 }

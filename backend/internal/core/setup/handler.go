@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/mail"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -90,7 +89,7 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 	req.SystemName = strings.TrimSpace(req.SystemName)
 	req.Timezone = strings.TrimSpace(req.Timezone)
 	req.PublicURL = strings.TrimRight(strings.TrimSpace(req.PublicURL), "/")
-	if message := validateCompleteRequest(req); message != "" {
+	if message := validateCompleteRequest(req, h.cfg); message != "" {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", message)
 		return
 	}
@@ -221,7 +220,7 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 	}
 }
 
-func validateCompleteRequest(req completeRequest) string {
+func validateCompleteRequest(req completeRequest, cfg *config.Config) string {
 	address, err := mail.ParseAddress(req.Email)
 	if err != nil || !strings.EqualFold(address.Address, req.Email) {
 		return "A valid administrator email is required"
@@ -241,15 +240,14 @@ func validateCompleteRequest(req completeRequest) string {
 	if _, err := time.LoadLocation(req.Timezone); err != nil {
 		return "Timezone must be a valid IANA timezone"
 	}
-	parsed, err := url.Parse(req.PublicURL)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return "Public URL must be an absolute HTTP or HTTPS URL"
+	edition := "community"
+	deploymentMode := "self-hosted"
+	if cfg != nil {
+		edition = cfg.Edition
+		deploymentMode = cfg.DeploymentMode
 	}
-	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
-		return "Public URL must use HTTPS outside localhost"
-	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "Public URL must not contain credentials, a query, or a fragment"
+	if err := config.ValidatePublicURL(req.PublicURL, edition, deploymentMode); err != nil {
+		return strings.Replace(err.Error(), "PUBLIC_URL", "Public URL", 1)
 	}
 	return ""
 }
