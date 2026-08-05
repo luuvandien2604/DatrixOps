@@ -332,6 +332,10 @@ func (h *Handler) EnrollRollback(w http.ResponseWriter, r *http.Request) {
 		 SET agent_token = NULL,
 		     agent_token_hash = NULL,
 		     enrollment_used_at = NULL,
+		     enrolled_at = NULL,
+		     hostname = NULL,
+		     architecture = NULL,
+		     os_info = '{}'::jsonb,
 		     bootstrap_rollback_token_hash = NULL,
 		     bootstrap_rollback_expires_at = NULL,
 		     updated_at = NOW()
@@ -352,6 +356,54 @@ func (h *Handler) EnrollRollback(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{
 		"status":    "rolled_back",
 		"server_id": targetServerID,
+	})
+}
+
+// GetBootstrapStatus queries the current bootstrap completion state using the
+// short-lived bootstrap rollback credential or an authenticated Agent credential.
+func (h *Handler) GetBootstrapStatus(w http.ResponseWriter, r *http.Request) {
+	token, ok := agentTokenFromRequest(r)
+	if !ok {
+		token = strings.TrimSpace(r.URL.Query().Get("token"))
+	}
+	token = strings.TrimSpace(token)
+	if token == "" || len(token) > 256 {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "A valid bootstrap rollback token is required")
+		return
+	}
+
+	tokenHash := hashAgentCredential(token)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var serverID string
+	var bootstrapCompleted bool
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT id, (bootstrap_completed_at IS NOT NULL) AS bootstrap_completed
+		 FROM servers
+		 WHERE bootstrap_rollback_token_hash = $1
+		    OR (agent_token_hash = $1 AND bootstrap_completed_at IS NOT NULL)`,
+		tokenHash,
+	).Scan(&serverID, &bootstrapCompleted)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Bootstrap token record not found or expired")
+		} else {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to query bootstrap status")
+		}
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	statusStr := "pending"
+	if bootstrapCompleted {
+		statusStr = "completed"
+	}
+	response.Success(w, http.StatusOK, map[string]any{
+		"status":              statusStr,
+		"bootstrap_completed": bootstrapCompleted,
+		"server_id":           serverID,
 	})
 }
 

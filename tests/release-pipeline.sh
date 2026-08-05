@@ -40,10 +40,20 @@ for installer in "${PROJECT_ROOT}/frontend/public/install.sh" "${PROJECT_ROOT}/f
         echo "ERROR: installer missing bootstrap rollback support: $installer" >&2
         exit 1
     fi
+    if ! grep -q 'ALLOW_INSECURE_HTTP' "$installer"; then
+        echo "ERROR: installer missing ALLOW_INSECURE_HTTP flag support: $installer" >&2
+        exit 1
+    fi
 done
 
 if ! grep -q 'bootstrap_rollback_token' "${PROJECT_ROOT}/frontend/public/install.ps1" || ! grep -q 'agent/enroll/rollback' "${PROJECT_ROOT}/frontend/public/install.ps1"; then
     echo "ERROR: install.ps1 missing bootstrap rollback support" >&2
     exit 1
 fi
+
+if ! grep -q 'datrixops-agent.bak' "${PROJECT_ROOT}/frontend/public/update-agent.sh" || ! grep -q 'datrixops-agent.bak' "${PROJECT_ROOT}/frontend/public/update-agent.ps1"; then
+    echo "ERROR: update scripts missing backup restoration handling" >&2
+    exit 1
+fi
+
 

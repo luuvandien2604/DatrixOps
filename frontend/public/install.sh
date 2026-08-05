@@ -4,14 +4,16 @@ set -Eeuo pipefail
 SERVER_URL=""
 ENROLLMENT_TOKEN=""
 SERVICES=""
+ALLOW_INSECURE_HTTP=0
 
 usage() {
     cat <<'USAGE'
 Usage:
-  curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
+  curl -fsSL https://github.com/luuvandien2604/DatrixOps/releases/latest/download/install.sh | sudo bash -s -- \
     --server https://monitor.example.com \
     --token ENROLLMENT_TOKEN \
-    [--services "nginx,postgresql,docker"]
+    [--services "nginx,postgresql,docker"] \
+    [--allow-insecure-http]
 USAGE
 }
 
@@ -28,6 +30,10 @@ while [[ $# -gt 0 ]]; do
         --services)
             SERVICES="${2:-}"
             shift 2
+            ;;
+        --allow-insecure-http)
+            ALLOW_INSECURE_HTTP=1
+            shift 1
             ;;
         -h|--help)
             usage
@@ -50,7 +56,20 @@ if [[ ! "$SERVER_URL" =~ ^https?://[A-Za-z0-9._:-]+$ ]]; then
     echo "ERROR: --server must be a valid HTTP or HTTPS URL." >&2
     exit 1
 fi
-if [[ ! "$ENROLLMENT_TOKEN" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
+
+if [[ "$SERVER_URL" =~ ^http:// ]]; then
+    host_part="$(echo "$SERVER_URL" | sed -e 's#^http://##' -e 's#/.*##' -e 's#:[0-9]*##')"
+    if [[ "$host_part" != "localhost" && "$host_part" != "127.0.0.1" && "$ALLOW_INSECURE_HTTP" -ne 1 ]]; then
+        echo "ERROR: Insecure HTTP control-plane origin requires --allow-insecure-http flag." >&2
+        echo "HTTP control planes should only be used on trusted private networks (LAN/VPN)." >&2
+        exit 1
+    fi
+    if [[ "$ALLOW_INSECURE_HTTP" -eq 1 ]]; then
+        echo "WARNING: HTTP control plane transport is unencrypted. Credentials should only be sent over trusted networks." >&2
+    fi
+fi
+
+if ! printf '%s' "$ENROLLMENT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{32,255}$'; then
     echo "ERROR: --token is missing or invalid." >&2
     exit 1
 fi
@@ -72,6 +91,14 @@ case "$(uname -m)" in
         ;;
 esac
 
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
 API_URL="${SERVER_URL}/api/v1"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/datrixops"
@@ -79,18 +106,40 @@ ENV_FILE="${CONFIG_DIR}/agent.env"
 SERVICE_FILE="/etc/systemd/system/datrixops-agent.service"
 TEMP_DIR="$(mktemp -d)"
 BOOTSTRAP_ROLLBACK_TOKEN=""
+ENROLLED=0
+
 rollback_bootstrap() {
-    if [[ -n "${BOOTSTRAP_ROLLBACK_TOKEN:-}" ]]; then
+    if [[ "$ENROLLED" -eq 1 && -n "${BOOTSTRAP_ROLLBACK_TOKEN:-}" ]]; then
         echo "Cleaning up partial Agent installation and rolling back enrollment..." >&2
         systemctl stop datrixops-agent 2>/dev/null || true
         systemctl disable datrixops-agent 2>/dev/null || true
-        rm -f "$SERVICE_FILE" "$ENV_FILE" "${INSTALL_DIR}/datrixops-agent" 2>/dev/null || true
-        systemctl daemon-reload 2>/dev/null || true
-        curl --silent --show-error \
-            --connect-timeout 5 --max-time 15 \
-            --header 'Content-Type: application/json' \
-            --data "{\"rollback_token\":\"${BOOTSTRAP_ROLLBACK_TOKEN}\"}" \
-            "${API_URL}/agent/enroll/rollback" >/dev/null 2>&1 || true
+
+        HTTP_ROLLBACK="$(
+            curl --silent --show-error \
+                --connect-timeout 5 --max-time 15 \
+                --write-out '%{http_code}' \
+                --header 'Content-Type: application/json' \
+                --data "{\"rollback_token\":\"${BOOTSTRAP_ROLLBACK_TOKEN}\"}" \
+                "${API_URL}/agent/enroll/rollback" 2>/dev/null || echo "000"
+        )"
+        if [[ "$HTTP_ROLLBACK" == "200" ]]; then
+            rm -f "$SERVICE_FILE" "$ENV_FILE" "${INSTALL_DIR}/datrixops-agent" 2>/dev/null || true
+            systemctl daemon-reload 2>/dev/null || true
+            echo "Enrollment token successfully released." >&2
+        else
+            mkdir -p "$CONFIG_DIR"
+            chmod 0700 "$CONFIG_DIR" 2>/dev/null || true
+            RECOVERY_FILE="${CONFIG_DIR}/bootstrap-recovery.json"
+            {
+                printf '{\n'
+                printf '  "rollback_token": "%s",\n' "$BOOTSTRAP_ROLLBACK_TOKEN"
+                printf '  "server_url": "%s"\n' "$SERVER_URL"
+                printf '}\n'
+            } >"$RECOVERY_FILE"
+            chmod 0600 "$RECOVERY_FILE"
+            echo "WARNING: Rollback API call returned HTTP ${HTTP_ROLLBACK}." >&2
+            echo "Recovery state saved to ${RECOVERY_FILE} (mode 0600). Operator may retry rollback before token expiry." >&2
+        fi
     fi
 }
 cleanup() {
@@ -103,6 +152,69 @@ cleanup() {
 trap cleanup EXIT
 umask 077
 
+# Step 1: Pre-enrollment Artifact Download & Verification
+RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL:-${SERVER_URL}}"
+ARTIFACT_NAME="datrixops-agent-linux-${AGENT_ARCH}"
+
+echo "Downloading release metadata..."
+SHA_FILE="${TEMP_DIR}/artifact.sha256"
+SIZE_FILE="${TEMP_DIR}/artifact.size"
+STAGED_BINARY="${TEMP_DIR}/datrixops-agent"
+
+curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 30 \
+    --output "$SHA_FILE" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}.sha256" || {
+    echo "ERROR: Failed to download release SHA-256 metadata." >&2
+    exit 1
+}
+curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 30 \
+    --output "$SIZE_FILE" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}.size" || {
+    echo "ERROR: Failed to download release size metadata." >&2
+    exit 1
+}
+
+EXPECTED_SHA="$(tr -d '\r\n[:space:]' <"$SHA_FILE")"
+EXPECTED_SIZE="$(tr -d '\r\n[:space:]' <"$SIZE_FILE")"
+
+if [[ ! "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "ERROR: Release SHA-256 metadata format is invalid." >&2
+    exit 1
+fi
+if [[ ! "$EXPECTED_SIZE" =~ ^[0-9]+$ ]] || [[ "$EXPECTED_SIZE" -le 0 ]]; then
+    echo "ERROR: Release size metadata format is invalid." >&2
+    exit 1
+fi
+
+echo "Downloading DatrixOps Agent binary..."
+curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 180 \
+    --output "$STAGED_BINARY" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}" || {
+    echo "ERROR: Failed to download Agent binary." >&2
+    exit 1
+}
+
+ACTUAL_SIZE="$(wc -c <"$STAGED_BINARY" | tr -d ' ')"
+if [[ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]]; then
+    echo "ERROR: Downloaded binary size (${ACTUAL_SIZE} bytes) does not match expected size (${EXPECTED_SIZE} bytes)." >&2
+    exit 1
+fi
+
+ACTUAL_SHA="$(sha256_file "$STAGED_BINARY" | tr '[:upper:]' '[:lower:]')"
+EXPECTED_SHA_LOWER="$(echo "$EXPECTED_SHA" | tr '[:upper:]' '[:lower:]')"
+if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA_LOWER" ]]; then
+    echo "ERROR: Downloaded binary SHA-256 checksum (${ACTUAL_SHA}) does not match expected (${EXPECTED_SHA})." >&2
+    exit 1
+fi
+
+if [[ "$(od -An -tx1 -N4 "$STAGED_BINARY" | tr -d ' \n')" != "7f454c46" ]]; then
+    echo "ERROR: Downloaded file is not a valid Linux ELF binary." >&2
+    exit 1
+fi
+
+echo "Pre-enrollment binary verification succeeded (SHA-256 & size match)."
+
+# Step 2: Call Enrollment API
 ENROLL_BODY="${TEMP_DIR}/enroll.json"
 ENROLL_RESPONSE="${TEMP_DIR}/enroll-response.json"
 printf '{"token":"%s","os_family":"linux","architecture":"%s"}' \
@@ -132,26 +244,17 @@ AGENT_TOKEN="$(
 BOOTSTRAP_ROLLBACK_TOKEN="$(
     sed -n 's/.*"bootstrap_rollback_token":"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
 )"
-if [[ ! "$AGENT_TOKEN" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
+if ! printf '%s' "$AGENT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{32,255}$'; then
     echo "ERROR: Control plane returned an invalid Agent credential." >&2
     exit 1
 fi
-
-BINARY_URL="${SERVER_URL}/datrixops-agent-linux-${AGENT_ARCH}"
-STAGED_BINARY="${TEMP_DIR}/datrixops-agent"
-echo "Downloading signed DatrixOps Agent artifact..."
-curl --fail --silent --show-error --location \
-    --connect-timeout 10 --max-time 180 \
-    --output "$STAGED_BINARY" "$BINARY_URL"
-if [[ ! -s "$STAGED_BINARY" ]]; then
-    echo "ERROR: Downloaded Agent binary is empty." >&2
+if ! printf '%s' "$BOOTSTRAP_ROLLBACK_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{32,255}$'; then
+    echo "ERROR: Control plane returned an invalid bootstrap rollback credential." >&2
     exit 1
 fi
-if [[ "$(od -An -tx1 -N4 "$STAGED_BINARY" | tr -d ' \n')" != "7f454c46" ]]; then
-    echo "ERROR: Downloaded file is not a Linux ELF binary." >&2
-    exit 1
-fi
+ENROLLED=1
 
+# Step 3: Install & Start Service
 install -d -m 0700 "$CONFIG_DIR"
 {
     printf 'DATRIXOPS_SERVER_URL=%s\n' "$API_URL"
@@ -190,8 +293,33 @@ chmod 0644 "$SERVICE_FILE"
 
 systemctl daemon-reload
 systemctl enable --now datrixops-agent
-systemctl restart datrixops-agent
+sleep 2
 
-echo "DatrixOps Agent installed successfully."
-echo "Check status: systemctl status datrixops-agent"
-echo "Follow logs:  journalctl -u datrixops-agent -f"
+if ! systemctl is-active --quiet datrixops-agent; then
+    echo "ERROR: DatrixOps Agent service failed to start." >&2
+    exit 1
+fi
+
+# Step 4: Bounded Wait for Backend First-Heartbeat / Bootstrap Completion
+echo "Verifying first heartbeat with control plane..."
+BOOTSTRAP_CONFIRMED=0
+for retry in $(seq 1 15); do
+    STATUS_HTTP="$(
+        curl --silent --show-error \
+            --connect-timeout 5 --max-time 10 \
+            --header "Authorization: Bearer ${BOOTSTRAP_ROLLBACK_TOKEN}" \
+            "${API_URL}/agent/bootstrap-status" || echo "000"
+    )"
+    if echo "$STATUS_HTTP" | grep -q '"bootstrap_completed":true'; then
+        BOOTSTRAP_CONFIRMED=1
+        break
+    fi
+    sleep 1
+done
+
+if [[ "$BOOTSTRAP_CONFIRMED" -ne 1 ]]; then
+    echo "ERROR: Control plane did not confirm first heartbeat within timeout." >&2
+    exit 1
+fi
+
+echo "DatrixOps Agent installed and verified successfully."
