@@ -1,0 +1,132 @@
+name: Installer & Updater Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  linux-installer:
+    name: Linux Installer & Updater Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell syntax
+        run: |
+          bash -n frontend/public/install.sh
+          bash -n frontend/public/install-mac.sh
+          bash -n frontend/public/update-agent.sh
+          bash -n deploy/fetch-agent-release.sh
+          bash -n scripts/build-agent-release.sh
+
+      - name: Test Linux installer argument validation
+        run: |
+          python3 scripts/mock-server.py &
+          sleep 2
+
+          export DATRIXOPS_INSTALLER_TEST_MODE=1
+          export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
+
+          # Test missing required args fails
+          if bash frontend/public/install.sh 2>/dev/null; then
+            echo "ERROR: installer should fail without args" >&2
+            exit 1
+          fi
+
+          # Test invalid layout fails
+          if bash frontend/public/install.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.0 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
+            echo "ERROR: installer should reject invalid layout" >&2
+            exit 1
+          fi
+
+          # Test valid arguments in test mode
+          bash frontend/public/install.sh \
+            --server http://127.0.0.1:8080 \
+            --token "$(printf 't%.0s' {1..32})" \
+            --agent-version 1.0.0 \
+            --agent-artifact-base-url http://127.0.0.1:8080 \
+            --agent-release-layout github
+
+  macos-installer:
+    name: macOS Installer & Updater Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell syntax
+        run: |
+          bash -n frontend/public/install.sh
+          bash -n frontend/public/install-mac.sh
+          bash -n frontend/public/update-agent.sh
+
+      - name: Test macOS installer argument validation
+        run: |
+          python3 scripts/mock-server.py &
+          sleep 2
+
+          export DATRIXOPS_INSTALLER_TEST_MODE=1
+          export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
+
+          # Test missing required args fails
+          if bash frontend/public/install-mac.sh 2>/dev/null; then
+            echo "ERROR: installer should fail without args" >&2
+            exit 1
+          fi
+
+          # Test invalid layout fails
+          if bash frontend/public/install-mac.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.0 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
+            echo "ERROR: installer should reject invalid layout" >&2
+            exit 1
+          fi
+
+          # Test valid arguments in test mode
+          bash frontend/public/install-mac.sh \
+            --server http://127.0.0.1:8080 \
+            --token "$(printf 't%.0s' {1..32})" \
+            --agent-version 1.0.0 \
+            --agent-artifact-base-url http://127.0.0.1:8080 \
+            --agent-release-layout default
+
+  windows-installer:
+    name: Windows Installer & Updater Tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PowerShell scripts syntax & AST
+        shell: pwsh
+        run: |
+          $scripts = @(
+            "frontend/public/install.ps1",
+            "frontend/public/update-agent.ps1"
+          )
+          foreach ($script in $scripts) {
+            $errors = $null
+            $tokens = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              Write-Error "Syntax errors in $script`: $($errors | Out-String)"
+              exit 1
+            }
+            Write-Host "AST validation passed for $script"
+          }
+
+      - name: Test Windows installer argument validation
+        shell: pwsh
+        run: |
+          Start-Process -NoNewWindow -FilePath "python" -ArgumentList "scripts/mock-server.py"
+          Start-Sleep -Seconds 2
+
+          $env:DATRIXOPS_INSTALLER_TEST_MODE = "1"
+          $testToken = -join ((65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+
+          # Test invalid layout fails
+          try {
+            & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.0" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "invalid_layout"
+            Write-Error "Expected invalid layout to throw"
+            exit 1
+          } catch {
+            Write-Host "Successfully rejected invalid layout"
+          }
+
+          # Test valid arguments in test mode
+          & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.0" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "github"

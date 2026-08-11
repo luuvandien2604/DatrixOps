@@ -6,14 +6,36 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VERSION="${1:-}"
 DOWNLOAD_BASE="${DATRIXOPS_RELEASE_DOWNLOAD_BASE:-https://github.com/luuvandien2604/DatrixOps/releases/download/v${VERSION}}"
 PUBLIC_DIR="${PROJECT_ROOT}/frontend/public"
-RELEASE_DIR="${PUBLIC_DIR}/releases/${VERSION}"
-STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/datrixops-agent-release.XXXXXX")"
-trap 'rm -rf -- "$STAGING_DIR"' EXIT
+RELEASES_PARENT="${PUBLIC_DIR}/releases"
+RELEASE_DIR="${RELEASES_PARENT}/${VERSION}"
 
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
-    echo "ERROR: A semantic Agent version is required." >&2
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    echo "ERROR: A strict semantic Agent version (X.Y.Z) is required." >&2
     exit 2
 }
+
+# Check 1: Release directory already present and fully verified
+if [[ -f "${RELEASE_DIR}/manifest.json" && -f "${RELEASE_DIR}/manifest.sig" && -f "${RELEASE_DIR}/agent-release.version" ]]; then
+    if (cd "${PROJECT_ROOT}/agent" && go run ./tools/verify-release --release-dir "$RELEASE_DIR" --version "$VERSION" >/dev/null 2>&1); then
+        echo "SUCCESS: Verified Agent v${VERSION} release artifacts already present in ${RELEASE_DIR}."
+        for filename in datrixops-agent-linux-amd64 datrixops-agent-linux-arm64 datrixops-agent-darwin-amd64 datrixops-agent-darwin-arm64 datrixops-agent-windows-amd64.exe; do
+            if [[ -f "${RELEASE_DIR}/${filename}" ]]; then
+                cp -f "${RELEASE_DIR}/${filename}" "${PUBLIC_DIR}/${filename}" 2>/dev/null || true
+            fi
+        done
+        exit 0
+    fi
+fi
+
+mkdir -p "$RELEASES_PARENT"
+# Same-filesystem staging directory guaranteed to be on the same mount as RELEASE_DIR
+STAGING_DIR="$(mktemp -d "${RELEASES_PARENT}/.tmp-staging-XXXXXX")"
+cleanup() {
+    if [[ -n "${STAGING_DIR:-}" && -d "$STAGING_DIR" ]]; then
+        rm -rf -- "$STAGING_DIR"
+    fi
+}
+trap cleanup EXIT
 
 files=(
     datrixops-agent-linux-amd64
@@ -21,128 +43,88 @@ files=(
     datrixops-agent-darwin-amd64
     datrixops-agent-darwin-arm64
     datrixops-agent-windows-amd64.exe
+    install.sh
+    install-mac.sh
+    install.ps1
+    update-agent.sh
+    update-agent.ps1
+    agent-release.version
     manifest.json
     manifest.sig
-    checksums.txt
-    install-agent.sh
+    agent-release-manifest.json
+    agent-release-manifest.sig
 )
 
-# Check 1: Release directory already present and populated
-if [[ -f "${RELEASE_DIR}/manifest.json" && -s "${RELEASE_DIR}/datrixops-agent-linux-amd64" ]]; then
-    echo "SUCCESS: Agent v${VERSION} release artifacts already present in ${RELEASE_DIR}."
-    for filename in datrixops-agent-linux-amd64 datrixops-agent-linux-arm64 datrixops-agent-darwin-amd64 datrixops-agent-darwin-arm64 datrixops-agent-windows-amd64.exe; do
-        if [[ -f "${RELEASE_DIR}/${filename}" ]]; then
-            cp -f "${RELEASE_DIR}/${filename}" "${PUBLIC_DIR}/${filename}" 2>/dev/null || true
-        fi
-    done
-    exit 0
-fi
+all_downloads=(checksums.txt)
+for f in "${files[@]}"; do
+    all_downloads+=("$f" "$f.sha256" "$f.size")
+done
 
-# Check 2: Pre-built binaries already present in frontend/public
-if [[ -f "${PUBLIC_DIR}/datrixops-agent-linux-amd64" && -s "${PUBLIC_DIR}/datrixops-agent-linux-amd64" ]]; then
-    echo "SUCCESS: Using pre-built Agent binaries in ${PUBLIC_DIR}."
-    mkdir -p "${RELEASE_DIR}"
-    for filename in "${files[@]}"; do
-        if [[ -f "${PUBLIC_DIR}/${filename}" ]]; then
-            cp -f "${PUBLIC_DIR}/${filename}" "${RELEASE_DIR}/${filename}" 2>/dev/null || true
-        fi
-    done
-    if [[ -f "${RELEASE_DIR}/datrixops-agent-linux-amd64" ]]; then
-        exit 0
-    fi
-fi
+echo "INFO: Fetching Agent v${VERSION} release artifacts from ${DOWNLOAD_BASE}..."
 
-download_success=true
-echo "INFO: Attempting to fetch Agent v${VERSION} release artifacts from GitHub Releases..."
-
-for filename in "${files[@]}"; do
-    if ! curl --fail --location --silent --show-error --max-time 15 \
+for filename in "${all_downloads[@]}"; do
+    if ! curl --fail --location --silent --show-error --max-time 30 \
         "${DOWNLOAD_BASE%/}/${filename}" \
-        --output "${STAGING_DIR}/${filename}" 2>/dev/null; then
-        download_success=false
-        break
+        --output "${STAGING_DIR}/${filename}"; then
+        echo "ERROR: Failed to download release asset ${filename} from GitHub Releases." >&2
+        exit 1
     fi
     if [[ ! -s "${STAGING_DIR}/${filename}" ]]; then
-        download_success=false
-        break
+        echo "ERROR: Downloaded release asset ${filename} is empty." >&2
+        exit 1
     fi
 done
 
-if [[ "$download_success" == "true" ]]; then
-    (
-        cd "$STAGING_DIR"
-        sha256sum --check checksums.txt >/dev/null 2>&1 || true
-    )
-    echo "SUCCESS: Agent v${VERSION} release binaries downloaded from GitHub Releases."
-else
-    echo "WARN: GitHub Release v${VERSION} not found online. Compiling Agent binaries locally..."
-    mkdir -p "${STAGING_DIR}"
-
-    targets=(
-        "linux/amd64/datrixops-agent-linux-amd64"
-        "linux/arm64/datrixops-agent-linux-arm64"
-        "darwin/amd64/datrixops-agent-darwin-amd64"
-        "darwin/arm64/datrixops-agent-darwin-arm64"
-        "windows/amd64/datrixops-agent-windows-amd64.exe"
-    )
-
-    if command -v go >/dev/null 2>&1; then
-        echo "INFO: Compiling Agent binaries using local Go compiler..."
-        for item in "${targets[@]}"; do
-            IFS="/" read -r os arch filename <<< "$item"
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
-                -ldflags="-s -w -X main.Version=${VERSION} -X main.VersionMarker=datrixops-agent-version=${VERSION}" \
-                -o "${STAGING_DIR}/${filename}" \
-                "${PROJECT_ROOT}/agent/cmd/agent" >/dev/null 2>&1 || true
-        done
-    elif command -v docker >/dev/null 2>&1; then
-        echo "INFO: Compiling Agent binaries using Go Docker container..."
-        for item in "${targets[@]}"; do
-            IFS="/" read -r os arch filename <<< "$item"
-            docker run -i=false --rm < /dev/null \
-                -e CGO_ENABLED=0 \
-                -e GOOS="$os" \
-                -e GOARCH="$arch" \
-                -v "${PROJECT_ROOT}:/app" \
-                -v "${STAGING_DIR}:/out" \
-                -w /app/agent \
-                golang:1.24-alpine \
-                go build -ldflags="-s -w -X main.Version=${VERSION} -X main.VersionMarker=datrixops-agent-version=${VERSION}" -o "/out/${filename}" ./cmd/agent >/dev/null 2>&1 || true
-        done
-    fi
-
-    (
-        cd "$STAGING_DIR"
-        if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum datrixops-agent-* > checksums.txt 2>/dev/null || true
-        elif command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 datrixops-agent-* > checksums.txt 2>/dev/null || true
-        fi
-    )
-
-    cat <<EOF > "${STAGING_DIR}/manifest.json"
-{
-  "version": "${VERSION}",
-  "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "min_upgradable_version": "1.0.0"
-}
-EOF
-    printf '%064d' 0 > "${STAGING_DIR}/manifest.sig"
-    if [[ -f "${PUBLIC_DIR}/install.sh" ]]; then
-        cp -f "${PUBLIC_DIR}/install.sh" "${STAGING_DIR}/install-agent.sh"
+# Step 2: Strict SHA-256 Checksum Verification
+echo "INFO: Verifying release checksums..."
+(
+    cd "$STAGING_DIR"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum --check checksums.txt >/dev/null
     else
-        touch "${STAGING_DIR}/install-agent.sh"
+        shasum -a 256 --check checksums.txt >/dev/null
     fi
+) || {
+    echo "ERROR: Release checksum verification failed for v${VERSION}." >&2
+    exit 1
+}
 
-    echo "SUCCESS: Agent v${VERSION} binaries compiled locally."
+# Step 3: Verify agent-release.version linkage
+VERSION_CONTENT="$(tr -d '\r\n[:space:]' <"${STAGING_DIR}/agent-release.version")"
+if [[ "$VERSION_CONTENT" != "$VERSION" ]]; then
+    echo "ERROR: agent-release.version (${VERSION_CONTENT}) does not match requested version (${VERSION})." >&2
+    exit 1
 fi
 
-mkdir -p "$(dirname "$RELEASE_DIR")"
-rm -rf -- "${RELEASE_DIR}.new"
+# Step 4: Client-side Ed25519 Signature & Manifest Verification
+echo "INFO: Verifying Ed25519 signature on manifest.json..."
+(
+    cd "${PROJECT_ROOT}/agent"
+    go run ./tools/verify-release --release-dir "$STAGING_DIR" --version "$VERSION"
+) || {
+    echo "ERROR: Client-side Ed25519 verification failed for downloaded release v${VERSION}." >&2
+    exit 1
+}
+
+# Step 5: Same-Filesystem Atomic Directory Promotion
+echo "INFO: Promoting verified release v${VERSION} to active directory..."
+rm -rf -- "${RELEASE_DIR}.new" "${RELEASE_DIR}.old"
 mv -- "$STAGING_DIR" "${RELEASE_DIR}.new"
-STAGING_DIR=""
-rm -rf -- "$RELEASE_DIR"
-mv -- "${RELEASE_DIR}.new" "$RELEASE_DIR"
+STAGING_DIR="" # Prevent trap cleanup from deleting the promoted directory
+
+if [[ -d "$RELEASE_DIR" ]]; then
+    mv -- "$RELEASE_DIR" "${RELEASE_DIR}.old"
+fi
+
+if mv -- "${RELEASE_DIR}.new" "$RELEASE_DIR"; then
+    rm -rf -- "${RELEASE_DIR}.old" 2>/dev/null || true
+else
+    echo "ERROR: Failed to swap release directory. Restoring old release..." >&2
+    if [[ -d "${RELEASE_DIR}.old" ]]; then
+        mv -- "${RELEASE_DIR}.old" "$RELEASE_DIR"
+    fi
+    exit 1
+fi
 
 for filename in \
     datrixops-agent-linux-amd64 \
@@ -161,4 +143,4 @@ chmod 0755 \
     "${PUBLIC_DIR}/datrixops-agent-darwin-amd64" \
     "${PUBLIC_DIR}/datrixops-agent-darwin-arm64" 2>/dev/null || true
 
-echo "Agent v${VERSION} release artifacts installed to ${RELEASE_DIR}."
+echo "SUCCESS: Agent v${VERSION} release artifacts verified and installed to ${RELEASE_DIR}."

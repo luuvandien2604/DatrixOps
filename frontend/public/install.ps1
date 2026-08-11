@@ -3,6 +3,12 @@ param (
     [string]$Token,
     [Parameter(Mandatory=$true)]
     [string]$ServerUrl,
+    [Parameter(Mandatory=$true)]
+    [string]$AgentVersion,
+    [Parameter(Mandatory=$true)]
+    [string]$AgentArtifactBaseUrl,
+    [Parameter(Mandatory=$false)]
+    [string]$AgentReleaseLayout = "github",
     [Parameter(Mandatory=$false)]
     [string]$Services = "",
     [Parameter(Mandatory=$false)]
@@ -10,6 +16,11 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($AgentReleaseLayout -and $AgentReleaseLayout -notmatch '^(github|default|legacy_direct)$') {
+    Write-Error "Invalid AgentReleaseLayout. Must be 'github', 'default', or 'legacy_direct'."
+    exit 1
+}
 
 if ($Services -and $Services -notmatch '^[A-Za-z0-9._@,$ \-]+$') {
     Write-Error "Services contains unsupported characters."
@@ -20,16 +31,28 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host "[*] DatrixOps Agent Installer (Windows)" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 
-# Ensure admin rights
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Error "Please run PowerShell as Administrator."
-    exit 1
+$TestMode = if ($env:DATRIXOPS_INSTALLER_TEST_MODE -eq "1") { $true } else { $false }
+$TestRoot = if ($env:DATRIXOPS_INSTALLER_ROOT) { $env:DATRIXOPS_INSTALLER_ROOT } else { "" }
+
+if (-not $TestMode) {
+    # Ensure admin rights
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Error "Please run PowerShell as Administrator."
+        exit 1
+    }
 }
 
 $ServerUrl = $ServerUrl.TrimEnd("/")
+$AgentArtifactBaseUrl = $AgentArtifactBaseUrl.TrimEnd("/")
+
 if ($ServerUrl -notmatch '^https?://[A-Za-z0-9._:-]+$') {
     Write-Error "ServerUrl must be a valid HTTP or HTTPS URL."
+    exit 1
+}
+
+if (-not $TestMode -and $AgentArtifactBaseUrl -notmatch '^https://') {
+    Write-Error "AgentArtifactBaseUrl must be an HTTPS URL."
     exit 1
 }
 
@@ -45,16 +68,20 @@ if ($ServerUrl -match '^http://') {
 }
 
 $ApiUrl = "$ServerUrl/api/v1"
-$ReleaseBaseUrl = if ($env:AGENT_RELEASE_BASE_URL) { $env:AGENT_RELEASE_BASE_URL.TrimEnd('/') } else { $ServerUrl }
 $ArtifactName = "datrixops-agent-windows-amd64.exe"
-$InstallDir = "C:\Program Files\DatrixOps"
+$InstallDir = if ($TestRoot) { [System.IO.Path]::Combine($TestRoot, "Program Files", "DatrixOps") } else { "C:\Program Files\DatrixOps" }
 $ExePath = "$InstallDir\datrixops-agent.exe"
 $BatPath = "$InstallDir\run_agent.bat"
 $TempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "datrixops-installer-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 
 if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir | Out-Null
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+}
+
+if ($AgentVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+    Write-Error "AgentVersion must be a valid semver version (X.Y.Z)."
+    exit 1
 }
 
 $BootstrapRollbackToken = $null
@@ -63,12 +90,19 @@ $Enrolled = $false
 try {
     # Step 1: Pre-enrollment Artifact Download & Verification
     Write-Host "[*] Downloading release metadata..."
+    $VersionPath = "$TempDir\agent-release.version"
     $ShaPath = "$TempDir\artifact.sha256"
     $SizePath = "$TempDir\artifact.size"
     $StagedPath = "$TempDir\datrixops-agent.exe"
 
-    Invoke-WebRequest -Uri "$ReleaseBaseUrl/$ArtifactName.sha256" -OutFile $ShaPath -TimeoutSec 30
-    Invoke-WebRequest -Uri "$ReleaseBaseUrl/$ArtifactName.size" -OutFile $SizePath -TimeoutSec 30
+    Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/agent-release.version" -OutFile $VersionPath -TimeoutSec 30
+    $RemoteVersion = (Get-Content $VersionPath -Raw).Trim()
+    if ($RemoteVersion -ne $AgentVersion) {
+        throw "Agent release version mismatch: remote release is $RemoteVersion, requested $AgentVersion."
+    }
+
+    Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/$ArtifactName.sha256" -OutFile $ShaPath -TimeoutSec 30
+    Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/$ArtifactName.size" -OutFile $SizePath -TimeoutSec 30
 
     $ExpectedSha = (Get-Content $ShaPath -Raw).Trim()
     $ExpectedSizeStr = (Get-Content $SizePath -Raw).Trim()
@@ -82,7 +116,7 @@ try {
     $ExpectedSize = [int64]$ExpectedSizeStr
 
     Write-Host "[*] Downloading DatrixOps Agent binary..."
-    Invoke-WebRequest -Uri "$ReleaseBaseUrl/$ArtifactName" -OutFile $StagedPath -TimeoutSec 180
+    Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/$ArtifactName" -OutFile $StagedPath -TimeoutSec 180
 
     $ActualSize = (Get-Item $StagedPath).Length
     if ($ActualSize -ne $ExpectedSize) {
@@ -137,23 +171,34 @@ try {
         "set `"DATRIXOPS_SERVER_URL=$ApiUrl`"",
         "set `"DATRIXOPS_AGENT_TOKEN=$AgentToken`"",
         "set `"DATRIXOPS_SERVICES=$Services`"",
+        "set `"AGENT_VERSION=$AgentVersion`"",
+        "set `"DATRIXOPS_AGENT_ARTIFACT_BASE_URL=$AgentArtifactBaseUrl`"",
+        "set `"DATRIXOPS_AGENT_RELEASE_LAYOUT=$AgentReleaseLayout`"",
         "`"$ExePath`" >> `"$LogPath`" 2>&1"
     )
     $BatContent | Set-Content -Path $BatPath -Encoding ASCII
-    & icacls.exe $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+    if (-not $TestMode) {
+        & icacls.exe $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+    }
 
-    $Action = New-ScheduledTaskAction -Execute $BatPath
-    $Trigger = New-ScheduledTaskTrigger -AtStartup
-    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
-    $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    if (-not $TestMode) {
+        $Action = New-ScheduledTaskAction -Execute $BatPath
+        $Trigger = New-ScheduledTaskTrigger -AtStartup
+        $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RunOnlyIfNetworkAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
+        $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal | Out-Null
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal | Out-Null
 
-    Start-ScheduledTask -TaskName $TaskName
+        Start-ScheduledTask -TaskName $TaskName
+    } else {
+        if ($env:DATRIXOPS_MOCK_SCHTASKS_BIN) {
+            & $env:DATRIXOPS_MOCK_SCHTASKS_BIN "install" $TaskName $BatPath
+        }
+    }
     Start-Sleep -Seconds 2
 
-    if (-not (Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue)) {
+    if (-not $TestMode -and -not (Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue)) {
         throw "DatrixOps Agent process failed to start."
     }
 
@@ -162,7 +207,7 @@ try {
     $BootstrapConfirmed = $false
     for ($i = 1; $i -le 15; $i++) {
         try {
-            $Headers = @{ Authorization = "Bearer $BootstrapRollbackToken" }
+            $Headers = @{ Authorization = "Bearer $AgentToken" }
             $StatusRes = Invoke-RestMethod -Method Get -Uri "$ApiUrl/agent/bootstrap-status" -Headers $Headers -TimeoutSec 10 -ErrorAction SilentlyContinue
             if ($StatusRes -and $StatusRes.data.bootstrap_completed -eq $true) {
                 $BootstrapConfirmed = $true
@@ -181,7 +226,13 @@ try {
     $err = $_
     if ($Enrolled -and $BootstrapRollbackToken) {
         Write-Host "[!] Rolling back enrollment token..." -ForegroundColor Yellow
-        Unregister-ScheduledTask -TaskName "DatrixOpsAgent" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        if (-not $TestMode) {
+            Unregister-ScheduledTask -TaskName "DatrixOpsAgent" -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        } else {
+            if ($env:DATRIXOPS_MOCK_SCHTASKS_BIN) {
+                & $env:DATRIXOPS_MOCK_SCHTASKS_BIN "remove" $TaskName
+            }
+        }
         $RollbackBody = @{ rollback_token = $BootstrapRollbackToken } | ConvertTo-Json -Compress
         try {
             Invoke-RestMethod -Method Post -Uri "$ApiUrl/agent/enroll/rollback" -ContentType "application/json" -Body $RollbackBody -TimeoutSec 15 | Out-Null
@@ -191,7 +242,9 @@ try {
             $RecoveryFile = "$InstallDir\bootstrap-recovery.json"
             $RecoveryData = @{ rollback_token = $BootstrapRollbackToken; server_url = $ServerUrl } | ConvertTo-Json
             $RecoveryData | Set-Content -Path $RecoveryFile -Encoding ASCII
-            & icacls.exe $RecoveryFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
+            if (-not $TestMode) {
+                & icacls.exe $RecoveryFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
+            }
             Write-Warning "Rollback API call failed. Recovery state saved to $RecoveryFile (mode 0600). Operator may retry rollback before token expiry."
         }
     }

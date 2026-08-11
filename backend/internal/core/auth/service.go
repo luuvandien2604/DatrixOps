@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	ErrUserExists        = errors.New("user already exists")
-	ErrRegistrationClosed= errors.New("registration is closed (single user constraint)")
-	ErrInvalidCredentials= errors.New("invalid email or password")
-	ErrInvalidToken      = errors.New("invalid or expired token")
+	ErrUserExists         = errors.New("user already exists")
+	ErrRegistrationClosed = errors.New("registration is closed (single user constraint)")
+	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrInvalidToken       = errors.New("invalid or expired token")
 )
 
 type Service struct {
@@ -38,7 +38,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*User, 
 	if err != nil {
 		return nil, fmt.Errorf("check user count: %w", err)
 	}
-	
+
 	role := "user"
 	if count == 0 {
 		role = "superadmin"
@@ -127,10 +127,10 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 func (s *Service) issueTokens(ctx context.Context, userID, role string) (*AuthResult, error) {
 	// 1. Generate JWT Access Token (15 minutes)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID,
+		"sub":  userID,
 		"role": role,
-		"exp": time.Now().Add(15 * time.Minute).Unix(),
-		"iat": time.Now().Unix(),
+		"exp":  time.Now().Add(15 * time.Minute).Unix(),
+		"iat":  time.Now().Unix(),
 	})
 
 	accessToken, err := token.SignedString(s.jwtSecret)

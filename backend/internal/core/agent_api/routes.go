@@ -11,7 +11,7 @@ import (
 
 // RegisterRoutes sets up the HTTP routes for the agent to communicate with the core API.
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
-	h := NewHandler(db, cfg.AgentVersion, cfg.AgentReleaseURL)
+	h := NewHandler(db, cfg.AgentVersion, cfg.AgentReleaseURL, cfg.AgentReleaseLayout)
 	enrollmentLimiter := middleware.NewRateLimiter(rate.Limit(1), 5)
 
 	mux.Handle("POST /api/v1/agent/enroll", enrollmentLimiter(http.HandlerFunc(h.Enroll)))

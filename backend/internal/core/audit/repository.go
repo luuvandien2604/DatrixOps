@@ -40,7 +40,7 @@ func (r *Repository) Log(ctx context.Context, userID, action, resourceType, reso
 }
 
 func (r *Repository) ListLogs(ctx context.Context, userID string) ([]AuditLog, error) {
-	rows, err := r.db.Pool.Query(ctx, 
+	rows, err := r.db.Pool.Query(ctx,
 		`SELECT id, user_id, action, resource_type, resource_id, details, created_at 
 		 FROM audit_logs 
 		 ORDER BY created_at DESC LIMIT 100`,
@@ -62,10 +62,10 @@ func (r *Repository) ListLogs(ctx context.Context, userID string) ([]AuditLog, e
 		}
 		logs = append(logs, log)
 	}
-	
+
 	if logs == nil {
 		logs = make([]AuditLog, 0)
 	}
-	
+
 	return logs, nil
 }

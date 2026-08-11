@@ -10,7 +10,11 @@ permissions:
   packages: write
 
 jobs:
+  installer-tests:
+    uses: ./.github/workflows/installer-tests.yml
+
   release:
+    needs: installer-tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -119,9 +123,22 @@ jobs:
               datrixops-agent-linux-arm64 \
               datrixops-agent-darwin-amd64 \
               datrixops-agent-darwin-arm64 \
-              datrixops-agent-windows-amd64.exe; do
+              datrixops-agent-windows-amd64.exe \
+              install.sh \
+              install-mac.sh \
+              install.ps1 \
+              update-agent.sh \
+              update-agent.ps1 \
+              agent-release.version \
+              manifest.json \
+              manifest.sig \
+              agent-release-manifest.json \
+              agent-release-manifest.sig; do
               test -s "/app/public/releases/$version/$artifact"
+              test -s "/app/public/releases/$version/$artifact.sha256"
+              test -s "/app/public/releases/$version/$artifact.size"
             done
+            test -s "/app/public/releases/$version/checksums.txt"
           ' sh "$VERSION"
 
       - name: Push verified frontend image
@@ -131,7 +148,31 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          assets=()
+          for artifact in \
+              datrixops-agent-linux-amd64 \
+              datrixops-agent-linux-arm64 \
+              datrixops-agent-darwin-amd64 \
+              datrixops-agent-darwin-arm64 \
+              datrixops-agent-windows-amd64.exe \
+              install.sh \
+              install-mac.sh \
+              install.ps1 \
+              update-agent.sh \
+              update-agent.ps1 \
+              agent-release.version \
+              manifest.json \
+              manifest.sig \
+              agent-release-manifest.json \
+              agent-release-manifest.sig \
+              checksums.txt; do
+              assets+=("$AGENT_RELEASE_DIR/$artifact")
+              if [ "$artifact" != "checksums.txt" ]; then
+                  assets+=("$AGENT_RELEASE_DIR/$artifact.sha256")
+                  assets+=("$AGENT_RELEASE_DIR/$artifact.size")
+              fi
+          done
           gh release create "$GITHUB_REF_NAME" \
-            "$AGENT_RELEASE_DIR/"* \
+            "${assets[@]}" \
             --generate-notes \
             --verify-tag

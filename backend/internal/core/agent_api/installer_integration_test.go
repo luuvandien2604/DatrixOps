@@ -35,6 +35,9 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		var rollbackCalls int64
 
 		handler := http.NewServeMux()
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
 		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n"))
 		})
@@ -81,7 +84,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		})
 		handler.HandleFunc("POST /api/v1/agent/enroll/rollback", func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt64(&rollbackCalls, 1)
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 		})
 
 		server := httptest.NewServer(handler)
@@ -90,9 +93,17 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		cmd := exec.Command("bash", installerScript,
 			"--server", server.URL,
 			"--token", "test_enrollment_token_12345678901234567890",
+			"--agent-version", "1.5.5",
+			"--agent-artifact-base-url", server.URL,
 			"--allow-insecure-http",
 		)
-		cmd.Env = append(os.Environ(), "EUID=0")
+		testRoot := filepath.Join(t.TempDir(), "install-root")
+		cmd.Env = append(os.Environ(),
+			"EUID=0",
+			"DATRIXOPS_INSTALLER_TEST_MODE=1",
+			"DATRIXOPS_INSTALLER_ROOT="+testRoot,
+			"DATRIXOPS_SYSTEMCTL_BIN=true",
+		)
 		output, err := cmd.CombinedOutput()
 		if err == nil {
 			t.Fatalf("expected installer to fail on corrupted checksum, but succeeded: %s", string(output))
@@ -128,6 +139,9 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 			}
 		}
 
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
 		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", serveArtifacts)
 		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", serveArtifacts)
 		handler.HandleFunc("GET /datrixops-agent-darwin-amd64.sha256", serveArtifacts)
@@ -154,8 +168,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 
 		handler.HandleFunc("POST /api/v1/agent/enroll/rollback", func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt64(&rollbackCalls, 1)
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]string{"status": "rolled_back"})
+			w.WriteHeader(http.StatusNoContent)
 		})
 
 		handler.HandleFunc("GET /api/v1/agent/bootstrap-status", func(w http.ResponseWriter, r *http.Request) {
@@ -172,9 +185,17 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		cmd := exec.Command("bash", installerScript,
 			"--server", server.URL,
 			"--token", "test_enrollment_token_12345678901234567890",
+			"--agent-version", "1.5.5",
+			"--agent-artifact-base-url", server.URL,
 			"--allow-insecure-http",
 		)
-		cmd.Env = append(os.Environ(), "EUID=0")
+		testRoot := filepath.Join(t.TempDir(), "install-root")
+		cmd.Env = append(os.Environ(),
+			"EUID=0",
+			"DATRIXOPS_INSTALLER_TEST_MODE=1",
+			"DATRIXOPS_INSTALLER_ROOT="+testRoot,
+			"DATRIXOPS_SYSTEMCTL_BIN=true",
+		)
 		output, err := cmd.CombinedOutput()
 		if got := atomic.LoadInt64(&enrollCalls); got != 1 {
 			t.Fatalf("valid artifact must proceed to exactly 1 enrollment call, got %d. Command error: %v, Output:\n%s", got, err, string(output))

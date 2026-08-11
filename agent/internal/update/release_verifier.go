@@ -51,6 +51,13 @@ func VerifyReleaseDirectory(releaseDir, expectedVersion string, publicKey ed2551
 		return nil, fmt.Errorf("manifest signature verification failed")
 	}
 
+	if err := verifySidecars(filepath.Join(releaseDir, "manifest.json"), manifestBytes); err != nil {
+		return nil, err
+	}
+	if err := verifySidecars(filepath.Join(releaseDir, "manifest.sig"), signature); err != nil {
+		return nil, err
+	}
+
 	var manifest Manifest
 	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))
 	decoder.DisallowUnknownFields()
@@ -58,13 +65,35 @@ func VerifyReleaseDirectory(releaseDir, expectedVersion string, publicKey ed2551
 		return nil, fmt.Errorf("decode signed release manifest: %w", err)
 	}
 	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, fmt.Errorf("decode signed release manifest: %w", err)
+	}
+	if manifest.Version != expectedVersion {
+		return nil, fmt.Errorf("manifest version mismatch: got %q, expected %q", manifest.Version, expectedVersion)
+	}
+
+	versionFilePath := filepath.Join(releaseDir, "agent-release.version")
+	versionFileBytes, err := os.ReadFile(versionFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("read agent-release.version: %w", err)
+	}
+	versionFileContent := strings.TrimSpace(string(versionFileBytes))
+	if versionFileContent == "" {
+		return nil, fmt.Errorf("agent-release.version file is empty")
+	}
+	if err := verifySidecars(versionFilePath, versionFileBytes); err != nil {
 		return nil, err
+	}
+	if !versionRegex.MatchString(versionFileContent) {
+		return nil, fmt.Errorf("agent-release.version has invalid format %q (must match X.Y.Z)", versionFileContent)
+	}
+	if versionFileContent != manifest.Version {
+		return nil, fmt.Errorf("agent-release.version mismatch: file has %q, manifest has %q", versionFileContent, manifest.Version)
+	}
+	if versionFileContent != expectedVersion {
+		return nil, fmt.Errorf("agent-release.version mismatch: file has %q, expected %q", versionFileContent, expectedVersion)
 	}
 	if err := manifest.Validate(); err != nil {
 		return nil, fmt.Errorf("validate signed release manifest: %w", err)
-	}
-	if manifest.Version != expectedVersion {
-		return nil, fmt.Errorf("manifest version %q does not match expected version %q", manifest.Version, expectedVersion)
 	}
 
 	required := make(map[string]ReleaseTarget, len(RequiredReleaseTargets))
@@ -140,6 +169,35 @@ func verifyArtifactFile(filename string, artifact Artifact) error {
 	if !bytes.Equal(actual[:], expectedHash) {
 		return fmt.Errorf("SHA-256 mismatch")
 	}
+	if err := verifySidecars(filename, content); err != nil {
+		return err
+	}
+	return nil
+}
+
+func verifySidecars(filename string, content []byte) error {
+	sha256File := filename + ".sha256"
+	sizeFile := filename + ".size"
+
+	actualHash := sha256.Sum256(content)
+	sha256Bytes, err := readRegularFile(sha256File, 256)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", filepath.Base(sha256File), err)
+	}
+	expectedSidecarHash := strings.TrimSpace(string(sha256Bytes))
+	if expectedSidecarHash != hex.EncodeToString(actualHash[:]) {
+		return fmt.Errorf(".sha256 sidecar mismatch for %s", filepath.Base(filename))
+	}
+
+	sizeBytes, err := readRegularFile(sizeFile, 256)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", filepath.Base(sizeFile), err)
+	}
+	expectedSidecarSize := strings.TrimSpace(string(sizeBytes))
+	if expectedSidecarSize != fmt.Sprintf("%d", len(content)) {
+		return fmt.Errorf(".size sidecar mismatch for %s", filepath.Base(filename))
+	}
+
 	return nil
 }
 

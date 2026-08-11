@@ -48,11 +48,11 @@ func (r *Repository) UserCount(ctx context.Context) (int, error) {
 // CreateUser inserts a new user.
 func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error) {
 	var user User
-	err := r.db.Pool.QueryRow(ctx, 
+	err := r.db.Pool.QueryRow(ctx,
 		"INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, password_hash, role, created_at",
 		email, passwordHash, role,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
@@ -62,11 +62,11 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role s
 // FindUserByEmail finds a user by email.
 func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
-	err := r.db.Pool.QueryRow(ctx, 
+	err := r.db.Pool.QueryRow(ctx,
 		"SELECT id, email, password_hash, role, created_at FROM users WHERE email = $1",
 		email,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
-	
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // Not found
@@ -79,11 +79,11 @@ func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, 
 // FindUserByID finds a user by their ID.
 func (r *Repository) FindUserByID(ctx context.Context, id string) (*User, error) {
 	var user User
-	err := r.db.Pool.QueryRow(ctx, 
+	err := r.db.Pool.QueryRow(ctx,
 		"SELECT id, email, password_hash, role, created_at FROM users WHERE id = $1",
 		id,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
-	
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -112,7 +112,7 @@ func (r *Repository) FindRefreshToken(ctx context.Context, token string) (*Refre
 		"SELECT id, user_id, token, expires_at, created_at FROM refresh_tokens WHERE token = $1",
 		token,
 	).Scan(&rt.ID, &rt.UserID, &rt.Token, &rt.ExpiresAt, &rt.CreatedAt)
-	
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil

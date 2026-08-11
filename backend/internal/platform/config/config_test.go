@@ -61,6 +61,12 @@ func TestLoadAcceptsRequiredProductionConfig(t *testing.T) {
 	if cfg.AgentReleaseURL != "https://ops.example.com/releases" {
 		t.Fatalf("expected release URL to be derived from PUBLIC_URL, got %q", cfg.AgentReleaseURL)
 	}
+	if cfg.AgentReleaseLayout != "github" {
+		t.Fatalf("expected github release layout by default in CE, got %q", cfg.AgentReleaseLayout)
+	}
+	if cfg.AgentArtifactBaseURL != "https://ops.example.com/releases/v1.5.2" {
+		t.Fatalf("expected artifact base URL to be derived with v prefix in CE, got %q", cfg.AgentArtifactBaseURL)
+	}
 	if cfg.DeploymentMode != "self-hosted" {
 		t.Fatalf("expected self-hosted deployment mode by default, got %q", cfg.DeploymentMode)
 	}

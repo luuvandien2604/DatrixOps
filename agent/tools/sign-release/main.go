@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -83,13 +84,21 @@ func run() error {
 		return err
 	}
 
-	releaseBaseURL, err = validateBaseURL(releaseBaseURL)
-	if err != nil {
-		return err
+	rawLayout := strings.TrimSpace(os.Getenv("AGENT_RELEASE_LAYOUT"))
+	if rawLayout == "" {
+		releaseBaseIncludesVersion, err := optionalBooleanEnv("AGENT_RELEASE_BASE_URL_INCLUDES_VERSION")
+		if err != nil {
+			return err
+		}
+		if releaseBaseIncludesVersion {
+			rawLayout = update.LayoutLegacyDirect
+		} else {
+			rawLayout = update.LayoutDefault
+		}
 	}
-	releaseBaseIncludesVersion, err := optionalBooleanEnv("AGENT_RELEASE_BASE_URL_INCLUDES_VERSION")
+	layout, err := update.ParseLayout(rawLayout)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse release layout: %w", err)
 	}
 
 	privateKey, err := decodePrivateKey(privateKeyBase64)
@@ -101,7 +110,7 @@ func run() error {
 		version,
 		releaseDir,
 		releaseBaseURL,
-		releaseBaseIncludesVersion,
+		layout,
 	)
 	if err != nil {
 		return err
@@ -210,33 +219,15 @@ func optionalBooleanEnv(name string) (bool, error) {
 	}
 }
 
+var strictSemverRegex = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
 func validateVersion(version string) error {
 	if version == "" {
 		return fmt.Errorf("agent version is empty")
 	}
-
-	if len(version) > 128 {
-		return fmt.Errorf("agent version is too long")
+	if !strictSemverRegex.MatchString(version) {
+		return fmt.Errorf("agent version %q does not match required format X.Y.Z", version)
 	}
-
-	if version == "." || version == ".." {
-		return fmt.Errorf("invalid agent version: %q", version)
-	}
-
-	if strings.ContainsAny(version, `/\`) {
-		return fmt.Errorf(
-			"agent version must not contain path separators: %q",
-			version,
-		)
-	}
-
-	if strings.ContainsAny(version, " \t\r\n") {
-		return fmt.Errorf(
-			"agent version must not contain whitespace: %q",
-			version,
-		)
-	}
-
 	return nil
 }
 
@@ -321,7 +312,7 @@ func buildManifest(
 	version string,
 	releaseDir string,
 	releaseBaseURL string,
-	releaseBaseIncludesVersion bool,
+	layout string,
 ) (*update.Manifest, error) {
 	releaseInfo, err := os.Stat(releaseDir)
 	if err != nil {
@@ -360,9 +351,9 @@ func buildManifest(
 			)
 		}
 
-		artifactURL, err := buildArtifactURL(releaseBaseURL, version, target.Filename, releaseBaseIncludesVersion)
+		artifactURL, err := update.ArtifactURL(releaseBaseURL, layout, version, target.Filename)
 		if err != nil {
-			return nil, fmt.Errorf("build artifact URL: %w", err)
+			return nil, fmt.Errorf("build artifact URL for %s: %w", target.Filename, err)
 		}
 
 		manifest.Artifacts = append(
@@ -378,13 +369,6 @@ func buildManifest(
 	}
 
 	return manifest, nil
-}
-
-func buildArtifactURL(releaseBaseURL, version, filename string, releaseBaseIncludesVersion bool) (string, error) {
-	if releaseBaseIncludesVersion {
-		return url.JoinPath(releaseBaseURL, filename)
-	}
-	return url.JoinPath(releaseBaseURL, version, filename)
 }
 
 func hashFile(path string) (string, int64, error) {

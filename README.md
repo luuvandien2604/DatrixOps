@@ -68,7 +68,11 @@ Once completed, open `http://<your-vps-ip>/setup` in your browser to create your
 To monitor additional Linux servers, run the agent installer from your DatrixOps Dashboard:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/install-agent.sh | sudo bash -s -- --token YOUR_AGENT_TOKEN --server https://your-datrixops-vps-ip/api/v1
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/install.sh | sudo bash -s -- \
+    --token YOUR_AGENT_TOKEN \
+    --server https://your-datrixops-vps-ip/api/v1 \
+    --agent-version 1.5.5 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.5
 ```
 
 ---

@@ -13,6 +13,8 @@ type Config struct {
 	AgentToken        string   // Token to authenticate with Core API
 	IntervalSeconds   int      // Metric collection interval
 	MonitoredServices []string // Optional OS-specific service list override
+	ReleaseLayout     string   // Default or local agent release layout
+	ArtifactBaseURL   string   // Local agent artifact base URL
 }
 
 // Load reads agent configuration from environment variables.
@@ -22,6 +24,8 @@ func Load() (*Config, error) {
 		AgentToken:        getEnv("DATRIXOPS_AGENT_TOKEN", ""),
 		IntervalSeconds:   getEnvInt("DATRIXOPS_INTERVAL", 5),
 		MonitoredServices: getEnvList("DATRIXOPS_SERVICES"),
+		ReleaseLayout:     getEnv("DATRIXOPS_AGENT_RELEASE_LAYOUT", ""),
+		ArtifactBaseURL:   getEnv("DATRIXOPS_AGENT_ARTIFACT_BASE_URL", ""),
 	}
 
 	if cfg.AgentToken == "" {

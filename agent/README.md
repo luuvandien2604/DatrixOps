@@ -31,7 +31,11 @@ go build -ldflags="-s -w" -o datrixops-agent ./cmd/agent
 To enroll a host system into your DatrixOps Dashboard:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/install-agent.sh | sudo bash -s -- --token YOUR_AGENT_TOKEN --server https://your-datrixops-domain.com
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/install.sh | sudo bash -s -- \
+    --token YOUR_AGENT_TOKEN \
+    --server https://your-datrixops-domain.com \
+    --agent-version 1.5.5 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.5
 ```
 
 ## 📄 License

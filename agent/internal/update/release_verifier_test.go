@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,20 @@ func TestVerifyReleaseDirectory(t *testing.T) {
 			manifest.Artifacts[0].Arch = "386"
 			writeSignedTestManifest(t, dir, manifest, key)
 		}},
+		{name: "missing version file", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			if err := os.Remove(filepath.Join(dir, "agent-release.version")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "empty version file", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			writeTestFile(t, filepath.Join(dir, "agent-release.version"), []byte(""))
+		}},
+		{name: "mismatched version file", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			writeTestFile(t, filepath.Join(dir, "agent-release.version"), []byte("9.8.7\n"))
+		}},
+		{name: "invalid version format in file", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			writeTestFile(t, filepath.Join(dir, "agent-release.version"), []byte("v1.2.3\n"))
+		}},
 	}
 
 	for _, test := range tests {
@@ -76,10 +91,14 @@ func createSignedTestRelease(t *testing.T) (string, *Manifest, ed25519.PublicKey
 	for _, target := range RequiredReleaseTargets {
 		content := []byte("binary-" + target.OS + "-" + target.Arch)
 		writeTestFile(t, filepath.Join(dir, target.Filename), content)
+		writeSidecars(t, filepath.Join(dir, target.Filename), content)
 		sum := sha256.Sum256(content)
 		manifest.Artifacts = append(manifest.Artifacts, Artifact{OS: target.OS, Arch: target.Arch, URL: "https://releases.example/1.2.3/" + target.Filename, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(content))})
 	}
 	writeSignedTestManifest(t, dir, manifest, privateKey)
+	versionContent := []byte("1.2.3\n")
+	writeTestFile(t, filepath.Join(dir, "agent-release.version"), versionContent)
+	writeSidecars(t, filepath.Join(dir, "agent-release.version"), versionContent)
 	return dir, manifest, publicKey, privateKey
 }
 
@@ -91,7 +110,10 @@ func writeSignedTestManifest(t *testing.T, dir string, manifest *Manifest, priva
 	}
 	content = append(content, '\n')
 	writeTestFile(t, filepath.Join(dir, "manifest.json"), content)
-	writeTestFile(t, filepath.Join(dir, "manifest.sig"), ed25519.Sign(privateKey, content))
+	writeSidecars(t, filepath.Join(dir, "manifest.json"), content)
+	sig := ed25519.Sign(privateKey, content)
+	writeTestFile(t, filepath.Join(dir, "manifest.sig"), sig)
+	writeSidecars(t, filepath.Join(dir, "manifest.sig"), sig)
 }
 
 func writeTestFile(t *testing.T, filename string, content []byte) {
@@ -99,6 +121,13 @@ func writeTestFile(t *testing.T, filename string, content []byte) {
 	if err := os.WriteFile(filename, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeSidecars(t *testing.T, filename string, content []byte) {
+	t.Helper()
+	sum := sha256.Sum256(content)
+	writeTestFile(t, filename+".sha256", []byte(hex.EncodeToString(sum[:])+"\n"))
+	writeTestFile(t, filename+".size", []byte(fmt.Sprintf("%d\n", len(content))))
 }
 
 func TestVerifyReleaseDirectoryRejectsMalformedSHA256(t *testing.T) {

@@ -338,15 +338,23 @@ export default function ServersPage() {
   const getInstallCommand = () => {
     const controlPlaneOrigin = typeof window === 'undefined' ? '' : window.location.origin;
     const services = customServices.trim();
+    const agentVersion = systemData?.agent_version || '1.5.5';
+    const agentArtifactBaseUrl = systemData?.agent_artifact_base_url || `https://github.com/luuvandien2604/DatrixOps/releases/download/v${agentVersion}`;
+    const isHttp = controlPlaneOrigin.startsWith('http://');
+    const isLocalhost = controlPlaneOrigin.includes('localhost') || controlPlaneOrigin.includes('127.0.0.1');
+    const allowInsecureFlag = isHttp && !isLocalhost;
+    const shellInsecureArg = allowInsecureFlag ? ' --allow-insecure-http' : '';
+    const powershellInsecureArg = allowInsecureFlag ? ' -AllowInsecureHttp' : '';
     const shellServicesArgument = services ? ` --services "${services}"` : '';
     const powershellServicesArgument = services ? ` -Services "${services}"` : '';
+    const agentReleaseLayout = systemData?.agent_release_layout || 'github';
     switch (selectedOs) {
       case 'linux':
-        return `curl -fsSL ${controlPlaneOrigin}/install.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken}${shellServicesArgument}`;
+        return `curl -fsSL ${agentArtifactBaseUrl}/install.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken} --agent-version ${agentVersion} --agent-artifact-base-url ${agentArtifactBaseUrl} --agent-release-layout ${agentReleaseLayout}${shellInsecureArg}${shellServicesArgument}`;
       case 'macos':
-        return `curl -fsSL ${controlPlaneOrigin}/install-mac.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken}${shellServicesArgument}`;
+        return `curl -fsSL ${agentArtifactBaseUrl}/install-mac.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken} --agent-version ${agentVersion} --agent-artifact-base-url ${agentArtifactBaseUrl} --agent-release-layout ${agentReleaseLayout}${shellInsecureArg}${shellServicesArgument}`;
       case 'windows':
-        return `Invoke-WebRequest -Uri "${controlPlaneOrigin}/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}" -ServerUrl "${controlPlaneOrigin}"${powershellServicesArgument}`;
+        return `Invoke-WebRequest -Uri "${agentArtifactBaseUrl}/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}" -ServerUrl "${controlPlaneOrigin}" -AgentVersion "${agentVersion}" -AgentArtifactBaseUrl "${agentArtifactBaseUrl}" -AgentReleaseLayout "${agentReleaseLayout}"${powershellInsecureArg}${powershellServicesArgument}`;
       default:
         return '';
     }

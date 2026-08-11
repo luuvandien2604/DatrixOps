@@ -18,6 +18,8 @@ type Config struct {
 	AllowedOrigins           string
 	PublicURL                string
 	AgentReleaseURL          string
+	AgentReleaseLayout       string // "github" or "default"
+	AgentArtifactBaseURL     string // exact version-specific artifact directory
 	Edition                  string
 	DeploymentMode           string
 	PublicRegistration       bool
@@ -96,10 +98,44 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.AgentReleaseURL == "" {
-		cfg.AgentReleaseURL = cfg.PublicURL + "/releases"
+		cfg.AgentReleaseURL = "https://github.com/luuvandien2604/DatrixOps/releases/download"
 	}
 	if err := ValidatePublicURL(cfg.AgentReleaseURL, cfg.Edition, cfg.DeploymentMode); err != nil {
 		return nil, fmt.Errorf("AGENT_RELEASE_BASE_URL: %w", err)
+	}
+
+	// Resolve release layout: explicit AGENT_RELEASE_LAYOUT takes precedence,
+	// then legacy AGENT_RELEASE_BASE_URL_INCLUDES_VERSION compat mapping exclusively to legacy_direct.
+	rawLayout := strings.TrimSpace(os.Getenv("AGENT_RELEASE_LAYOUT"))
+	if rawLayout == "" {
+		if envBool("AGENT_RELEASE_BASE_URL_INCLUDES_VERSION") {
+			rawLayout = "legacy_direct"
+		} else {
+			rawLayout = "github"
+		}
+	}
+	switch strings.ToLower(rawLayout) {
+	case "github":
+		cfg.AgentReleaseLayout = "github"
+	case "default":
+		cfg.AgentReleaseLayout = "default"
+	case "legacy_direct":
+		cfg.AgentReleaseLayout = "legacy_direct"
+	default:
+		return nil, fmt.Errorf("AGENT_RELEASE_LAYOUT must be 'github', 'default', or 'legacy_direct', got %q", rawLayout)
+	}
+
+	// Derive artifact base URL: explicit env var takes precedence.
+	cfg.AgentArtifactBaseURL = strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_ARTIFACT_BASE_URL")), "/")
+	if cfg.AgentArtifactBaseURL == "" && cfg.AgentVersion != "" && cfg.AgentVersion != "dev" {
+		switch cfg.AgentReleaseLayout {
+		case "github":
+			cfg.AgentArtifactBaseURL = cfg.AgentReleaseURL + "/v" + cfg.AgentVersion
+		case "default":
+			cfg.AgentArtifactBaseURL = cfg.AgentReleaseURL + "/" + cfg.AgentVersion
+		case "legacy_direct":
+			cfg.AgentArtifactBaseURL = cfg.AgentReleaseURL
+		}
 	}
 
 	return cfg, nil

@@ -28,14 +28,16 @@ type Handler struct {
 	db                  *database.DB
 	desiredAgentVersion string
 	agentReleaseURL     string
+	agentReleaseLayout  string
 	dispatcher          *webhook.Dispatcher
 }
 
-func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL string) *Handler {
+func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL, agentReleaseLayout string) *Handler {
 	return &Handler{
 		db:                  db,
 		desiredAgentVersion: desiredAgentVersion,
 		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
+		agentReleaseLayout:  strings.TrimSpace(agentReleaseLayout),
 		dispatcher:          webhook.NewDispatcher(db),
 	}
 }
@@ -266,9 +268,9 @@ func (h *Handler) Enroll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	response.Success(w, http.StatusCreated, map[string]string{
-		"server_id":                 serverID,
-		"agent_token":               rawCredential,
-		"bootstrap_rollback_token":  rawRollbackToken,
+		"server_id":                serverID,
+		"agent_token":              rawCredential,
+		"bootstrap_rollback_token": rawRollbackToken,
 	})
 }
 
@@ -353,10 +355,7 @@ func (h *Handler) EnrollRollback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	response.Success(w, http.StatusOK, map[string]string{
-		"status":    "rolled_back",
-		"server_id": targetServerID,
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetBootstrapStatus queries the current bootstrap completion state using the
@@ -540,6 +539,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		payload, payloadErr := json.Marshal(map[string]string{
 			"target_version":   strings.TrimSpace(h.desiredAgentVersion),
 			"release_base_url": h.agentReleaseURL,
+			"release_layout":   h.agentReleaseLayout,
 			"trigger":          "automatic",
 		})
 		if payloadErr == nil {

@@ -81,41 +81,67 @@ for target in "${targets[@]}"; do
         die "Agent artifact has no embedded version marker: $filename"
 done
 
+printf '%s\n' "$VERSION" >"${STAGING_DIR}/agent-release.version"
+install -m 0755 "${PROJECT_ROOT}/frontend/public/install.sh" "${STAGING_DIR}/install.sh"
+install -m 0755 "${PROJECT_ROOT}/frontend/public/install-mac.sh" "${STAGING_DIR}/install-mac.sh"
+install -m 0755 "${PROJECT_ROOT}/frontend/public/install.ps1" "${STAGING_DIR}/install.ps1"
+install -m 0755 "${PROJECT_ROOT}/frontend/public/update-agent.sh" "${STAGING_DIR}/update-agent.sh"
+install -m 0755 "${PROJECT_ROOT}/frontend/public/update-agent.ps1" "${STAGING_DIR}/update-agent.ps1"
+
 (
     cd "$AGENT_DIR"
     AGENT_VERSION="$VERSION" \
     AGENT_RELEASE_DIR="$STAGING_DIR" \
     AGENT_RELEASE_BASE_URL="$AGENT_RELEASE_BASE_URL" \
+    AGENT_RELEASE_LAYOUT="${AGENT_RELEASE_LAYOUT:-}" \
     AGENT_RELEASE_BASE_URL_INCLUDES_VERSION="${AGENT_RELEASE_BASE_URL_INCLUDES_VERSION:-0}" \
     AGENT_SIGNING_PRIVATE_KEY="$AGENT_SIGNING_PRIVATE_KEY" \
         go run ./tools/sign-release
-
-    go run ./tools/verify-release \
-        --release-dir "$STAGING_DIR" \
-        --version "$VERSION"
 )
 
-printf '%s\n' "$VERSION" >"${STAGING_DIR}/agent-release.version"
 install -m 0644 "${STAGING_DIR}/manifest.json" "${STAGING_DIR}/agent-release-manifest.json"
 install -m 0644 "${STAGING_DIR}/manifest.sig" "${STAGING_DIR}/agent-release-manifest.sig"
-install -m 0755 "${PROJECT_ROOT}/frontend/public/install.sh" "${STAGING_DIR}/install-agent.sh"
-for target in "${targets[@]}"; do
-    read -r _ _ filename <<<"$target"
-    sha256_file "${STAGING_DIR}/${filename}" >"${STAGING_DIR}/${filename}.sha256"
-    wc -c <"${STAGING_DIR}/${filename}" | tr -d ' ' >"${STAGING_DIR}/${filename}.size"
+
+all_files=(
+    datrixops-agent-linux-amd64
+    datrixops-agent-linux-arm64
+    datrixops-agent-darwin-amd64
+    datrixops-agent-darwin-arm64
+    datrixops-agent-windows-amd64.exe
+    install.sh
+    install-mac.sh
+    install.ps1
+    update-agent.sh
+    update-agent.ps1
+    agent-release.version
+    manifest.json
+    manifest.sig
+    agent-release-manifest.json
+    agent-release-manifest.sig
+)
+
+for filename in "${all_files[@]}"; do
+    if [[ -f "${STAGING_DIR}/${filename}" ]]; then
+        sha256_file "${STAGING_DIR}/${filename}" >"${STAGING_DIR}/${filename}.sha256"
+        wc -c <"${STAGING_DIR}/${filename}" | tr -d ' ' >"${STAGING_DIR}/${filename}.size"
+    fi
 done
+
 (
     cd "$STAGING_DIR"
     : >checksums.txt
-    for filename in \
-        datrixops-agent-linux-amd64 \
-        datrixops-agent-linux-arm64 \
-        datrixops-agent-darwin-amd64 \
-        datrixops-agent-darwin-arm64 \
-        datrixops-agent-windows-amd64.exe \
-        manifest.json manifest.sig install-agent.sh; do
-        printf '%s  %s\n' "$(sha256_file "$filename")" "$filename" >>checksums.txt
+    for filename in "${all_files[@]}"; do
+        if [[ -f "$filename" ]]; then
+            printf '%s  %s\n' "$(sha256_file "$filename")" "$filename" >>checksums.txt
+        fi
     done
+)
+
+(
+    cd "$AGENT_DIR"
+    go run ./tools/verify-release \
+        --release-dir "$STAGING_DIR" \
+        --version "$VERSION"
 )
 
 mv -- "$STAGING_DIR" "$OUTPUT_DIR"

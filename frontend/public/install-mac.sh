@@ -4,25 +4,69 @@ set -Eeuo pipefail
 SERVER_URL=""
 ENROLLMENT_TOKEN=""
 SERVICES=""
+AGENT_VERSION=""
+AGENT_ARTIFACT_BASE_URL=""
+AGENT_RELEASE_LAYOUT=""
 ALLOW_INSECURE_HTTP=0
+
+usage() {
+    cat <<'USAGE'
+Usage:
+  curl -fsSL https://github.com/luuvandien2604/DatrixOps/releases/download/vX.Y.Z/install-mac.sh | sudo bash -s -- \
+    --server https://monitor.example.com \
+    --token ENROLLMENT_TOKEN \
+    --agent-version X.Y.Z \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/vX.Y.Z \
+    [--agent-release-layout "github|default|legacy_direct"] \
+    [--services "nginx,postgresql,docker"] \
+    [--allow-insecure-http]
+USAGE
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --server) SERVER_URL="${2:-}"; shift 2 ;;
         --token) ENROLLMENT_TOKEN="${2:-}"; shift 2 ;;
+        --agent-version) AGENT_VERSION="${2:-}"; shift 2 ;;
+        --agent-artifact-base-url) AGENT_ARTIFACT_BASE_URL="${2:-}"; shift 2 ;;
+        --agent-release-layout) AGENT_RELEASE_LAYOUT="${2:-}"; shift 2 ;;
         --services) SERVICES="${2:-}"; shift 2 ;;
         --allow-insecure-http) ALLOW_INSECURE_HTTP=1; shift 1 ;;
-        *) echo "ERROR: Unknown option: $1" >&2; exit 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "ERROR: Unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
+if [[ -z "$SERVER_URL" || -z "$ENROLLMENT_TOKEN" || -z "$AGENT_VERSION" || -z "$AGENT_ARTIFACT_BASE_URL" ]]; then
+    echo "ERROR: --server, --token, --agent-version, and --agent-artifact-base-url are required." >&2
+    usage >&2
+    exit 1
+fi
+
 SERVER_URL="${SERVER_URL%/}"
-if [[ "$EUID" -ne 0 ]]; then
+AGENT_ARTIFACT_BASE_URL="${AGENT_ARTIFACT_BASE_URL%/}"
+AGENT_RELEASE_LAYOUT="${AGENT_RELEASE_LAYOUT:-github}"
+
+if [[ "$AGENT_RELEASE_LAYOUT" != "github" && "$AGENT_RELEASE_LAYOUT" != "default" && "$AGENT_RELEASE_LAYOUT" != "legacy_direct" ]]; then
+    echo "ERROR: Invalid --agent-release-layout '$AGENT_RELEASE_LAYOUT'. Must be 'github', 'default', or 'legacy_direct'." >&2
+    exit 1
+fi
+
+TEST_MODE="${DATRIXOPS_INSTALLER_TEST_MODE:-0}"
+TEST_ROOT="${DATRIXOPS_INSTALLER_ROOT:-}"
+LAUNCHCTL_BIN="${DATRIXOPS_LAUNCHCTL_BIN:-launchctl}"
+
+if [[ "$TEST_MODE" -ne 1 && "$EUID" -ne 0 ]]; then
     echo "ERROR: Run this installer as root (use sudo)." >&2
     exit 1
 fi
 if [[ ! "$SERVER_URL" =~ ^https?://[A-Za-z0-9._:-]+$ ]]; then
     echo "ERROR: --server must be a valid HTTP or HTTPS URL." >&2
+    exit 1
+fi
+
+if [[ "$TEST_MODE" -ne 1 && ! "$AGENT_ARTIFACT_BASE_URL" =~ ^https:// ]]; then
+    echo "ERROR: --agent-artifact-base-url must be an HTTPS URL." >&2
     exit 1
 fi
 
@@ -62,9 +106,9 @@ sha256_file() {
 }
 
 API_URL="${SERVER_URL}/api/v1"
-INSTALL_DIR="/usr/local/bin"
-PLIST_FILE="/Library/LaunchDaemons/com.datrixops.agent.plist"
-CONFIG_DIR="/etc/datrixops"
+INSTALL_DIR="${TEST_ROOT}/usr/local/bin"
+PLIST_FILE="${TEST_ROOT}/Library/LaunchDaemons/com.datrixops.agent.plist"
+CONFIG_DIR="${TEST_ROOT}/etc/datrixops"
 TEMP_DIR="$(mktemp -d)"
 BOOTSTRAP_ROLLBACK_TOKEN=""
 ENROLLED=0
@@ -72,17 +116,18 @@ ENROLLED=0
 rollback_bootstrap() {
     if [[ "$ENROLLED" -eq 1 && -n "${BOOTSTRAP_ROLLBACK_TOKEN:-}" ]]; then
         echo "Cleaning up partial Agent installation and rolling back enrollment..." >&2
-        launchctl bootout system "$PLIST_FILE" 2>/dev/null || true
+        "$LAUNCHCTL_BIN" bootout system "$PLIST_FILE" 2>/dev/null || true
 
         HTTP_ROLLBACK="$(
             curl --silent --show-error \
                 --connect-timeout 5 --max-time 15 \
+                --output "${TEMP_DIR}/rollback-response" \
                 --write-out '%{http_code}' \
                 --header 'Content-Type: application/json' \
                 --data "{\"rollback_token\":\"${BOOTSTRAP_ROLLBACK_TOKEN}\"}" \
                 "${API_URL}/agent/enroll/rollback" 2>/dev/null || echo "000"
         )"
-        if [[ "$HTTP_ROLLBACK" == "200" ]]; then
+        if [[ "$HTTP_ROLLBACK" == 2* ]]; then
             rm -f "$PLIST_FILE" "${INSTALL_DIR}/datrixops-agent" 2>/dev/null || true
             echo "Enrollment token successfully released." >&2
         else
@@ -111,24 +156,42 @@ cleanup() {
 trap cleanup EXIT
 umask 077
 
+if [[ ! "$AGENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "ERROR: --agent-version must be a valid semver version (X.Y.Z)." >&2
+    exit 1
+fi
+
 # Pre-enrollment Artifact Verification
-RELEASE_BASE_URL="${AGENT_RELEASE_BASE_URL:-${SERVER_URL}}"
 ARTIFACT_NAME="datrixops-agent-darwin-${AGENT_ARCH}"
 
 echo "Downloading release metadata..."
+VERSION_FILE="${TEMP_DIR}/agent-release.version"
 SHA_FILE="${TEMP_DIR}/artifact.sha256"
 SIZE_FILE="${TEMP_DIR}/artifact.size"
 STAGED_BINARY="${TEMP_DIR}/datrixops-agent"
 
 curl --fail --silent --show-error --location \
     --connect-timeout 10 --max-time 30 \
-    --output "$SHA_FILE" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}.sha256" || {
+    --output "$VERSION_FILE" "${AGENT_ARTIFACT_BASE_URL}/agent-release.version" || {
+    echo "ERROR: Failed to download agent-release.version metadata." >&2
+    exit 1
+}
+
+REMOTE_VERSION="$(tr -d '\r\n[:space:]' <"$VERSION_FILE")"
+if [[ "$REMOTE_VERSION" != "$AGENT_VERSION" ]]; then
+    echo "ERROR: Agent release version mismatch: remote release is $REMOTE_VERSION, requested $AGENT_VERSION." >&2
+    exit 1
+fi
+
+curl --fail --silent --show-error --location \
+    --connect-timeout 10 --max-time 30 \
+    --output "$SHA_FILE" "${AGENT_ARTIFACT_BASE_URL}/${ARTIFACT_NAME}.sha256" || {
     echo "ERROR: Failed to download release SHA-256 metadata." >&2
     exit 1
 }
 curl --fail --silent --show-error --location \
     --connect-timeout 10 --max-time 30 \
-    --output "$SIZE_FILE" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}.size" || {
+    --output "$SIZE_FILE" "${AGENT_ARTIFACT_BASE_URL}/${ARTIFACT_NAME}.size" || {
     echo "ERROR: Failed to download release size metadata." >&2
     exit 1
 }
@@ -148,7 +211,7 @@ fi
 echo "Downloading DatrixOps Agent binary..."
 curl --fail --silent --show-error --location \
     --connect-timeout 10 --max-time 180 \
-    --output "$STAGED_BINARY" "${RELEASE_BASE_URL}/${ARTIFACT_NAME}" || {
+    --output "$STAGED_BINARY" "${AGENT_ARTIFACT_BASE_URL}/${ARTIFACT_NAME}" || {
     echo "ERROR: Failed to download Agent binary." >&2
     exit 1
 }
@@ -199,6 +262,8 @@ if ! printf '%s' "$BOOTSTRAP_ROLLBACK_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{32,255}$
 fi
 ENROLLED=1
 
+install -d -m 0755 "$INSTALL_DIR"
+install -d -m 0755 "$(dirname "$PLIST_FILE")"
 install -m 0755 "$STAGED_BINARY" "${INSTALL_DIR}/datrixops-agent"
 
 cat >"$PLIST_FILE" <<PLIST_EOF
@@ -214,6 +279,9 @@ cat >"$PLIST_FILE" <<PLIST_EOF
         <key>DATRIXOPS_SERVER_URL</key><string>${API_URL}</string>
         <key>DATRIXOPS_AGENT_TOKEN</key><string>${AGENT_TOKEN}</string>
         <key>DATRIXOPS_SERVICES</key><string>${SERVICES}</string>
+        <key>AGENT_VERSION</key><string>${AGENT_VERSION}</string>
+        <key>DATRIXOPS_AGENT_ARTIFACT_BASE_URL</key><string>${AGENT_ARTIFACT_BASE_URL}</string>
+        <key>DATRIXOPS_AGENT_RELEASE_LAYOUT</key><string>${AGENT_RELEASE_LAYOUT:-github}</string>
     </dict>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
@@ -224,14 +292,14 @@ cat >"$PLIST_FILE" <<PLIST_EOF
 PLIST_EOF
 chmod 0600 "$PLIST_FILE"
 
-if launchctl print system/com.datrixops.agent >/dev/null 2>&1; then
-    launchctl kickstart -k system/com.datrixops.agent
+if "$LAUNCHCTL_BIN" print system/com.datrixops.agent >/dev/null 2>&1; then
+    "$LAUNCHCTL_BIN" kickstart -k system/com.datrixops.agent
 else
-    launchctl bootstrap system "$PLIST_FILE"
+    "$LAUNCHCTL_BIN" bootstrap system "$PLIST_FILE"
 fi
 sleep 2
 
-if ! launchctl print system/com.datrixops.agent >/dev/null 2>&1; then
+if ! "$LAUNCHCTL_BIN" print system/com.datrixops.agent >/dev/null 2>&1; then
     echo "ERROR: DatrixOps Agent service failed to start on macOS." >&2
     exit 1
 fi
@@ -243,7 +311,7 @@ for retry in $(seq 1 15); do
     STATUS_HTTP="$(
         curl --silent --show-error \
             --connect-timeout 5 --max-time 10 \
-            --header "Authorization: Bearer ${BOOTSTRAP_ROLLBACK_TOKEN}" \
+            --header "Authorization: Bearer ${AGENT_TOKEN}" \
             "${API_URL}/agent/bootstrap-status" || echo "000"
     )"
     if echo "$STATUS_HTTP" | grep -q '"bootstrap_completed":true'; then

@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -141,6 +140,7 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 type agentUpdatePayload struct {
 	TargetVersion  string `json:"target_version"`
 	ReleaseBaseURL string `json:"release_base_url"`
+	ReleaseLayout  string `json:"release_layout"`
 }
 
 func prepareAgentUpdate(ctx context.Context, payload agentUpdatePayload) error {
@@ -286,44 +286,66 @@ func validateStagedBinary(path string) error {
 
 func agentBinaryURL(ctx context.Context, payload agentUpdatePayload) (string, string, int64, error) {
 	targetVersion := strings.TrimSpace(payload.TargetVersion)
-	if targetVersion != "" {
-		baseURL := strings.TrimRight(strings.TrimSpace(payload.ReleaseBaseURL), "/")
-		if baseURL == "" {
-			return "", "", 0, fmt.Errorf("agent update payload is missing release_base_url")
-		}
-		publicKey, err := agentupdate.ReleasePublicKey()
-		if err != nil {
-			return "", "", 0, err
-		}
-		updateClient := agentupdate.NewClient(publicKey)
-		manifestURL := fmt.Sprintf("%s/%s/manifest.json", baseURL, targetVersion)
-		signatureURL := fmt.Sprintf("%s/%s/manifest.sig", baseURL, targetVersion)
-		manifest, err := updateClient.FetchManifest(ctx, manifestURL, signatureURL)
-		if err != nil {
-			return "", "", 0, err
-		}
-		if manifest.Version != targetVersion {
-			return "", "", 0, fmt.Errorf("release manifest version mismatch: got %s, expected %s", manifest.Version, targetVersion)
-		}
-		artifact, err := manifest.ArtifactFor(runtime.GOOS, runtime.GOARCH)
-		if err != nil {
-			return "", "", 0, err
-		}
-		artifactURL := artifact.URL
-		parsedArtifactURL, err := url.Parse(artifactURL)
-		if err != nil {
-			return "", "", 0, fmt.Errorf("parse artifact URL: %w", err)
-		}
-		if !parsedArtifactURL.IsAbs() {
-			artifactURL, err = url.JoinPath(baseURL, targetVersion, artifactURL)
-			if err != nil {
-				return "", "", 0, fmt.Errorf("resolve artifact URL: %w", err)
-			}
-		}
-		return artifactURL, artifact.SHA256, artifact.Size, nil
+	if targetVersion == "" {
+		return "", "", 0, fmt.Errorf("agent update payload is missing target_version")
+	}
+	semverRegex := regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	if !semverRegex.MatchString(targetVersion) {
+		return "", "", 0, fmt.Errorf("invalid target_version format %q (must match X.Y.Z)", targetVersion)
 	}
 
-	return "", "", 0, fmt.Errorf("agent update payload is missing target_version")
+	baseURL := strings.TrimRight(strings.TrimSpace(payload.ReleaseBaseURL), "/")
+	if baseURL == "" {
+		return "", "", 0, fmt.Errorf("agent update payload is missing release_base_url")
+	}
+
+	// Layout precedence: task payload -> local Agent configuration -> error
+	rawLayout := strings.TrimSpace(payload.ReleaseLayout)
+	if rawLayout == "" {
+		if envLayout := strings.TrimSpace(os.Getenv("DATRIXOPS_AGENT_RELEASE_LAYOUT")); envLayout != "" {
+			rawLayout = envLayout
+		} else {
+			return "", "", 0, fmt.Errorf("release layout is not specified in update task payload or local agent configuration")
+		}
+	}
+	layout, err := agentupdate.ParseLayout(rawLayout)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("parse release layout: %w", err)
+	}
+
+	publicKey, err := agentupdate.ReleasePublicKey()
+	if err != nil {
+		return "", "", 0, err
+	}
+	updateClient := agentupdate.NewClient(publicKey)
+
+	manifestURL, err := agentupdate.ManifestURL(baseURL, layout, targetVersion)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("resolve manifest URL: %w", err)
+	}
+	signatureURL, err := agentupdate.SignatureURL(baseURL, layout, targetVersion)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("resolve signature URL: %w", err)
+	}
+
+	manifest, err := updateClient.FetchManifest(ctx, manifestURL, signatureURL)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if manifest.Version != targetVersion {
+		return "", "", 0, fmt.Errorf("release manifest version mismatch: got %s, expected %s", manifest.Version, targetVersion)
+	}
+	artifact, err := manifest.ArtifactFor(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	artifactURL, err := agentupdate.ArtifactURL(baseURL, layout, targetVersion, artifact.URL)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("resolve artifact URL: %w", err)
+	}
+
+	return artifactURL, artifact.SHA256, artifact.Size, nil
 }
 
 func writeWindowsUpdateScript(executablePath, updatePath string) error {
@@ -483,6 +505,7 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 		"lines":              payloadValue("lines"),
 		"target_version":     payloadValue("target_version"),
 		"release_base_url":   payloadValue("release_base_url"),
+		"release_layout":     payloadValue("release_layout"),
 		"server_id":          payloadValue("server_id"),
 		"confirm_url":        payloadValue("confirm_url"),
 		"confirm_token":      payloadValue("confirm_token"),
@@ -550,6 +573,7 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 			updatePayload := agentUpdatePayload{
 				TargetVersion:  payload["target_version"],
 				ReleaseBaseURL: payload["release_base_url"],
+				ReleaseLayout:  payload["release_layout"],
 			}
 			if err := prepareAgentUpdate(taskContext, updatePayload); err != nil {
 				statusStr = "failed"

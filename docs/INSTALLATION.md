@@ -40,7 +40,11 @@ To monitor remote Linux servers:
 2. Copy the generated 1-click Agent Installation command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/install-agent.sh | sudo bash -s -- --token <YOUR_AGENT_TOKEN> --server https://<your-vps-ip>/api/v1
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/install.sh | sudo bash -s -- \
+    --token <YOUR_AGENT_TOKEN> \
+    --server https://<your-vps-ip>/api/v1 \
+    --agent-version 1.5.5 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.5
 ```
 
 The agent runs as a lightweight `systemd` service (`datrix-agent`), consuming less than 15MB RAM and under 0.5% CPU.

@@ -3,8 +3,8 @@ package alert
 import (
 	"encoding/json"
 	"errors"
-	"net/mail"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 

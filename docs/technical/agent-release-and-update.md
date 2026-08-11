@@ -86,3 +86,8 @@ Các đảm bảo bảo mật cho Agent release và installer:
 - **Bootstrap Rollback**: Khi gọi `/api/v1/agent/enroll`, hệ thống cấp credential tạm thời `bootstrap_rollback_token` có thời hạn tối đa 5 phút. Nếu việc tải binary hoặc khởi chạy dịch vụ thất bại, installer sẽ dọn dẹp dịch vụ dở dang và gọi `POST /api/v1/agent/enroll/rollback` để giải phóng token đăng ký ban đầu. Sau khi Agent gửi heartbeat thành công lần đầu tiên, `bootstrap_completed_at` sẽ được ghi nhận và vô hiệu hóa vĩnh viễn quyền rollback.
 - **Rollback Agent đã chạy**: Không ghi đè release lỗi. Tăng patch version với fix và publish mới nếu Agent cũ còn online. Nếu binary không khởi động, thay thủ công bằng artifact release tốt đã lưu, restart service và kiểm tra heartbeat. Control plane không thể sửa một Agent hoàn toàn mất kết nối.
 
+## Known Risks: Partial GHCR Publication
+
+- **Vấn đề**: Trong quá trình release qua GitHub Actions (`.github/workflows/release.yml`), các image backend, migrate, và worker được build và push lên GHCR *trước* khi frontend image được build, chèn Agent artifacts, verify, và push.
+- **Hệ quả**: Nếu quá trình build frontend hoặc bước "Verify frontend image Agent artifacts" thất bại, hoặc tiến trình bị hủy ngang, các backend images vẫn sẽ tồn tại trên GHCR dưới tag version đang release, trong khi frontend image và GitHub Release sẽ không được publish. Điều này tạo ra một "partial release".
+- **Biện pháp**: Đây là một known risk đã được chấp nhận do giới hạn của single-job workflow orchestration. Trong trường hợp xảy ra partial publication, maintainer phải xóa thủ công các image tags lỗi trên GHCR, sửa code và thực hiện release patch version mới.
