@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CMD="${1:-}"
+CMD=""
+for arg in "$@"; do
+    if [[ "$arg" != -* ]]; then
+        CMD="$arg"
+        break
+    fi
+done
+
 STATE_FILE="${DATRIXOPS_INSTALLER_ROOT:-/tmp}/mock_launchctl_state"
 
 if [[ "$CMD" == "kickstart" ]]; then
-    if [[ -f "${STATE_FILE}_restarted" ]]; then
+    count_file="${STATE_FILE}_restart_count"
+    count=$(cat "$count_file" 2>/dev/null || echo "0")
+    count=$((count + 1))
+    echo "$count" > "$count_file"
+
+    if [[ "$count" -eq 1 ]]; then
+        if [[ -n "${DATRIXOPS_MOCK_RESTART_FAIL:-}" ]]; then
+            echo "Mock kickstart failed" >&2
+            exit 1
+        fi
+        echo "Mock kickstart succeeded"
+        exit 0
+    else
         if [[ -n "${DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL:-}" ]]; then
             echo "Mock rollback kickstart failed" >&2
             exit 1
@@ -13,14 +32,6 @@ if [[ "$CMD" == "kickstart" ]]; then
         echo "Mock rollback kickstart succeeded"
         exit 0
     fi
-    touch "${STATE_FILE}_restarted"
-    
-    if [[ -n "${DATRIXOPS_MOCK_RESTART_FAIL:-}" ]]; then
-        echo "Mock kickstart failed" >&2
-        exit 1
-    fi
-    echo "Mock kickstart succeeded"
-    exit 0
 elif [[ "$CMD" == "bootstrap" ]]; then
     echo "Mock bootstrap succeeded"
     exit 0
@@ -28,22 +39,26 @@ elif [[ "$CMD" == "bootout" ]]; then
     echo "Mock bootout succeeded"
     exit 0
 elif [[ "$CMD" == "print" ]]; then
-    if [[ -f "${STATE_FILE}_restarted_health" ]]; then
+    count_file="${STATE_FILE}_health_count"
+    count=$(cat "$count_file" 2>/dev/null || echo "0")
+    count=$((count + 1))
+    echo "$count" > "$count_file"
+
+    if [[ "$count" -eq 1 ]]; then
+        if [[ -n "${DATRIXOPS_MOCK_HEALTH_FAIL:-}" ]]; then
+            echo "\"state\" = 1"
+            exit 1
+        fi
+        echo "\"state\" = 0"
+        exit 0
+    else
         if [[ -n "${DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL:-}" ]]; then
             echo "\"state\" = 1"
-            exit 0
+            exit 1
         fi
         echo "\"state\" = 0"
         exit 0
     fi
-    touch "${STATE_FILE}_restarted_health"
-    
-    if [[ -n "${DATRIXOPS_MOCK_HEALTH_FAIL:-}" ]]; then
-        echo "\"state\" = 1"
-        exit 0
-    fi
-    echo "\"state\" = 0"
-    exit 0
 fi
 
 echo "Mock launchctl: unknown command $CMD" >&2

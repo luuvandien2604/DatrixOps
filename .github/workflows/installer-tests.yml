@@ -20,13 +20,14 @@ jobs:
           bash -n deploy/fetch-agent-release.sh
           bash -n scripts/build-agent-release.sh
 
-      - name: Test Linux installer argument validation
+      - name: Test Linux installer & updater
         run: |
           python3 scripts/mock-server.py &
           sleep 2
 
           export DATRIXOPS_INSTALLER_TEST_MODE=1
           export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
+          export DATRIXOPS_SYSTEMCTL_BIN="$PWD/scripts/mock-systemctl.sh"
 
           # Test missing required args fails
           if bash frontend/public/install.sh 2>/dev/null; then
@@ -47,25 +48,45 @@ jobs:
             --agent-version 1.0.0 \
             --agent-artifact-base-url http://127.0.0.1:8080 \
             --agent-release-layout github
-
-          export DATRIXOPS_SYSTEMCTL_BIN="$PWD/scripts/mock-systemctl.sh"
           
           # Setup dummy binary to test update
           mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
           touch "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
           
-          # Test successful update
+          # Scenario: Successful update
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           bash frontend/public/update-agent.sh \
             --target-version 1.0.0 \
             --target-artifact-base-url http://127.0.0.1:8080
 
-          # Test update failure and rollback activation
+          # Scenario: Update restart failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
+          export DATRIXOPS_MOCK_RESTART_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on restart failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_RESTART_FAIL
+
+          # Scenario: Update health failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
-            echo "ERROR: updater should fail on health check failure" >&2
+            echo "ERROR: updater should fail on health failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
+
+          # Scenario: Rollback activation failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on health failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
+          unset DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL
 
   macos-installer:
     name: macOS Installer & Updater Tests
@@ -78,13 +99,14 @@ jobs:
           bash -n frontend/public/install-mac.sh
           bash -n frontend/public/update-agent.sh
 
-      - name: Test macOS installer argument validation
+      - name: Test macOS installer & updater
         run: |
           python3 scripts/mock-server.py &
           sleep 2
 
           export DATRIXOPS_INSTALLER_TEST_MODE=1
           export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
+          export DATRIXOPS_LAUNCHCTL_BIN="$PWD/scripts/mock-launchctl.sh"
 
           # Test missing required args fails
           if bash frontend/public/install-mac.sh 2>/dev/null; then
@@ -105,6 +127,34 @@ jobs:
             --agent-version 1.0.0 \
             --agent-artifact-base-url http://127.0.0.1:8080 \
             --agent-release-layout default
+
+          # Setup dummy binary to test update
+          mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
+          touch "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+
+          # Scenario: Successful update
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
+          bash frontend/public/update-agent.sh \
+            --target-version 1.0.0 \
+            --target-artifact-base-url http://127.0.0.1:8080
+
+          # Scenario: Update restart failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
+          export DATRIXOPS_MOCK_RESTART_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on restart failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_RESTART_FAIL
+
+          # Scenario: Update health failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on health failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
 
   windows-installer:
     name: Windows Installer & Updater Tests
@@ -129,13 +179,14 @@ jobs:
             Write-Host "AST validation passed for $script"
           }
 
-      - name: Test Windows installer argument validation
+      - name: Test Windows installer argument validation & updater Pester
         shell: pwsh
         run: |
           Start-Process -NoNewWindow -FilePath "python" -ArgumentList "scripts/mock-server.py"
           Start-Sleep -Seconds 2
 
           $env:DATRIXOPS_INSTALLER_TEST_MODE = "1"
+          $env:DATRIXOPS_MOCK_SCHTASKS_BIN = "pwsh $pwd/scripts/mock-schtasks.ps1"
           $testToken = -join ((65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
 
           # Test invalid layout fails

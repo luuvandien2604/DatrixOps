@@ -31,8 +31,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		t.Fatalf("install.sh script not found: %v", err)
 	}
 
-	runInstaller := func(t *testing.T, serverURL string, extraEnv []string) (string, error) {
-		testRoot := filepath.Join(t.TempDir(), "install-root")
+	runInstaller := func(t *testing.T, serverURL string, testRoot string, extraEnv []string) (string, error) {
 		cmd := exec.Command("bash", installerScript,
 			"--server", serverURL,
 			"--token", "test_enrollment_token_12345678901234567890",
@@ -57,8 +56,8 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		})
 		server := httptest.NewServer(handler)
 		defer server.Close()
-
-		output, err := runInstaller(t, server.URL, nil)
+        testRoot := filepath.Join(t.TempDir(), "install-root")
+		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil || !strings.Contains(output, "version mismatch") {
 			t.Fatalf("expected version mismatch error, got err: %v, output: %s", err, output)
 		}
@@ -88,7 +87,8 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		_, err := runInstaller(t, server.URL, nil)
+        testRoot := filepath.Join(t.TempDir(), "install-root")
+		_, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil {
 			t.Fatal("expected installer to fail on corrupted checksum, but succeeded")
 		}
@@ -101,6 +101,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		var enrollCalls, rollbackCalls int64
 		mockBinary := []byte("\x7fELFmockbinarycontentfor testingpurpose1234567890")
 		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
+        expectedToken := strings.Repeat("a", 32)
 
 		handler := http.NewServeMux()
 		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
@@ -115,7 +116,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 			atomic.AddInt64(&enrollCalls, 1)
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]string{
-				"agent_token":              strings.Repeat("a", 32),
+				"agent_token":              expectedToken,
 				"bootstrap_rollback_token": strings.Repeat("b", 32),
 			})
 		})
@@ -124,13 +125,18 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 		handler.HandleFunc("GET /api/v1/agent/bootstrap-status", func(w http.ResponseWriter, r *http.Request) {
+            if r.Header.Get("Authorization") != "Bearer "+expectedToken {
+                w.WriteHeader(http.StatusUnauthorized)
+                return
+            }
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{"bootstrap_completed": true})
 		})
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		output, err := runInstaller(t, server.URL, nil)
+        testRoot := filepath.Join(t.TempDir(), "install-root")
+		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err != nil {
 			t.Fatalf("expected successful install, got err: %v, output: %s", err, output)
 		}
@@ -140,6 +146,11 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		if atomic.LoadInt64(&rollbackCalls) != 0 {
 			t.Fatalf("expected 0 rollback API calls, output: %s", output)
 		}
+        
+        // Assert all writes are strictly under test root by checking the real /etc/datrixops doesn't exist
+        if _, err := os.Stat("/etc/datrixops/agent.yaml"); err == nil {
+            t.Fatalf("installer modified global /etc/datrixops directory")
+        }
 	})
 
 	t.Run("wrong agent token rejected triggers rollback", func(t *testing.T) {
@@ -173,12 +184,18 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-		output, err := runInstaller(t, server.URL, nil)
+        testRoot := filepath.Join(t.TempDir(), "install-root")
+		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil {
 			t.Fatalf("expected failed install, got output: %s", output)
 		}
 		if atomic.LoadInt64(&rollbackCalls) != 1 {
 			t.Fatalf("expected exactly 1 rollback API call, output: %s", output)
+		}
+        
+        recoveryPath := filepath.Join(testRoot, "etc/datrixops/bootstrap-recovery.json")
+		if _, err := os.Stat(recoveryPath); !os.IsNotExist(err) {
+			t.Fatalf("expected recovery file to be absent on successful rollback")
 		}
 	})
 
@@ -212,26 +229,58 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		defer server.Close()
 
 		testRoot := filepath.Join(t.TempDir(), "install-root")
-		cmd := exec.Command("bash", installerScript,
-			"--server", server.URL,
-			"--token", "test_enrollment_token_12345678901234567890",
-			"--agent-version", "1.5.5",
-			"--agent-artifact-base-url", server.URL,
-			"--allow-insecure-http",
-		)
-		cmd.Env = append(os.Environ(),
-			"DATRIXOPS_INSTALLER_TEST_MODE=1",
-			"DATRIXOPS_INSTALLER_ROOT="+testRoot,
-			"DATRIXOPS_SYSTEMCTL_BIN=true",
-		)
-		output, err := cmd.CombinedOutput()
+		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil {
 			t.Fatalf("expected failed install, got output: %s", output)
 		}
 
 		recoveryPath := filepath.Join(testRoot, "etc/datrixops/bootstrap-recovery.json")
-		if _, err := os.Stat(recoveryPath); err != nil {
-			t.Fatalf("expected recovery file to be created: %v", err)
+		info, err := os.Stat(recoveryPath)
+        if err != nil {
+            t.Fatalf("expected recovery file to be created: %v", err)
+        }
+        
+        if info.Mode().Perm() != 0600 {
+            t.Fatalf("expected permissions 0600, got %v", info.Mode().Perm())
+        }
+	})
+
+    t.Run("service start failure triggers rollback", func(t *testing.T) {
+        var rollbackCalls int64
+		mockBinary := []byte("\x7fELFmockbinarycontentfor testingpurpose1234567890")
+		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
+
+		handler := http.NewServeMux()
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+
+		handler.HandleFunc("POST /api/v1/agent/enroll", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]string{
+				"agent_token":              strings.Repeat("a", 32),
+				"bootstrap_rollback_token": strings.Repeat("b", 32),
+			})
+		})
+		handler.HandleFunc("POST /api/v1/agent/enroll/rollback", func(w http.ResponseWriter, r *http.Request) {
+            atomic.AddInt64(&rollbackCalls, 1)
+			w.WriteHeader(http.StatusNoContent)
+		})
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		testRoot := filepath.Join(t.TempDir(), "install-root")
+		output, err := runInstaller(t, server.URL, testRoot, []string{"DATRIXOPS_SYSTEMCTL_BIN=false"})
+		if err == nil {
+			t.Fatalf("expected failed install, got output: %s", output)
+		}
+        
+        if atomic.LoadInt64(&rollbackCalls) != 1 {
+			t.Fatalf("expected exactly 1 rollback API call, output: %s", output)
 		}
 	})
 }
