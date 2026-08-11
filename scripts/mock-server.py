@@ -55,7 +55,7 @@ class MockHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"data": {"bootstrap_completed": True}, "bootstrap_completed": True}).encode('utf-8'))
+            self.wfile.write(json.dumps({"data": {"bootstrap_completed": True}, "bootstrap_completed": True}, separators=(',', ':')).encode('utf-8'))
             return
             
         self.send_response(404)
@@ -75,7 +75,12 @@ class MockHandler(BaseHTTPRequestHandler):
                 "agent_token": "a" * 32,
                 "bootstrap_rollback_token": "b" * 32
             }
-            self.wfile.write(json.dumps(resp).encode('utf-8'))
+            self.wfile.write(json.dumps(resp, separators=(',', ':')).encode('utf-8'))
+            return
+            
+        if self.path == '/api/v1/agent/enroll/rollback':
+            self.send_response(204)
+            self.end_headers()
             return
             
         self.send_response(404)

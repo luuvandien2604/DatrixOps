@@ -61,6 +61,14 @@ func TestVerifyReleaseDirectory(t *testing.T) {
 		{name: "invalid version format in file", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
 			writeTestFile(t, filepath.Join(dir, "agent-release.version"), []byte("v1.2.3\n"))
 		}},
+		{name: "missing script sidecar", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			if err := os.Remove(filepath.Join(dir, "install.sh.sha256")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "mismatched script sidecar", mutate: func(t *testing.T, dir string, _ *Manifest, _ ed25519.PrivateKey) {
+			writeTestFile(t, filepath.Join(dir, "install-mac.sh.sha256"), []byte(strings.Repeat("0", 64)+"\n"))
+		}},
 	}
 
 	for _, test := range tests {
@@ -99,6 +107,13 @@ func createSignedTestRelease(t *testing.T) (string, *Manifest, ed25519.PublicKey
 	versionContent := []byte("1.2.3\n")
 	writeTestFile(t, filepath.Join(dir, "agent-release.version"), versionContent)
 	writeSidecars(t, filepath.Join(dir, "agent-release.version"), versionContent)
+
+	for _, script := range []string{"install.sh", "install-mac.sh", "install.ps1", "update-agent.sh", "update-agent.ps1"} {
+		scriptContent := []byte("#!/bin/sh\necho " + script)
+		writeTestFile(t, filepath.Join(dir, script), scriptContent)
+		writeSidecars(t, filepath.Join(dir, script), scriptContent)
+	}
+
 	return dir, manifest, publicKey, privateKey
 }
 

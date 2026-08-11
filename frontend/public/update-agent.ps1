@@ -176,12 +176,31 @@ try {
     Write-Warning "Agent update failed ($err). Restoring backup binary..."
     if (Test-Path $backupPath) {
         Move-Item -LiteralPath $backupPath -Destination $binaryPath -Force
-        if (-not $TestMode) {
-            Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        } else {
-            if ($env:DATRIXOPS_MOCK_SCHTASKS_BIN) {
-                & $env:DATRIXOPS_MOCK_SCHTASKS_BIN "start" $taskName
+        $rollbackPassed = $false
+        try {
+            if (-not $TestMode) {
+                Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+                $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+                $proc = Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue
+                if ($task -and $proc) { $rollbackPassed = $true }
+            } else {
+                if ($env:DATRIXOPS_MOCK_SCHTASKS_BIN) {
+                    & $env:DATRIXOPS_MOCK_SCHTASKS_BIN "start" $taskName
+                    $res = & $env:DATRIXOPS_MOCK_SCHTASKS_BIN "status" $taskName
+                    if ($res -eq "running") { $rollbackPassed = $true }
+                } else {
+                    if (Test-Path $binaryPath) { $rollbackPassed = $true }
+                }
             }
+        } catch {
+            $rollbackPassed = $false
+        }
+
+        if ($rollbackPassed) {
+            $host.ui.WriteErrorLine("ERROR: Update failed. Old Agent successfully restored.")
+        } else {
+            $host.ui.WriteErrorLine("CRITICAL: Update failed AND rollback activation failed.")
         }
     }
     throw $err

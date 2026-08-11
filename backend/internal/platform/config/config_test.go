@@ -58,14 +58,14 @@ func TestLoadAcceptsRequiredProductionConfig(t *testing.T) {
 	if cfg.PublicURL != "https://ops.example.com" {
 		t.Fatalf("expected PUBLIC_URL to fall back to the first allowed origin, got %q", cfg.PublicURL)
 	}
-	if cfg.AgentReleaseURL != "https://ops.example.com/releases" {
-		t.Fatalf("expected release URL to be derived from PUBLIC_URL, got %q", cfg.AgentReleaseURL)
+	if cfg.AgentReleaseURL != "https://github.com/luuvandien2604/DatrixOps/releases/download" {
+		t.Fatalf("expected release URL to fall back to DatrixOps GitHub releases in CE, got %q", cfg.AgentReleaseURL)
 	}
 	if cfg.AgentReleaseLayout != "github" {
 		t.Fatalf("expected github release layout by default in CE, got %q", cfg.AgentReleaseLayout)
 	}
-	if cfg.AgentArtifactBaseURL != "https://ops.example.com/releases/v1.5.2" {
-		t.Fatalf("expected artifact base URL to be derived with v prefix in CE, got %q", cfg.AgentArtifactBaseURL)
+	if cfg.AgentArtifactBaseURL != "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.2" {
+		t.Fatalf("expected artifact base URL to be derived with v prefix from GitHub in CE, got %q", cfg.AgentArtifactBaseURL)
 	}
 	if cfg.DeploymentMode != "self-hosted" {
 		t.Fatalf("expected self-hosted deployment mode by default, got %q", cfg.DeploymentMode)
@@ -219,5 +219,76 @@ func TestLoadRejectsUnknownEdition(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "DATRIXOPS_EDITION") {
 		t.Fatalf("expected edition validation error, got %v", err)
+	}
+}
+
+func TestAgentReleaseURLMatrix(t *testing.T) {
+	tests := []struct {
+		name                    string
+		env                     map[string]string
+		expectedReleaseURL      string
+		expectedReleaseLayout   string
+		expectedArtifactBaseURL string
+	}{
+		{
+			name: "CE HTTP-IP control plane + GitHub HTTPS artifacts",
+			env: map[string]string{
+				"DATABASE_URL":  "postgres://user:pass@localhost:5432/datrixops?sslmode=disable",
+				"JWT_SECRET":    strings.Repeat("z", 48),
+				"AGENT_VERSION": "1.5.2",
+				"PUBLIC_URL":    "http://192.168.1.10",
+			},
+			expectedReleaseURL:      "https://github.com/luuvandien2604/DatrixOps/releases/download",
+			expectedReleaseLayout:   "github",
+			expectedArtifactBaseURL: "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.2",
+		},
+		{
+			name: "CE custom HTTPS release with default layout",
+			env: map[string]string{
+				"DATABASE_URL":           "postgres://user:pass@localhost:5432/datrixops?sslmode=disable",
+				"JWT_SECRET":             strings.Repeat("z", 48),
+				"AGENT_VERSION":          "1.5.2",
+				"PUBLIC_URL":             "https://ops.example.com",
+				"AGENT_RELEASE_BASE_URL": "https://artifacts.example.com/releases",
+				"AGENT_RELEASE_LAYOUT":   "default",
+			},
+			expectedReleaseURL:      "https://artifacts.example.com/releases",
+			expectedReleaseLayout:   "default",
+			expectedArtifactBaseURL: "https://artifacts.example.com/releases/1.5.2",
+		},
+		{
+			name: "explicit AGENT_ARTIFACT_BASE_URL overrides derivation",
+			env: map[string]string{
+				"DATABASE_URL":            "postgres://user:pass@localhost:5432/datrixops?sslmode=disable",
+				"JWT_SECRET":              strings.Repeat("z", 48),
+				"AGENT_VERSION":           "1.5.2",
+				"PUBLIC_URL":              "https://ops.example.com",
+				"AGENT_ARTIFACT_BASE_URL": "https://custom-cdn.example.com/agents/1.5.2",
+			},
+			expectedReleaseURL:      "https://github.com/luuvandien2604/DatrixOps/releases/download", // Still derived, but unused
+			expectedReleaseLayout:   "github",
+			expectedArtifactBaseURL: "https://custom-cdn.example.com/agents/1.5.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("expected config to load, got %v", err)
+			}
+			if cfg.AgentReleaseURL != tt.expectedReleaseURL {
+				t.Errorf("AgentReleaseURL: got %q, want %q", cfg.AgentReleaseURL, tt.expectedReleaseURL)
+			}
+			if cfg.AgentReleaseLayout != tt.expectedReleaseLayout {
+				t.Errorf("AgentReleaseLayout: got %q, want %q", cfg.AgentReleaseLayout, tt.expectedReleaseLayout)
+			}
+			if cfg.AgentArtifactBaseURL != tt.expectedArtifactBaseURL {
+				t.Errorf("AgentArtifactBaseURL: got %q, want %q", cfg.AgentArtifactBaseURL, tt.expectedArtifactBaseURL)
+			}
+		})
 	}
 }

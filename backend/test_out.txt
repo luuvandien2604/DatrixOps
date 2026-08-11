@@ -1,0 +1,5 @@
+?   	github.com/luuvandien2604/DatrixOps/backend/cmd/api	[no test files]
+?   	github.com/luuvandien2604/DatrixOps/backend/cmd/migrate	[no test files]
+?   	github.com/luuvandien2604/DatrixOps/backend/cmd/reset-admin	[no test files]
+?   	github.com/luuvandien2604/DatrixOps/backend/cmd/worker	[no test files]
+?   	github.com/luuvandien2604/DatrixOps/backend/internal/core/admin	[no test files]

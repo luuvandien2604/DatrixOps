@@ -102,23 +102,7 @@ install -m 0755 "${PROJECT_ROOT}/frontend/public/update-agent.ps1" "${STAGING_DI
 install -m 0644 "${STAGING_DIR}/manifest.json" "${STAGING_DIR}/agent-release-manifest.json"
 install -m 0644 "${STAGING_DIR}/manifest.sig" "${STAGING_DIR}/agent-release-manifest.sig"
 
-all_files=(
-    datrixops-agent-linux-amd64
-    datrixops-agent-linux-arm64
-    datrixops-agent-darwin-amd64
-    datrixops-agent-darwin-arm64
-    datrixops-agent-windows-amd64.exe
-    install.sh
-    install-mac.sh
-    install.ps1
-    update-agent.sh
-    update-agent.ps1
-    agent-release.version
-    manifest.json
-    manifest.sig
-    agent-release-manifest.json
-    agent-release-manifest.sig
-)
+mapfile -t all_files < "${PROJECT_ROOT}/agent/internal/update/release_assets.txt"
 
 for filename in "${all_files[@]}"; do
     if [[ -f "${STAGING_DIR}/${filename}" ]]; then

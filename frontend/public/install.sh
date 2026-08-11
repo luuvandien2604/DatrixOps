@@ -300,10 +300,10 @@ if [[ "$HTTP_STATUS" != "201" ]]; then
 fi
 
 AGENT_TOKEN="$(
-    sed -n 's/.*"agent_token":"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
+    sed -n 's/.*"agent_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
 )"
 BOOTSTRAP_ROLLBACK_TOKEN="$(
-    sed -n 's/.*"bootstrap_rollback_token":"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
+    sed -n 's/.*"bootstrap_rollback_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ENROLL_RESPONSE" | head -n 1
 )"
 if ! printf '%s' "$AGENT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{32,255}$'; then
     echo "ERROR: Control plane returned an invalid Agent credential." >&2
@@ -377,7 +377,7 @@ for retry in $(seq 1 15); do
             --header "Authorization: Bearer ${AGENT_TOKEN}" \
             "${API_URL}/agent/bootstrap-status" || echo "000"
     )"
-    if echo "$STATUS_HTTP" | grep -q '"bootstrap_completed":true'; then
+    if echo "$STATUS_HTTP" | grep -Eq '"bootstrap_completed"[[:space:]]*:[[:space:]]*true'; then
         BOOTSTRAP_CONFIRMED=1
         break
     fi

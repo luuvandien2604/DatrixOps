@@ -48,6 +48,25 @@ jobs:
             --agent-artifact-base-url http://127.0.0.1:8080 \
             --agent-release-layout github
 
+          export DATRIXOPS_SYSTEMCTL_BIN="$PWD/scripts/mock-systemctl.sh"
+          
+          # Setup dummy binary to test update
+          mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
+          touch "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          
+          # Test successful update
+          bash frontend/public/update-agent.sh \
+            --target-version 1.0.0 \
+            --target-artifact-base-url http://127.0.0.1:8080
+
+          # Test update failure and rollback activation
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on health check failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
+
   macos-installer:
     name: macOS Installer & Updater Tests
     runs-on: macos-latest
@@ -130,3 +149,6 @@ jobs:
 
           # Test valid arguments in test mode
           & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.0" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "github"
+
+          # Run Pester Tests
+          Invoke-Pester -Path ./frontend/public/tests/ -Output Detailed

@@ -174,8 +174,10 @@ mv -f "$STAGED_PATH" "$BINARY_PATH"
 trap - EXIT HUP INT TERM
 
 restart_service() {
-    if [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_MOCK_SYSTEMCTL_BIN:-}" ]; then
-        "$DATRIXOPS_MOCK_SYSTEMCTL_BIN" restart datrixops-agent
+    if [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_SYSTEMCTL_BIN:-}" ] && [ "$os" = "Linux" ]; then
+        "$DATRIXOPS_SYSTEMCTL_BIN" restart datrixops-agent
+    elif [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_LAUNCHCTL_BIN:-}" ] && [ "$os" = "Darwin" ]; then
+        "$DATRIXOPS_LAUNCHCTL_BIN" kickstart -k system/com.datrixops.agent
     elif [ "$os" = "Linux" ]; then
         systemctl restart datrixops-agent
     else
@@ -184,8 +186,10 @@ restart_service() {
 }
 
 check_service_health() {
-    if [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_MOCK_SYSTEMCTL_BIN:-}" ]; then
-        "$DATRIXOPS_MOCK_SYSTEMCTL_BIN" is-active datrixops-agent
+    if [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_SYSTEMCTL_BIN:-}" ] && [ "$os" = "Linux" ]; then
+        "$DATRIXOPS_SYSTEMCTL_BIN" is-active datrixops-agent
+    elif [ "$TEST_MODE" -eq 1 ] && [ -n "${DATRIXOPS_LAUNCHCTL_BIN:-}" ] && [ "$os" = "Darwin" ]; then
+        "$DATRIXOPS_LAUNCHCTL_BIN" print system/com.datrixops.agent >/dev/null 2>&1
     elif [ "$TEST_MODE" -eq 1 ]; then
         [ -f "$BINARY_PATH" ]
     elif [ "$os" = "Linux" ]; then
@@ -199,7 +203,11 @@ if ! restart_service || ! check_service_health; then
     echo "ERROR: Updated agent failed restart or health check. Restoring previous binary..." >&2
     if [ -f "$BACKUP_PATH" ]; then
         mv -f "$BACKUP_PATH" "$BINARY_PATH"
-        restart_service || true
+        if restart_service && check_service_health; then
+            echo "ERROR: Update failed. Old Agent successfully restored." >&2
+        else
+            echo "CRITICAL: Update failed AND rollback activation failed." >&2
+        fi
     fi
     exit 1
 fi

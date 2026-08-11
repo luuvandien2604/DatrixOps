@@ -57,6 +57,16 @@ func VerifyReleaseDirectory(releaseDir, expectedVersion string, publicKey ed2551
 	if err := verifySidecars(filepath.Join(releaseDir, "manifest.sig"), signature); err != nil {
 		return nil, err
 	}
+	for _, script := range []string{"install.sh", "install-mac.sh", "install.ps1", "update-agent.sh", "update-agent.ps1"} {
+		scriptPath := filepath.Join(releaseDir, script)
+		scriptBytes, err := readRegularFile(scriptPath, maxManifestSize*10)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", script, err)
+		}
+		if err := verifySidecars(scriptPath, scriptBytes); err != nil {
+			return nil, err
+		}
+	}
 
 	var manifest Manifest
 	decoder := json.NewDecoder(bytes.NewReader(manifestBytes))
