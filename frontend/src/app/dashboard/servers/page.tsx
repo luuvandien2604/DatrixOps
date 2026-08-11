@@ -65,6 +65,7 @@ export default function ServersPage() {
   // Role permissions
   const [userRole, setUserRole] = useState<string>('user');
   const [checkingUpdateServerId, setCheckingUpdateServerId] = useState<string | null>(null);
+  const [systemData, setSystemData] = useState<any>(null);
 
   const handleCheckUpdateForServer = async (server: any) => {
     try {
@@ -94,6 +95,9 @@ export default function ServersPage() {
       .then((u) => {
         if (u?.role) setUserRole(u.role);
       })
+      .catch(() => {});
+    apiClient('/system/info')
+      .then((data) => setSystemData(data))
       .catch(() => {});
   }, []);
 
