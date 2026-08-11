@@ -1,17 +1,26 @@
 param(
     [string]$Command,
-    [string]$TaskName
+    [string]$TaskName,
+    [string]$BatPath
 )
 
 $StateFile = if ($env:DATRIXOPS_INSTALLER_ROOT) { "$env:DATRIXOPS_INSTALLER_ROOT\mock_schtasks_state" } else { "$env:TEMP\mock_schtasks_state" }
 
-if ($Command -eq "stop") {
+if ($Command -eq "install") {
+    Write-Host "Mock schtasks: install succeeded"
+    exit 0
+} elseif ($Command -eq "remove") {
+    Write-Host "Mock schtasks: remove succeeded"
+    exit 0
+} elseif ($Command -eq "stop") {
     Write-Host "Mock schtasks: stop succeeded"
     exit 0
 } elseif ($Command -eq "start") {
     $countFile = "${StateFile}_start_count"
     $count = 0
-    if (Test-Path $countFile) { $count = [int](Get-Content $countFile) }
+    if (Test-Path $countFile) {
+        $count = [int](Get-Content $countFile)
+    }
     $count++
     $count | Set-Content $countFile
 
@@ -33,7 +42,9 @@ if ($Command -eq "stop") {
 } elseif ($Command -eq "status") {
     $countFile = "${StateFile}_health_count"
     $count = 0
-    if (Test-Path $countFile) { $count = [int](Get-Content $countFile) }
+    if (Test-Path $countFile) {
+        $count = [int](Get-Content $countFile)
+    }
     $count++
     $count | Set-Content $countFile
 

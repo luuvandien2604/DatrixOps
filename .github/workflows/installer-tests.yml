@@ -36,7 +36,7 @@ jobs:
           fi
 
           # Test invalid layout fails
-          if bash frontend/public/install.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.0 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
+          if bash frontend/public/install.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.1 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
             echo "ERROR: installer should reject invalid layout" >&2
             exit 1
           fi
@@ -45,44 +45,62 @@ jobs:
           bash frontend/public/install.sh \
             --server http://127.0.0.1:8080 \
             --token "$(printf 't%.0s' {1..32})" \
-            --agent-version 1.0.0 \
+            --agent-version 1.0.1 \
             --agent-artifact-base-url http://127.0.0.1:8080 \
             --agent-release-layout github
-          
-          # Setup dummy binary to test update
+
+          # Setup baseline v1.0.0 fixture to test update
           mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
-          touch "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
-          
-          # Scenario: Successful update
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          mkdir -p "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops"
+          echo "AGENT_VERSION=1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
+
+          # Scenario 1: Successful update (1.0.0 -> 1.0.1)
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           bash frontend/public/update-agent.sh \
-            --target-version 1.0.0 \
+            --target-version 1.0.1 \
             --target-artifact-base-url http://127.0.0.1:8080
+          grep -q 'AGENT_VERSION=1.0.1' "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
 
-          # Scenario: Update restart failure
+          # Reset fixture back to 1.0.0
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          echo "AGENT_VERSION=1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
+
+          # Scenario 2: Update restart failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_RESTART_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
             echo "ERROR: updater should fail on restart failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_RESTART_FAIL
 
-          # Scenario: Update health failure
+          # Scenario 3: Update health failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
             echo "ERROR: updater should fail on health failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
 
-          # Scenario: Rollback activation failure
+          # Scenario 4: Rollback restart failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          export DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on rollback restart failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
+          unset DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL
+
+          # Scenario 5: Rollback health failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
-            echo "ERROR: updater should fail on health failure" >&2
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on rollback health failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
@@ -115,7 +133,7 @@ jobs:
           fi
 
           # Test invalid layout fails
-          if bash frontend/public/install-mac.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.0 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
+          if bash frontend/public/install-mac.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.1 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
             echo "ERROR: installer should reject invalid layout" >&2
             exit 1
           fi
@@ -124,37 +142,62 @@ jobs:
           bash frontend/public/install-mac.sh \
             --server http://127.0.0.1:8080 \
             --token "$(printf 't%.0s' {1..32})" \
-            --agent-version 1.0.0 \
+            --agent-version 1.0.1 \
             --agent-artifact-base-url http://127.0.0.1:8080 \
             --agent-release-layout default
 
-          # Setup dummy binary to test update
+          # Setup baseline v1.0.0 fixture to test update
           mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
-          touch "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
 
-          # Scenario: Successful update
+          # Scenario 1: Successful update (1.0.0 -> 1.0.1)
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           bash frontend/public/update-agent.sh \
-            --target-version 1.0.0 \
+            --target-version 1.0.1 \
             --target-artifact-base-url http://127.0.0.1:8080
 
-          # Scenario: Update restart failure
+          # Reset fixture back to 1.0.0
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+
+          # Scenario 2: Update restart failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           export DATRIXOPS_MOCK_RESTART_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
             echo "ERROR: updater should fail on restart failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_RESTART_FAIL
 
-          # Scenario: Update health failure
+          # Scenario 3: Update health failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.0 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
             echo "ERROR: updater should fail on health failure" >&2
             exit 1
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
+
+          # Scenario 4: Rollback restart failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          export DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on rollback restart failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
+          unset DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL
+
+          # Scenario 5: Rollback health failure
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
+          export DATRIXOPS_MOCK_HEALTH_FAIL=1
+          export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+            echo "ERROR: updater should fail on rollback health failure" >&2
+            exit 1
+          fi
+          unset DATRIXOPS_MOCK_HEALTH_FAIL
+          unset DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL
 
   windows-installer:
     name: Windows Installer & Updater Tests
@@ -186,12 +229,19 @@ jobs:
           Start-Sleep -Seconds 2
 
           $env:DATRIXOPS_INSTALLER_TEST_MODE = "1"
-          $env:DATRIXOPS_MOCK_SCHTASKS_BIN = "pwsh $pwd/scripts/mock-schtasks.ps1"
+          $testRoot = Join-Path $env:RUNNER_TEMP "datrixops-installer-test"
+          $env:DATRIXOPS_INSTALLER_ROOT = $testRoot
+          $env:DATRIXOPS_MOCK_SCHTASKS_BIN = "$pwd/scripts/mock-schtasks.ps1"
           $testToken = -join ((65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
+
+          if (Test-Path $testRoot) {
+            Remove-Item -Path $testRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 
           # Test invalid layout fails
           try {
-            & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.0" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "invalid_layout"
+            & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.1" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "invalid_layout"
             Write-Error "Expected invalid layout to throw"
             exit 1
           } catch {
@@ -199,7 +249,7 @@ jobs:
           }
 
           # Test valid arguments in test mode
-          & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.0" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "github"
+          & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.1" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "github"
 
           # Run Pester Tests
           Invoke-Pester -Path ./frontend/public/tests/ -Output Detailed

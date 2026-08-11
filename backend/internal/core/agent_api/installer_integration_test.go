@@ -16,6 +16,14 @@ import (
 	"testing"
 )
 
+func assertPathContained(t *testing.T, testRoot, targetPath string) {
+	t.Helper()
+	rel, err := filepath.Rel(testRoot, targetPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		t.Fatalf("path escaped test root: root=%s, path=%s, rel=%s, err=%v", testRoot, targetPath, rel, err)
+	}
+}
+
 func TestHermeticInstallerIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping bash installer test on Windows")
@@ -56,7 +64,8 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		})
 		server := httptest.NewServer(handler)
 		defer server.Close()
-        testRoot := filepath.Join(t.TempDir(), "install-root")
+
+		testRoot := filepath.Join(t.TempDir(), "install-root")
 		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil || !strings.Contains(output, "version mismatch") {
 			t.Fatalf("expected version mismatch error, got err: %v, output: %s", err, output)
@@ -87,7 +96,7 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-        testRoot := filepath.Join(t.TempDir(), "install-root")
+		testRoot := filepath.Join(t.TempDir(), "install-root")
 		_, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil {
 			t.Fatal("expected installer to fail on corrupted checksum, but succeeded")
@@ -101,21 +110,35 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		var enrollCalls, rollbackCalls int64
 		mockBinary := []byte("\x7fELFmockbinarycontentfor testingpurpose1234567890")
 		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
-        expectedToken := strings.Repeat("a", 32)
+		expectedToken := strings.Repeat("a", 32)
 
 		handler := http.NewServeMux()
-		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
 
 		handler.HandleFunc("POST /api/v1/agent/enroll", func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt64(&enrollCalls, 1)
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"agent_token":              expectedToken,
 				"bootstrap_rollback_token": strings.Repeat("b", 32),
 			})
@@ -125,17 +148,17 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 		handler.HandleFunc("GET /api/v1/agent/bootstrap-status", func(w http.ResponseWriter, r *http.Request) {
-            if r.Header.Get("Authorization") != "Bearer "+expectedToken {
-                w.WriteHeader(http.StatusUnauthorized)
-                return
-            }
+			if r.Header.Get("Authorization") != "Bearer "+expectedToken {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{"bootstrap_completed": true})
+			_ = json.NewEncoder(w).Encode(map[string]any{"bootstrap_completed": true})
 		})
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-        testRoot := filepath.Join(t.TempDir(), "install-root")
+		testRoot := filepath.Join(t.TempDir(), "install-root")
 		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err != nil {
 			t.Fatalf("expected successful install, got err: %v, output: %s", err, output)
@@ -146,11 +169,25 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		if atomic.LoadInt64(&rollbackCalls) != 0 {
 			t.Fatalf("expected 0 rollback API calls, output: %s", output)
 		}
-        
-        // Assert all writes are strictly under test root by checking the real /etc/datrixops doesn't exist
-        if _, err := os.Stat("/etc/datrixops/agent.yaml"); err == nil {
-            t.Fatalf("installer modified global /etc/datrixops directory")
-        }
+
+		// Positive path-containment assertions
+		agentBin := filepath.Join(testRoot, "usr/local/bin/datrixops-agent")
+		agentEnv := filepath.Join(testRoot, "etc/datrixops/agent.env")
+		serviceFile := filepath.Join(testRoot, "etc/systemd/system/datrixops-agent.service")
+
+		assertPathContained(t, testRoot, agentBin)
+		assertPathContained(t, testRoot, agentEnv)
+		assertPathContained(t, testRoot, serviceFile)
+
+		if info, err := os.Stat(agentBin); err != nil || info.Size() == 0 {
+			t.Fatalf("expected installed agent binary at %s, err: %v", agentBin, err)
+		}
+		if _, err := os.Stat(agentEnv); err != nil {
+			t.Fatalf("expected installed agent env file at %s, err: %v", agentEnv, err)
+		}
+		if _, err := os.Stat(serviceFile); err != nil {
+			t.Fatalf("expected installed systemd service file at %s, err: %v", serviceFile, err)
+		}
 	})
 
 	t.Run("wrong agent token rejected triggers rollback", func(t *testing.T) {
@@ -159,17 +196,31 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
 
 		handler := http.NewServeMux()
-		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
 
 		handler.HandleFunc("POST /api/v1/agent/enroll", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"agent_token":              strings.Repeat("a", 32),
 				"bootstrap_rollback_token": strings.Repeat("b", 32),
 			})
@@ -179,12 +230,12 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 		handler.HandleFunc("GET /api/v1/agent/bootstrap-status", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized) // fail
+			w.WriteHeader(http.StatusUnauthorized)
 		})
 		server := httptest.NewServer(handler)
 		defer server.Close()
 
-        testRoot := filepath.Join(t.TempDir(), "install-root")
+		testRoot := filepath.Join(t.TempDir(), "install-root")
 		output, err := runInstaller(t, server.URL, testRoot, nil)
 		if err == nil {
 			t.Fatalf("expected failed install, got output: %s", output)
@@ -192,8 +243,9 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		if atomic.LoadInt64(&rollbackCalls) != 1 {
 			t.Fatalf("expected exactly 1 rollback API call, output: %s", output)
 		}
-        
-        recoveryPath := filepath.Join(testRoot, "etc/datrixops/bootstrap-recovery.json")
+
+		recoveryPath := filepath.Join(testRoot, "etc/datrixops/bootstrap-recovery.json")
+		assertPathContained(t, testRoot, recoveryPath)
 		if _, err := os.Stat(recoveryPath); !os.IsNotExist(err) {
 			t.Fatalf("expected recovery file to be absent on successful rollback")
 		}
@@ -204,17 +256,31 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
 
 		handler := http.NewServeMux()
-		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
 
 		handler.HandleFunc("POST /api/v1/agent/enroll", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"agent_token":              strings.Repeat("a", 32),
 				"bootstrap_rollback_token": strings.Repeat("b", 32),
 			})
@@ -235,39 +301,54 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		}
 
 		recoveryPath := filepath.Join(testRoot, "etc/datrixops/bootstrap-recovery.json")
+		assertPathContained(t, testRoot, recoveryPath)
 		info, err := os.Stat(recoveryPath)
-        if err != nil {
-            t.Fatalf("expected recovery file to be created: %v", err)
-        }
-        
-        if info.Mode().Perm() != 0600 {
-            t.Fatalf("expected permissions 0600, got %v", info.Mode().Perm())
-        }
+		if err != nil {
+			t.Fatalf("expected recovery file to be created: %v", err)
+		}
+
+		if info.Mode().Perm() != 0600 {
+			t.Fatalf("expected permissions 0600, got %v", info.Mode().Perm())
+		}
 	})
 
-    t.Run("service start failure triggers rollback", func(t *testing.T) {
-        var rollbackCalls int64
+	t.Run("service start failure triggers rollback", func(t *testing.T) {
+		var rollbackCalls int64
 		mockBinary := []byte("\x7fELFmockbinarycontentfor testingpurpose1234567890")
 		shaHex := hex.EncodeToString(func() []byte { s := sha256.Sum256(mockBinary); return s[:] }())
 
 		handler := http.NewServeMux()
-		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("1.5.5\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(shaHex + "\n")) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary)))) })
-		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) { w.Write(mockBinary) })
+		handler.HandleFunc("GET /agent-release.version", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("1.5.5\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-amd64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.sha256", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(shaHex + "\n"))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64.size", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(fmt.Sprintf("%d\n", len(mockBinary))))
+		})
+		handler.HandleFunc("GET /datrixops-agent-linux-arm64", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(mockBinary)
+		})
 
 		handler.HandleFunc("POST /api/v1/agent/enroll", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
+			_ = json.NewEncoder(w).Encode(map[string]string{
 				"agent_token":              strings.Repeat("a", 32),
 				"bootstrap_rollback_token": strings.Repeat("b", 32),
 			})
 		})
 		handler.HandleFunc("POST /api/v1/agent/enroll/rollback", func(w http.ResponseWriter, r *http.Request) {
-            atomic.AddInt64(&rollbackCalls, 1)
+			atomic.AddInt64(&rollbackCalls, 1)
 			w.WriteHeader(http.StatusNoContent)
 		})
 		server := httptest.NewServer(handler)
@@ -278,8 +359,8 @@ func TestHermeticInstallerIntegration(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected failed install, got output: %s", output)
 		}
-        
-        if atomic.LoadInt64(&rollbackCalls) != 1 {
+
+		if atomic.LoadInt64(&rollbackCalls) != 1 {
 			t.Fatalf("expected exactly 1 rollback API call, output: %s", output)
 		}
 	})

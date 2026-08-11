@@ -10,7 +10,7 @@ class MockHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
-            self.wfile.write(b'1.0.0\n')
+            self.wfile.write(b'1.0.1\n')
             return
         
         if self.path.endswith('.size'):
