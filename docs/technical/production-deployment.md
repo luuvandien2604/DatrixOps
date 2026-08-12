@@ -57,7 +57,7 @@ curl -fsS http://127.0.0.1:8080/ready
 
 ## Public docs deployment
 
-Production Compose mount `./docs:/app/docs:ro`, vì vậy Markdown trong `docs/public` có thể thay đổi sau `git pull` mà không rebuild frontend nếu container thực sự giữ mount đó. Thay đổi React/CSS/catalog trong `frontend/src` luôn cần rebuild Frontend.
+Production Compose mount `./frontend/docs:/app/docs:ro`, vì vậy Markdown trong `frontend/docs/public` có thể thay đổi sau `git pull` mà không rebuild frontend nếu container thực sự giữ mount đó. Thay đổi React/CSS/catalog trong `frontend/src` luôn cần rebuild Frontend.
 
 ## Rollback application
 

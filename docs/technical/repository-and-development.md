@@ -13,7 +13,7 @@
 | `backend/migrations/` | SQL idempotent được chạy khi Backend startup. |
 | `frontend/` | Next.js App Router, dashboard, public docs và API client. |
 | `frontend/public/` | Installer, legacy/current root artifact và signed release directories. |
-| `docs/public/` | Nội dung public duy nhất được `/docs` đọc. |
+| `frontend/docs/public/` | Nội dung public duy nhất được `/docs` đọc và được đóng gói trong Frontend image. |
 | `docs/technical/` | Tài liệu nội bộ này; không được public. |
 | `scripts/` | Release automation; hiện trọng tâm là `publish-agent.sh`. |
 

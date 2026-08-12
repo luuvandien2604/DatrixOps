@@ -35,9 +35,9 @@ agent/
 frontend/
   src/app/dashboard/           # các trang UI, xem mục 5
   src/lib/apiClient.ts         # HTTP client gọi backend
-  src/lib/docs.ts              # catalog + loader chỉ đọc Markdown public trong docs/public/
+  src/lib/docs.ts              # catalog + loader chỉ đọc Markdown public trong frontend/docs/public/
 
-docs/public/                   # public docs tiếng Việt (/docs/*) và bản tiếng Anh trong en/ (/docs/en/*)
+frontend/docs/public/          # public docs tiếng Việt (/docs/*) và bản tiếng Anh trong en/ (/docs/en/*)
 docs/technical/                # tài liệu vận hành/developer, không được public
 docs/user-guide/               # tài liệu legacy để tham khảo, không còn được frontend đọc
 ```
@@ -134,10 +134,10 @@ cd agent && DATRIXOPS_AGENT_TOKEN=<token> \
 3. **Agent thu thập thêm field** → sửa `agent/internal/collector/`, và field JSON phải khớp CHÍNH XÁC ở cả agent (`agent/internal/client/http.go`) lẫn backend (`backend/internal/core/agent_api/handler.go`) — 2 struct riêng biệt, không dùng chung type.
 4. **Agent chạy hành động mới** → thêm `case` trong `processTask()` (`agent/cmd/agent/main.go`), và đảm bảo phía tạo task cho phép `type` đó.
 5. **Route Frontend đã có nhưng chưa code** → các trang "Under Construction" liệt kê ở mục 5, chỉ cần xoá `<Construction />` và viết logic thật.
-6. **Docs cho người dùng** → thêm file `.md` với frontmatter `title/description` vào cả `docs/public/<group>/` và `docs/public/en/<group>/`, rồi thêm entry cho hai locale trong `frontend/src/lib/docs.ts`. Technical docs chỉ thêm vào `docs/technical/`.
+6. **Docs cho người dùng** → thêm file `.md` với frontmatter `title/description` vào cả `frontend/docs/public/<group>/` và `frontend/docs/public/en/<group>/`, rồi thêm entry cho hai locale trong `frontend/src/lib/docs.ts`. Technical docs chỉ thêm vào `docs/technical/`.
 
 ## 10. Điểm dễ gây nhầm lẫn khi đọc repo (đã xác minh thực tế, không phải giả định)
 
 - `docs/database/schema.md` là **plan cũ**, KHÔNG khớp migration thật — luôn tin migration, không tin file doc đó.
 - CORS đang mở `Access-Control-Allow-Origin: *` (`backend/internal/platform/middleware/`) — cân nhắc khi debug lỗi liên quan bảo mật/cross-origin.
-- Route `/docs` chỉ load slug nằm trong catalog public và chỉ đọc `docs/public`; `docs/technical` không được đưa qua frontend.
+- Route `/docs` chỉ load slug nằm trong catalog public và chỉ đọc `frontend/docs/public`; `docs/technical` không được đưa qua frontend.

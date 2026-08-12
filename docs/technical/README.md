@@ -1,6 +1,6 @@
 # DatrixOps Technical Administration Documentation
 
-Tài liệu này dành cho người vận hành, maintainer và developer có quyền truy cập repository. Nội dung không được render bởi route public `/docs`: frontend chỉ đọc nội dung tiếng Việt trong `docs/public/` và tiếng Anh trong `docs/public/en/`.
+Tài liệu này dành cho người vận hành, maintainer và developer có quyền truy cập repository. Nội dung không được render bởi route public `/docs`: frontend chỉ đọc nội dung tiếng Việt trong `frontend/docs/public/` và tiếng Anh trong `frontend/docs/public/en/`.
 
 ## Mục lục
 

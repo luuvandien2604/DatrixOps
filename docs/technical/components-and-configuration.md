@@ -16,7 +16,7 @@ Các endpoint hệ thống:
 
 Next.js App Router nằm trong `frontend/src/app`. `apiClient.ts` dùng `NEXT_PUBLIC_API_URL`, tự gắn access token, refresh một lần khi API trả 401 và retry request. Dashboard state chủ yếu là React state + API polling, không có global state framework.
 
-Public docs dùng catalog `frontend/src/lib/docs.ts`, nội dung `docs/public`, catch-all route `/docs/[...slug]` và không đọc `docs/technical`.
+Public docs dùng catalog `frontend/src/lib/docs.ts`, nội dung `frontend/docs/public`, catch-all route `/docs/[...slug]` và không đọc `docs/technical`.
 
 `NEXT_PUBLIC_API_URL` là build-time ARG trong Frontend Dockerfile. Đổi biến này cần rebuild Frontend. Với default `/api/v1`, `next.config.ts` rewrite tới `http://backend:8080`.
 

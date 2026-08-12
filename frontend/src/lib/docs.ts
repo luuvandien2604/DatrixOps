@@ -171,11 +171,7 @@ function flatNavigation(locale: DocLocale): DocEntry[] {
 }
 
 function getDocsDirectory(locale: DocLocale) {
-  const candidates = [
-    path.join(process.cwd(), 'docs/public'),
-    path.join(process.cwd(), '../docs/public'),
-  ];
-  const root = candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  const root = path.join(process.cwd(), 'docs/public');
   return locale === 'en' ? path.join(root, 'en') : root;
 }
 
