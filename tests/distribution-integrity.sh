@@ -4,6 +4,15 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRODUCTION_COMPOSE="${PROJECT_ROOT}/docker-compose.prod.yml"
 
+grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: bootstrap installer must download an immutable CE tag directly from codeload" >&2
+    exit 1
+}
+grep -q 'DATRIXOPS_INSTALL_VERSION:-1.5.7' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: bootstrap installer does not default to the current CE version" >&2
+    exit 1
+}
+
 grep -q 'golang:1.25-alpine' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
     echo "ERROR: deployment release verification must support clean hosts without Go" >&2
     exit 1

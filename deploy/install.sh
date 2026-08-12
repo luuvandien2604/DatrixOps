@@ -23,17 +23,37 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.5.7}"
+    if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
+        exit 1
+    fi
     log_info "Deploying DatrixOps codebase to ${INSTALL_DIR}..."
     mkdir -p "${INSTALL_DIR}"
 
-    TARBALL_URL="https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz"
+    # Use codeload directly. The github.com archive redirect is unreliable on
+    # some networks and can terminate larger downloads with curl error 56.
+    TARBALL_URL="https://codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v${INSTALL_VERSION}"
     TEMP_TAR="/tmp/datrixops-install-$$.tar.gz"
 
-    log_info "Downloading DatrixOps release package..."
-    curl -fsSL "${TARBALL_URL}" -o "${TEMP_TAR}" || {
+    log_info "Downloading DatrixOps CE v${INSTALL_VERSION} release package..."
+    if ! curl -fsSL \
+        --retry 5 \
+        --retry-delay 2 \
+        --connect-timeout 15 \
+        --max-time 600 \
+        "${TARBALL_URL}" \
+        -o "${TEMP_TAR}"; then
+        rm -f "${TEMP_TAR}"
         log_error "Failed to download DatrixOps package from ${TARBALL_URL}"
         exit 1
-    }
+    fi
+
+    if [[ ! -s "${TEMP_TAR}" ]] || ! tar -tzf "${TEMP_TAR}" >/dev/null 2>&1; then
+        rm -f "${TEMP_TAR}"
+        log_error "Downloaded DatrixOps package is empty or invalid."
+        exit 1
+    fi
 
     tar -xzf "${TEMP_TAR}" -C "${INSTALL_DIR}" --strip-components=1
     rm -f "${TEMP_TAR}"
