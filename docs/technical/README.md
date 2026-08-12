@@ -12,6 +12,7 @@ Tài liệu này dành cho người vận hành, maintainer và developer có qu
 6. [Security, backup và recovery](security-backup-recovery.md)
 7. [Web Terminal và remote Agent removal](terminal-and-agent-removal.md)
 8. [Monitoring, troubleshooting và maintenance runbook](operations-runbook.md)
+9. [Quy trình Admin: phát triển, kiểm thử, release và làm sạch source](admin-release-development-workflow.md)
 
 ## Nguồn sự thật
 
