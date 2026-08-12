@@ -18,7 +18,6 @@ jobs:
           bash -n frontend/public/install-mac.sh
           bash -n frontend/public/update-agent.sh
           bash -n deploy/fetch-agent-release.sh
-          bash -n scripts/build-agent-release.sh
 
       - name: Test Linux installer & updater
         run: |
