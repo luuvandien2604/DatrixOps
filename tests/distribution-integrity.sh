@@ -4,6 +4,11 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRODUCTION_COMPOSE="${PROJECT_ROOT}/docker-compose.prod.yml"
 
+grep -q 'api.github.com/repos/luuvandien2604/DatrixOps/contents/deploy/install.sh?ref=main' "${PROJECT_ROOT}/deploy/bootstrap.sh" || {
+    echo "ERROR: bootstrap must resolve the current installer through GitHub Contents API" >&2
+    exit 1
+}
+
 grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v' "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: bootstrap installer must download an immutable CE tag directly from codeload" >&2
     exit 1

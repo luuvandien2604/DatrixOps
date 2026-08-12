@@ -16,7 +16,7 @@ another production website depends on them.
 ## Install the Control Plane
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
 
 The installer:
