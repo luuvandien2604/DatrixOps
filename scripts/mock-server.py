@@ -6,7 +6,7 @@ import hashlib
 
 class MockHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/agent-release.version':
+        if self.path.endswith('/agent-release.version'):
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
@@ -17,7 +17,12 @@ class MockHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
-            self.wfile.write(b'4\n')
+            if self.path.startswith('/wrong-size/'):
+                self.wfile.write(b'999\n')
+            elif self.path.startswith('/invalid-size/'):
+                self.wfile.write(b'abc\n')
+            else:
+                self.wfile.write(b'4\n')
             return
             
         if self.path.endswith('.sha256'):

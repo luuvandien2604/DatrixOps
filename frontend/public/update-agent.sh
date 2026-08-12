@@ -130,10 +130,17 @@ EXPECTED_SHA="$(tr -d '\r\n[:space:]' <"$SHA_TMP")"
 EXPECTED_SIZE="$(tr -d '\r\n[:space:]' <"$SIZE_TMP")"
 rm -f "$SHA_TMP" "$SIZE_TMP"
 
-if [ -z "$EXPECTED_SHA" ] || [ -z "$EXPECTED_SIZE" ]; then
+if [ -z "$EXPECTED_SHA" ]; then
     echo "Release metadata is invalid." >&2
     exit 1
 fi
+
+case "$EXPECTED_SIZE" in
+    ''|*[!0-9]*)
+        echo "ERROR: Release size metadata is invalid." >&2
+        exit 1
+        ;;
+esac
 
 echo "Downloading the DatrixOps Agent update..."
 curl --fail --location --silent --show-error \
@@ -144,15 +151,17 @@ if [ ! -s "$STAGED_PATH" ]; then
     exit 1
 fi
 
-if command -v stat >/dev/null 2>&1; then
-    ACTUAL_SIZE="$(stat -f %z "$STAGED_PATH" 2>/dev/null || stat -c %s "$STAGED_PATH" 2>/dev/null || wc -c <"$STAGED_PATH")"
-else
-    ACTUAL_SIZE="$(wc -c <"$STAGED_PATH")"
-fi
-ACTUAL_SIZE="$(echo "$ACTUAL_SIZE" | tr -d ' ')"
+ACTUAL_SIZE="$(wc -c <"$STAGED_PATH" | tr -d '[:space:]')"
+
+case "$ACTUAL_SIZE" in
+    ''|*[!0-9]*)
+        echo "ERROR: Could not determine downloaded binary size." >&2
+        exit 1
+        ;;
+esac
 
 if [ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]; then
-    echo "Downloaded binary size ($ACTUAL_SIZE bytes) does not match expected ($EXPECTED_SIZE bytes)." >&2
+    echo "ERROR: Downloaded binary size ($ACTUAL_SIZE bytes) does not match expected ($EXPECTED_SIZE bytes)." >&2
     exit 1
 fi
 

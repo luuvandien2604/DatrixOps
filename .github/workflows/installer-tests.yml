@@ -62,11 +62,33 @@ jobs:
             --target-artifact-base-url http://127.0.0.1:8080
           grep -q 'AGENT_VERSION=1.0.1' "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
 
+          # Scenario 2: Correct SHA with wrong size metadata must fail before activation
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          echo "AGENT_VERSION=1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080/wrong-size; then
+            echo "ERROR: updater should reject mismatched size metadata" >&2
+            exit 1
+          fi
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          grep -q 'AGENT_VERSION=1.0.0' "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
+          test ! -e "$DATRIXOPS_INSTALLER_ROOT/mock_systemctl_state_restart_count"
+
+          # Scenario 3: Non-numeric size metadata must fail before download and activation
+          rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080/invalid-size; then
+            echo "ERROR: updater should reject non-numeric size metadata" >&2
+            exit 1
+          fi
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          grep -q 'AGENT_VERSION=1.0.0' "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
+          test ! -e "$DATRIXOPS_INSTALLER_ROOT/mock_systemctl_state_restart_count"
+
           # Reset fixture back to 1.0.0
           echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
           echo "AGENT_VERSION=1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/etc/datrixops/agent.env"
 
-          # Scenario 2: Update restart failure
+          # Scenario 4: Update restart failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_RESTART_FAIL=1
           if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
@@ -75,7 +97,7 @@ jobs:
           fi
           unset DATRIXOPS_MOCK_RESTART_FAIL
 
-          # Scenario 3: Update health failure
+          # Scenario 5: Update health failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
@@ -84,7 +106,7 @@ jobs:
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
 
-          # Scenario 4: Rollback restart failure
+          # Scenario 6: Rollback restart failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL=1
@@ -95,7 +117,7 @@ jobs:
           unset DATRIXOPS_MOCK_HEALTH_FAIL
           unset DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL
 
-          # Scenario 5: Rollback health failure
+          # Scenario 7: Rollback health failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_systemctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
@@ -149,15 +171,20 @@ jobs:
           # Setup baseline v1.0.0 fixture to test update
           mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
           echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
+            "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
 
           # Scenario 1: Successful update (1.0.0 -> 1.0.1)
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           bash frontend/public/update-agent.sh \
             --target-version 1.0.1 \
             --target-artifact-base-url http://127.0.0.1:8080
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:AGENT_VERSION' "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist")" = "1.0.1"
 
           # Reset fixture back to 1.0.0
           echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
+            "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
 
           # Scenario 2: Update restart failure
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
@@ -167,8 +194,13 @@ jobs:
             exit 1
           fi
           unset DATRIXOPS_MOCK_RESTART_FAIL
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:AGENT_VERSION' "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist")" = "1.0.0"
 
           # Scenario 3: Update health failure
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
+            "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
@@ -176,8 +208,13 @@ jobs:
             exit 1
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:AGENT_VERSION' "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist")" = "1.0.0"
 
           # Scenario 4: Rollback restart failure
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
+            "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL=1
@@ -187,8 +224,13 @@ jobs:
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
           unset DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:AGENT_VERSION' "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist")" = "1.0.0"
 
           # Scenario 5: Rollback health failure
+          echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
+          /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
+            "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
           rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
@@ -198,6 +240,8 @@ jobs:
           fi
           unset DATRIXOPS_MOCK_HEALTH_FAIL
           unset DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL
+          test "$(cat "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent")" = "OLD_BINARY_1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:AGENT_VERSION' "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist")" = "1.0.0"
 
   windows-installer:
     name: Windows Installer & Updater Tests

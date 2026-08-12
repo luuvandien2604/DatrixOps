@@ -216,12 +216,7 @@ curl --fail --silent --show-error --location \
     exit 1
 }
 
-if command -v stat >/dev/null 2>&1; then
-    ACTUAL_SIZE="$(stat -f %z "$STAGED_BINARY" 2>/dev/null || stat -c %s "$STAGED_BINARY" 2>/dev/null || wc -c <"$STAGED_BINARY")"
-else
-    ACTUAL_SIZE="$(wc -c <"$STAGED_BINARY")"
-fi
-ACTUAL_SIZE="$(echo "$ACTUAL_SIZE" | tr -d ' ')"
+ACTUAL_SIZE="$(wc -c <"$STAGED_BINARY" | tr -d '[:space:]')"
 
 if [[ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]]; then
     echo "ERROR: Downloaded binary size (${ACTUAL_SIZE} bytes) does not match expected (${EXPECTED_SIZE} bytes)." >&2
