@@ -106,7 +106,6 @@ sudo ./deploy/restore.sh /opt/datrixops/backups/datrixops-backup-YYYY-MM-DD-HHMM
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Edition Strategy](docs/EDITION_STRATEGY.md)
 - [Cloud Compatibility Contracts](docs/CLOUD_COMPATIBILITY.md)
-- [Repository Split Audit](docs/REPOSITORY_SPLIT_AUDIT.md)
 
 ---
 
