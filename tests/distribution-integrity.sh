@@ -8,8 +8,17 @@ grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v' "${PRO
     echo "ERROR: bootstrap installer must download an immutable CE tag directly from codeload" >&2
     exit 1
 }
-grep -q 'DATRIXOPS_INSTALL_VERSION:-1.5.7' "${PROJECT_ROOT}/deploy/install.sh" || {
+CURRENT_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${PROJECT_ROOT}/deploy/version.json" | head -n 1)"
+grep -q "DATRIXOPS_INSTALL_VERSION:-${CURRENT_VERSION}" "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: bootstrap installer does not default to the current CE version" >&2
+    exit 1
+}
+grep -q 'api.github.com/repos/luuvandien2604/DatrixOps/releases/tags/v' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+    echo "ERROR: Agent release downloader must support the GitHub API asset path" >&2
+    exit 1
+}
+grep -q "Accept: application/octet-stream" "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+    echo "ERROR: Agent release API downloads must request binary asset content" >&2
     exit 1
 }
 

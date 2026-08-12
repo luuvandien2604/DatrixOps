@@ -4,7 +4,9 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VERSION="${1:-}"
-DOWNLOAD_BASE="${DATRIXOPS_RELEASE_DOWNLOAD_BASE:-https://github.com/luuvandien2604/DatrixOps/releases/download/v${VERSION}}"
+CUSTOM_DOWNLOAD_BASE="${DATRIXOPS_RELEASE_DOWNLOAD_BASE:-}"
+DOWNLOAD_BASE="${CUSTOM_DOWNLOAD_BASE:-https://github.com/luuvandien2604/DatrixOps/releases/download/v${VERSION}}"
+RELEASE_API="https://api.github.com/repos/luuvandien2604/DatrixOps/releases/tags/v${VERSION}"
 PUBLIC_DIR="${PROJECT_ROOT}/frontend/public"
 RELEASES_PARENT="${PUBLIC_DIR}/releases"
 RELEASE_DIR="${RELEASES_PARENT}/${VERSION}"
@@ -29,6 +31,49 @@ verify_release() {
         -w /src/agent \
         golang:1.25-alpine \
         go run ./tools/verify-release --release-dir /release --version "$VERSION"
+}
+
+download_custom_release_asset() {
+    local filename="$1"
+    local output="$2"
+    curl --fail --location --silent --show-error \
+        --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 300 \
+        "${DOWNLOAD_BASE%/}/${filename}" \
+        --output "$output"
+}
+
+download_github_release_bundle() {
+    local bundle_name="datrixops-agent-release-${VERSION}.tar.gz"
+    local bundle_path="${STAGING_DIR}/${bundle_name}"
+    local asset_api_url
+
+    asset_api_url="$(jq -r --arg name "$bundle_name" \
+        '.assets[] | select(.name == $name) | .url' \
+        <<<"$RELEASE_METADATA")"
+    if [[ -z "$asset_api_url" || "$asset_api_url" == "null" ]]; then
+        echo "ERROR: Release v${VERSION} does not contain bundle ${bundle_name}." >&2
+        return 1
+    fi
+
+    # One API asset request avoids unreliable github.com release redirects and
+    # avoids exhausting the unauthenticated API limit with per-file requests.
+    curl --fail --location --silent --show-error \
+        --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 600 \
+        -H 'Accept: application/octet-stream' \
+        -H 'X-GitHub-Api-Version: 2022-11-28' \
+        "$asset_api_url" \
+        --output "$bundle_path"
+
+    [[ -s "$bundle_path" ]] || {
+        echo "ERROR: Downloaded Agent release bundle is empty." >&2
+        return 1
+    }
+    if tar -tzf "$bundle_path" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+        echo "ERROR: Agent release bundle contains an unsafe path." >&2
+        return 1
+    fi
+    tar -xzf "$bundle_path" -C "$STAGING_DIR"
+    rm -f "$bundle_path"
 }
 
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
@@ -59,24 +104,48 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mapfile -t files < "${PROJECT_ROOT}/agent/internal/update/release_assets.txt"
+files=()
+while IFS= read -r filename; do
+    [[ -z "$filename" ]] || files+=("$filename")
+done < "${PROJECT_ROOT}/agent/internal/update/release_assets.txt"
 
 all_downloads=(checksums.txt)
 for f in "${files[@]}"; do
     all_downloads+=("$f" "$f.sha256" "$f.size")
 done
 
-echo "INFO: Fetching Agent v${VERSION} release artifacts from ${DOWNLOAD_BASE}..."
+if [[ -z "$CUSTOM_DOWNLOAD_BASE" ]]; then
+    command -v jq >/dev/null 2>&1 || {
+        echo "ERROR: jq is required to resolve public GitHub Release assets." >&2
+        exit 1
+    }
+    echo "INFO: Resolving Agent v${VERSION} release assets through GitHub API..."
+    RELEASE_METADATA="$(curl --fail --location --silent --show-error \
+        --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 120 \
+        -H 'Accept: application/vnd.github+json' \
+        -H 'X-GitHub-Api-Version: 2022-11-28' \
+        "$RELEASE_API")" || {
+        echo "ERROR: Failed to resolve GitHub Release v${VERSION}." >&2
+        exit 1
+    }
+    download_github_release_bundle || {
+        echo "ERROR: Failed to download the bundled Agent release v${VERSION}." >&2
+        exit 1
+    }
+else
+    RELEASE_METADATA=""
+    echo "INFO: Fetching Agent v${VERSION} release artifacts from ${DOWNLOAD_BASE}..."
+    for filename in "${all_downloads[@]}"; do
+        if ! download_custom_release_asset "$filename" "${STAGING_DIR}/${filename}"; then
+            echo "ERROR: Failed to download release asset ${filename}." >&2
+            exit 1
+        fi
+    done
+fi
 
 for filename in "${all_downloads[@]}"; do
-    if ! curl --fail --location --silent --show-error --max-time 30 \
-        "${DOWNLOAD_BASE%/}/${filename}" \
-        --output "${STAGING_DIR}/${filename}"; then
-        echo "ERROR: Failed to download release asset ${filename} from GitHub Releases." >&2
-        exit 1
-    fi
     if [[ ! -s "${STAGING_DIR}/${filename}" ]]; then
-        echo "ERROR: Downloaded release asset ${filename} is empty." >&2
+        echo "ERROR: Required release asset ${filename} is missing or empty." >&2
         exit 1
     fi
 done

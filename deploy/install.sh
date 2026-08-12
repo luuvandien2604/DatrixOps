@@ -164,20 +164,20 @@ auto_configure_domain() {
 }
 
 check_and_install_prereqs() {
-    if ! command -v openssl >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-        log_info "Prerequisite tools (openssl, curl) are missing. Installing automatically..."
+    if ! command -v openssl >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+        log_info "Prerequisite tools (openssl, curl, jq) are missing. Installing automatically..."
         ensure_root
         local pkg_mgr
         pkg_mgr="$(get_pkg_manager)"
         case "$pkg_mgr" in
             apt)
-                apt-get update -qq && apt-get install -y -qq openssl curl ca-certificates
+                apt-get update -qq && apt-get install -y -qq openssl curl jq ca-certificates
                 ;;
             dnf|yum)
-                $pkg_mgr install -y -q openssl curl ca-certificates
+                $pkg_mgr install -y -q openssl curl jq ca-certificates
                 ;;
             *)
-                log_warn "Unable to auto-install openssl/curl with package manager '$pkg_mgr'."
+                log_warn "Unable to auto-install openssl/curl/jq with package manager '$pkg_mgr'."
                 ;;
         esac
     fi
