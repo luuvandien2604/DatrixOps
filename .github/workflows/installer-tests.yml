@@ -141,6 +141,9 @@ jobs:
 
       - name: Test macOS installer & updater
         run: |
+          set -E
+          trap 'rc=$?; echo "::error title=macOS installer test failed::shell line ${LINENO}: ${BASH_COMMAND} (exit ${rc})"; exit "$rc"' ERR
+
           python3 scripts/mock-server.py &
           sleep 2
 
