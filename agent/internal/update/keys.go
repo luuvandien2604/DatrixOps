@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-const releasePublicKeyBase64 = "BTztg4Px867gi5PysqEczVOcGIzZHijq5Lt50HjzJss="
+const releasePublicKeyBase64 = "QhHPD6j1As630FZumgapAzd/mx6uJzqRplqH5WPbY5I="
 
 func ReleasePublicKey() (ed25519.PublicKey, error) {
 	keyBytes, err := base64.StdEncoding.DecodeString(
