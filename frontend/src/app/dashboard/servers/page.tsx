@@ -75,7 +75,7 @@ export default function ServersPage() {
       const latestVer = systemData?.update_check?.latest_version || systemData?.agent_version || '';
       let osInfo = null;
       try { if (server.os_info) osInfo = typeof server.os_info === 'string' ? JSON.parse(server.os_info) : server.os_info; } catch(e) {}
-      const runningVer = osInfo?.version || server?.version || '1.5.7';
+      const runningVer = osInfo?.version || server?.version || '1.5.8';
 
       if (latestVer && runningVer && latestVer !== runningVer && Boolean(server.update_available)) {
         toast.success(`New Agent update available: v${latestVer}!`);
@@ -342,7 +342,7 @@ export default function ServersPage() {
   const getInstallCommand = () => {
     const controlPlaneOrigin = typeof window === 'undefined' ? '' : window.location.origin;
     const services = customServices.trim();
-    const agentVersion = systemData?.agent_version || '1.5.7';
+    const agentVersion = systemData?.agent_version || '1.5.8';
     const agentArtifactBaseUrl = systemData?.agent_artifact_base_url || `https://github.com/luuvandien2604/DatrixOps/releases/download/v${agentVersion}`;
     const isHttp = controlPlaneOrigin.startsWith('http://');
     const isLocalhost = controlPlaneOrigin.includes('localhost') || controlPlaneOrigin.includes('127.0.0.1');

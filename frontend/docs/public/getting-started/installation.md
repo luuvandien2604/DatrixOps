@@ -11,8 +11,8 @@ Trong **Servers → Add Server**, sao chép lệnh có token của server. Dạn
 
 ```bash
 curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
-    --agent-version 1.5.7 \
-    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.7 \
+    --agent-version 1.5.8 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.8 \
   --server https://monitor.example.com \
   --token "<ENROLLMENT_TOKEN>"
 ```
@@ -32,8 +32,8 @@ Chạy lệnh dashboard cung cấp trong Terminal:
 
 ```bash
 curl -fsSL https://monitor.example.com/install-mac.sh | sudo bash -s -- \
-    --agent-version 1.5.7 \
-    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.7 \
+    --agent-version 1.5.8 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.8 \
   --server https://monitor.example.com \
   --token "<ENROLLMENT_TOKEN>"
 ```
@@ -52,7 +52,7 @@ tail -n 100 /var/log/datrixops-agent.log
 Mở PowerShell bằng **Run as Administrator**, tải script theo lệnh dashboard và truyền token:
 
 ```powershell
-.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -AgentVersion "1.5.7" -AgentArtifactBaseUrl "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.7"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -AgentVersion "1.5.8" -AgentArtifactBaseUrl "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.8"
 Get-ScheduledTask -TaskName "DatrixOpsAgent"
 ```
 
@@ -66,15 +66,15 @@ Tham số dịch vụ là tùy chọn và thay thế danh sách mặc định th
 
 ```bash
 curl -fsSL https://monitor.example.com/install.sh | sudo bash -s -- \
-    --agent-version 1.5.7 \
-    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.7 \
+    --agent-version 1.5.8 \
+    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.8 \
   --server https://monitor.example.com \
   --token "<ENROLLMENT_TOKEN>" \
   --services "nginx,postgresql,docker"
 ```
 
 ```powershell
-.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -AgentVersion "1.5.7" -AgentArtifactBaseUrl "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.7" -Services "EventLog,Schedule,WinRM"
+.\install.ps1 -ServerUrl "https://monitor.example.com" -Token "<ENROLLMENT_TOKEN>" -AgentVersion "1.5.8" -AgentArtifactBaseUrl "https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.8" -Services "EventLog,Schedule,WinRM"
 ```
 
 ## Xác nhận Agent kết nối
