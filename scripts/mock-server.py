@@ -92,5 +92,6 @@ class MockHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 if __name__ == '__main__':
-    server = HTTPServer(('127.0.0.1', 8080), MockHandler)
+    port = int(os.environ.get('DATRIXOPS_MOCK_SERVER_PORT', '8080'))
+    server = HTTPServer(('127.0.0.1', port), MockHandler)
     server.serve_forever()

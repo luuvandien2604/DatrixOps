@@ -144,8 +144,16 @@ jobs:
           set -E
           trap 'rc=$?; echo "::error title=macOS installer test failed::shell line ${LINENO}: ${BASH_COMMAND} (exit ${rc})"; exit "$rc"' ERR
 
+          export DATRIXOPS_MOCK_SERVER_PORT=18080
+          export DATRIXOPS_MOCK_BASE_URL="http://127.0.0.1:${DATRIXOPS_MOCK_SERVER_PORT}"
           python3 scripts/mock-server.py &
-          sleep 2
+          for _ in {1..10}; do
+            if curl --fail --silent "$DATRIXOPS_MOCK_BASE_URL/agent-release.version" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent "$DATRIXOPS_MOCK_BASE_URL/agent-release.version" >/dev/null
 
           export DATRIXOPS_INSTALLER_TEST_MODE=1
           export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
@@ -158,33 +166,25 @@ jobs:
           fi
 
           # Test invalid layout fails
-          if bash frontend/public/install-mac.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.1 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
+          if bash frontend/public/install-mac.sh --server "$DATRIXOPS_MOCK_BASE_URL" --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.1 --agent-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL" --agent-release-layout invalid 2>/dev/null; then
             echo "ERROR: installer should reject invalid layout" >&2
             exit 1
           fi
 
           # Test valid arguments in test mode
-          installer_output=""
-          if ! installer_output="$(bash frontend/public/install-mac.sh \
-              --server http://127.0.0.1:8080 \
-              --token "$(printf 't%.0s' {1..32})" \
-              --agent-version 1.0.1 \
-              --agent-artifact-base-url http://127.0.0.1:8080 \
-              --agent-release-layout default 2>&1)"; then
-            printf '%s\n' "$installer_output"
-            while IFS= read -r output_line; do
-              echo "::error title=macOS installer output::$output_line"
-            done <<< "$installer_output"
-            exit 1
-          fi
-          printf '%s\n' "$installer_output"
+          bash frontend/public/install-mac.sh \
+            --server "$DATRIXOPS_MOCK_BASE_URL" \
+            --token "$(printf 't%.0s' {1..32})" \
+            --agent-version 1.0.1 \
+            --agent-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL" \
+            --agent-release-layout default
 
           reset_macos_fixture() {
             mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
             echo "OLD_BINARY_1.0.0" > "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin/datrixops-agent"
             /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:AGENT_VERSION 1.0.0' \
               "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
-            /usr/libexec/PlistBuddy -c 'Set :EnvironmentVariables:DATRIXOPS_AGENT_ARTIFACT_BASE_URL http://127.0.0.1:8080' \
+            /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:DATRIXOPS_AGENT_ARTIFACT_BASE_URL $DATRIXOPS_MOCK_BASE_URL" \
               "$DATRIXOPS_INSTALLER_ROOT/Library/LaunchDaemons/com.datrixops.agent.plist"
             rm -f "$DATRIXOPS_INSTALLER_ROOT"/mock_launchctl_state*
           }
@@ -204,7 +204,7 @@ jobs:
           # Scenario 1: Successful update (1.0.0 -> 1.0.1)
           bash frontend/public/update-agent.sh \
             --target-version 1.0.1 \
-            --target-artifact-base-url http://127.0.0.1:8080
+            --target-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL"
           assert_macos_fixture_version "1.0.1"
 
           # Reset fixture back to 1.0.0
@@ -212,7 +212,7 @@ jobs:
 
           # Scenario 2: Update restart failure
           export DATRIXOPS_MOCK_RESTART_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL"; then
             echo "ERROR: updater should fail on restart failure" >&2
             exit 1
           fi
@@ -223,7 +223,7 @@ jobs:
           # Scenario 3: Update health failure
           reset_macos_fixture
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL"; then
             echo "ERROR: updater should fail on health failure" >&2
             exit 1
           fi
@@ -235,7 +235,7 @@ jobs:
           reset_macos_fixture
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_RESTART_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL"; then
             echo "ERROR: updater should fail on rollback restart failure" >&2
             exit 1
           fi
@@ -248,7 +248,7 @@ jobs:
           reset_macos_fixture
           export DATRIXOPS_MOCK_HEALTH_FAIL=1
           export DATRIXOPS_MOCK_ROLLBACK_HEALTH_FAIL=1
-          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url http://127.0.0.1:8080; then
+          if bash frontend/public/update-agent.sh --target-version 1.0.1 --target-artifact-base-url "$DATRIXOPS_MOCK_BASE_URL"; then
             echo "ERROR: updater should fail on rollback health failure" >&2
             exit 1
           fi
