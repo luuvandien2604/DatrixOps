@@ -24,6 +24,22 @@ fi
 grep -q 'Build signed Agent release' "$WORKFLOW"
 grep -q 'Stage verified Agent artifacts in frontend' "$WORKFLOW"
 grep -q 'Verify frontend image Agent artifacts' "$WORKFLOW"
+grep -q 'does not match source versions' "$WORKFLOW" || {
+    echo "ERROR: CE release workflow must reject tags that do not match source versions" >&2
+    exit 1
+}
+
+for release_tool in \
+    "${PROJECT_ROOT}/scripts/prepare-ce-release.sh" \
+    "${PROJECT_ROOT}/scripts/publish-ce-release.sh"; do
+    bash -n "$release_tool"
+    "$release_tool" --help >/dev/null
+done
+
+grep -q 'go run ./tools/check-signing-key' "${PROJECT_ROOT}/.github/workflows/ci.yml" || {
+    echo "ERROR: main CI must verify the Agent signing key before release tagging" >&2
+    exit 1
+}
 
 grep -q 'golang:1.25-alpine' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
     echo "ERROR: deployment release verification must support clean hosts without Go" >&2
@@ -60,4 +76,3 @@ if ! grep -q 'datrixops-agent.bak' "${PROJECT_ROOT}/frontend/public/update-agent
     echo "ERROR: update scripts missing backup restoration handling" >&2
     exit 1
 fi
-

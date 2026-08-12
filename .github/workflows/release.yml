@@ -42,6 +42,13 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          SOURCE_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' deploy/version.json | head -n 1)"
+          SOURCE_AGENT_VERSION="$(awk -F= '/^AGENT_VERSION=/{print $2; exit}' deploy/.env.example)"
+          if [[ "$SOURCE_VERSION" != "$VERSION" || "$SOURCE_AGENT_VERSION" != "$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match source versions (app=$SOURCE_VERSION, agent=$SOURCE_AGENT_VERSION)." >&2
+            echo "Run ./scripts/prepare-ce-release.sh $VERSION before publishing a tag." >&2
+            exit 1
+          fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME already exists; use a new version." >&2
             exit 1

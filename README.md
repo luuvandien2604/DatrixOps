@@ -81,6 +81,11 @@ To monitor another server, open **Dashboard → Servers → Add Server** and cop
 
 ## 🛠️ Operations & Maintenance
 
+### Release
+
+- [Release Community Edition](docs/RELEASE_CE.md) — quy trình hai lệnh cho admin.
+- [Release DatrixOps Cloud](docs/RELEASE_CLOUD.md) — sync CE và publish Cloud riêng.
+
 ### Upgrade DatrixOps
 ```bash
 sudo ./deploy/upgrade.sh
@@ -106,6 +111,8 @@ sudo ./deploy/restore.sh /opt/datrixops/backups/datrixops-backup-YYYY-MM-DD-HHMM
 - [Backup and Restore Guide](docs/BACKUP_RESTORE.md)
 - [Security Architecture](docs/SECURITY.md)
 - [Development Guide](docs/DEVELOPMENT.md)
+- [CE Release Guide](docs/RELEASE_CE.md)
+- [Cloud Release Guide](docs/RELEASE_CLOUD.md)
 - [Edition Strategy](docs/EDITION_STRATEGY.md)
 - [Cloud Compatibility Contracts](docs/CLOUD_COMPATIBILITY.md)
 
