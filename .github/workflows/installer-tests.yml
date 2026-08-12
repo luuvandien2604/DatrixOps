@@ -164,12 +164,20 @@ jobs:
           fi
 
           # Test valid arguments in test mode
-          bash frontend/public/install-mac.sh \
-            --server http://127.0.0.1:8080 \
-            --token "$(printf 't%.0s' {1..32})" \
-            --agent-version 1.0.1 \
-            --agent-artifact-base-url http://127.0.0.1:8080 \
-            --agent-release-layout default
+          installer_output=""
+          if ! installer_output="$(bash frontend/public/install-mac.sh \
+              --server http://127.0.0.1:8080 \
+              --token "$(printf 't%.0s' {1..32})" \
+              --agent-version 1.0.1 \
+              --agent-artifact-base-url http://127.0.0.1:8080 \
+              --agent-release-layout default 2>&1)"; then
+            printf '%s\n' "$installer_output"
+            while IFS= read -r output_line; do
+              echo "::error title=macOS installer output::$output_line"
+            done <<< "$installer_output"
+            exit 1
+          fi
+          printf '%s\n' "$installer_output"
 
           reset_macos_fixture() {
             mkdir -p "$DATRIXOPS_INSTALLER_ROOT/usr/local/bin"
