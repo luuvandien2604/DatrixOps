@@ -82,11 +82,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: trufflesecurity/trufflehog@main
+        if: github.event_name == 'push'
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ github.event.before }}
+          head: ${{ github.sha }}
+      - uses: trufflesecurity/trufflehog@main
+        if: github.event_name == 'pull_request'
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
 
   dependency-review:
     name: Dependency review
