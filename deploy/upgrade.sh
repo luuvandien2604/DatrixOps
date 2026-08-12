@@ -210,7 +210,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.5.5"
+    target_app_ver="1.5.7"
 fi
 
 target_agent_ver="$(grep -h '^[[:space:]]*AGENT_VERSION=' \
