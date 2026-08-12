@@ -25,6 +25,11 @@ grep -q 'Build signed Agent release' "$WORKFLOW"
 grep -q 'Stage verified Agent artifacts in frontend' "$WORKFLOW"
 grep -q 'Verify frontend image Agent artifacts' "$WORKFLOW"
 
+grep -q 'golang:1.25-alpine' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+    echo "ERROR: deployment release verification must support clean hosts without Go" >&2
+    exit 1
+}
+
 if grep -q 'frontend/public:/app/public' "$PRODUCTION_COMPOSE"; then
     echo "ERROR: production Compose must not hide Agent artifacts embedded in the frontend image" >&2
     exit 1
@@ -55,5 +60,4 @@ if ! grep -q 'datrixops-agent.bak' "${PROJECT_ROOT}/frontend/public/update-agent
     echo "ERROR: update scripts missing backup restoration handling" >&2
     exit 1
 fi
-
 

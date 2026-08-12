@@ -51,7 +51,7 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 
 ensure_root() {
     if [ "$(id -u)" -ne 0 ]; then
-        log_error "Root or sudo privileges are required to install missing system packages (Docker, Nginx)."
+        log_error "Root or sudo privileges are required to install missing system packages and Docker."
         log_info "Please re-run this script with sudo or as root user: sudo ./deploy/install.sh"
         exit 1
     fi
@@ -221,7 +221,7 @@ check_and_install_nginx() {
     log_success "Port 80/443 is clear for Caddy Gateway."
 }
 
-log_step "Step 1/5: Checking and installing system dependencies (Docker, Docker Compose, Nginx)"
+log_step "Step 1/5: Checking system dependencies and reserving ports for Caddy"
 check_and_install_prereqs
 check_and_install_docker
 check_and_install_nginx

@@ -9,6 +9,28 @@ PUBLIC_DIR="${PROJECT_ROOT}/frontend/public"
 RELEASES_PARENT="${PUBLIC_DIR}/releases"
 RELEASE_DIR="${RELEASES_PARENT}/${VERSION}"
 
+verify_release() {
+    local release_dir="$1"
+
+    if command -v go >/dev/null 2>&1; then
+        (cd "${PROJECT_ROOT}/agent" && go run ./tools/verify-release --release-dir "$release_dir" --version "$VERSION")
+        return
+    fi
+
+    command -v docker >/dev/null 2>&1 || {
+        echo "ERROR: Go or Docker is required to verify the signed Agent release." >&2
+        return 1
+    }
+
+    echo "INFO: Go is not installed; running the release verifier in the official Go container."
+    docker run --rm \
+        -v "${PROJECT_ROOT}:/src:ro" \
+        -v "${release_dir}:/release:ro" \
+        -w /src/agent \
+        golang:1.25-alpine \
+        go run ./tools/verify-release --release-dir /release --version "$VERSION"
+}
+
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
     echo "ERROR: A strict semantic Agent version (X.Y.Z) is required." >&2
     exit 2
@@ -16,7 +38,7 @@ RELEASE_DIR="${RELEASES_PARENT}/${VERSION}"
 
 # Check 1: Release directory already present and fully verified
 if [[ -f "${RELEASE_DIR}/manifest.json" && -f "${RELEASE_DIR}/manifest.sig" && -f "${RELEASE_DIR}/agent-release.version" ]]; then
-    if (cd "${PROJECT_ROOT}/agent" && go run ./tools/verify-release --release-dir "$RELEASE_DIR" --version "$VERSION" >/dev/null 2>&1); then
+    if verify_release "$RELEASE_DIR" >/dev/null 2>&1; then
         echo "SUCCESS: Verified Agent v${VERSION} release artifacts already present in ${RELEASE_DIR}."
         for filename in datrixops-agent-linux-amd64 datrixops-agent-linux-arm64 datrixops-agent-darwin-amd64 datrixops-agent-darwin-arm64 datrixops-agent-windows-amd64.exe; do
             if [[ -f "${RELEASE_DIR}/${filename}" ]]; then
@@ -82,10 +104,7 @@ fi
 
 # Step 4: Client-side Ed25519 Signature & Manifest Verification
 echo "INFO: Verifying Ed25519 signature on manifest.json..."
-(
-    cd "${PROJECT_ROOT}/agent"
-    go run ./tools/verify-release --release-dir "$STAGING_DIR" --version "$VERSION"
-) || {
+verify_release "$STAGING_DIR" || {
     echo "ERROR: Client-side Ed25519 verification failed for downloaded release v${VERSION}." >&2
     exit 1
 }
