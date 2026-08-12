@@ -249,6 +249,12 @@ check_and_install_nginx
 log_step "Step 2/5: Generating environment configuration and security secrets"
 "${SCRIPT_DIR}/generate-secrets.sh" "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
+if [[ -n "${INSTALL_VERSION:-}" ]]; then
+    # A bootstrap retry may reuse .env from an earlier failed installation.
+    # Keep its generated secrets but advance both release pins atomically.
+    set_env_value "DATRIXOPS_VERSION" "$INSTALL_VERSION"
+    set_env_value "AGENT_VERSION" "$INSTALL_VERSION"
+fi
 auto_configure_domain
 
 log_step "Step 3/5: Validating environment configuration"
