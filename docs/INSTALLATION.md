@@ -1,62 +1,67 @@
-# Installation Guide
+# Installation
 
-DatrixOps can be deployed in two simple ways: as a **Self-Hosted Control Plane** on your primary server, and by installing the **Open-Source DatrixOps Agent** on target Linux hosts.
+## Requirements
 
----
+- Fresh Linux server: Ubuntu 20.04/22.04/24.04, Debian 12, or
+  CentOS/RHEL/Rocky Linux.
+- At least 1 CPU, 2 GB RAM and 20 GB disk.
+- Inbound TCP ports 80 and 443.
+- Outbound HTTPS access to GitHub and GHCR.
+- Root or sudo access.
 
-## 🖥️ 1. Control Plane Server Installation
+The bundled Caddy gateway uses ports 80/443. The installer stops an active host
+Nginx or Apache service to free those ports, so do not run it on a host where
+another production website depends on them.
 
-### Host Requirements
-- **OS**: Ubuntu 20.04 / 22.04 / 24.04, Debian 12, CentOS / RHEL / Rocky Linux.
-- **Hardware**: Minimum 1 CPU Core, 2 GB RAM, 20 GB Disk space.
-- **Network**: Inbound TCP ports `80` and `443` open; outbound HTTPS access.
-
-### Automated 1-Click Installer (Recommended)
-
-Run the following command as `root` or with `sudo` on your server:
+## Install the Control Plane
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/install.sh | sudo bash
 ```
 
-#### What the installer does:
-1. Installs Docker Engine, Docker Compose v2, and Nginx if missing.
-2. Auto-detects your server's Public IP address and generates strong random passwords for PostgreSQL and JWT auth in `/opt/datrixops/.env`.
-3. Pulls pre-built production container images from GitHub Container Registry (`ghcr.io/luuvandien2604/*`).
-4. Launches the database, runs schema migrations automatically, and starts backend and frontend services via Docker Compose.
+The installer:
 
-### Initial Web Setup Wizard
-1. Open your browser and navigate to `http://<your-vps-ip>/setup`.
-2. The initial wizard verifies database health, locks registration, and creates the primary Administrator account.
-3. Log in to access your DatrixOps Control Plane dashboard.
+1. Installs required host tools and Docker Engine/Compose v2 when missing.
+2. Downloads DatrixOps into `/opt/datrixops`.
+3. Generates `/opt/datrixops/.env` with mode `0600`.
+4. Configures Caddy for the detected IP or supplied domain.
+5. Downloads and verifies the signed Agent release.
+6. Pulls version-pinned images, runs migrations and starts all services.
 
----
+For an IP installation, open `http://<server-ip>/setup`. For a domain, open
+`https://<domain>/setup`. Create the first local administrator; public signup is
+disabled by default after setup.
 
-## 🤖 2. Agent Installation on Target VPS
-
-To monitor remote Linux servers:
-
-1. Log in to your DatrixOps Dashboard and navigate to **Servers** ➔ **Add Server**.
-2. Copy the generated 1-click Agent Installation command:
+## Verify the installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/install.sh | sudo bash -s -- \
-    --token <YOUR_AGENT_TOKEN> \
-    --server https://<your-vps-ip>/api/v1 \
-    --agent-version 1.5.5 \
-    --agent-artifact-base-url https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.5
+cd /opt/datrixops
+sudo docker compose --env-file .env -f deploy/docker-compose.yml ps
+curl -fsS http://127.0.0.1/health/ready
 ```
 
-The agent runs as a lightweight `systemd` service (`datrix-agent`), consuming less than 15MB RAM and under 0.5% CPU.
+Inspect logs if a service is not healthy:
 
----
+```bash
+sudo docker compose --env-file .env -f deploy/docker-compose.yml logs --tail=200
+```
 
-## 📂 Configuration & Storage Locations
+## Add an Agent
 
-- **System Path**: `/opt/datrixops`
-- **Environment & Secrets**: `/opt/datrixops/.env` (Mode 0600)
-- **Database Storage**: Docker Volume `postgres_data`
-- **Logs Inspection**:
-  ```bash
-  cd /opt/datrixops && docker compose logs -f
-  ```
+Open **Dashboard → Servers → Add Server**, select the target platform and copy
+the generated command. Do not reuse a command from another server or paste its
+enrollment token into chat, tickets or Git.
+
+The Linux service is named `datrixops-agent.service`. Agents initiate outbound
+HTTPS connections to the Control Plane; normal metrics collection does not
+require an inbound port on the monitored host.
+
+## Important paths
+
+| Item | Path |
+| --- | --- |
+| Application | `/opt/datrixops` |
+| Secrets and runtime config | `/opt/datrixops/.env` |
+| Agent config on Linux | `/etc/datrixops/agent.env` |
+| Agent binary on Linux | `/usr/local/bin/datrixops-agent` |
+| Database | Docker volume `postgres_data` |

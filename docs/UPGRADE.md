@@ -1,72 +1,63 @@
-# Upgrade Guide
+# Upgrade
 
-DatrixOps provides an automated, zero-downtime upgrade path for self-hosted instances.
-
-## Upgrading Self-Hosted DatrixOps
-
-DatrixOps features a 2-tier architecture for seamless upgrades:
-
-### 1. Control Plane & Self-Monitoring Agent Upgrade
-
-To upgrade the DatrixOps Control Plane (Web Dashboard, Backend API, and the host's own self-monitoring agent), run the 1-liner upgrade command directly on the host VPS:
+Run on the self-hosted Control Plane:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash
+sudo /opt/datrixops/deploy/upgrade.sh
 ```
 
-### 2. Remote Agent Nodes Upgrade (Zero SSH Required)
+The script creates a backup, downloads the current source package, synchronizes
+the pinned application and Agent versions, verifies signed Agent artifacts,
+pulls container images, runs database migrations, recreates affected services
+and checks readiness.
 
-For all remote servers/nodes monitored by your DatrixOps instance:
+An upgrade restarts containers and may briefly interrupt requests. Do not call
+it zero-downtime unless the deployment has been independently designed and
+tested for redundant replicas.
 
-1. As soon as the Control Plane is upgraded, the Web Dashboard automatically checks remote agent heartbeats against the new `AGENT_VERSION`.
-2. Any server running an older agent version will display an **Update available** badge on the **Servers** page (`/dashboard/servers`).
-3. Operators can trigger an in-place upgrade by clicking **Update Agent** or **Update all agents** directly in the Dashboard UI.
-4. The Control Plane dispatches a signed `agent_update` task. The remote Agent automatically downloads the new binary from the Control Plane and performs a seamless background restart without interrupting monitoring.
-
-## Automated Background Updates (Cronjob)
-
-To keep both your **Control Plane Server** and **Host Agent** continuously up-to-date automatically, you can enable daily background updates:
+## Before upgrading
 
 ```bash
-# Enable automated daily updates (runs daily at 03:00 AM)
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --enable-auto-update
-
-# Disable automated daily updates
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | sudo bash -s -- --disable-auto-update
-
-# Quick check if a new release is available (no changes applied)
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash -s -- --check
+cd /opt/datrixops
+sudo ./deploy/backup.sh
+sudo docker compose --env-file .env -f deploy/docker-compose.yml ps
 ```
 
-## Automatic Release Detection & Dashboard Notifications
+Keep the backup off-host and confirm that the target release and images exist.
+Do not delete `postgres_data` or run `docker compose down -v`.
 
-Self-hosted DatrixOps instances automatically monitor for new releases in the background:
+## Upgrade remote Agents
 
-1. **Background Version Checker (`UpdateJob`):**
-   The Control Plane backend queries `https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/version.json` every 6 hours (and on startup).
-2. **Web Dashboard Notifications:**
-   When a newer version (e.g., `v1.5.4`) is published online, the Control Plane automatically marks `update_available = true` and updates `/api/v1/system/info`.
-3. **Zero-Downtime Upgrade:**
-   Administrators can run the standard `upgrade.sh` command at any time to apply the latest release smoothly.
+After the Control Plane is upgraded, older Agents show **Update available** in
+the Servers page. Use **Update Agent** for one canary server first, confirm its
+heartbeat/version, then update the remaining servers in small batches.
 
-## How the Upgrade Process Works
+Agent updates verify the signed manifest, target OS/architecture, size and
+SHA-256 before activation. A failed verification does not activate the binary.
 
-1. **Automated Backup:**
-   Before making any changes, `./deploy/upgrade.sh` runs `./deploy/backup.sh` to create a timestamped compressed backup (`datrixops-backup-YYYY-MM-DD-HHMMSS.tar.gz`) containing your `.env` configuration and a PostgreSQL database dump.
+## Verify after upgrading
 
-2. **Dual-Mode Codebase Update:**
-   - **Git Mode:** If the project directory is a Git repository, it pulls the latest commit via `git pull --ff-only`.
-   - **Git-less / HTTPS Release Mode:** If Git is not installed or Git SSH credentials are absent, it automatically downloads the latest release tarball over HTTPS, preserving `.env` and custom data.
+```bash
+cd /opt/datrixops
+sudo docker compose --env-file .env -f deploy/docker-compose.yml ps
+sudo docker compose --env-file .env -f deploy/docker-compose.yml logs --tail=200
+curl -fsS http://127.0.0.1/health/ready
+```
 
-3. **Agent Artifact Update:**
-   Fetches updated pre-compiled signed Agent release binaries (`fetch-agent-release.sh`) for all supported operating systems.
+Test administrator login, server heartbeats, metrics, alerts and website/TLS
+checks. If migration or readiness fails, keep the database volume intact and
+follow [Backup and restore](BACKUP_RESTORE.md).
 
-4. **Database Migrations:**
-   Executes `docker compose run --rm migrate` to apply any new database schema migrations safely.
+## Optional update check
 
-5. **Container Upgrade & Health Verification:**
-   Restarts containers using updated images (`docker compose up -d`) and performs health checks against the `/health/ready` endpoint.
+```bash
+sudo /opt/datrixops/deploy/upgrade.sh --check
+```
 
-## Data Safety Guarantee
+Automatic daily upgrades are available, but manual staged upgrades are safer
+for production installations:
 
-- Upgrades never perform `docker compose down -v`. Your PostgreSQL database volume (`postgres_data`) and configuration remain completely untouched and safe.
+```bash
+sudo /opt/datrixops/deploy/upgrade.sh --enable-auto-update
+sudo /opt/datrixops/deploy/upgrade.sh --disable-auto-update
+```

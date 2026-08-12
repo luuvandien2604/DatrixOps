@@ -46,14 +46,12 @@ fi
 release_files=(
     .env.example
     README.md
-    agent/README.md
     deploy/.env.example
     deploy/docker-compose.yml
     deploy/upgrade.sh
     deploy/version.json
     docker-compose.prod.yml
     docker-compose.yml
-    docs/CLOUD_COMPATIBILITY.md
     docs/INSTALLATION.md
     frontend/docs/public/en/getting-started/installation.md
     frontend/docs/public/getting-started/installation.md

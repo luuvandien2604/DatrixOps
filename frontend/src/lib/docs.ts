@@ -43,7 +43,7 @@ const viNavigation: DocsNavigation = [
     label: 'Triển khai',
     slug: 'deployment',
     items: [
-      { slug: 'deployment/self-hosted-and-managed', title: 'Self-hosted và Managed', description: 'Phân biệt hai mô hình, cài Control Plane và xác định nơi lưu dữ liệu.', group: 'deployment', order: 15 },
+      { slug: 'deployment/self-hosted', title: 'Triển khai Self-Hosted', description: 'Cài và vận hành Community Edition trên hạ tầng của bạn.', group: 'deployment', order: 15 },
     ],
   },
   {
@@ -107,7 +107,7 @@ const enNavigation: DocsNavigation = [
     label: 'Deployment',
     slug: 'deployment',
     items: [
-      { slug: 'deployment/self-hosted-and-managed', title: 'Self-hosted and Managed', description: 'Compare both models, install the Control Plane, and understand data ownership.', group: 'deployment', order: 15 },
+      { slug: 'deployment/self-hosted', title: 'Self-Hosted Deployment', description: 'Install and operate Community Edition on your infrastructure.', group: 'deployment', order: 15 },
     ],
   },
   {

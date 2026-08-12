@@ -272,7 +272,7 @@ export default function SettingsPage() {
                 {copiedPublicURL ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copiedPublicURL ? 'Copied' : 'Copy public URL'}
               </button>
-              <Link href="/docs/deployment/self-hosted-and-managed" className="ops-button primary">
+              <Link href="/docs/deployment/self-hosted" className="ops-button primary">
                 <ExternalLink className="h-4 w-4" />
                 Deployment guide
               </Link>
