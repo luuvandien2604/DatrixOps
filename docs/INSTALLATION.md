@@ -42,7 +42,9 @@ For an IP installation, open `http://<server-ip>:7800/login`. The installer
 creates the first local administrator and prints its email and random password
 at completion. A root-readable copy is stored at
 `/opt/datrixops/.admin-credentials` with mode `0600`. Public signup remains
-disabled.
+disabled. Run `sudo datrixops` to open the management menu, or
+`sudo datrixops info` to show the login URL and saved credentials. Use
+`sudo datrixops reset-password` if the saved password is unavailable.
 
 ## Verify the installation
 

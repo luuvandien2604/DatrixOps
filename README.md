@@ -56,6 +56,17 @@ http://<server-ip>:7800/login
 For production, configure a domain and HTTPS after validating the IP-based
 installation.
 
+Manage the installation from the server with one command:
+
+```bash
+sudo datrixops
+```
+
+The menu shows login information and service status, resets the administrator
+password, follows logs, restarts services, upgrades the installation and
+creates backups. For direct use, run commands such as `sudo datrixops info`,
+`sudo datrixops status` or `sudo datrixops reset-password`.
+
 ## Add monitored servers
 
 Open **Dashboard → Servers → Add Server** and copy the generated command for

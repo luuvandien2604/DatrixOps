@@ -371,6 +371,8 @@ SVCEOF
     }
     auto_self_enroll_host || true
 
+    install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrixops
+
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"
     printf "${GREEN}✔ DatrixOps Upgraded Successfully!                          ${NC}\n"

@@ -18,6 +18,8 @@ jobs:
           bash -n frontend/public/install-mac.sh
           bash -n frontend/public/update-agent.sh
           bash -n deploy/fetch-agent-release.sh
+          bash -n deploy/datrixops.sh
+          DATRIXOPS_ROOT="$RUNNER_TEMP/not-installed" bash deploy/datrixops.sh help
 
       - name: Test Linux installer & updater
         run: |
