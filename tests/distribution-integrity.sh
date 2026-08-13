@@ -8,6 +8,18 @@ grep -q 'api.github.com/repos/luuvandien2604/DatrixOps/contents/deploy/install.s
     echo "ERROR: bootstrap must resolve the current installer through GitHub Contents API" >&2
     exit 1
 }
+grep -q 'PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must default to dedicated panel port 7800" >&2
+    exit 1
+}
+grep -q 'ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must persist generated administrator credentials in the install directory" >&2
+    exit 1
+}
+grep -q '^ensure_admin_account$' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must create the initial administrator automatically" >&2
+    exit 1
+}
 
 grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v' "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: bootstrap installer must download an immutable CE tag directly from codeload" >&2

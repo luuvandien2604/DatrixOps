@@ -21,6 +21,20 @@ func TestValidateCompleteRequestAcceptsSecureSetup(t *testing.T) {
 	}
 }
 
+func TestValidateCompleteRequestAcceptsCommunityIPPanel(t *testing.T) {
+	req := completeRequest{
+		Email:      "admin@datrixops.local",
+		Password:   strings.Repeat("x", 32),
+		SystemName: "DatrixOps",
+		Timezone:   "Asia/Ho_Chi_Minh",
+		PublicURL:  "http://203.0.113.10:7800",
+	}
+	cfg := &config.Config{Edition: "community", DeploymentMode: "self-hosted"}
+	if message := validateCompleteRequest(req, cfg); message != "" {
+		t.Fatalf("expected IP panel setup to be valid, got %q", message)
+	}
+}
+
 func TestValidateCompleteRequestRejectsInsecureRemoteURL(t *testing.T) {
 	req := completeRequest{
 		Email:      "admin@example.com",

@@ -5,9 +5,9 @@ description: "Hoàn tất setup, đăng nhập và cài Agent cho server đầu 
 
 ## Tạo local administrator
 
-Sau khi cài Control Plane, mở `/setup` và tạo administrator đầu tiên. Setup chỉ
-thực hiện một lần; public signup bị tắt mặc định. Những lần truy cập sau dùng
-trang `/login`.
+Sau khi cài Control Plane, mở URL `/login` do installer in ra. Đăng nhập bằng
+administrator đã được tự sinh và lưu tại `/opt/datrixops/.admin-credentials`
+(chỉ root đọc được, mode `0600`). Public signup bị tắt mặc định.
 
 ## Thêm server
 

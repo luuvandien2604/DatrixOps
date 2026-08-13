@@ -9,15 +9,15 @@ history and configuration stay on infrastructure you manage.
 
 ## Install the Control Plane
 
-Recommended host: Linux, 1 CPU, 2 GB RAM, 20 GB disk and TCP ports 80/443. Run:
+Recommended host: Linux, 1 CPU, 2 GB RAM, 20 GB disk and inbound TCP port 7800. Run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
 
 The installer prepares Docker, Caddy, secrets, signed Agent artifacts, database
-migrations and containers. When it finishes, open `http://<IP>/setup` or
-`https://<domain>/setup` to create the first local administrator.
+migrations and containers. It creates the first administrator automatically
+and prints the credentials. Open `http://<IP>:7800/login` to sign in.
 
 ## Operational responsibility
 

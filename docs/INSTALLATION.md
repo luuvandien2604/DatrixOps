@@ -5,13 +5,12 @@
 - Fresh Linux server: Ubuntu 20.04/22.04/24.04, Debian 12, or
   CentOS/RHEL/Rocky Linux.
 - At least 1 CPU, 2 GB RAM and 20 GB disk.
-- Inbound TCP ports 80 and 443.
+- Inbound TCP port 7800 for the initial IP-based panel.
 - Outbound HTTPS access to GitHub and GHCR.
 - Root or sudo access.
 
-The bundled Caddy gateway uses ports 80/443. The installer stops an active host
-Nginx or Apache service to free those ports, so do not run it on a host where
-another production website depends on them.
+The bundled gateway maps the initial panel to TCP port 7800 and leaves active
+host Nginx or Apache services unchanged.
 
 ## Install the Control Plane
 
@@ -28,16 +27,25 @@ The installer:
 5. Downloads and verifies the signed Agent release.
 6. Pulls version-pinned images, runs migrations and starts all services.
 
-For an IP installation, open `http://<server-ip>/setup`. For a domain, open
-`https://<domain>/setup`. Create the first local administrator; public signup is
-disabled by default after setup.
+To choose another panel port, preserve the variable through `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh \
+  | sudo DATRIXOPS_PANEL_PORT=17800 bash
+```
+
+For an IP installation, open `http://<server-ip>:7800/login`. The installer
+creates the first local administrator and prints its email and random password
+at completion. A root-readable copy is stored at
+`/opt/datrixops/.admin-credentials` with mode `0600`. Public signup remains
+disabled.
 
 ## Verify the installation
 
 ```bash
 cd /opt/datrixops
 sudo docker compose --env-file .env -f deploy/docker-compose.yml ps
-curl -fsS http://127.0.0.1/health/ready
+curl -fsS http://127.0.0.1:7800/health/ready
 ```
 
 Inspect logs if a service is not healthy:

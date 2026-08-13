@@ -68,6 +68,13 @@ fi
 
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${PROJECT_ROOT}/.env"
+ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"
+PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"
+
+if [[ ! "$PANEL_PORT" =~ ^[0-9]+$ ]] || (( PANEL_PORT < 1 || PANEL_PORT > 65535 )); then
+    log_error "DATRIXOPS_PANEL_PORT must be an integer between 1 and 65535."
+    exit 1
+fi
 
 ensure_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -125,6 +132,15 @@ set_env_value() {
 auto_configure_domain() {
 	local current_domain
 	current_domain="$(sed -n "s/^CADDY_SITE_ADDRESS=//p" "$ENV_FILE" | tail -n 1)"
+	if [[ "$current_domain" =~ ^http://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost)$ ]]; then
+		local existing_host="${current_domain#http://}"
+		set_env_value "DATRIXOPS_HTTP_PORT" "$PANEL_PORT"
+		set_env_value "DATRIXOPS_HTTPS_PORT" "7443"
+		set_env_value "PUBLIC_URL" "http://${existing_host}:${PANEL_PORT}"
+		set_env_value "ALLOWED_ORIGINS" "http://${existing_host}:${PANEL_PORT}"
+		log_success "Configured dedicated panel URL http://${existing_host}:${PANEL_PORT}."
+		return
+	fi
 
 	if [[ -z "$current_domain" || "$current_domain" == "monitor.example.com" || "$current_domain" == "https://monitor.example.com" ]]; then
 		local detected_ip
@@ -151,10 +167,14 @@ auto_configure_domain() {
 
 		if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
 			caddy_site_address="http://${target_domain}"
-			set_env_value "PUBLIC_URL" "http://${target_domain}"
-			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
+			set_env_value "DATRIXOPS_HTTP_PORT" "$PANEL_PORT"
+			set_env_value "DATRIXOPS_HTTPS_PORT" "7443"
+			set_env_value "PUBLIC_URL" "http://${target_domain}:${PANEL_PORT}"
+			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}:${PANEL_PORT}"
 		else
 			caddy_site_address="$target_domain"
+			set_env_value "DATRIXOPS_HTTP_PORT" "80"
+			set_env_value "DATRIXOPS_HTTPS_PORT" "443"
 			set_env_value "PUBLIC_URL" "https://${target_domain}"
 			set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
 		fi
@@ -223,6 +243,13 @@ check_and_install_docker() {
 }
 
 check_and_install_nginx() {
+    local configured_http_port configured_https_port
+    configured_http_port="$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
+    configured_https_port="$(sed -n 's/^DATRIXOPS_HTTPS_PORT=//p' "$ENV_FILE" | tail -n 1)"
+    if [[ "$configured_http_port" != "80" && "$configured_https_port" != "443" ]]; then
+        log_success "DatrixOps will use dedicated panel port ${configured_http_port:-$PANEL_PORT}; host web services are unchanged."
+        return
+    fi
     if command -v systemctl >/dev/null 2>&1; then
         if systemctl is-active --quiet nginx 2>/dev/null; then
             log_info "Stopping host Nginx service to free port 80/443 for Caddy Gateway..."
@@ -241,12 +268,11 @@ check_and_install_nginx() {
     log_success "Port 80/443 is clear for Caddy Gateway."
 }
 
-log_step "Step 1/5: Checking system dependencies and reserving ports for Caddy"
+log_step "Step 1/6: Checking system dependencies and panel port"
 check_and_install_prereqs
 check_and_install_docker
-check_and_install_nginx
 
-log_step "Step 2/5: Generating environment configuration and security secrets"
+log_step "Step 2/6: Generating environment configuration and security secrets"
 "${SCRIPT_DIR}/generate-secrets.sh" "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
 if [[ -n "${INSTALL_VERSION:-}" ]]; then
@@ -256,8 +282,9 @@ if [[ -n "${INSTALL_VERSION:-}" ]]; then
     set_env_value "AGENT_VERSION" "$INSTALL_VERSION"
 fi
 auto_configure_domain
+check_and_install_nginx
 
-log_step "Step 3/5: Validating environment configuration"
+log_step "Step 3/6: Validating environment configuration"
 required_keys=(POSTGRES_PASSWORD JWT_SECRET CADDY_SITE_ADDRESS PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
 missing_vars=()
 for key in "${required_keys[@]}"; do
@@ -277,12 +304,12 @@ if [[ ${#missing_vars[@]} -gt 0 ]]; then
 fi
 log_success "Environment configuration is valid."
 
-log_step "Step 4/5: Downloading DatrixOps Agent binaries"
+log_step "Step 4/6: Downloading DatrixOps Agent binaries"
 agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "$ENV_FILE" | tail -n 1)"
 log_info "Fetching Agent release version v${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver"
 
-log_step "Step 5/5: Deploying DatrixOps containers"
+log_step "Step 5/6: Deploying DatrixOps containers"
 log_info "Validating docker-compose setup..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/dev/null
 
@@ -298,7 +325,76 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate
 log_step "Verifying running container status"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
-log_step "Auto-enrolling DatrixOps Control Plane host server for self-monitoring"
+log_step "Step 6/6: Creating administrator and enabling self-monitoring"
+ensure_admin_account() {
+    local http_port public_url status_url status_json configured
+    local admin_email admin_password timezone payload response_file http_code
+
+    http_port="$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
+    http_port="${http_port:-$PANEL_PORT}"
+    public_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
+    public_url="${public_url%/}"
+    status_url="http://127.0.0.1:${http_port}/api/v1/setup/status"
+
+    log_info "Waiting for the setup API..."
+    status_json=""
+    for _ in $(seq 1 60); do
+        status_json="$(curl -fsS --max-time 5 "$status_url" 2>/dev/null || true)"
+        if [[ "$(jq -r '.success // false' <<<"$status_json" 2>/dev/null)" == "true" ]]; then
+            break
+        fi
+        sleep 2
+    done
+    [[ "$(jq -r '.success // false' <<<"$status_json" 2>/dev/null)" == "true" ]] || {
+        log_error "Setup API did not become ready at ${status_url}."
+        return 1
+    }
+
+    configured="$(jq -r '.data.configured // false' <<<"$status_json")"
+    if [[ "$configured" == "true" ]]; then
+        log_info "Administrator setup is already complete; existing credentials were not changed."
+        return 0
+    fi
+
+    if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
+        admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+        admin_password="$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+    fi
+    if [[ -z "${admin_email:-}" || -z "${admin_password:-}" ]]; then
+        admin_email="${DATRIXOPS_ADMIN_EMAIL:-admin@datrixops.local}"
+        admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
+        umask 077
+        printf 'EMAIL=%s\nPASSWORD=%s\n' "$admin_email" "$admin_password" >"$ADMIN_CREDENTIALS_FILE"
+        chmod 0600 "$ADMIN_CREDENTIALS_FILE"
+    fi
+
+    timezone="$(cat /etc/timezone 2>/dev/null || true)"
+    timezone="${timezone:-UTC}"
+    payload="$(jq -n \
+        --arg email "$admin_email" \
+        --arg password "$admin_password" \
+        --arg system_name "DatrixOps" \
+        --arg timezone "$timezone" \
+        --arg public_url "$public_url" \
+        '{email:$email,password:$password,system_name:$system_name,timezone:$timezone,public_url:$public_url}')"
+    response_file="$(mktemp /tmp/datrixops-setup-response.XXXXXX)"
+    http_code="$(curl -sS --max-time 30 \
+        -o "$response_file" \
+        -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        --data "$payload" \
+        "http://127.0.0.1:${http_port}/api/v1/setup/complete")"
+    if [[ "$http_code" != "201" ]]; then
+        log_error "Unable to create the administrator: $(jq -r '.error.message // "unknown setup error"' "$response_file" 2>/dev/null)"
+        rm -f "$response_file"
+        return 1
+    fi
+    rm -f "$response_file"
+    log_success "Initial administrator created."
+}
+
+ensure_admin_account
+
 auto_self_enroll_host() {
     local pub_url
     pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
@@ -441,6 +537,7 @@ SERVICE_EOF
 
     log_success "Host VPS self-monitoring agent installed and started."
 }
+auto_self_enroll_host
 if [[ -d "${PROJECT_ROOT}" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
     ln -sf "${SCRIPT_DIR}/upgrade.sh" "${PROJECT_ROOT}/upgrade.sh" 2>/dev/null || true
     ln -sf "${SCRIPT_DIR}/backup.sh" "${PROJECT_ROOT}/backup.sh" 2>/dev/null || true
@@ -453,8 +550,14 @@ printf "${GREEN}============================================================${NC
 printf "${GREEN}✔ DatrixOps Self-Hosted Deployment Completed Successfully!  ${NC}\n"
 printf "${GREEN}============================================================${NC}\n"
 printf "  Control Plane URL : %s\n" "$pub_url"
-printf "  Initial Setup     : %s/setup\n" "${pub_url%/}"
+if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
+    printf "  Login Email       : %s\n" "$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+    printf "  Login Password    : %s\n" "$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+    printf "  Credentials File  : %s (mode 0600)\n" "$ADMIN_CREDENTIALS_FILE"
+fi
 printf "  Self-Monitoring   : Active (Host VPS enrolled automatically)\n"
 printf "  Status            : All container services are active.\n"
 printf "${GREEN}============================================================${NC}\n"
-printf "Next step: Open %s/setup in your browser to complete administrator setup.\n\n" "${pub_url%/}"
+printf "Open %s/login and sign in with the credentials above.\n" "${pub_url%/}"
+printf "Firewall           : Allow inbound TCP %s if the panel is not reachable.\n" "$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
+printf "WARNING: IP panel mode uses HTTP. Move to a domain with HTTPS for production.\n\n"

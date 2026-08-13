@@ -150,7 +150,7 @@ export default function SetupPage() {
           <div className="md:col-span-2">
             <label htmlFor="setup-public-url" className="auth-label">Public URL</label>
             <input id="setup-public-url" type="url" required value={publicURL} onChange={(event) => setPublicURL(event.target.value)} className="auth-input" placeholder="https://monitor.example.com" />
-            <p className="mt-2 text-xs text-[var(--text-secondary)]">Used for Agent enrollment, alert links and release downloads. HTTPS is required outside localhost.</p>
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">Used for Agent enrollment, alert links and release downloads. CE allows HTTP for an IP address; use a domain with HTTPS for production.</p>
           </div>
 
           <button type="submit" disabled={submitting} className="auth-submit md:col-span-2">

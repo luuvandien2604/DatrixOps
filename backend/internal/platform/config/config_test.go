@@ -97,7 +97,7 @@ func TestValidatePublicURLProfiles(t *testing.T) {
 	}{
 		{
 			name:           "community allows public IP over HTTP",
-			rawURL:         "http://203.0.113.10",
+			rawURL:         "http://203.0.113.10:7800",
 			edition:        "community",
 			deploymentMode: "self-hosted",
 		},

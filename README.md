@@ -23,8 +23,9 @@ and operational history remain on infrastructure you manage.
 ## Install Community Edition
 
 Recommended host: a fresh Ubuntu 20.04/22.04/24.04, Debian 12, or
-CentOS/RHEL/Rocky Linux server with 1 CPU, 2 GB RAM, 20 GB disk and inbound
-ports 80/443. The installer reserves those ports for the bundled Caddy gateway.
+CentOS/RHEL/Rocky Linux server with 1 CPU, 2 GB RAM, 20 GB disk and inbound TCP
+port 7800. The installer uses a dedicated panel port and leaves existing host
+web services unchanged.
 
 Run as root:
 
@@ -36,13 +37,16 @@ The installer downloads the source package to `/opt/datrixops`, generates
 secrets, verifies the signed Agent release, pulls version-pinned container
 images, runs migrations and starts the stack.
 
-After installation, open:
+The installer creates the first administrator automatically and prints its
+credentials once at the end. They are also stored root-only at
+`/opt/datrixops/.admin-credentials`. After installation, open:
 
 ```text
-http://<server-ip>/setup
+http://<server-ip>:7800/login
 ```
 
-For a configured domain, use `https://<your-domain>/setup`.
+For production, configure a domain and HTTPS after validating the IP-based
+installation.
 
 ## Add monitored servers
 
