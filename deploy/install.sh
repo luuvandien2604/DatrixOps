@@ -277,9 +277,17 @@ log_step "Step 2/6: Generating environment configuration and security secrets"
 chmod 0600 "$ENV_FILE"
 if [[ -n "${INSTALL_VERSION:-}" ]]; then
     # A bootstrap retry may reuse .env from an earlier failed installation.
-    # Keep its generated secrets but advance both release pins atomically.
+    # Keep its generated secrets while restoring this Server release's pins.
+    pinned_agent_version="$(jq -r '.agent_version // empty' "${PROJECT_ROOT}/deploy/version.json")"
+    pinned_agent_tag="$(jq -r '.agent_release_tag // empty' "${PROJECT_ROOT}/deploy/version.json")"
     set_env_value "DATRIXOPS_VERSION" "$INSTALL_VERSION"
-    set_env_value "AGENT_VERSION" "$INSTALL_VERSION"
+    if [[ "$pinned_agent_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && -n "$pinned_agent_tag" ]]; then
+        pinned_agent_url="https://github.com/luuvandien2604/DatrixOps/releases/download/${pinned_agent_tag}"
+        set_env_value "AGENT_VERSION" "$pinned_agent_version"
+        set_env_value "AGENT_RELEASE_BASE_URL" "$pinned_agent_url"
+        set_env_value "AGENT_RELEASE_LAYOUT" "legacy_direct"
+        set_env_value "AGENT_ARTIFACT_BASE_URL" "$pinned_agent_url"
+    fi
 fi
 auto_configure_domain
 check_and_install_nginx
@@ -306,7 +314,7 @@ log_success "Environment configuration is valid."
 
 log_step "Step 4/6: Downloading DatrixOps Agent binaries"
 agent_ver="$(sed -n 's/^AGENT_VERSION=//p' "$ENV_FILE" | tail -n 1)"
-log_info "Fetching Agent release version v${agent_ver}..."
+log_info "Fetching Agent release version ${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver"
 
 log_step "Step 5/6: Deploying DatrixOps containers"

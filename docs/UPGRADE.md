@@ -35,6 +35,20 @@ heartbeat/version, then update the remaining servers in small batches.
 Agent updates verify the signed manifest, target OS/architecture, size and
 SHA-256 before activation. A failed verification does not activate the binary.
 
+### Promote Agent without upgrading CE Server
+
+CE Server and Agent have independent versions. After an immutable signed
+`agent-vX.Y.Z` release is published, advertise it from the existing Control
+Plane without rebuilding or changing the CE Server images:
+
+```bash
+sudo /opt/datrixops/deploy/promote-agent.sh X.Y.Z
+```
+
+The command verifies the signed release, updates only the Agent pins, and
+recreates the backend and worker. Connected machines then show **Update
+available** after their next heartbeat; the CE Server version stays unchanged.
+
 ## Verify after upgrading
 
 ```bash

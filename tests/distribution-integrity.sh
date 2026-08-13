@@ -30,8 +30,16 @@ grep -q "DATRIXOPS_INSTALL_VERSION:-${CURRENT_VERSION}" "${PROJECT_ROOT}/deploy/
     echo "ERROR: bootstrap installer does not default to the current CE version" >&2
     exit 1
 }
-grep -q 'api.github.com/repos/luuvandien2604/DatrixOps/releases/tags/v' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
-    echo "ERROR: Agent release downloader must support the GitHub API asset path" >&2
+grep -q 'releases/tags/${RELEASE_TAG}' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+    echo "ERROR: Agent release downloader must resolve an immutable Agent tag" >&2
+    exit 1
+}
+grep -q 'agent-v${VERSION}' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+    echo "ERROR: Agent release downloader must default to agent-vX.Y.Z tags" >&2
+    exit 1
+}
+grep -q 'up -d --force-recreate backend worker' "${PROJECT_ROOT}/deploy/promote-agent.sh" || {
+    echo "ERROR: Agent promotion must not rebuild or retag CE Server images" >&2
     exit 1
 }
 grep -q "Accept: application/octet-stream" "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {

@@ -9,6 +9,10 @@ Phiên bản hiển thị ở header và **Running Agent Version** đến từ h
 
 Backend đọc `AGENT_VERSION` làm phiên bản release hiện hành và so sánh với phiên bản Agent báo cáo. Khi khác phiên bản, frontend hiển thị **Update available**. Backend và release artifact phải cùng version. Publisher production phải đưa signed release ra public HTTPS và xác minh lại trước khi đổi `AGENT_VERSION`, nhờ đó Agent không thể nhận task trỏ tới release mà Frontend chưa phục vụ.
 
+Phiên bản Agent độc lập với phiên bản CE Server. Một CE Server `1.6.0` có thể
+quảng bá Agent `1.5.10`; chỉ `AGENT_VERSION`, release tag và signed artifacts
+của Agent phải khớp nhau. Promote Agent không yêu cầu build lại image Server.
+
 ## Cập nhật một Agent
 
 1. Mở **Servers** rồi chọn server.

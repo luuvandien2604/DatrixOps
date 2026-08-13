@@ -213,20 +213,35 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
     target_app_ver="1.5.9"
 fi
 
-target_agent_ver="$(grep -h '^[[:space:]]*AGENT_VERSION=' \
+target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${PROJECT_ROOT}/deploy/version.json" \
+    "${SCRIPT_DIR}/version.json" \
+    2>/dev/null | head -n 1 | tr -d ' "\r\n')"
+
+if [[ ! "$target_agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    target_agent_ver="$(grep -h '^[[:space:]]*AGENT_VERSION=' \
     "${PROJECT_ROOT}/deploy/.env.example" \
     "${PROJECT_ROOT}/.env.example" \
     "${SCRIPT_DIR}/.env.example" \
     2>/dev/null | head -n 1 | cut -d'=' -f2 | tr -d ' "\r\n')"
+fi
 
 if [[ ! "$target_agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
     target_agent_ver="1.5.3"
 fi
 
 if [[ -n "$target_agent_ver" ]]; then
+    target_agent_tag="$(sed -n 's/.*"agent_release_tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        "${PROJECT_ROOT}/deploy/version.json" "${SCRIPT_DIR}/version.json" \
+        2>/dev/null | head -n 1 | tr -d ' "\r\n')"
+    target_agent_tag="${target_agent_tag:-agent-v${target_agent_ver}}"
+    target_agent_url="https://github.com/luuvandien2604/DatrixOps/releases/download/${target_agent_tag}"
     for env_target in "$ENV_FILE" "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"; do
         set_env_value "$env_target" "DATRIXOPS_VERSION" "$target_app_ver"
         set_env_value "$env_target" "AGENT_VERSION" "$target_agent_ver"
+        set_env_value "$env_target" "AGENT_RELEASE_BASE_URL" "$target_agent_url"
+        set_env_value "$env_target" "AGENT_RELEASE_LAYOUT" "legacy_direct"
+        set_env_value "$env_target" "AGENT_ARTIFACT_BASE_URL" "$target_agent_url"
     done
     log_info "Synced DATRIXOPS_VERSION=${target_app_ver} to environment configuration."
     log_info "Synced AGENT_VERSION=${target_agent_ver} to environment configuration."
@@ -236,7 +251,7 @@ agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null |
 if [[ ! "$agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
     agent_ver="1.5.3"
 fi
-log_info "Fetching Agent version v${agent_ver}..."
+log_info "Fetching independently released Agent version ${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
 
 log_step "Step 4/4: Pulling latest pre-built container images & updating services"

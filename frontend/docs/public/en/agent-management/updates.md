@@ -9,6 +9,11 @@ The version in the server header and **Running Agent Version** comes from the he
 
 The Backend uses `AGENT_VERSION` as the current release and compares it with the Agent-reported version. When they differ, the Frontend displays **Update available**. The Backend value and published release must match. The production publisher exposes and verifies the signed release through public HTTPS before changing `AGENT_VERSION`, so Agents cannot be sent to a release that the Frontend does not serve yet.
 
+The Agent version is independent from the CE Server version. CE Server `1.6.0`
+may advertise Agent `1.5.10`; only `AGENT_VERSION`, the Agent release tag and
+the signed Agent artifacts must agree. Promoting an Agent does not rebuild the
+Server images.
+
 ## Update one Agent
 
 1. Open **Servers** and select a server.

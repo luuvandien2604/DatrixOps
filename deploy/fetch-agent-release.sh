@@ -5,8 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VERSION="${1:-}"
 CUSTOM_DOWNLOAD_BASE="${DATRIXOPS_RELEASE_DOWNLOAD_BASE:-}"
-DOWNLOAD_BASE="${CUSTOM_DOWNLOAD_BASE:-https://github.com/luuvandien2604/DatrixOps/releases/download/v${VERSION}}"
-RELEASE_API="https://api.github.com/repos/luuvandien2604/DatrixOps/releases/tags/v${VERSION}"
+METADATA_FILE="${PROJECT_ROOT}/deploy/version.json"
+RELEASE_TAG="${AGENT_RELEASE_TAG:-}"
+if [[ -z "$RELEASE_TAG" && -f "$METADATA_FILE" ]]; then
+    metadata_version="$(jq -r '.agent_version // empty' "$METADATA_FILE" 2>/dev/null || true)"
+    if [[ "$metadata_version" == "$VERSION" ]]; then
+        RELEASE_TAG="$(jq -r '.agent_release_tag // empty' "$METADATA_FILE" 2>/dev/null || true)"
+    fi
+fi
+RELEASE_TAG="${RELEASE_TAG:-agent-v${VERSION}}"
+[[ "$RELEASE_TAG" == "v${VERSION}" || "$RELEASE_TAG" == "agent-v${VERSION}" ]] || {
+    echo "ERROR: Agent release tag ${RELEASE_TAG} does not match version ${VERSION}." >&2
+    exit 2
+}
+DOWNLOAD_BASE="${CUSTOM_DOWNLOAD_BASE:-https://github.com/luuvandien2604/DatrixOps/releases/download/${RELEASE_TAG}}"
+RELEASE_API="https://api.github.com/repos/luuvandien2604/DatrixOps/releases/tags/${RELEASE_TAG}"
 PUBLIC_DIR="${PROJECT_ROOT}/frontend/public"
 RELEASES_PARENT="${PUBLIC_DIR}/releases"
 RELEASE_DIR="${RELEASES_PARENT}/${VERSION}"
@@ -125,7 +138,7 @@ if [[ -z "$CUSTOM_DOWNLOAD_BASE" ]]; then
         -H 'Accept: application/vnd.github+json' \
         -H 'X-GitHub-Api-Version: 2022-11-28' \
         "$RELEASE_API")" || {
-        echo "ERROR: Failed to resolve GitHub Release v${VERSION}." >&2
+        echo "ERROR: Failed to resolve GitHub Agent release ${RELEASE_TAG}." >&2
         exit 1
     }
     download_github_release_bundle || {

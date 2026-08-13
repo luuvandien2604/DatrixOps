@@ -37,6 +37,14 @@ The installer downloads the source package to `/opt/datrixops`, generates
 secrets, verifies the signed Agent release, pulls version-pinned container
 images, runs migrations and starts the stack.
 
+## Independent versions
+
+DatrixOps publishes CE Server and Agent independently. A CE Server release uses
+`vX.Y.Z` and pins one immutable signed Agent release, which uses
+`agent-vX.Y.Z`. The two version numbers do not need to match. Promoting an
+Agent does not rebuild or change CE Server images; see
+[Upgrade](docs/UPGRADE.md).
+
 The installer creates the first administrator automatically and prints its
 credentials once at the end. They are also stored root-only at
 `/opt/datrixops/.admin-credentials`. After installation, open:
