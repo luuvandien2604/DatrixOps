@@ -335,19 +335,35 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 log_step "Step 6/6: Creating administrator and enabling self-monitoring"
 ensure_admin_account() {
-    local http_port public_url status_url status_json configured
+    local http_port https_port public_url public_scheme public_authority public_host public_port
+    local status_url status_json configured
     local admin_email admin_password timezone payload response_file http_code
 
     http_port="$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
     http_port="${http_port:-$PANEL_PORT}"
     public_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
     public_url="${public_url%/}"
-    status_url="http://127.0.0.1:${http_port}/api/v1/setup/status"
+    public_scheme="${public_url%%://*}"
+    public_authority="${public_url#*://}"
+    public_authority="${public_authority%%/*}"
+    public_host="${public_authority%%:*}"
+    if [[ "$public_authority" == *:* ]]; then
+        public_port="${public_authority##*:}"
+    elif [[ "$public_scheme" == "https" ]]; then
+        https_port="$(sed -n 's/^DATRIXOPS_HTTPS_PORT=//p' "$ENV_FILE" | tail -n 1)"
+        public_port="${https_port:-443}"
+    else
+        public_port="$http_port"
+    fi
+    status_url="${public_url}/api/v1/setup/status"
 
     log_info "Waiting for the setup API..."
     status_json=""
     for _ in $(seq 1 60); do
-        status_json="$(curl -fsS --max-time 5 "$status_url" 2>/dev/null || true)"
+        status_json="$(curl -fsS --max-time 5 \
+            --noproxy '*' \
+            --resolve "${public_host}:${public_port}:127.0.0.1" \
+            "$status_url" 2>/dev/null || true)"
         if [[ "$(jq -r '.success // false' <<<"$status_json" 2>/dev/null)" == "true" ]]; then
             break
         fi
@@ -387,11 +403,13 @@ ensure_admin_account() {
         '{email:$email,password:$password,system_name:$system_name,timezone:$timezone,public_url:$public_url}')"
     response_file="$(mktemp /tmp/datrixops-setup-response.XXXXXX)"
     http_code="$(curl -sS --max-time 30 \
+        --noproxy '*' \
+        --resolve "${public_host}:${public_port}:127.0.0.1" \
         -o "$response_file" \
         -w '%{http_code}' \
         -H 'Content-Type: application/json' \
         --data "$payload" \
-        "http://127.0.0.1:${http_port}/api/v1/setup/complete")"
+        "${public_url}/api/v1/setup/complete")"
     if [[ "$http_code" != "201" ]]; then
         log_error "Unable to create the administrator: $(jq -r '.error.message // "unknown setup error"' "$response_file" 2>/dev/null)"
         rm -f "$response_file"
