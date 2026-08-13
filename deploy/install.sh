@@ -546,7 +546,8 @@ SERVICE_EOF
     log_success "Host VPS self-monitoring agent installed and started."
 }
 auto_self_enroll_host
-install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrixops
+install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix
+ln -sf /usr/local/bin/datrix /usr/local/bin/datrixops
 if [[ -d "${PROJECT_ROOT}" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
     ln -sf "${SCRIPT_DIR}/upgrade.sh" "${PROJECT_ROOT}/upgrade.sh" 2>/dev/null || true
     ln -sf "${SCRIPT_DIR}/backup.sh" "${PROJECT_ROOT}/backup.sh" 2>/dev/null || true
@@ -566,7 +567,7 @@ if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
 fi
 printf "  Self-Monitoring   : Active (Host VPS enrolled automatically)\n"
 printf "  Status            : All container services are active.\n"
-printf "  Management CLI    : sudo datrixops\n"
+printf "  Management CLI    : datrix\n"
 printf "${GREEN}============================================================${NC}\n"
 printf "Open %s/login and sign in with the credentials above.\n" "${pub_url%/}"
 printf "Firewall           : Allow inbound TCP %s if the panel is not reachable.\n" "$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"

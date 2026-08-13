@@ -59,13 +59,14 @@ installation.
 Manage the installation from the server with one command:
 
 ```bash
-sudo datrixops
+datrix
 ```
 
 The menu shows login information and service status, resets the administrator
 password, follows logs, restarts services, upgrades the installation and
-creates backups. For direct use, run commands such as `sudo datrixops info`,
-`sudo datrixops status` or `sudo datrixops reset-password`.
+creates backups. Run `sudo datrix` from a non-root shell. Direct subcommands
+such as `datrix info`, `datrix status` and `datrix reset-password` are also
+available.
 
 ## Add monitored servers
 

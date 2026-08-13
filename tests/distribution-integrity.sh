@@ -20,11 +20,11 @@ grep -q '^ensure_admin_account$' "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: installer must create the initial administrator automatically" >&2
     exit 1
 }
-grep -q 'install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrixops' "${PROJECT_ROOT}/deploy/install.sh" || {
+grep -q 'install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix' "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: installer must install the DatrixOps management CLI" >&2
     exit 1
 }
-grep -q 'install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrixops' "${PROJECT_ROOT}/deploy/upgrade.sh" || {
+grep -q 'install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix' "${PROJECT_ROOT}/deploy/upgrade.sh" || {
     echo "ERROR: updater must refresh the DatrixOps management CLI" >&2
     exit 1
 }

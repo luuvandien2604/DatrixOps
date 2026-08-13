@@ -69,7 +69,7 @@ show_info() {
     if [[ -n "$saved_password" ]]; then
         printf '  Saved Password     : %s\n' "$saved_password"
     else
-        printf '  Saved Password     : not available; run: sudo datrixops reset-password\n'
+        printf '  Saved Password     : not available; run: datrix reset-password\n'
     fi
     printf '  Credentials File   : %s\n' "$CREDENTIALS_FILE"
     printf '%s\n' '============================================================'
@@ -119,7 +119,7 @@ reset_password() {
 
 show_help() {
     cat <<'EOF'
-Usage: sudo datrixops [command]
+Usage: datrix [command]
 
 Commands:
   info, default        Show login URL, versions and administrator credentials
@@ -131,7 +131,8 @@ Commands:
   backup               Create a backup
   help                 Show this help
 
-Running `sudo datrixops` without a command opens the management menu.
+Run `datrix` without a command to open the management menu. Use `sudo datrix`
+when the current shell is not root.
 EOF
 }
 

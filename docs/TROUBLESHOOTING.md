@@ -20,13 +20,13 @@ container log and restore the pre-upgrade backup if necessary.
 Use the management CLI so the password is not stored in shell history:
 
 ```bash
-sudo datrixops reset-password
+datrix reset-password
 ```
 
 To view the login URL, administrator email and the locally saved password:
 
 ```bash
-sudo datrixops info
+datrix info
 ```
 
 If the management CLI is not available on an older installation, pipe the new

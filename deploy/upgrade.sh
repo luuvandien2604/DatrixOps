@@ -371,7 +371,8 @@ SVCEOF
     }
     auto_self_enroll_host || true
 
-    install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrixops
+    install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix
+    ln -sf /usr/local/bin/datrix /usr/local/bin/datrixops
 
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"
