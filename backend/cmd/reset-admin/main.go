@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -18,13 +17,12 @@ import (
 func main() {
 	log := logger.New()
 	if len(os.Args) != 2 {
-		log.Error("usage: reset_admin <administrator-email>; provide the new password on stdin")
+		log.Error("usage: reset_admin <administrator-username-or-email>; provide the new password on stdin")
 		os.Exit(2)
 	}
-	email := strings.ToLower(strings.TrimSpace(os.Args[1]))
-	address, err := mail.ParseAddress(email)
-	if err != nil || !strings.EqualFold(address.Address, email) {
-		log.Error("administrator email is invalid")
+	identifier := strings.ToLower(strings.TrimSpace(os.Args[1]))
+	if identifier == "" || len(identifier) > 254 {
+		log.Error("administrator username or email is invalid")
 		os.Exit(2)
 	}
 
@@ -69,11 +67,12 @@ func main() {
 	err = tx.QueryRow(ctx, `
 		UPDATE users
 		SET password_hash = $1
-		WHERE lower(email) = $2 AND role IN ('superadmin', 'admin')
+		WHERE (lower(username) = $2 OR lower(email) = $2)
+		  AND role IN ('superadmin', 'admin')
 		RETURNING id
-	`, string(passwordHash), email).Scan(&userID)
+	`, string(passwordHash), identifier).Scan(&userID)
 	if err != nil {
-		log.Error("administrator account was not found", "email", email)
+		log.Error("administrator account was not found", "identifier", identifier)
 		os.Exit(1)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID); err != nil {

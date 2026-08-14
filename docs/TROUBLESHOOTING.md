@@ -23,7 +23,7 @@ Use the management CLI so the password is not stored in shell history:
 datrix reset-password
 ```
 
-To view the login URL, administrator email and the locally saved password:
+To view the login URL, administrator username and the locally saved password:
 
 ```bash
 datrix info
@@ -35,7 +35,7 @@ password on stdin:
 ```bash
 printf '%s\n' 'A-new-long-random-password' | \
   docker compose --env-file .env -f deploy/docker-compose.yml \
-  run --rm -T backend ./reset_admin admin@example.com
+  run --rm -T backend ./reset_admin admin
 ```
 
 The command updates only an existing administrator and revokes all refresh

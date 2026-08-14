@@ -39,9 +39,9 @@ curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deplo
 ```
 
 For an IP installation, open `http://<server-ip>:7800/login`. The installer
-creates the first local administrator and prints its email and random password
-at completion. The default administrator is `admin@datrixops.local`; set
-`DATRIXOPS_ADMIN_EMAIL` when running the installer to override it. A root-readable
+creates the first local administrator and prints its username and random password
+at completion. The default administrator username is `admin`; set
+`DATRIXOPS_ADMIN_USERNAME` when running the installer to override it. A root-readable
 copy is stored at
 `/opt/datrixops/.admin-credentials` with mode `0600`. Public signup remains
 disabled. Run `datrix` as root to open the management menu, or `datrix info`

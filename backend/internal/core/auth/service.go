@@ -15,7 +15,7 @@ import (
 var (
 	ErrUserExists         = errors.New("user already exists")
 	ErrRegistrationClosed = errors.New("registration is closed (single user constraint)")
-	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 )
 
@@ -79,8 +79,8 @@ type AuthResult struct {
 }
 
 // Login verifies credentials and issues tokens.
-func (s *Service) Login(ctx context.Context, email, password string) (*AuthResult, error) {
-	user, err := s.repo.FindUserByEmail(ctx, email)
+func (s *Service) Login(ctx context.Context, identifier, password string) (*AuthResult, error) {
+	user, err := s.repo.FindUserByIdentifier(ctx, identifier)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
 	}

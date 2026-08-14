@@ -21,6 +21,7 @@ func NewRepository(db *database.DB) *Repository {
 
 type User struct {
 	ID           string
+	Username     *string
 	Email        string
 	PasswordHash string
 	Role         string
@@ -49,9 +50,9 @@ func (r *Repository) UserCount(ctx context.Context) (int, error) {
 func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx,
-		"INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, password_hash, role, created_at",
+		"INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, email, password_hash, role, created_at",
 		email, passwordHash, role,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
@@ -63,9 +64,9 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role s
 func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx,
-		"SELECT id, email, password_hash, role, created_at FROM users WHERE email = $1",
+		"SELECT id, username, email, password_hash, role, created_at FROM users WHERE email = $1",
 		email,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -76,13 +77,32 @@ func (r *Repository) FindUserByEmail(ctx context.Context, email string) (*User, 
 	return &user, nil
 }
 
+// FindUserByIdentifier finds a user by username or email. Email remains
+// supported for team accounts and compatibility with existing installations.
+func (r *Repository) FindUserByIdentifier(ctx context.Context, identifier string) (*User, error) {
+	var user User
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT id, username, email, password_hash, role, created_at
+		 FROM users
+		 WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)`,
+		identifier,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("find user by identifier: %w", err)
+	}
+	return &user, nil
+}
+
 // FindUserByID finds a user by their ID.
 func (r *Repository) FindUserByID(ctx context.Context, id string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx,
-		"SELECT id, email, password_hash, role, created_at FROM users WHERE id = $1",
+		"SELECT id, username, email, password_hash, role, created_at FROM users WHERE id = $1",
 		id,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
@@ -57,7 +58,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
+	Email    string `json:"email,omitempty"`
 	Password string `json:"password"`
 }
 
@@ -68,10 +70,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.svc.Login(r.Context(), req.Email, req.Password)
+	identifier := strings.TrimSpace(req.Username)
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Email)
+	}
+	if identifier == "" || req.Password == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Username and password are required")
+		return
+	}
+
+	res, err := h.svc.Login(r.Context(), identifier, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
-			response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid email or password")
+			response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid username or password")
 			return
 		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
@@ -144,6 +155,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 
 	response.Success(w, http.StatusOK, map[string]interface{}{
 		"id":         user.ID,
+		"username":   user.Username,
 		"email":      user.Email,
 		"role":       user.Role,
 		"created_at": user.CreatedAt,

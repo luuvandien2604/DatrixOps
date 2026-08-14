@@ -108,7 +108,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then((user) => {
         if (user) {
           if (user.role) setRole(user.role);
-          if (user.email) setUserEmail(user.email);
+          if (user.username) setUserEmail(user.username);
+          else if (user.email) setUserEmail(user.email);
         }
       })
       .catch(() => {

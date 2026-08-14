@@ -9,7 +9,7 @@ import (
 
 func TestValidateCompleteRequestAcceptsSecureSetup(t *testing.T) {
 	req := completeRequest{
-		Email:      "admin@example.com",
+		Username:   "admin",
 		Password:   strings.Repeat("x", 16),
 		SystemName: "DatrixOps",
 		Timezone:   "Asia/Ho_Chi_Minh",
@@ -23,7 +23,7 @@ func TestValidateCompleteRequestAcceptsSecureSetup(t *testing.T) {
 
 func TestValidateCompleteRequestAcceptsCommunityIPPanel(t *testing.T) {
 	req := completeRequest{
-		Email:      "admin@datrixops.local",
+		Username:   "admin",
 		Password:   strings.Repeat("x", 32),
 		SystemName: "DatrixOps",
 		Timezone:   "Asia/Ho_Chi_Minh",
@@ -37,7 +37,7 @@ func TestValidateCompleteRequestAcceptsCommunityIPPanel(t *testing.T) {
 
 func TestValidateCompleteRequestRejectsInsecureRemoteURL(t *testing.T) {
 	req := completeRequest{
-		Email:      "admin@example.com",
+		Username:   "admin",
 		Password:   strings.Repeat("x", 16),
 		SystemName: "DatrixOps",
 		Timezone:   "UTC",
@@ -51,7 +51,7 @@ func TestValidateCompleteRequestRejectsInsecureRemoteURL(t *testing.T) {
 
 func TestValidateCompleteRequestRejectsWeakPassword(t *testing.T) {
 	req := completeRequest{
-		Email:      "admin@example.com",
+		Username:   "admin",
 		Password:   "short",
 		SystemName: "DatrixOps",
 		Timezone:   "UTC",
@@ -63,9 +63,23 @@ func TestValidateCompleteRequestRejectsWeakPassword(t *testing.T) {
 	}
 }
 
+func TestValidateCompleteRequestRejectsInvalidUsername(t *testing.T) {
+	req := completeRequest{
+		Username:   "admin@example.com",
+		Password:   strings.Repeat("x", 16),
+		SystemName: "DatrixOps",
+		Timezone:   "UTC",
+		PublicURL:  "https://ops.example.com",
+	}
+	cfg := &config.Config{Edition: "community", DeploymentMode: "self-hosted"}
+	if message := validateCompleteRequest(req, cfg); !strings.Contains(message, "username") {
+		t.Fatalf("expected username validation error, got %q", message)
+	}
+}
+
 func TestValidateCompleteRequestRejectsCloudLocalhost(t *testing.T) {
 	req := completeRequest{
-		Email:      "admin@example.com",
+		Username:   "admin",
 		Password:   strings.Repeat("x", 16),
 		SystemName: "DatrixOps Cloud",
 		Timezone:   "UTC",

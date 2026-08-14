@@ -20,7 +20,7 @@ export default function SetupPage() {
   const [systemName, setSystemName] = useState('DatrixOps');
   const [timezone, setTimezone] = useState('UTC');
   const [publicURL, setPublicURL] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(true);
@@ -67,7 +67,7 @@ export default function SetupPage() {
     try {
       await apiClient('/setup/complete', {
         data: {
-          email,
+          username,
           password,
           system_name: systemName,
           timezone,
@@ -124,8 +124,8 @@ export default function SetupPage() {
             <h2 className="mb-3 text-sm font-semibold">Administrator</h2>
           </div>
           <div className="md:col-span-2">
-            <label htmlFor="setup-email" className="auth-label">Email address</label>
-            <input id="setup-email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" placeholder="admin@example.com" />
+            <label htmlFor="setup-username" className="auth-label">Username</label>
+            <input id="setup-username" type="text" required minLength={3} maxLength={32} autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className="auth-input" placeholder="admin" />
           </div>
           <div>
             <label htmlFor="setup-password" className="auth-label">Password</label>

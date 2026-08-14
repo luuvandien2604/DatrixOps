@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/mail"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,8 +26,11 @@ type Handler struct {
 	cfg *config.Config
 }
 
+var administratorUsernamePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{2,31}$`)
+
 type completeRequest struct {
-	Email      string `json:"email"`
+	Username   string `json:"username"`
+	Email      string `json:"email,omitempty"`
 	Password   string `json:"password"`
 	SystemName string `json:"system_name"`
 	Timezone   string `json:"timezone"`
@@ -85,7 +88,11 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Username == "" && req.Email != "" {
+		req.Username = strings.SplitN(req.Email, "@", 2)[0]
+	}
 	req.SystemName = strings.TrimSpace(req.SystemName)
 	req.Timezone = strings.TrimSpace(req.Timezone)
 	req.PublicURL = strings.TrimRight(strings.TrimSpace(req.PublicURL), "/")
@@ -123,11 +130,15 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID string
+	internalEmail := req.Email
+	if internalEmail == "" {
+		internalEmail = req.Username + "@datrixops.local"
+	}
 	err = tx.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, role)
-		 VALUES ($1, $2, 'superadmin')
+		`INSERT INTO users (username, email, password_hash, role)
+		 VALUES ($1, $2, $3, 'superadmin')
 		 RETURNING id`,
-		req.Email, string(passwordHash),
+		req.Username, internalEmail, string(passwordHash),
 	).Scan(&userID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to create administrator")
@@ -221,9 +232,8 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 }
 
 func validateCompleteRequest(req completeRequest, cfg *config.Config) string {
-	address, err := mail.ParseAddress(req.Email)
-	if err != nil || !strings.EqualFold(address.Address, req.Email) {
-		return "A valid administrator email is required"
+	if !administratorUsernamePattern.MatchString(req.Username) {
+		return "Administrator username must contain 3 to 32 lowercase letters, numbers, dots, underscores or hyphens"
 	}
 	if len(req.Password) < 12 {
 		return "Administrator password must be at least 12 characters"

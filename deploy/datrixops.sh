@@ -29,25 +29,26 @@ compose() {
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
-admin_emails() {
+admin_identifiers() {
     compose exec -T database psql -U datrixops -d datrixops -Atc \
-        "SELECT email FROM users WHERE role IN ('superadmin','admin') ORDER BY created_at ASC;" \
+        "SELECT COALESCE(NULLIF(username, ''), email) FROM users WHERE role IN ('superadmin','admin') ORDER BY created_at ASC;" \
         2>/dev/null || true
 }
 
 show_info() {
     require_installation
     require_root
-    local public_url server_version agent_version emails saved_email saved_password
+    local public_url server_version agent_version identifiers saved_identifier saved_password
     public_url="$(env_value PUBLIC_URL)"
     server_version="$(env_value DATRIXOPS_VERSION)"
     agent_version="$(env_value AGENT_VERSION)"
-    emails="$(admin_emails)"
-    saved_email=""
+    identifiers="$(admin_identifiers)"
+    saved_identifier=""
     saved_password=""
 
     if [[ -f "$CREDENTIALS_FILE" ]]; then
-        saved_email="$(sed -n 's/^EMAIL=//p' "$CREDENTIALS_FILE" | tail -n 1)"
+        saved_identifier="$(sed -n 's/^USERNAME=//p' "$CREDENTIALS_FILE" | tail -n 1)"
+        saved_identifier="${saved_identifier:-$(sed -n 's/^EMAIL=//p' "$CREDENTIALS_FILE" | tail -n 1)}"
         saved_password="$(sed -n 's/^PASSWORD=//p' "$CREDENTIALS_FILE" | tail -n 1)"
     fi
 
@@ -57,12 +58,12 @@ show_info() {
     printf '  Login URL          : %s/login\n' "${public_url%/}"
     printf '  CE Server Version  : %s\n' "${server_version:-unknown}"
     printf '  Agent Version      : %s\n' "${agent_version:-unknown}"
-    if [[ -n "$emails" ]]; then
-        while IFS= read -r email; do
-            [[ -n "$email" ]] && printf '  Administrator      : %s\n' "$email"
-        done <<<"$emails"
-    elif [[ -n "$saved_email" ]]; then
-        printf '  Administrator      : %s\n' "$saved_email"
+    if [[ -n "$identifiers" ]]; then
+        while IFS= read -r identifier; do
+            [[ -n "$identifier" ]] && printf '  Login Username     : %s\n' "$identifier"
+        done <<<"$identifiers"
+    elif [[ -n "$saved_identifier" ]]; then
+        printf '  Login Username     : %s\n' "$saved_identifier"
     else
         printf '  Administrator      : unavailable\n'
     fi
@@ -75,35 +76,35 @@ show_info() {
     printf '%s\n' '============================================================'
 }
 
-choose_admin_email() {
-    local emails count email
-    emails="$(admin_emails)"
-    count="$(printf '%s\n' "$emails" | sed '/^$/d' | wc -l | tr -d ' ')"
+choose_admin_identifier() {
+    local identifiers count identifier
+    identifiers="$(admin_identifiers)"
+    count="$(printf '%s\n' "$identifiers" | sed '/^$/d' | wc -l | tr -d ' ')"
     [[ "$count" -gt 0 ]] || die "No administrator account was found."
 
     if [[ "$count" -eq 1 ]]; then
-        printf '%s\n' "$emails"
+        printf '%s\n' "$identifiers"
         return
     fi
 
-    printf 'Administrator email: ' >&2
-    read -r email
-    printf '%s\n' "$emails" | grep -Fqx -- "$email" || die "That administrator account does not exist."
-    printf '%s\n' "$email"
+    printf 'Administrator username: ' >&2
+    read -r identifier
+    printf '%s\n' "$identifiers" | grep -Fqx -- "$identifier" || die "That administrator account does not exist."
+    printf '%s\n' "$identifier"
 }
 
 reset_password() {
     require_installation
     require_root
-    local email password confirmation
-    email="${1:-}"
-    if [[ -z "$email" ]]; then
-        if ! email="$(choose_admin_email)"; then
+    local identifier password confirmation
+    identifier="${1:-}"
+    if [[ -z "$identifier" ]]; then
+        if ! identifier="$(choose_admin_identifier)"; then
             return 1
         fi
     fi
 
-    read -r -s -p "New password for ${email}: " password
+    read -r -s -p "New password for ${identifier}: " password
     printf '\n'
     read -r -s -p "Confirm new password: " confirmation
     printf '\n'
@@ -111,9 +112,9 @@ reset_password() {
     [[ "${#password}" -ge 12 && "${#password}" -le 128 ]] || \
         die "Password must contain between 12 and 128 characters."
 
-    printf '%s\n' "$password" | compose run --rm -T backend ./reset_admin "$email"
+    printf '%s\n' "$password" | compose run --rm -T backend ./reset_admin "$identifier"
     umask 077
-    printf 'EMAIL=%s\nPASSWORD=%s\n' "$email" "$password" >"$CREDENTIALS_FILE"
+    printf 'USERNAME=%s\nPASSWORD=%s\n' "$identifier" "$password" >"$CREDENTIALS_FILE"
     chmod 0600 "$CREDENTIALS_FILE"
     unset password confirmation
     printf 'Saved the current administrator credentials in %s (mode 0600).\n' "$CREDENTIALS_FILE"

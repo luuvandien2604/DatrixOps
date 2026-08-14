@@ -8,7 +8,7 @@ import { ArrowLeft, ArrowRight, Command, LockKeyhole } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
@@ -22,7 +22,7 @@ export default function LoginPage() {
 
     try {
       const data = await apiClient('/auth/login', {
-        data: { email, password },
+        data: { username, password },
       });
       
       // Store tokens
@@ -67,17 +67,17 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label htmlFor="login-email" className="auth-label">Email address</label>
+            <label htmlFor="login-username" className="auth-label">Username</label>
             <input
-              id="login-email"
-              name="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="login-username"
+              name="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
               className="auth-input"
-              placeholder="admin@example.com"
+              placeholder="admin"
             />
           </div>
 

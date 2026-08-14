@@ -337,7 +337,7 @@ log_step "Step 6/6: Creating administrator and enabling self-monitoring"
 ensure_admin_account() {
     local http_port https_port public_url public_scheme public_authority public_host public_port
     local status_url status_json configured
-    local admin_email admin_password timezone payload response_file http_code
+    local admin_username legacy_admin_email admin_password timezone payload response_file http_code
 
     http_port="$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
     http_port="${http_port:-$PANEL_PORT}"
@@ -381,26 +381,28 @@ ensure_admin_account() {
     fi
 
     if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
-        admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+        admin_username="$(sed -n 's/^USERNAME=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+        legacy_admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+        admin_username="${admin_username:-${legacy_admin_email%%@*}}"
         admin_password="$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
     fi
-    if [[ -z "${admin_email:-}" || -z "${admin_password:-}" ]]; then
-        admin_email="${DATRIXOPS_ADMIN_EMAIL:-admin@datrixops.local}"
+    if [[ -z "${admin_username:-}" || -z "${admin_password:-}" ]]; then
+        admin_username="${DATRIXOPS_ADMIN_USERNAME:-admin}"
         admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
         umask 077
-        printf 'EMAIL=%s\nPASSWORD=%s\n' "$admin_email" "$admin_password" >"$ADMIN_CREDENTIALS_FILE"
+        printf 'USERNAME=%s\nPASSWORD=%s\n' "$admin_username" "$admin_password" >"$ADMIN_CREDENTIALS_FILE"
         chmod 0600 "$ADMIN_CREDENTIALS_FILE"
     fi
 
     timezone="$(cat /etc/timezone 2>/dev/null || true)"
     timezone="${timezone:-UTC}"
     payload="$(jq -n \
-        --arg email "$admin_email" \
+        --arg username "$admin_username" \
         --arg password "$admin_password" \
         --arg system_name "DatrixOps" \
         --arg timezone "$timezone" \
         --arg public_url "$public_url" \
-        '{email:$email,password:$password,system_name:$system_name,timezone:$timezone,public_url:$public_url}')"
+        '{username:$username,password:$password,system_name:$system_name,timezone:$timezone,public_url:$public_url}')"
     response_file="$(mktemp /tmp/datrixops-setup-response.XXXXXX)"
     http_code="$(curl -sS --max-time 30 \
         --noproxy '*' \
@@ -579,7 +581,9 @@ printf "${GREEN}✔ DatrixOps Self-Hosted Deployment Completed Successfully!  ${
 printf "${GREEN}============================================================${NC}\n"
 printf "  Control Plane URL : %s\n" "$pub_url"
 if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
-    printf "  Login Email       : %s\n" "$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+    login_username="$(sed -n 's/^USERNAME=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+    login_username="${login_username:-admin}"
+    printf "  Login Username    : %s\n" "$login_username"
     printf "  Login Password    : %s\n" "$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
     printf "  Credentials File  : %s (mode 0600)\n" "$ADMIN_CREDENTIALS_FILE"
 fi

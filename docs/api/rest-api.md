@@ -106,7 +106,7 @@ Thông tin phiên bản.
 **Request:**
 ```json
 {
-  "email": "user@example.com",
+  "username": "admin",
   "password": "securepassword"
 }
 ```
@@ -149,7 +149,7 @@ Thông tin phiên bản.
 }
 ```
 
-**Errors:** `UNAUTHORIZED` (sai email/password)
+**Errors:** `UNAUTHORIZED` (sai username/password)
 
 ### `POST /api/v1/auth/refresh`
 
