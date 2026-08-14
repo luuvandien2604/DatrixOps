@@ -45,9 +45,10 @@ DatrixOps publishes CE Server and Agent independently. A CE Server release uses
 Agent does not rebuild or change CE Server images; see
 [Upgrade](docs/UPGRADE.md).
 
-The installer creates the first administrator automatically and prints its
-credentials once at the end. They are also stored root-only at
-`/opt/datrixops/.admin-credentials`. After installation, open:
+The installer creates the first administrator automatically and prints the
+generated password once at the end. The password is not stored in plaintext;
+`/opt/datrixops/.admin-credentials` contains only the username. After
+installation, open:
 
 ```text
 http://<server-ip>:7800/login

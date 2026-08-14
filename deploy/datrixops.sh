@@ -38,18 +38,16 @@ admin_identifiers() {
 show_info() {
     require_installation
     require_root
-    local public_url server_version agent_version identifiers saved_identifier saved_password
+    local public_url server_version agent_version identifiers saved_identifier
     public_url="$(env_value PUBLIC_URL)"
     server_version="$(env_value DATRIXOPS_VERSION)"
     agent_version="$(env_value AGENT_VERSION)"
     identifiers="$(admin_identifiers)"
     saved_identifier=""
-    saved_password=""
 
     if [[ -f "$CREDENTIALS_FILE" ]]; then
         saved_identifier="$(sed -n 's/^USERNAME=//p' "$CREDENTIALS_FILE" | tail -n 1)"
         saved_identifier="${saved_identifier:-$(sed -n 's/^EMAIL=//p' "$CREDENTIALS_FILE" | tail -n 1)}"
-        saved_password="$(sed -n 's/^PASSWORD=//p' "$CREDENTIALS_FILE" | tail -n 1)"
     fi
 
     printf '%s\n' '============================================================'
@@ -67,12 +65,8 @@ show_info() {
     else
         printf '  Administrator      : unavailable\n'
     fi
-    if [[ -n "$saved_password" ]]; then
-        printf '  Saved Password     : %s\n' "$saved_password"
-    else
-        printf '  Saved Password     : not available; run: datrix reset-password\n'
-    fi
-    printf '  Credentials File   : %s\n' "$CREDENTIALS_FILE"
+    printf '  Password           : not stored; run: datrix reset-password\n'
+    printf '  Account File       : %s (username only)\n' "$CREDENTIALS_FILE"
     printf '%s\n' '============================================================'
 }
 
@@ -114,10 +108,10 @@ reset_password() {
 
     printf '%s\n' "$password" | compose run --rm -T backend ./reset_admin "$identifier"
     umask 077
-    printf 'USERNAME=%s\nPASSWORD=%s\n' "$identifier" "$password" >"$CREDENTIALS_FILE"
+    printf 'USERNAME=%s\n' "$identifier" >"$CREDENTIALS_FILE"
     chmod 0600 "$CREDENTIALS_FILE"
     unset password confirmation
-    printf 'Saved the current administrator credentials in %s (mode 0600).\n' "$CREDENTIALS_FILE"
+    printf 'Password changed. It is not stored in plaintext; keep it in your password manager.\n'
 }
 
 show_status() {
@@ -156,7 +150,7 @@ show_help() {
 Usage: datrix [command]
 
 Commands:
-  info, default        Show login URL, versions and administrator credentials
+  info, default        Show login URL, versions and administrator username
   status               Show container and Agent service status
   reset-password       Reset an administrator password securely
   logs                 Follow service logs (Ctrl+C to stop)

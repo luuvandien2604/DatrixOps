@@ -9,6 +9,12 @@
 - Restrict host SSH, Docker and sudo access.
 - Store backups encrypted and off-host; test restore regularly.
 
+The initial administrator password is displayed once during installation and
+is never stored in plaintext by DatrixOps. The root-only
+`/opt/datrixops/.admin-credentials` file contains only the login username.
+Use `datrix reset-password` if the password is lost, and store the replacement
+in a dedicated password manager.
+
 Enrollment tokens are short-lived and single-use. Permanent Agent credentials
 are unique per server and stored hashed by new enrollments. Do not share the
 installation command generated for a server.

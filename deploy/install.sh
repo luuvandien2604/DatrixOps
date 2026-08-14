@@ -70,6 +70,7 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${PROJECT_ROOT}/.env"
 ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"
 PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"
+INITIAL_ADMIN_PASSWORD=""
 
 if [[ ! "$PANEL_PORT" =~ ^[0-9]+$ ]] || (( PANEL_PORT < 1 || PANEL_PORT > 65535 )); then
     log_error "DATRIXOPS_PANEL_PORT must be an integer between 1 and 65535."
@@ -376,7 +377,16 @@ ensure_admin_account() {
 
     configured="$(jq -r '.data.configured // false' <<<"$status_json")"
     if [[ "$configured" == "true" ]]; then
-        log_info "Administrator setup is already complete; existing credentials were not changed."
+        if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
+            admin_username="$(sed -n 's/^USERNAME=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+            legacy_admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
+            admin_username="${admin_username:-${legacy_admin_email%%@*}}"
+            admin_username="${admin_username:-admin}"
+            umask 077
+            printf 'USERNAME=%s\n' "$admin_username" >"$ADMIN_CREDENTIALS_FILE"
+            chmod 0600 "$ADMIN_CREDENTIALS_FILE"
+        fi
+        log_info "Administrator setup is already complete; plaintext credentials were not retained."
         return 0
     fi
 
@@ -384,15 +394,9 @@ ensure_admin_account() {
         admin_username="$(sed -n 's/^USERNAME=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
         legacy_admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
         admin_username="${admin_username:-${legacy_admin_email%%@*}}"
-        admin_password="$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
     fi
-    if [[ -z "${admin_username:-}" || -z "${admin_password:-}" ]]; then
-        admin_username="${DATRIXOPS_ADMIN_USERNAME:-admin}"
-        admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
-        umask 077
-        printf 'USERNAME=%s\nPASSWORD=%s\n' "$admin_username" "$admin_password" >"$ADMIN_CREDENTIALS_FILE"
-        chmod 0600 "$ADMIN_CREDENTIALS_FILE"
-    fi
+    admin_username="${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}"
+    admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
 
     timezone="$(cat /etc/timezone 2>/dev/null || true)"
     timezone="${timezone:-UTC}"
@@ -418,6 +422,11 @@ ensure_admin_account() {
         return 1
     fi
     rm -f "$response_file"
+    INITIAL_ADMIN_PASSWORD="$admin_password"
+    umask 077
+    printf 'USERNAME=%s\n' "$admin_username" >"$ADMIN_CREDENTIALS_FILE"
+    chmod 0600 "$ADMIN_CREDENTIALS_FILE"
+    unset admin_password
     log_success "Initial administrator created."
 }
 
@@ -584,13 +593,18 @@ if [[ -f "$ADMIN_CREDENTIALS_FILE" ]]; then
     login_username="$(sed -n 's/^USERNAME=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
     login_username="${login_username:-admin}"
     printf "  Login Username    : %s\n" "$login_username"
-    printf "  Login Password    : %s\n" "$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
-    printf "  Credentials File  : %s (mode 0600)\n" "$ADMIN_CREDENTIALS_FILE"
+    if [[ -n "$INITIAL_ADMIN_PASSWORD" ]]; then
+        printf "  Initial Password  : %s (shown once)\n" "$INITIAL_ADMIN_PASSWORD"
+    else
+        printf "  Password          : not stored; use 'datrix reset-password' if needed\n"
+    fi
+    printf "  Account File      : %s (username only, mode 0600)\n" "$ADMIN_CREDENTIALS_FILE"
 fi
 printf "  Self-Monitoring   : Active (Host VPS enrolled automatically)\n"
 printf "  Status            : All container services are active.\n"
 printf "  Management CLI    : datrix\n"
 printf "${GREEN}============================================================${NC}\n"
-printf "Open %s/login and sign in with the credentials above.\n" "${pub_url%/}"
+printf "Open %s/login and sign in with the account above.\n" "${pub_url%/}"
 printf "Firewall           : Allow inbound TCP %s if the panel is not reachable.\n" "$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
 printf "WARNING: IP panel mode uses HTTP. Move to a domain with HTTPS for production.\n\n"
+unset INITIAL_ADMIN_PASSWORD

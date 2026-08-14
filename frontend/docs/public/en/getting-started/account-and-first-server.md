@@ -6,9 +6,10 @@ description: "Complete setup, sign in, and install the first server Agent."
 ## Create the local administrator
 
 After installing the Control Plane, open the `/login` URL printed by the
-installer. Sign in with the generated administrator credentials stored at
-`/opt/datrixops/.admin-credentials` (root-only, mode `0600`). Public signup is
-disabled by default.
+installer. The default username is `admin`; the generated password is shown
+once and is not stored in plaintext. `/opt/datrixops/.admin-credentials`
+contains only the username. Public signup is disabled by default. If the
+password is lost, run `datrix reset-password`.
 
 ## Add a server
 

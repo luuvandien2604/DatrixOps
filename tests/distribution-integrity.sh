@@ -13,7 +13,23 @@ grep -q 'PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"' "${PROJECT_ROOT}/deploy/ins
     exit 1
 }
 grep -q 'ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"' "${PROJECT_ROOT}/deploy/install.sh" || {
-    echo "ERROR: installer must persist generated administrator credentials in the install directory" >&2
+    echo "ERROR: installer must persist the administrator username in the install directory" >&2
+    exit 1
+}
+if grep -q 'PASSWORD=%s' "${PROJECT_ROOT}/deploy/install.sh" "${PROJECT_ROOT}/deploy/datrixops.sh"; then
+    echo "ERROR: administrator passwords must not be persisted in plaintext" >&2
+    exit 1
+fi
+if grep -q 's/\^PASSWORD=//p' "${PROJECT_ROOT}/deploy/install.sh" "${PROJECT_ROOT}/deploy/datrixops.sh"; then
+    echo "ERROR: installer and management CLI must not recover plaintext administrator passwords" >&2
+    exit 1
+fi
+grep -q 'Initial Password  : %s (shown once)' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must show the generated password exactly once" >&2
+    exit 1
+}
+grep -q "grep -q '\^PASSWORD='" "${PROJECT_ROOT}/deploy/upgrade.sh" || {
+    echo "ERROR: updater must remove legacy plaintext administrator passwords" >&2
     exit 1
 }
 grep -q '^ensure_admin_account$' "${PROJECT_ROOT}/deploy/install.sh" || {

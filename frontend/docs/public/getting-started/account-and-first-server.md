@@ -5,9 +5,10 @@ description: "Hoàn tất setup, đăng nhập và cài Agent cho server đầu 
 
 ## Tạo local administrator
 
-Sau khi cài Control Plane, mở URL `/login` do installer in ra. Đăng nhập bằng
-administrator đã được tự sinh và lưu tại `/opt/datrixops/.admin-credentials`
-(chỉ root đọc được, mode `0600`). Public signup bị tắt mặc định.
+Sau khi cài Control Plane, mở URL `/login` do installer in ra. Username mặc
+định là `admin`; mật khẩu ngẫu nhiên chỉ được hiển thị một lần và không lưu
+dạng rõ. File `/opt/datrixops/.admin-credentials` chỉ chứa username. Public
+signup bị tắt mặc định. Nếu quên mật khẩu, chạy `datrix reset-password`.
 
 ## Thêm server
 

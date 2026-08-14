@@ -374,6 +374,18 @@ SVCEOF
     install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix
     ln -sf /usr/local/bin/datrix /usr/local/bin/datrixops
 
+    credentials_file="${PROJECT_ROOT}/.admin-credentials"
+    if [[ -f "$credentials_file" ]] && grep -q '^PASSWORD=' "$credentials_file"; then
+        credentials_username="$(sed -n 's/^USERNAME=//p' "$credentials_file" | tail -n 1)"
+        legacy_credentials_email="$(sed -n 's/^EMAIL=//p' "$credentials_file" | tail -n 1)"
+        credentials_username="${credentials_username:-${legacy_credentials_email%%@*}}"
+        credentials_username="${credentials_username:-admin}"
+        umask 077
+        printf 'USERNAME=%s\n' "$credentials_username" >"$credentials_file"
+        chmod 0600 "$credentials_file"
+        log_success "Removed the legacy plaintext administrator password from ${credentials_file}."
+    fi
+
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"
     printf "${GREEN}✔ DatrixOps Upgraded Successfully!                          ${NC}\n"

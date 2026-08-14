@@ -23,11 +23,14 @@ Use the management CLI so the password is not stored in shell history:
 datrix reset-password
 ```
 
-To view the login URL, administrator username and the locally saved password:
+To view the login URL and administrator username:
 
 ```bash
 datrix info
 ```
+
+Passwords are not stored in plaintext. If the password is unavailable, use
+`datrix reset-password` and save the new value in a password manager.
 
 If the management CLI is not available on an older installation, pipe the new
 password on stdin:
