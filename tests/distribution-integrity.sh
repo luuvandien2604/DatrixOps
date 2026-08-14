@@ -32,6 +32,14 @@ grep -q 'install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix' "${
     echo "ERROR: updater must refresh the DatrixOps management CLI" >&2
     exit 1
 }
+grep -q 'while true; do' "${PROJECT_ROOT}/deploy/datrixops.sh" || {
+    echo "ERROR: management CLI must keep the interactive menu open until Exit is selected" >&2
+    exit 1
+}
+grep -q 'DATRIXOPS_ADMIN_USERNAME:-admin-' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must randomize the default administrator identity" >&2
+    exit 1
+}
 
 grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v' "${PROJECT_ROOT}/deploy/install.sh" || {
     echo "ERROR: bootstrap installer must download an immutable CE tag directly from codeload" >&2

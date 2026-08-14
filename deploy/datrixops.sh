@@ -98,7 +98,9 @@ reset_password() {
     local email password confirmation
     email="${1:-}"
     if [[ -z "$email" ]]; then
-        email="$(choose_admin_email)"
+        if ! email="$(choose_admin_email)"; then
+            return 1
+        fi
     fi
 
     read -r -s -p "New password for ${email}: " password
@@ -115,6 +117,37 @@ reset_password() {
     chmod 0600 "$CREDENTIALS_FILE"
     unset password confirmation
     printf 'Saved the current administrator credentials in %s (mode 0600).\n' "$CREDENTIALS_FILE"
+}
+
+show_status() {
+    require_installation
+    printf '%s\n' 'DatrixOps Server containers:'
+    compose ps
+    printf '\n%s\n' 'DatrixOps Agent service:'
+    systemctl --no-pager status datrixops-agent || true
+    printf '\nServer services are managed by Docker Compose; use `datrix status`, not `systemctl status datrixops`.\n'
+}
+
+restart_services() {
+    require_installation
+    require_root
+    compose restart
+    systemctl restart datrixops-agent 2>/dev/null || true
+}
+
+follow_logs() {
+    require_installation
+    compose logs --tail=200 -f
+}
+
+upgrade_server() {
+    require_root
+    "${PROJECT_ROOT}/deploy/upgrade.sh"
+}
+
+create_backup() {
+    require_root
+    "${PROJECT_ROOT}/deploy/backup.sh"
 }
 
 show_help() {
@@ -137,39 +170,59 @@ EOF
 }
 
 menu() {
-    printf '%s\n' 'DatrixOps Management'
-    printf '%s\n' '  1) Show login information'
-    printf '%s\n' '  2) Show service status'
-    printf '%s\n' '  3) Reset administrator password'
-    printf '%s\n' '  4) Follow service logs'
-    printf '%s\n' '  5) Restart services'
-    printf '%s\n' '  6) Upgrade DatrixOps'
-    printf '%s\n' '  7) Create backup'
-    printf '%s\n' '  0) Exit'
-    printf 'Select: '
-    read -r choice
-    case "$choice" in
-        1) show_info ;;
-        2) require_installation; compose ps; systemctl --no-pager status datrixops-agent || true ;;
-        3) reset_password ;;
-        4) require_installation; compose logs --tail=200 -f ;;
-        5) require_installation; require_root; compose restart; systemctl restart datrixops-agent 2>/dev/null || true ;;
-        6) require_root; exec "${PROJECT_ROOT}/deploy/upgrade.sh" ;;
-        7) require_root; exec "${PROJECT_ROOT}/deploy/backup.sh" ;;
-        0) exit 0 ;;
-        *) die "Invalid selection." ;;
-    esac
+    local choice action_status
+    require_installation
+    require_root
+    trap '' INT
+    while true; do
+        printf '\n%s\n' '============================================================'
+        printf '%s\n' '  DatrixOps Management'
+        printf '%s\n' '============================================================'
+        printf '%s\n' '  1) Show login information'
+        printf '%s\n' '  2) Show service status'
+        printf '%s\n' '  3) Reset administrator password'
+        printf '%s\n' '  4) Follow service logs'
+        printf '%s\n' '  5) Restart services'
+        printf '%s\n' '  6) Upgrade DatrixOps'
+        printf '%s\n' '  7) Create backup'
+        printf '%s\n' '  0) Exit'
+        printf '%s\n' '============================================================'
+        printf 'Select: '
+        if ! read -r choice; then
+            printf '\n'
+            return 0
+        fi
+
+        action_status=0
+        case "$choice" in
+            1) (trap - INT; show_info) || action_status=$? ;;
+            2) (trap - INT; show_status) || action_status=$? ;;
+            3) (trap - INT; reset_password) || action_status=$? ;;
+            4) (trap - INT; follow_logs) || action_status=$? ;;
+            5) (trap - INT; restart_services) || action_status=$? ;;
+            6) (trap - INT; upgrade_server) || action_status=$? ;;
+            7) (trap - INT; create_backup) || action_status=$? ;;
+            0) printf 'Exited DatrixOps Management.\n'; return 0 ;;
+            *) printf 'ERROR: Invalid selection.\n' >&2; action_status=2 ;;
+        esac
+
+        if [[ "$action_status" -ne 0 ]]; then
+            printf 'Operation failed. Returning to the management menu.\n' >&2
+        fi
+        printf '\nPress Enter to return to the management menu...'
+        read -r _ || return 0
+    done
 }
 
 case "${1:-}" in
     "") menu ;;
     info|default) show_info ;;
-    status) require_installation; compose ps; systemctl --no-pager status datrixops-agent || true ;;
+    status) show_status ;;
     reset-password) shift; reset_password "${1:-}" ;;
-    logs) require_installation; compose logs --tail=200 -f ;;
-    restart) require_installation; require_root; compose restart; systemctl restart datrixops-agent 2>/dev/null || true ;;
-    update|upgrade) require_root; exec "${PROJECT_ROOT}/deploy/upgrade.sh" ;;
-    backup) require_root; exec "${PROJECT_ROOT}/deploy/backup.sh" ;;
+    logs) follow_logs ;;
+    restart) restart_services ;;
+    update|upgrade) upgrade_server ;;
+    backup) create_backup ;;
     help|-h|--help) show_help ;;
     *) show_help; exit 2 ;;
 esac

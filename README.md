@@ -62,8 +62,8 @@ Manage the installation from the server with one command:
 datrix
 ```
 
-The menu shows login information and service status, resets the administrator
-password, follows logs, restarts services, upgrades the installation and
+The persistent menu shows login information and service status, resets the
+administrator password, follows logs, restarts services, upgrades the installation and
 creates backups. Run `sudo datrix` from a non-root shell. Direct subcommands
 such as `datrix info`, `datrix status` and `datrix reset-password` are also
 available.

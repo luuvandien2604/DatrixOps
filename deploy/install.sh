@@ -337,7 +337,7 @@ log_step "Step 6/6: Creating administrator and enabling self-monitoring"
 ensure_admin_account() {
     local http_port https_port public_url public_scheme public_authority public_host public_port
     local status_url status_json configured
-    local admin_email admin_password timezone payload response_file http_code
+    local admin_email admin_identity admin_password timezone payload response_file http_code
 
     http_port="$(sed -n 's/^DATRIXOPS_HTTP_PORT=//p' "$ENV_FILE" | tail -n 1)"
     http_port="${http_port:-$PANEL_PORT}"
@@ -385,7 +385,8 @@ ensure_admin_account() {
         admin_password="$(sed -n 's/^PASSWORD=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
     fi
     if [[ -z "${admin_email:-}" || -z "${admin_password:-}" ]]; then
-        admin_email="${DATRIXOPS_ADMIN_EMAIL:-admin@datrixops.local}"
+        admin_identity="${DATRIXOPS_ADMIN_USERNAME:-admin-$(openssl rand -hex 4)}"
+        admin_email="${DATRIXOPS_ADMIN_EMAIL:-${admin_identity}@datrixops.local}"
         admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
         umask 077
         printf 'EMAIL=%s\nPASSWORD=%s\n' "$admin_email" "$admin_password" >"$ADMIN_CREDENTIALS_FILE"
