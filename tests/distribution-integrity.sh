@@ -36,8 +36,8 @@ grep -q 'while true; do' "${PROJECT_ROOT}/deploy/datrixops.sh" || {
     echo "ERROR: management CLI must keep the interactive menu open until Exit is selected" >&2
     exit 1
 }
-grep -q 'DATRIXOPS_ADMIN_USERNAME:-admin-' "${PROJECT_ROOT}/deploy/install.sh" || {
-    echo "ERROR: installer must randomize the default administrator identity" >&2
+grep -q 'DATRIXOPS_ADMIN_EMAIL:-admin@datrixops.local' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must default to the admin administrator identity" >&2
     exit 1
 }
 
