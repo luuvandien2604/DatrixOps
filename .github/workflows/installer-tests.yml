@@ -285,7 +285,19 @@ jobs:
         shell: pwsh
         run: |
           Start-Process -NoNewWindow -FilePath "python" -ArgumentList "scripts/mock-server.py"
-          Start-Sleep -Seconds 2
+          $mockReady = $false
+          for ($attempt = 1; $attempt -le 15; $attempt++) {
+            try {
+              Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8080/agent-release.version" -TimeoutSec 2 | Out-Null
+              $mockReady = $true
+              break
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          }
+          if (-not $mockReady) {
+            throw "Windows Agent mock server did not become ready"
+          }
 
           $env:DATRIXOPS_INSTALLER_TEST_MODE = "1"
           $testRoot = Join-Path $env:RUNNER_TEMP "datrixops-installer-test"
