@@ -108,7 +108,8 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const initialRequest = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(initialRequest);
   }, [refresh]);
 
   const activeCount = useMemo(() => webhooks.filter((webhook) => webhook.enabled).length, [webhooks]);

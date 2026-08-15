@@ -1,3 +1,4 @@
+# Canonical version-pinned runtime stack installed on CE servers.
 name: datrixops
 
 x-logging: &default-logging

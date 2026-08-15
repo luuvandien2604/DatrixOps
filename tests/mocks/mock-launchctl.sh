@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Test-only launchctl replacement used by installer CI.
+
 CMD=""
 for arg in "$@"; do
     if [[ "$arg" != -* ]]; then

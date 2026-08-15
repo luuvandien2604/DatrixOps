@@ -1,7 +1,7 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 interface ApiOptions extends RequestInit {
-  data?: any;
+  data?: unknown;
 }
 
 type TokenStorage = Storage;
@@ -90,7 +90,7 @@ export function getUserRole(): string {
     if (!payloadBase64) return 'user';
     const payload = JSON.parse(atob(payloadBase64));
     return payload.role || 'user';
-  } catch (e) {
+  } catch {
     return 'user';
   }
 }

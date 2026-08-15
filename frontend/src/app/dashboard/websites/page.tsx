@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Globe, Plus, Trash2, CheckCircle2, XCircle, Shield, ShieldAlert,
-  ShieldCheck, RefreshCw, Clock, Activity, Zap, ExternalLink
+  ShieldCheck, RefreshCw, Activity, ExternalLink
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -32,20 +32,13 @@ export default function WebsitesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const [userRole, setUserRole] = useState<string>('user');
+  const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
-    setUserRole(getUserRole());
     apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
   }, []);
   const isViewer = userRole === 'viewer';
 
-  useEffect(() => {
-    fetchWebsites();
-    const interval = setInterval(fetchWebsites, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchWebsites = async () => {
+  async function fetchWebsites() {
     try {
       const data = await apiClient('/websites');
       const enhancedData = (data || []).map((w: Website) => ({
@@ -59,7 +52,16 @@ export default function WebsitesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    const initialRequest = window.setTimeout(() => void fetchWebsites(), 0);
+    const interval = setInterval(() => void fetchWebsites(), 30000);
+    return () => {
+      window.clearTimeout(initialRequest);
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleManualCheck = async (id: string, name: string) => {
     setCheckingId(id);
@@ -67,8 +69,8 @@ export default function WebsitesPage() {
       await apiClient(`/websites/${id}/check`, { method: 'POST' }).catch(() => {});
       toast.success(`Triggered health check for ${name}`);
       await fetchWebsites();
-    } catch (err: any) {
-      toast.error(err.message || 'Check failed');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Check failed');
     } finally {
       setCheckingId(null);
     }
@@ -87,8 +89,8 @@ export default function WebsitesPage() {
       setNewUrl('');
       fetchWebsites();
       toast.success('Website added to monitoring suite');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unable to add website');
     } finally {
       setSubmitting(false);
     }
@@ -100,8 +102,8 @@ export default function WebsitesPage() {
       await apiClient(`/websites/${id}`, { method: 'DELETE' });
       toast.success(`Website ${name} removed`);
       fetchWebsites();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete website');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete website');
     }
   };
 

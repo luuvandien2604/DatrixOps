@@ -47,9 +47,7 @@ export default function ManageServersPage() {
         }
       })
       .catch(() => {
-        if (isSuperadmin == null) {
-          setIsSuperadmin(currentRole === 'admin' || currentRole === 'superadmin');
-        }
+        setIsSuperadmin(currentRole === 'admin' || currentRole === 'superadmin');
       });
   }, []);
   useEffect(() => {

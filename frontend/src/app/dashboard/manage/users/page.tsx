@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, CircleAlert, KeyRound, Plus, RefreshCw, Server, ShieldCheck, Trash2, UserCog, UserPlus, UserRound, Users, X } from 'lucide-react';
+import { Check, CircleAlert, KeyRound, RefreshCw, Server, ShieldCheck, Trash2, UserCog, UserPlus, UserRound, Users, X } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 
 type ManagedUser = {
@@ -61,9 +61,7 @@ export default function ManageUsersPage() {
         }
       })
       .catch(() => {
-        if (isAdmin == null) {
-          setIsAdmin(currentRole === 'admin' || currentRole === 'superadmin');
-        }
+        setIsAdmin(currentRole === 'admin' || currentRole === 'superadmin');
       });
   }, []);
 

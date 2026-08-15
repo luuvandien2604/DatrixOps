@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
@@ -171,6 +171,8 @@ const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
 const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
 const MIN_SCRIPT_LIBRARY_AGENT_VERSION = '1.5.2';
 
+const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
+
 const versionAtLeast = (current: string | undefined, minimum: string) => {
   if (!current || current === 'dev') return true;
   const parse = (value: string) => value.replace(/^v/i, '').split('.').map(part => Number.parseInt(part, 10) || 0);
@@ -197,31 +199,67 @@ export default function ServerDetailsPage() {
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
-  const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
   const [copiedCronCommandId, setCopiedCronCommandId] = useState<string | null>(null);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
-  const [savingAutoUpdate, setSavingAutoUpdate] = useState(false);
   const [scriptLibrary, setScriptLibrary] = useState<ScriptPolicy[]>([]);
   const [scriptRuns, setScriptRuns] = useState<Record<string, ScriptRunState>>({});
   const [scriptLibraryError, setScriptLibraryError] = useState<string | null>(null);
 
-  const [userRole, setUserRole] = useState<string>('user');
+  const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
-    setUserRole(getUserRole());
     apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
   }, []);
-  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
   const isViewer = userRole === 'viewer';
 
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
-      setActiveTab('terminal');
+  const fetchServer = useCallback(async () => {
+    try {
+      const data: ServerDetails = await apiClient(`/servers/${params.id}`);
+      setServer(data);
+      setAgentUpdateTask(data.active_agent_update_task || null);
+      if (data.snapshot && data.snapshot !== '{}') {
+        const nextSnapshot = JSON.parse(data.snapshot) as Snapshot;
+        setSnapshot(nextSnapshot);
+        setInventory(nextSnapshot.inventory || null);
+      }
+      if (data.inventory && data.inventory !== '{}') {
+        setInventory(JSON.parse(data.inventory) as Inventory);
+      }
+      try {
+        const jobs = await apiClient(`/servers/${params.id}/cron-jobs`);
+        setCronJobs(Array.isArray(jobs) ? jobs : []);
+      } catch (cronError) {
+        console.error('Unable to load cron jobs', cronError);
+      }
+      try {
+        const scripts = await apiClient(`/servers/${params.id}/scripts`);
+        setScriptLibrary(Array.isArray(scripts) ? scripts : []);
+        setScriptLibraryError(null);
+      } catch (scriptError: unknown) {
+        console.error('Unable to load script library', scriptError);
+        setScriptLibrary([]);
+        setScriptLibraryError(errorMessage(scriptError, 'Unable to load script library'));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    fetchServer();
-    const interval = setInterval(fetchServer, 20_000); // refresh every 20s
-    return () => clearInterval(interval);
-  }, []);
+  }, [params.id]);
+
+  useEffect(() => {
+    const initialRequest = window.setTimeout(() => {
+      if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
+        setActiveTab('terminal');
+      }
+      void fetchServer();
+    }, 0);
+    const interval = setInterval(() => void fetchServer(), 20_000); // refresh every 20s
+    return () => {
+      window.clearTimeout(initialRequest);
+      clearInterval(interval);
+    };
+  }, [fetchServer]);
 
   useEffect(() => {
     if (!agentUpdateTask || ['completed', 'failed', 'expired', 'timed_out'].includes(agentUpdateTask.status)) {
@@ -239,47 +277,12 @@ export default function ServerDetailsPage() {
         } else if (['failed', 'expired', 'timed_out'].includes(task.status)) {
           toast.error(task.result || `Agent update ${task.status}`);
         }
-      } catch (error: any) {
-        toast.error(error.message || 'Unable to refresh agent update status');
+      } catch (error: unknown) {
+        toast.error(errorMessage(error, 'Unable to refresh agent update status'));
       }
     }, 5_000);
     return () => window.clearInterval(interval);
-  }, [agentUpdateTask, params.id]);
-
-  const fetchServer = async () => {
-    try {
-      const data = await apiClient(`/servers/${params.id}`);
-      setServer(data);
-      setAgentUpdateTask(data.active_agent_update_task || null);
-      if (data.snapshot && data.snapshot !== '{}') {
-        const nextSnapshot = JSON.parse(data.snapshot) as Snapshot;
-        setSnapshot(nextSnapshot);
-        setInventory(nextSnapshot.inventory || null);
-      }
-      if (data.inventory && data.inventory !== '{}') {
-        setInventory(JSON.parse(data.inventory));
-      }
-      try {
-        const jobs = await apiClient(`/servers/${params.id}/cron-jobs`);
-        setCronJobs(Array.isArray(jobs) ? jobs : []);
-      } catch (cronError) {
-        console.error('Unable to load cron jobs', cronError);
-      }
-      try {
-        const scripts = await apiClient(`/servers/${params.id}/scripts`);
-        setScriptLibrary(Array.isArray(scripts) ? scripts : []);
-        setScriptLibraryError(null);
-      } catch (scriptError: any) {
-        console.error('Unable to load script library', scriptError);
-        setScriptLibrary([]);
-        setScriptLibraryError(scriptError.message || 'Unable to load script library');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [agentUpdateTask, fetchServer, params.id]);
 
   const handleDockerAction = async (action: string, containerId: string) => {
     if (isViewer) {
@@ -376,21 +379,10 @@ export default function ServerDetailsPage() {
         }
       }
       throw new Error('Timed out waiting for the agent response');
-    } catch (error: any) {
-      toast.error(error.message || `Unable to ${action} service`);
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, `Unable to ${action} service`));
     } finally {
       setServiceActionBusy(false);
-    }
-  };
-
-  const copyUpdateCommand = async (command: string) => {
-    try {
-      await copyTextToClipboard(command);
-      setCopiedUpdateCommand(true);
-      window.setTimeout(() => setCopiedUpdateCommand(false), 2000);
-      toast.success('Token-free update command copied');
-    } catch {
-      toast.error('Unable to copy the update command');
     }
   };
 
@@ -435,32 +427,14 @@ export default function ServerDetailsPage() {
       });
       toast.success(`Agent update queued for ${server.name}`);
       await fetchServer();
-    } catch (err: any) {
-      toast.error(err.message || 'Unable to queue agent update');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Unable to queue agent update'));
     } finally {
       setQueueingAgentUpdate(false);
     }
   };
 
-  const setAgentAutoUpdate = async (enabled: boolean) => {
-    if (!server || savingAutoUpdate) return;
-    setSavingAutoUpdate(true);
-    try {
-      await apiClient(`/servers/${server.id}/agent-update-policy`, {
-        method: 'PUT',
-        data: { enabled },
-      });
-      setServer(current => current ? { ...current, auto_update_agent: enabled } : current);
-      toast.success(enabled ? 'Automatic Agent updates enabled' : 'Automatic Agent updates disabled');
-      await fetchServer();
-    } catch (error: any) {
-      toast.error(error.message || 'Unable to change the automatic update policy');
-    } finally {
-      setSavingAutoUpdate(false);
-    }
-  };
-
-  const runAllowlistedScript = async (script: ScriptPolicy) => {
+  const runAllowlistedScript = async (script: ScriptPolicy, idempotencyKey: string) => {
     if (!server) return;
     if (server.status !== 'online') {
       toast.error('The agent must be online before a script can run');
@@ -493,7 +467,7 @@ export default function ServerDetailsPage() {
             confirmed: script.requires_confirmation,
           }),
           timeout_seconds: script.timeout_seconds,
-          idempotency_key: `script-${script.id}-${Date.now()}`,
+          idempotency_key: idempotencyKey,
         },
       });
       setScriptRuns(current => ({
@@ -533,12 +507,13 @@ export default function ServerDetailsPage() {
         },
       }));
       toast.error(`${script.name}: timed out waiting for result`);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = errorMessage(error, 'Unable to queue script task');
       setScriptRuns(current => ({
         ...current,
-        [script.id]: { status: 'failed', result: error.message || 'Unable to queue script task' },
+        [script.id]: { status: 'failed', result: message },
       }));
-      toast.error(error.message || 'Unable to queue script task');
+      toast.error(message);
     }
   };
 
@@ -775,10 +750,6 @@ export default function ServerDetailsPage() {
   const totalMemoryUsage = parsedOSInfo.memory_total && parsedOSInfo.memory_total > 0
     ? (Number(parsedOSInfo.memory_used || 0) / Number(parsedOSInfo.memory_total)) * 100
     : undefined;
-  const controlPlaneOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const manualUpdateCommand = osFamily === 'windows'
-    ? `& ([scriptblock]::Create((irm ${controlPlaneOrigin}/update-agent.ps1))) -ServerUrl ${controlPlaneOrigin}`
-    : `curl -fsSL ${controlPlaneOrigin}/update-agent.sh | sudo sh -s -- ${controlPlaneOrigin}`;
   const terminalDisabledReason = (() => {
     if (terminalEnvironmentUnsupported) {
       if (terminalUnsupportedReasonReported) {
@@ -1308,7 +1279,7 @@ export default function ServerDetailsPage() {
                         <button
                           type="button"
                           disabled={disabled}
-                          onClick={() => runAllowlistedScript(script)}
+                          onClick={() => void runAllowlistedScript(script, `script-${script.id}-${Date.now()}`)}
                           title={!supportsScriptLibrary ? `Update Agent to ${MIN_SCRIPT_LIBRARY_AGENT_VERSION}+ first` : server.status !== 'online' ? 'The agent must be online' : `Run ${script.name}`}
                           className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-45"
                         >

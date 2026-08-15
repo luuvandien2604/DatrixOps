@@ -193,8 +193,8 @@ export default function WebTerminal({
       });
       observer.observe(containerRef.current);
       resizeObserverRef.current = observer;
-    } catch (caught: any) {
-      const message = friendlyTerminalError(caught.message || 'Unable to start terminal');
+    } catch (caught: unknown) {
+      const message = friendlyTerminalError(caught instanceof Error ? caught.message : 'Unable to start terminal');
       setError(message);
       setState('error');
       terminalRef.current?.writeln(`\r\n\x1b[31m${message}\x1b[0m`);

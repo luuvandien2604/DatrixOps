@@ -1,4 +1,6 @@
 
+# Source-built production-like stack for maintainers and integration checks.
+# End-user installations use the version-pinned deploy/docker-compose.yml.
 services:
   gateway:
     image: caddy:2-alpine

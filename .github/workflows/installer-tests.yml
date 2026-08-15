@@ -26,12 +26,12 @@ jobs:
 
       - name: Test Linux installer & updater
         run: |
-          python3 scripts/mock-server.py &
+          python3 tests/mocks/mock-server.py &
           sleep 2
 
           export DATRIXOPS_INSTALLER_TEST_MODE=1
           export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
-          export DATRIXOPS_SYSTEMCTL_BIN="$PWD/scripts/mock-systemctl.sh"
+          export DATRIXOPS_SYSTEMCTL_BIN="$PWD/tests/mocks/mock-systemctl.sh"
 
           # Test missing required args fails
           if bash frontend/public/install.sh 2>/dev/null; then
@@ -149,7 +149,7 @@ jobs:
 
           export DATRIXOPS_MOCK_SERVER_PORT=18080
           export DATRIXOPS_MOCK_BASE_URL="http://127.0.0.1:${DATRIXOPS_MOCK_SERVER_PORT}"
-          python3 scripts/mock-server.py &
+          python3 tests/mocks/mock-server.py &
           for _ in {1..10}; do
             if curl --fail --silent "$DATRIXOPS_MOCK_BASE_URL/agent-release.version" >/dev/null; then
               break
@@ -160,7 +160,7 @@ jobs:
 
           export DATRIXOPS_INSTALLER_TEST_MODE=1
           export DATRIXOPS_INSTALLER_ROOT="$(mktemp -d)"
-          export DATRIXOPS_LAUNCHCTL_BIN="$PWD/scripts/mock-launchctl.sh"
+          export DATRIXOPS_LAUNCHCTL_BIN="$PWD/tests/mocks/mock-launchctl.sh"
 
           # Test missing required args fails
           if bash frontend/public/install-mac.sh 2>/dev/null; then
@@ -286,7 +286,7 @@ jobs:
       - name: Test Windows installer argument validation & updater Pester
         shell: pwsh
         run: |
-          Start-Process -NoNewWindow -FilePath "python" -ArgumentList "scripts/mock-server.py"
+          Start-Process -NoNewWindow -FilePath "python" -ArgumentList "tests/mocks/mock-server.py"
           $mockReady = $false
           for ($attempt = 1; $attempt -le 15; $attempt++) {
             try {
@@ -304,7 +304,7 @@ jobs:
           $env:DATRIXOPS_INSTALLER_TEST_MODE = "1"
           $testRoot = Join-Path $env:RUNNER_TEMP "datrixops-installer-test"
           $env:DATRIXOPS_INSTALLER_ROOT = $testRoot
-          $env:DATRIXOPS_MOCK_SCHTASKS_BIN = "$pwd/scripts/mock-schtasks.ps1"
+          $env:DATRIXOPS_MOCK_SCHTASKS_BIN = "$pwd/tests/mocks/mock-schtasks.ps1"
           $testToken = -join ((65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
 
           if (Test-Path $testRoot) {
@@ -325,4 +325,4 @@ jobs:
           & ./frontend/public/install.ps1 -Token $testToken -ServerUrl "http://localhost:8080" -AgentVersion "1.0.1" -AgentArtifactBaseUrl "http://localhost:8080" -AgentReleaseLayout "github"
 
           # Run Pester Tests
-          Invoke-Pester -Path ./frontend/public/tests/ -Output Detailed
+          Invoke-Pester -Path ./tests/windows/ -Output Detailed

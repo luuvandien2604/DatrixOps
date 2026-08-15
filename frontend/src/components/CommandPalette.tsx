@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
   Search, Server, Globe2, Activity, Bell, FileText, Settings2,
-  Zap, ArrowRight, Command, CornerDownLeft
+  Command, CornerDownLeft
 } from 'lucide-react';
 
 interface CommandItem {
@@ -22,22 +22,34 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
+interface PaletteServer {
+  id: string;
+  name: string;
+  ip_address?: string;
+  status: string;
+  group_name?: string;
+}
+
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const [servers, setServers] = useState<any[]>([]);
+  const [servers, setServers] = useState<PaletteServer[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Fetch servers when palette opens
   useEffect(() => {
     if (isOpen) {
-      setQuery('');
-      setSelectedIndex(0);
       apiClient('/servers')
         .then((data) => setServers(Array.isArray(data) ? data : []))
         .catch(() => setServers([]));
     }
   }, [isOpen]);
+
+  const closePalette = useCallback(() => {
+    setQuery('');
+    setSelectedIndex(0);
+    onClose();
+  }, [onClose]);
 
   // Built-in pages navigation
   const staticNavigationItems: CommandItem[] = [
@@ -47,7 +59,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'System status & key metrics summary',
       category: 'Navigation',
       icon: Activity,
-      action: () => { router.push('/dashboard'); onClose(); }
+      action: () => { router.push('/dashboard'); closePalette(); }
     },
     {
       id: 'nav-servers',
@@ -55,7 +67,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'Manage server fleet & auto-update agent settings',
       category: 'Navigation',
       icon: Server,
-      action: () => { router.push('/dashboard/servers'); onClose(); }
+      action: () => { router.push('/dashboard/servers'); closePalette(); }
     },
     {
       id: 'nav-websites',
@@ -63,7 +75,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'Monitor domain availability and SSL certificates',
       category: 'Navigation',
       icon: Globe2,
-      action: () => { router.push('/dashboard/websites'); onClose(); }
+      action: () => { router.push('/dashboard/websites'); closePalette(); }
     },
     {
       id: 'nav-logs',
@@ -71,7 +83,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'Real-time log viewer for agents and docker containers',
       category: 'Navigation',
       icon: FileText,
-      action: () => { router.push('/dashboard/logs'); onClose(); }
+      action: () => { router.push('/dashboard/logs'); closePalette(); }
     },
     {
       id: 'nav-alerts',
@@ -79,7 +91,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'Active incident management and notifications',
       category: 'Navigation',
       icon: Bell,
-      action: () => { router.push('/dashboard/alerts'); onClose(); }
+      action: () => { router.push('/dashboard/alerts'); closePalette(); }
     },
     {
       id: 'nav-settings',
@@ -87,7 +99,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       subtitle: 'Configure account and API keys',
       category: 'Navigation',
       icon: Settings2,
-      action: () => { router.push('/dashboard/settings'); onClose(); }
+      action: () => { router.push('/dashboard/settings'); closePalette(); }
     },
   ];
 
@@ -98,7 +110,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     subtitle: `${s.ip_address || 'No IP'} • Status: ${s.status.toUpperCase()} • Group: ${s.group_name || 'Default'}`,
     category: 'Servers',
     icon: Server,
-    action: () => { router.push(`/dashboard/servers/${s.id}`); onClose(); }
+    action: () => { router.push(`/dashboard/servers/${s.id}`); closePalette(); }
   }));
 
   const allItems = [...staticNavigationItems, ...serverItems];
@@ -119,7 +131,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
     if (e.key === 'Escape') {
       e.preventDefault();
-      onClose();
+      closePalette();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex(prev => (prev + 1) % (filteredItems.length || 1));
@@ -132,7 +144,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         filteredItems[selectedIndex].action();
       }
     }
-  }, [isOpen, filteredItems, selectedIndex, onClose]);
+  }, [isOpen, filteredItems, selectedIndex, closePalette]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

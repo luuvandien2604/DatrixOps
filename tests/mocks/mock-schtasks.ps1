@@ -4,6 +4,8 @@ param(
     [string]$BatPath
 )
 
+# Test-only schtasks replacement used by installer CI.
+
 $StateFile = if ($env:DATRIXOPS_INSTALLER_ROOT) { "$env:DATRIXOPS_INSTALLER_ROOT\mock_schtasks_state" } else { "$env:TEMP\mock_schtasks_state" }
 
 if ($Command -eq "install") {

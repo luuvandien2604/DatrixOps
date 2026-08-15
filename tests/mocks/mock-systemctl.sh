@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Test-only systemctl replacement used by installer CI.
+
 # Parse command skipping options like --now, --quiet
 CMD=""
 for arg in "$@"; do

@@ -1,17 +1,17 @@
 Describe "DatrixOps Agent Updater" {
     Context "Argument Validation" {
         It "Throws when missing required parameters" {
-            { & "$PSScriptRoot/../update-agent.ps1" } | Should -Throw
+            { & "$PSScriptRoot/../../frontend/public/update-agent.ps1" } | Should -Throw
         }
 
         It "Throws when target version format is invalid" {
-            { & "$PSScriptRoot/../update-agent.ps1" -TargetVersion "invalid" -TargetArtifactBaseUrl "http://127.0.0.1:8080" } | Should -Throw
+            { & "$PSScriptRoot/../../frontend/public/update-agent.ps1" -TargetVersion "invalid" -TargetArtifactBaseUrl "http://127.0.0.1:8080" } | Should -Throw
         }
     }
 
     Context "Update and Rollback Behavior" {
         BeforeAll {
-            $script:updaterScript = "$PSScriptRoot/../update-agent.ps1"
+            $script:updaterScript = "$PSScriptRoot/../../frontend/public/update-agent.ps1"
             $script:root = if ($env:DATRIXOPS_INSTALLER_ROOT) { $env:DATRIXOPS_INSTALLER_ROOT } else { "$env:TEMP\datrixops_test" }
             $script:installDir = [System.IO.Path]::Combine($script:root, "Program Files", "DatrixOps")
             $script:binaryPath = "$script:installDir\datrixops-agent.exe"

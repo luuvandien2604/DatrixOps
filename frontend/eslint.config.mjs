@@ -7,15 +7,11 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      // The legacy API layer still returns untyped JSON. Keep these findings
-      // visible while migrating endpoints incrementally.
-      "@typescript-eslint/no-explicit-any": "warn",
-      "react/no-unescaped-entities": "warn",
-      // These compiler checks are enabled as warnings for the established
-      // polling effects in this client-heavy dashboard.
-      "react-hooks/immutability": "warn",
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/static-components": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
+      "react/no-unescaped-entities": "error",
+      "react-hooks/immutability": "error",
+      "react-hooks/set-state-in-effect": "error",
+      "react-hooks/static-components": "error",
     },
   },
   // Override default ignores of eslint-config-next.

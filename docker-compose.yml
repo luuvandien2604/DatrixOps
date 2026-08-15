@@ -1,3 +1,5 @@
+# Source-build compose file used by CI and local validation.
+# End-user installations use deploy/docker-compose.yml.
 name: datrixops
 
 x-logging: &default-logging

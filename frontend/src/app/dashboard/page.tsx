@@ -121,9 +121,10 @@ export default function OverviewDashboard() {
   }, [range, router]);
 
   useEffect(() => {
-    void fetchOverview(true);
+    const initialRequest = window.setTimeout(() => void fetchOverview(true), 0);
     const interval = window.setInterval(() => void fetchOverview(), POLL_INTERVAL_MS);
     return () => {
+      window.clearTimeout(initialRequest);
       window.clearInterval(interval);
       activeRequest.current?.abort();
       activeRequest.current = null;
@@ -383,14 +384,13 @@ function LoadBar({ value }: { value: number }) {
 }
 
 function Incident({ incident }: { incident: DashboardIncident }) {
-  const Icon = getIncidentIcon(incident.metric);
   const valueDescription = incident.metric === 'status'
     ? 'Heartbeat is over 60 seconds old'
     : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
 
   return (
     <div className="incident-row">
-      <span className="incident-icon critical"><Icon className="h-4 w-4" /></span>
+      <span className="incident-icon critical">{renderIncidentIcon(incident.metric)}</span>
       <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
       <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[var(--rose)]" />
     </div>
@@ -405,11 +405,11 @@ function DashboardMessage({ title, description, loading = false, action }: { tit
   return <div className="feature-preview"><section className="ops-panel"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
 }
 
-function getIncidentIcon(metric: string): LucideIcon {
-  if (metric === 'ram') return Database;
-  if (metric === 'cpu') return Cpu;
-  if (metric === 'status') return Wifi;
-  return CircleAlert;
+function renderIncidentIcon(metric: string): React.ReactNode {
+  if (metric === 'ram') return <Database className="h-4 w-4" />;
+  if (metric === 'cpu') return <Cpu className="h-4 w-4" />;
+  if (metric === 'status') return <Wifi className="h-4 w-4" />;
+  return <CircleAlert className="h-4 w-4" />;
 }
 
 function getFleetStatus(total: number, online: number, incidents: number): { label: string; tone: 'good' | 'warning' } {

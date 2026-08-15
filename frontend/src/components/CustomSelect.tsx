@@ -32,15 +32,10 @@ export default function CustomSelect({
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
-  const [mounted, setMounted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find(opt => opt.value === value);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const updatePosition = () => {
     if (containerRef.current) {
@@ -91,7 +86,7 @@ export default function CustomSelect({
     };
   }, [isOpen]);
 
-  const dropdownMenu = isOpen && mounted && typeof document !== 'undefined' ? (
+  const dropdownMenu = isOpen && typeof document !== 'undefined' ? (
     createPortal(
       <div
         ref={dropdownRef}

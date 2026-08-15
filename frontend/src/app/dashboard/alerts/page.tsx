@@ -98,24 +98,14 @@ export default function AlertsPage() {
   const [channelEmailTo, setChannelEmailTo] = useState('');
   const [channelUseTLS, setChannelUseTLS] = useState(false);
 
-  const [userRole, setUserRole] = useState<string>('user');
+  const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
-    setUserRole(getUserRole());
     apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
   }, []);
   const isViewer = userRole === 'viewer';
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
-      setLoading(false);
-    };
-    void loadData();
-  }, []);
-
   // fetchRules tải rule cùng danh sách channel đã liên kết từ backend.
-  const fetchRules = async () => {
+  async function fetchRules() {
     try {
       const data = await apiClient('/alerts/rules');
       setRules(Array.isArray(data) ? data : []);
@@ -123,10 +113,10 @@ export default function AlertsPage() {
       console.error(error);
       setErrorMessage(getApiErrorMessage(error, 'Unable to load alert rules.'));
     }
-  };
+  }
 
   // fetchChannels tải channel để hiển thị ở tab Channels và bộ chọn trong Rules.
-  const fetchChannels = async () => {
+  async function fetchChannels() {
     try {
       const data = await apiClient('/alerts/channels');
       setChannels(Array.isArray(data) ? data : []);
@@ -134,10 +124,10 @@ export default function AlertsPage() {
       console.error(error);
       setErrorMessage(getApiErrorMessage(error, 'Unable to load notification channels.'));
     }
-  };
+  }
 
   // fetchServers tải danh sách agent/server để người dùng giới hạn phạm vi của rule.
-  const fetchServers = async () => {
+  async function fetchServers() {
     try {
       const data = await apiClient('/servers');
       setServers(Array.isArray(data) ? data : []);
@@ -145,7 +135,15 @@ export default function AlertsPage() {
       console.error(error);
       setErrorMessage(getApiErrorMessage(error, 'Unable to load agents.'));
     }
-  };
+  }
+
+  useEffect(() => {
+    const loadData = async () => {
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
+      setLoading(false);
+    };
+    void loadData();
+  }, []);
 
   // toggleChannel thêm hoặc bỏ một channel khỏi rule đang tạo.
   const toggleChannel = (channelId: string) => {

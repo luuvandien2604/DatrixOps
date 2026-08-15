@@ -20,11 +20,7 @@ export default function APIKeyPage() {
   const [generatedKey, setGeneratedKey] = useState('');
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    fetchKeys();
-  }, []);
-
-  const fetchKeys = async () => {
+  async function fetchKeys() {
     try {
       setLoading(true);
       const data = await apiClient('/apikeys');
@@ -34,7 +30,12 @@ export default function APIKeyPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    const initialRequest = window.setTimeout(() => void fetchKeys(), 0);
+    return () => window.clearTimeout(initialRequest);
+  }, []);
 
   const createKey = async () => {
     if (!newKeyName.trim()) return;
@@ -43,7 +44,7 @@ export default function APIKeyPage() {
         data: { name: newKeyName }
       });
       setGeneratedKey(data.raw_key);
-      fetchKeys();
+      void fetchKeys();
     } catch (err) {
       console.error(err);
     }
@@ -53,7 +54,7 @@ export default function APIKeyPage() {
     if (!confirm('Are you sure you want to revoke this API Key?')) return;
     try {
       await apiClient(`/apikeys/${id}`, { method: 'DELETE' });
-      fetchKeys();
+      void fetchKeys();
     } catch (err) {
       console.error(err);
     }
@@ -144,7 +145,7 @@ export default function APIKeyPage() {
               <div className="space-y-4">
                 <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                   <p className="text-sm text-amber-400 font-medium mb-1">Make sure to copy your API key now.</p>
-                  <p className="text-xs text-amber-500/80">You won't be able to see it again!</p>
+                  <p className="text-xs text-amber-500/80">You won&apos;t be able to see it again!</p>
                 </div>
                 
                 <div className="flex items-center gap-2 p-3 bg-black/20 rounded-lg border border-white/5">

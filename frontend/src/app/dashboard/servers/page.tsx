@@ -1,24 +1,88 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
-  UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search, Filter,
+  UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search,
   LayoutGrid, LayoutList, ToggleLeft, ToggleRight, CheckSquare, Square, ShieldCheck, Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+type AgentUpdateTask = { id: string; status: string; result?: string };
+type ServerSnapshot = {
+  system_info?: { public_ip?: string };
+  inventory?: { agent_version?: string };
+};
+type ServerOSInfo = {
+  version?: string;
+  cpu_usage?: number;
+  cpu_cores?: number;
+  memory_used?: number;
+  memory_total?: number;
+  disk_total?: number;
+  disk_usage?: number;
+  os_name?: string;
+  remote_uninstall_supported?: boolean;
+  snapshot?: ServerSnapshot;
+};
+type ServerRecord = {
+  id: string;
+  name: string;
+  status: string;
+  ip_address?: string;
+  group_name?: string;
+  tags?: string[];
+  provider?: string;
+  region?: string;
+  environment?: string;
+  os_info?: string | ServerOSInfo;
+  snapshot?: string | ServerSnapshot;
+  version?: string;
+  update_available?: boolean;
+  latest_agent_version?: string;
+  auto_update_agent?: boolean;
+  deletion_status?: string;
+  active_agent_update_task?: AgentUpdateTask;
+};
+type SystemInfo = {
+  agent_version?: string;
+  agent_artifact_base_url?: string;
+  agent_release_layout?: string;
+  update_check?: { latest_version?: string };
+};
+type StatusFilter = 'all' | 'online' | 'offline' | 'critical' | 'update_available';
+
+const STATUS_FILTERS: Array<{ id: StatusFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'online', label: 'Online' },
+  { id: 'offline', label: 'Offline' },
+  { id: 'critical', label: 'Critical' },
+  { id: 'update_available', label: 'Update Available' },
+];
+
+const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
+
+function parseJSON<T>(value: string | T | undefined): T | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function ServersPage() {
-  const [servers, setServers] = useState<any[]>([]);
+  const [servers, setServers] = useState<ServerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   // Search & Filter & View state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'critical' | 'update_available'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // Bulk Selection state
@@ -48,7 +112,7 @@ export default function ServersPage() {
   const [isDeletingServer, setIsDeletingServer] = useState(false);
 
   // Edit Meta
-  const [editMetaServer, setEditMetaServer] = useState<any>(null);
+  const [editMetaServer, setEditMetaServer] = useState<ServerRecord | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
   const [editTags, setEditTags] = useState('');
   const [editProvider, setEditProvider] = useState('');
@@ -60,22 +124,21 @@ export default function ServersPage() {
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
-  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, { id: string; status: string; result?: string }>>({});
+  const [agentUpdateTasks, setAgentUpdateTasks] = useState<Record<string, AgentUpdateTask>>({});
   const [updatingAutoUpdatePolicyId, setUpdatingAutoUpdatePolicyId] = useState<string | null>(null);
 
   // Role permissions
-  const [userRole, setUserRole] = useState<string>('user');
+  const [userRole, setUserRole] = useState<string>(() => getUserRole());
   const [checkingUpdateServerId, setCheckingUpdateServerId] = useState<string | null>(null);
-  const [systemData, setSystemData] = useState<any>(null);
+  const [systemData, setSystemData] = useState<SystemInfo | null>(null);
 
-  const handleCheckUpdateForServer = async (server: any) => {
+  const handleCheckUpdateForServer = async (server: ServerRecord) => {
     try {
       setCheckingUpdateServerId(server.id);
-      const systemData = await apiClient('/system/info');
+      const currentSystem: SystemInfo = await apiClient('/system/info');
       await fetchServers(true);
-      const latestVer = systemData?.update_check?.latest_version || systemData?.agent_version || '';
-      let osInfo = null;
-      try { if (server.os_info) osInfo = typeof server.os_info === 'string' ? JSON.parse(server.os_info) : server.os_info; } catch(e) {}
+      const latestVer = currentSystem.update_check?.latest_version || currentSystem.agent_version || '';
+      const osInfo = parseJSON<ServerOSInfo>(server.os_info);
       const runningVer = osInfo?.version || server?.version || '1.5.9';
 
       if (latestVer && runningVer && latestVer !== runningVer && Boolean(server.update_available)) {
@@ -83,7 +146,7 @@ export default function ServersPage() {
       } else {
         toast.success(`Server "${server.name}" is running the latest Agent release (v${runningVer})`);
       }
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to check for updates');
     } finally {
       setCheckingUpdateServerId(null);
@@ -91,7 +154,6 @@ export default function ServersPage() {
   };
 
   useEffect(() => {
-    setUserRole(getUserRole());
     apiClient('/auth/me')
       .then((u) => {
         if (u?.role) setUserRole(u.role);
@@ -103,7 +165,6 @@ export default function ServersPage() {
   }, []);
 
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
-  const isOperator = userRole === 'operator';
   const isViewer = userRole === 'viewer';
 
   const router = useRouter();
@@ -111,7 +172,7 @@ export default function ServersPage() {
   const fetchServers = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      const data = await apiClient('/servers');
+      const data: ServerRecord[] = await apiClient('/servers');
       setServers(Array.isArray(data) ? data : []);
       setLastRefreshedAt(new Date());
       setAgentUpdateTasks(current => {
@@ -125,8 +186,9 @@ export default function ServersPage() {
         }
         return next;
       });
-    } catch (err: any) {
-      if (err.message.includes('token') || err.message.includes('UNAUTHORIZED')) {
+    } catch (err: unknown) {
+      const message = errorMessage(err, 'Unable to load servers');
+      if (message.includes('token') || message.includes('UNAUTHORIZED')) {
         router.push('/login');
       }
     } finally {
@@ -148,15 +210,15 @@ export default function ServersPage() {
       const nextTasks = { ...agentUpdateTasks };
       await Promise.all(activeEntries.map(async ([serverId, task]) => {
         try {
-          const updatedTask = await apiClient(`/servers/${serverId}/tasks/${task.id}`);
+          const updatedTask: AgentUpdateTask = await apiClient(`/servers/${serverId}/tasks/${task.id}`);
           nextTasks[serverId] = updatedTask;
           if (updatedTask.status === 'completed') {
             toast.success('Agent update completed and confirmed');
           } else if (['failed', 'expired', 'timed_out'].includes(updatedTask.status)) {
             toast.error(updatedTask.result || `Agent update ${updatedTask.status}`);
           }
-        } catch (error: any) {
-          toast.error(error.message || 'Unable to refresh agent update status');
+        } catch (error: unknown) {
+          toast.error(errorMessage(error, 'Unable to refresh agent update status'));
         }
       }));
       setAgentUpdateTasks(nextTasks);
@@ -182,8 +244,8 @@ export default function ServersPage() {
       });
       setServers(prev => prev.map(s => s.id === serverId ? { ...s, auto_update_agent: newStatus } : s));
       toast.success(`Auto-update ${newStatus ? 'enabled' : 'disabled'} for server`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update auto-update policy');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Failed to update auto-update policy'));
     } finally {
       setUpdatingAutoUpdatePolicyId(null);
     }
@@ -218,8 +280,8 @@ export default function ServersPage() {
       } else {
         toast.error('Failed to update auto-update policy. Check your permissions.');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Bulk auto-update policy error');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Bulk auto-update policy error'));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -238,7 +300,7 @@ export default function ServersPage() {
       await Promise.all(
         selectedServerIds.map(async (id) => {
           try {
-            const task = await apiClient(`/servers/${id}/tasks`, {
+            const task: AgentUpdateTask = await apiClient(`/servers/${id}/tasks`, {
               method: 'POST',
               data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
             });
@@ -255,8 +317,8 @@ export default function ServersPage() {
       } else {
         toast.error('Failed to queue agent updates. Check your permissions.');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Bulk agent update error');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Bulk agent update error'));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -264,8 +326,7 @@ export default function ServersPage() {
 
   // Filtered servers logic
   const filteredServers = servers.filter(server => {
-    let osInfo = null;
-    try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
+    const osInfo = parseJSON<ServerOSInfo>(server.os_info);
     const ip = server.ip_address || osInfo?.snapshot?.system_info?.public_ip || '';
     const nameMatch = server.name.toLowerCase().includes(searchQuery.toLowerCase());
     const ipMatch = ip.toLowerCase().includes(searchQuery.toLowerCase());
@@ -276,7 +337,7 @@ export default function ServersPage() {
 
     if (statusFilter === 'online') return server.status === 'online';
     if (statusFilter === 'offline') return server.status !== 'online';
-    if (statusFilter === 'critical') return server.status === 'online' && osInfo?.cpu_usage > 90;
+    if (statusFilter === 'critical') return server.status === 'online' && Number(osInfo?.cpu_usage || 0) > 90;
     if (statusFilter === 'update_available') return Boolean(server.update_available);
 
     return true;
@@ -329,15 +390,16 @@ export default function ServersPage() {
       setServerToDelete(null);
       setConfirmDeleteText('');
       await fetchServers(true);
-    } catch (err: any) {
-      toast.error(err.message || 'Unable to delete server');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Unable to delete server'));
     } finally {
       setIsDeletingServer(false);
     }
   };
 
   useEffect(() => {
-    setInstallCommandCopied(false);
+    const resetCopiedState = window.setTimeout(() => setInstallCommandCopied(false), 0);
+    return () => window.clearTimeout(resetCopiedState);
   }, [selectedOs, customServices, generatedAgentToken]);
 
   const getInstallCommand = () => {
@@ -401,8 +463,8 @@ export default function ServersPage() {
         setIsAddServerModalOpen(true);
         toast.success('Generated self-monitoring token! Run the command on your VPS.');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to generate self-monitoring token');
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Failed to generate self-monitoring token'));
     } finally {
       setLoading(false);
     }
@@ -480,16 +542,10 @@ export default function ServersPage() {
 
           {/* Status Filter Pills */}
           <div className="server-filter-tabs w-full overflow-x-auto sm:w-auto">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'online', label: 'Online' },
-              { id: 'offline', label: 'Offline' },
-              { id: 'critical', label: 'Critical' },
-              { id: 'update_available', label: 'Update Available' },
-            ].map(tab => (
+            {STATUS_FILTERS.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setStatusFilter(tab.id as any)}
+                onClick={() => setStatusFilter(tab.id)}
                 className={`server-filter-tab ${statusFilter === tab.id ? 'is-active' : ''}`}
               >
                 {tab.label}
@@ -612,14 +668,8 @@ export default function ServersPage() {
                   </tr>
                 ) : (
                   filteredServers.map((server) => {
-                    let osInfo = null;
-                    let serverSnapshot = null;
-                    try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
-                    try {
-                      if (server.snapshot) {
-                        serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
-                      }
-                    } catch (e) { }
+                    const osInfo = parseJSON<ServerOSInfo>(server.os_info);
+                    const serverSnapshot = parseJSON<ServerSnapshot>(server.snapshot);
 
                     const updateAvailable = Boolean(server.update_available);
                     const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
@@ -628,7 +678,6 @@ export default function ServersPage() {
                     const updateTask = agentUpdateTasks[server.id] || server.active_agent_update_task;
                     const updateInProgress = Boolean(updateTask && ['pending', 'processing'].includes(updateTask.status));
                     const updateStalled = Boolean(updateTask?.status === 'completed' && updateAvailable);
-                    const updateConfirmed = Boolean(updateTask && !updateAvailable);
                     const updateFailed = Boolean(updateTask && (['failed', 'expired', 'timed_out'].includes(updateTask.status) || updateStalled) && updateAvailable);
                     const isCheckingUpdate = checkingUpdateServerId === server.id;
                     const UpdateIcon = updateInProgress || isCheckingUpdate
@@ -660,15 +709,17 @@ export default function ServersPage() {
                           : 'Update available';
                     const UpdateBadgeIcon = updateInProgress ? LoaderCircle : updateFailed ? CircleX : UploadCloud;
                     const liveInfo = isOffline ? null : osInfo;
-                    const isCritical = liveInfo && liveInfo.cpu_usage > 90;
+                    const isCritical = Boolean(liveInfo && Number(liveInfo.cpu_usage || 0) > 90);
                     const isSelected = selectedServerIds.includes(server.id);
 
                     // Compute pure numerical text for CPU, RAM, Disk
-                    const cpuText = liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—';
-                    const ramPct = liveInfo ? ((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1) : null;
+                    const cpuText = liveInfo ? `${Number(liveInfo.cpu_usage || 0).toFixed(1)}%` : '—';
+                    const ramPct = liveInfo && Number(liveInfo.memory_total || 0) > 0
+                      ? ((Number(liveInfo.memory_used || 0) / Number(liveInfo.memory_total)) * 100).toFixed(1)
+                      : null;
                     const ramText = ramPct ? `${ramPct}%` : '—';
 
-                    const diskPct = liveInfo && liveInfo.disk_total > 0 ? Number(liveInfo.disk_usage || 0).toFixed(1) : null;
+                    const diskPct = liveInfo && Number(liveInfo.disk_total || 0) > 0 ? Number(liveInfo.disk_usage || 0).toFixed(1) : null;
                     const diskText = diskPct !== null ? `${diskPct}%` : '—';
 
                     return (
@@ -883,7 +934,7 @@ export default function ServersPage() {
                                   uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
                                 });
                               }}
-                              disabled={!isAdmin || ['pending', 'uninstalling'].includes(server.deletion_status)}
+                              disabled={!isAdmin || ['pending', 'uninstalling'].includes(server.deletion_status ?? '')}
                               className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={!isAdmin ? 'Deleting servers requires Admin role' : 'Delete'}
                             >
@@ -917,14 +968,8 @@ export default function ServersPage() {
             </div>
           ) : (
             filteredServers.map((server) => {
-              let osInfo = null;
-              let serverSnapshot = null;
-              try { if (server.os_info) osInfo = JSON.parse(server.os_info); } catch (e) { }
-              try {
-                if (server.snapshot) {
-                  serverSnapshot = typeof server.snapshot === 'string' ? JSON.parse(server.snapshot) : server.snapshot;
-                }
-              } catch (e) { }
+              const osInfo = parseJSON<ServerOSInfo>(server.os_info);
+              const serverSnapshot = parseJSON<ServerSnapshot>(server.snapshot);
 
               const updateAvailable = Boolean(server.update_available);
               const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
@@ -943,7 +988,7 @@ export default function ServersPage() {
                     : CircleCheck;
 
               const liveInfo = isOffline ? null : osInfo;
-              const isCritical = liveInfo && liveInfo.cpu_usage > 90;
+              const isCritical = Boolean(liveInfo && Number(liveInfo.cpu_usage || 0) > 90);
               const isSelected = selectedServerIds.includes(server.id);
               const runningAgentVersion = osInfo?.version || serverSnapshot?.inventory?.agent_version || 'Unknown';
               const updateTitle = isViewer
@@ -1017,20 +1062,20 @@ export default function ServersPage() {
                     <div className="grid grid-cols-3 gap-2 bg-white/[0.02] p-3 rounded-lg border border-white/5 my-3 text-center font-mono">
                       <div>
                         <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">CPU</div>
-                        <div className={`text-sm font-semibold ${liveInfo && liveInfo.cpu_usage > 90 ? 'text-rose-400 font-bold' : 'text-[var(--foreground)]'}`}>
-                          {liveInfo ? `${liveInfo.cpu_usage.toFixed(1)}%` : '—'}
+                        <div className={`text-sm font-semibold ${liveInfo && Number(liveInfo.cpu_usage || 0) > 90 ? 'text-rose-400 font-bold' : 'text-[var(--foreground)]'}`}>
+                          {liveInfo ? `${Number(liveInfo.cpu_usage || 0).toFixed(1)}%` : '—'}
                         </div>
                       </div>
                       <div>
                         <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">RAM</div>
                         <div className="text-sm font-semibold text-[var(--foreground)]">
-                          {liveInfo ? `${((liveInfo.memory_used / liveInfo.memory_total) * 100).toFixed(1)}%` : '—'}
+                          {liveInfo && Number(liveInfo.memory_total || 0) > 0 ? `${((Number(liveInfo.memory_used || 0) / Number(liveInfo.memory_total)) * 100).toFixed(1)}%` : '—'}
                         </div>
                       </div>
                       <div>
                         <div className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider mb-1">DISK</div>
                         <div className="text-sm font-semibold text-[var(--foreground)]">
-                          {liveInfo && liveInfo.disk_total > 0 ? `${Number(liveInfo.disk_usage || 0).toFixed(1)}%` : '—'}
+                          {liveInfo && Number(liveInfo.disk_total || 0) > 0 ? `${Number(liveInfo.disk_usage || 0).toFixed(1)}%` : '—'}
                         </div>
                       </div>
                     </div>
@@ -1122,7 +1167,7 @@ export default function ServersPage() {
                             uninstallSupported: Boolean(osInfo?.remote_uninstall_supported),
                           });
                         }}
-                        disabled={['pending', 'uninstalling'].includes(server.deletion_status)}
+                        disabled={['pending', 'uninstalling'].includes(server.deletion_status ?? '')}
                         className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded border border-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors disabled:opacity-50"
                         title="Delete Server"
                       >
@@ -1177,8 +1222,8 @@ export default function ServersPage() {
                           const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
                           setGeneratedAgentToken(res.enrollment_token || res.agent_token);
                           toast.success('Installation command created successfully!');
-                        } catch (err: any) {
-                          toast.error(err.message || 'Unable to create installation token');
+                        } catch (err: unknown) {
+                          toast.error(errorMessage(err, 'Unable to create installation token'));
                         }
                       }}
                       disabled={!newServerName.trim()}
@@ -1269,7 +1314,7 @@ export default function ServersPage() {
               </p>
               <div className="mb-6">
                 <label htmlFor="restart-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
-                  Type "{serverToRestart.name}" to confirm
+                  Type &quot;{serverToRestart.name}&quot; to confirm
                 </label>
                 <input
                   id="restart-server-confirmation"
@@ -1296,8 +1341,8 @@ export default function ServersPage() {
                       toast.success(`Restart command sent to ${serverToRestart.name}`);
                       setServerToRestart(null);
                       setConfirmRestartText('');
-                    } catch (err: any) {
-                      toast.error(err.message || 'Unable to send restart command');
+                    } catch (err: unknown) {
+                      toast.error(errorMessage(err, 'Unable to send restart command'));
                     }
                   }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
@@ -1323,7 +1368,7 @@ export default function ServersPage() {
               </p>
               <div className="mb-6">
                 <label htmlFor="delete-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
-                  Type "{serverToDelete.name}" to confirm
+                  Type &quot;{serverToDelete.name}&quot; to confirm
                 </label>
                 <input
                   id="delete-server-confirmation"
@@ -1400,8 +1445,8 @@ export default function ServersPage() {
                       fetchServers();
                       toast.success('Server information updated!');
                       setEditMetaServer(null);
-                    } catch (err: any) {
-                      toast.error(err.message || 'Unable to update server information');
+                    } catch (err: unknown) {
+                      toast.error(errorMessage(err, 'Unable to update server information'));
                     }
                   }}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors"
@@ -1435,15 +1480,15 @@ export default function ServersPage() {
                   onClick={async () => {
                     setIsUpdatingAgent(true);
                     try {
-                      const task = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
+                      const task: AgentUpdateTask = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
                         method: 'POST',
                         data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
                       });
                       setAgentUpdateTasks(current => ({ ...current, [serverToUpdate.id]: task }));
                       toast.success(`Update queued for ${serverToUpdate.name}`);
                       setServerToUpdate(null);
-                    } catch (err: any) {
-                      toast.error(err.message || 'Error updating agent');
+                    } catch (err: unknown) {
+                      toast.error(errorMessage(err, 'Error updating agent'));
                     } finally {
                       setIsUpdatingAgent(false);
                     }
@@ -1482,8 +1527,8 @@ export default function ServersPage() {
                       const result = await apiClient('/servers/actions/update-agents', { method: 'POST', data: {} });
                       toast.success(`${result.queued} agent update${result.queued === 1 ? '' : 's'} queued; ${result.skipped} skipped.`);
                       setIsUpdateAllOpen(false);
-                    } catch (err: any) {
-                      toast.error(err.message || 'Unable to queue all agent updates');
+                    } catch (err: unknown) {
+                      toast.error(errorMessage(err, 'Unable to queue all agent updates'));
                     } finally {
                       setIsUpdatingAll(false);
                     }

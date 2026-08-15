@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/apiClient';
-import { Clock, Shield, Database, Activity, Server, AlertTriangle } from 'lucide-react';
+import { Clock, Shield, Activity, Server, AlertTriangle } from 'lucide-react';
 
 interface AuditLog {
   id: string;
@@ -10,7 +10,7 @@ interface AuditLog {
   action: string;
   resource_type: string;
   resource_id: string;
-  details: any;
+  details: unknown;
   created_at: string;
 }
 
@@ -18,11 +18,7 @@ export default function AuditLogPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
-  const fetchLogs = async () => {
+  async function fetchLogs() {
     try {
       setLoading(true);
       const data = await apiClient('/audit-logs');
@@ -32,7 +28,12 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    const initialRequest = window.setTimeout(() => void fetchLogs(), 0);
+    return () => window.clearTimeout(initialRequest);
+  }, []);
 
   const getActionIcon = (type: string) => {
     switch(type) {

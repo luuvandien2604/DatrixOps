@@ -33,7 +33,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { locale, contentSlug, prefix } = localizedParams(slug);
   const doc = getDocBySlug(contentSlug, locale);
   if (!doc) return { title: locale === 'en' ? 'Documentation not found | DatrixOps' : 'Không tìm thấy tài liệu | DatrixOps' };
-  const alternatePrefix = locale === 'vi' ? '/docs/vi' : '/docs';
   return {
     title: `${doc.title} | DatrixOps Docs`,
     description: doc.description,

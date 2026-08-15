@@ -4,6 +4,8 @@ import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import hashlib
 
+# Test-only HTTP fixture used by cross-platform installer CI.
+
 class MockHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.endswith('/agent-release.version'):
