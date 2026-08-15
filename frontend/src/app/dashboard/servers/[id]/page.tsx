@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
@@ -384,7 +385,7 @@ export default function ServerDetailsPage() {
 
   const copyUpdateCommand = async (command: string) => {
     try {
-      await navigator.clipboard.writeText(command);
+      await copyTextToClipboard(command);
       setCopiedUpdateCommand(true);
       window.setTimeout(() => setCopiedUpdateCommand(false), 2000);
       toast.success('Token-free update command copied');
@@ -409,7 +410,7 @@ export default function ServerDetailsPage() {
       return;
     }
     try {
-      await navigator.clipboard.writeText(command);
+      await copyTextToClipboard(command);
       setCopiedCronCommandId(job.id);
       window.setTimeout(() => setCopiedCronCommandId(current => current === job.id ? null : current), 2000);
       toast.success('Cron telemetry wrapper copied');

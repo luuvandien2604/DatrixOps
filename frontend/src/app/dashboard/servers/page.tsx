@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, getUserRole } from '@/lib/apiClient';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import {
   Server, RefreshCw, TerminalSquare, FileText, Play, Trash2, XCircle, AlertTriangle,
   UploadCloud, LoaderCircle, CircleCheck, CircleX, Copy, Check, Search, Filter,
@@ -367,7 +368,7 @@ export default function ServersPage() {
   const copyInstallCommand = async () => {
     const command = getInstallCommand();
     try {
-      await navigator.clipboard.writeText(command);
+      await copyTextToClipboard(command);
       setInstallCommandCopied(true);
       toast.success('Install command copied to clipboard');
       window.setTimeout(() => setInstallCommandCopied(false), 2500);

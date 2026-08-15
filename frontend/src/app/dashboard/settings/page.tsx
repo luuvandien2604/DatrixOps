@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/apiClient';
 import { dataOwnershipLabel, deploymentLabel, DatrixOpsEdition, DeploymentMode } from '@/lib/edition';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { Activity, Check, Copy, Database, ExternalLink, Play, Plus, RotateCcw, ServerCog, Settings2, ShieldCheck, Trash2, Webhook } from 'lucide-react';
 
 interface DeploymentInfo {
@@ -191,14 +192,14 @@ export default function SettingsPage() {
 
   const copySecret = async (webhook: WebhookEndpoint) => {
     if (!webhook.signing_secret) return;
-    await navigator.clipboard.writeText(webhook.signing_secret);
+    await copyTextToClipboard(webhook.signing_secret);
     setCopiedSecretId(webhook.id);
     window.setTimeout(() => setCopiedSecretId((current) => current === webhook.id ? null : current), 2000);
   };
 
   const copyPublicURL = async () => {
     if (!deploymentInfo?.public_url) return;
-    await navigator.clipboard.writeText(deploymentInfo.public_url);
+    await copyTextToClipboard(deploymentInfo.public_url);
     setCopiedPublicURL(true);
     window.setTimeout(() => setCopiedPublicURL(false), 2000);
   };

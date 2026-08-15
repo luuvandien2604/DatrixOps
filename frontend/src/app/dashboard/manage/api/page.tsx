@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/apiClient';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { Key, Plus, Trash2, Copy, Check } from 'lucide-react';
 
 interface APIKey {
@@ -58,10 +59,14 @@ export default function APIKeyPage() {
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(generatedKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async () => {
+    try {
+      await copyTextToClipboard(generatedKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Unable to copy API key', error);
+    }
   };
 
   const closeModal = () => {

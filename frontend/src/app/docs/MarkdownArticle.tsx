@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Check, Clipboard } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { copyTextToClipboard } from '@/lib/clipboard';
 
 function slugifyHeading(value: string) {
   return value.toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -22,7 +23,7 @@ function CodeBlock({ children, english }: { children: ReactNode; english: boolea
   const [copied, setCopied] = useState(false);
   const code = textFromChildren(children).replace(/\n$/, '');
   const copy = async () => {
-    await navigator.clipboard.writeText(code);
+    await copyTextToClipboard(code);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };

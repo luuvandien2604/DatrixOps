@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '@/lib/apiClient';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import CustomSelect from '@/components/CustomSelect';
 import {
   Check,
@@ -234,7 +235,7 @@ export default function LogsPage() {
   const copyAllLogs = async () => {
     const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
     try {
-      await navigator.clipboard.writeText(text);
+      await copyTextToClipboard(text);
       setCopied(true);
       toast.success('Logs copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
