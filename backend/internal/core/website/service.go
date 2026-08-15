@@ -3,6 +3,9 @@ package website
 import (
 	"context"
 	"errors"
+	"strings"
+
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
 
 type Service interface {
@@ -20,8 +23,16 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) CreateWebsite(ctx context.Context, userID string, req CreateWebsiteRequest) (*Website, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	req.URL = strings.TrimSpace(req.URL)
 	if req.Name == "" || req.URL == "" {
 		return nil, errors.New("name and url are required")
+	}
+	if len(req.Name) > 120 {
+		return nil, errors.New("name must not exceed 120 characters")
+	}
+	if err := notifier.ValidatePublicWebsiteURL(req.URL); err != nil {
+		return nil, err
 	}
 
 	w := &Website{

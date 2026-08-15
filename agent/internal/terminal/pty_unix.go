@@ -20,8 +20,8 @@ func startPTY(command *exec.Cmd, cols, rows int) (terminalPTY, error) {
 	file, err := pty.StartWithSize(
 		command,
 		&pty.Winsize{
-			Rows: uint16(rows),
-			Cols: uint16(cols),
+			Rows: ptyDimension(rows),
+			Cols: ptyDimension(cols),
 		},
 	)
 	if err != nil {
@@ -42,10 +42,20 @@ func (p *unixPTY) Resize(cols, rows int) error {
 	return pty.Setsize(
 		p.file,
 		&pty.Winsize{
-			Rows: uint16(rows),
-			Cols: uint16(cols),
+			Rows: ptyDimension(rows),
+			Cols: ptyDimension(cols),
 		},
 	)
+}
+
+func ptyDimension(value int) uint16 {
+	if value < 1 {
+		return 1
+	}
+	if value > int(^uint16(0)) {
+		return ^uint16(0)
+	}
+	return uint16(value) // #nosec G115 -- value is explicitly bounded to uint16 above.
 }
 
 func (p *unixPTY) Close() error {

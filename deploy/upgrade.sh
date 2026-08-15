@@ -80,7 +80,14 @@ find_environment() {
 }
 find_environment
 
-RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://github.com/luuvandien2604/DatrixOps/archive/refs/heads/main.tar.gz}"
+remote_release_ver="$(curl -fsSL --max-time 15 \
+    https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/version.json \
+    2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 | tr -d ' "\r\n')"
+if [[ ! "$remote_release_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    log_error "Unable to resolve a valid published CE Server version. Update aborted."
+    exit 1
+fi
+RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v${remote_release_ver}}"
 
 if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
     local_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
@@ -120,7 +127,7 @@ if [[ "${1:-}" == "--setup-cron" || "${1:-}" == "--enable-auto-update" ]]; then
     cat <<'EOF' > "$CRON_FILE"
 # DatrixOps Automated Server & Agent Upgrade Task
 # Runs daily at 03:00 AM system time
-0 3 * * * root curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/upgrade.sh | bash > /var/log/datrixops-auto-upgrade.log 2>&1
+0 3 * * * root /usr/local/bin/datrix update > /var/log/datrixops-auto-upgrade.log 2>&1
 EOF
     chmod 0644 "$CRON_FILE"
     log_success "Automated daily update cronjob created at ${CRON_FILE}"
@@ -147,6 +154,19 @@ fi
     exit 1
 }
 
+installed_release_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" | tail -n 1 | tr -d ' "\r\n')"
+if [[ "$installed_release_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [[ "$remote_release_ver" == "$installed_release_ver" && "${DATRIXOPS_FORCE_UPDATE:-0}" != "1" ]]; then
+        log_success "DatrixOps CE Server v${installed_release_ver} is already up to date."
+        exit 0
+    fi
+    lowest_version="$(printf '%s\n%s\n' "$installed_release_ver" "$remote_release_ver" | sort -V | head -n 1)"
+    if [[ "$lowest_version" == "$remote_release_ver" && "$remote_release_ver" != "$installed_release_ver" && "${DATRIXOPS_ALLOW_DOWNGRADE:-0}" != "1" ]]; then
+        log_error "Refusing to downgrade CE Server from v${installed_release_ver} to v${remote_release_ver}."
+        exit 1
+    fi
+fi
+
 log_step "Step 1/4: Creating automated pre-upgrade backup"
 if [[ -x "${SCRIPT_DIR}/backup.sh" ]]; then
     BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh" < /dev/null)"
@@ -155,23 +175,16 @@ fi
 
 log_step "Step 2/4: Updating DatrixOps codebase"
 
-use_git=false
-if command -v git >/dev/null 2>&1 && [[ -d "${PROJECT_ROOT}/.git" ]]; then
-    log_info "Attempting update via Git repository..."
-    if git -C "$PROJECT_ROOT" pull --ff-only < /dev/null 2>/dev/null; then
-        use_git=true
-        log_success "Updated codebase via Git."
-    else
-        log_warn "Git pull failed or SSH key not configured. Falling back to direct HTTPS release tarball download..."
-    fi
-fi
+log_info "Downloading published CE Server v${remote_release_ver} package from ${RELEASE_TARBALL_URL}..."
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$TMP_DIR"' EXIT
 
-if [[ "$use_git" == "false" ]]; then
-    log_info "Downloading latest release package from ${RELEASE_TARBALL_URL}..."
-    TMP_DIR="$(mktemp -d)"
-    trap 'rm -rf -- "$TMP_DIR"' EXIT
-
-    if curl -fsSL "$RELEASE_TARBALL_URL" -o "${TMP_DIR}/release.tar.gz" < /dev/null; then
+if curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 600 \
+    "$RELEASE_TARBALL_URL" -o "${TMP_DIR}/release.tar.gz" < /dev/null; then
+	if [[ ! -s "${TMP_DIR}/release.tar.gz" ]] || ! tar -tzf "${TMP_DIR}/release.tar.gz" >/dev/null 2>&1; then
+		log_error "Downloaded CE Server release package is empty or invalid."
+		exit 1
+	fi
         log_info "Extracting release files..."
         tar -xzf "${TMP_DIR}/release.tar.gz" -C "$TMP_DIR"
         
@@ -188,13 +201,19 @@ if [[ "$use_git" == "false" ]]; then
             log_error "Failed to locate extracted files from release tarball."
             exit 1
         fi
-    else
-        log_warn "Could not download raw source tarball (repository is Private)."
-        log_info "Proceeding with pre-built container update from GitHub Container Registry (GHCR)..."
-    fi
+else
+	log_error "Could not download published CE Server v${remote_release_ver}. Existing installation was not changed."
+	exit 1
 fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
+
+# Older installations predate the one-time setup token. Generate it before
+# recreating the backend so the setup endpoint is never left unauthenticated.
+if [[ -z "$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)" ]]; then
+    set_env_value "$ENV_FILE" "SETUP_TOKEN" "$(openssl rand -hex 32)"
+    chmod 0600 "$ENV_FILE"
+fi
 
 target_app_ver="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     "${PROJECT_ROOT}/deploy/version.json" \
@@ -300,20 +319,8 @@ if [[ "$healthy" == "true" ]]; then
             fi
         done
 
-        if [[ -z "$agent_binary" ]]; then
-            log_info "Downloading Agent binary for self-host monitoring..."
-            local tmp_bin="/tmp/datrixops-agent-download"
-            if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-                agent_binary="$tmp_bin"
-            elif curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-                agent_binary="$tmp_bin"
-            elif curl -fsSL "https://github.com/luuvandien2604/datrixops-agent/releases/latest/download/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-                agent_binary="$tmp_bin"
-            fi
-        fi
-
         if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-            log_warn "DatrixOps Agent binary could not be found or downloaded for self-monitoring."
+			log_warn "A cryptographically verified Agent binary was not found; self-monitoring installation was skipped."
             return 0
         fi
 

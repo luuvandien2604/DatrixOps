@@ -64,8 +64,11 @@ type LoginRequest struct {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
@@ -74,7 +77,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if identifier == "" {
 		identifier = strings.TrimSpace(req.Email)
 	}
-	if identifier == "" || req.Password == "" {
+	if identifier == "" || len(identifier) > 320 || req.Password == "" || len(req.Password) > 128 {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Username and password are required")
 		return
 	}
@@ -97,13 +100,16 @@ type RefreshRequest struct {
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
 
-	if req.RefreshToken == "" {
+	if req.RefreshToken == "" || len(req.RefreshToken) > 256 {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Refresh token is required")
 		return
 	}
@@ -126,13 +132,16 @@ type LogoutRequest struct {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req LogoutRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 		return
 	}
 
-	if req.RefreshToken != "" {
+	if req.RefreshToken != "" && len(req.RefreshToken) <= 256 {
 		_ = h.svc.Logout(r.Context(), req.RefreshToken)
 	}
 

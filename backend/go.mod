@@ -2,7 +2,7 @@ module github.com/luuvandien2604/DatrixOps/backend
 
 go 1.25.0
 
-require github.com/jackc/pgx/v5 v5.7.4
+require github.com/jackc/pgx/v5 v5.9.2
 
 require github.com/gorilla/websocket v1.5.3
 

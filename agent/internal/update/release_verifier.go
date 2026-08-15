@@ -82,7 +82,7 @@ func VerifyReleaseDirectory(releaseDir, expectedVersion string, publicKey ed2551
 	}
 
 	versionFilePath := filepath.Join(releaseDir, "agent-release.version")
-	versionFileBytes, err := os.ReadFile(versionFilePath)
+	versionFileBytes, err := readRegularFile(versionFilePath, 256)
 	if err != nil {
 		return nil, fmt.Errorf("read agent-release.version: %w", err)
 	}
@@ -212,7 +212,12 @@ func verifySidecars(filename string, content []byte) error {
 }
 
 func readRegularFile(filename string, maxSize int64) ([]byte, error) {
-	info, err := os.Lstat(filename)
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -222,5 +227,12 @@ func readRegularFile(filename string, maxSize int64) ([]byte, error) {
 	if info.Size() <= 0 || info.Size() > maxSize {
 		return nil, fmt.Errorf("invalid file size %d for %s", info.Size(), filename)
 	}
-	return os.ReadFile(filename)
+	content, err := io.ReadAll(io.LimitReader(file, maxSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) > maxSize {
+		return nil, fmt.Errorf("file exceeds maximum size %d: %s", maxSize, filename)
+	}
+	return content, nil
 }

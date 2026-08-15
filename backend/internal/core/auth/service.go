@@ -20,14 +20,19 @@ var (
 )
 
 type Service struct {
-	repo      *Repository
-	jwtSecret []byte
+	repo              *Repository
+	jwtSecret         []byte
+	dummyPasswordHash []byte
 }
 
 func NewService(repo *Repository, jwtSecret string) *Service {
+	// A startup-only dummy hash keeps unknown-user and wrong-password paths
+	// approximately equivalent, reducing username discovery via timing.
+	dummyHash, _ := bcrypt.GenerateFromPassword([]byte("datrixops-invalid-login-placeholder"), bcrypt.DefaultCost)
 	return &Service{
-		repo:      repo,
-		jwtSecret: []byte(jwtSecret),
+		repo:              repo,
+		jwtSecret:         []byte(jwtSecret),
+		dummyPasswordHash: dummyHash,
 	}
 }
 
@@ -85,6 +90,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*Auth
 		return nil, fmt.Errorf("find user: %w", err)
 	}
 	if user == nil {
+		_ = bcrypt.CompareHashAndPassword(s.dummyPasswordHash, []byte(password))
 		return nil, ErrInvalidCredentials
 	}
 
@@ -97,18 +103,13 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*Auth
 
 // Refresh issues a new access token using a valid refresh token.
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (*AuthResult, error) {
-	rt, err := s.repo.FindRefreshToken(ctx, refreshToken)
+	rt, err := s.repo.ConsumeRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("find refresh token: %w", err)
 	}
-	if rt == nil || rt.ExpiresAt.Before(time.Now()) {
+	if rt == nil {
 		return nil, ErrInvalidToken
 	}
-
-	// Optionally revoke the old refresh token (refresh token rotation)
-	// For simplicity in MVP, we just issue new access token and keep same refresh token,
-	// OR we can rotate it. Let's rotate it for better security.
-	_ = s.repo.DeleteRefreshToken(ctx, refreshToken)
 
 	user, err := s.repo.FindUserByID(ctx, rt.UserID)
 	if err != nil || user == nil {

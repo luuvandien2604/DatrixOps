@@ -15,16 +15,27 @@ is never stored in plaintext by DatrixOps. The root-only
 Use `datrix reset-password` if the password is lost, and store the replacement
 in a dedicated password manager.
 
+Initial administrator creation is also protected by a random, root-only setup
+token generated in `/opt/datrixops/.env`. The installer uses it locally and the
+public setup endpoint fails closed when it is absent or incorrect. Do not copy
+`SETUP_TOKEN` into browser storage, support tickets or source control.
+
 Enrollment tokens are short-lived and single-use. Permanent Agent credentials
 are unique per server and stored hashed by new enrollments. Do not share the
 installation command generated for a server.
+
+Website monitors and webhook destinations reject loopback, private, link-local
+and cloud-metadata addresses. DNS answers are checked again when connecting to
+reduce DNS-rebinding SSRF risk. Monitor private services through an explicitly
+designed internal probe rather than weakening this public egress policy.
 
 ## Signed Agent updates
 
 Agent releases use an Ed25519-signed manifest plus per-artifact size and
 SHA-256 verification. The Agent embeds only the public verification key. The
 release private key is not installed on self-hosted Control Planes or monitored
-servers.
+servers. Installation and upgrade fail closed instead of falling back to an
+unsigned Agent binary.
 
 ## High-risk features
 

@@ -125,10 +125,17 @@ func collectSystemInfo() *SystemInfo {
 	ip := ""
 	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get("https://api.ipify.org")
-	if err == nil && resp.StatusCode == 200 {
-		body, _ := io.ReadAll(resp.Body)
-		ip = string(body)
-		resp.Body.Close()
+	if err == nil {
+		if resp.StatusCode == http.StatusOK {
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, 128))
+			if readErr == nil {
+				candidate := strings.TrimSpace(string(body))
+				if parsed := net.ParseIP(candidate); parsed != nil {
+					ip = parsed.String()
+				}
+			}
+		}
+		_ = resp.Body.Close()
 	}
 
 	return &SystemInfo{

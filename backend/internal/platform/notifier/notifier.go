@@ -2,25 +2,138 @@ package notifier
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
-var webhookClient = &http.Client{
-	Timeout: 8 * time.Second,
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
+var webhookClient = NewPublicHTTPClient(8*time.Second, 0)
+
+// NewPublicHTTPClient creates an HTTP client that rejects private, loopback,
+// link-local, and DNS-rebinding destinations on every new connection.
+func NewPublicHTTPClient(timeout time.Duration, maxRedirects int) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Do not allow environment proxies to bypass destination validation.
+	transport.Proxy = nil
+	transport.DialContext = dialPublicAddress
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			if maxRedirects <= 0 {
+				return http.ErrUseLastResponse
+			}
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+}
+
+func dialPublicAddress(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid webhook destination: %w", err)
+	}
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve webhook destination: %w", err)
+	}
+	if len(addresses) == 0 {
+		return nil, fmt.Errorf("webhook destination has no IP address")
+	}
+	for _, address := range addresses {
+		if !isPublicIP(address.IP) {
+			return nil, fmt.Errorf("webhook destination resolves to a non-public IP address")
+		}
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	var lastErr error
+	for _, resolved := range addresses {
+		connection, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
+		if dialErr == nil {
+			return connection, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, fmt.Errorf("connect to webhook destination: %w", lastErr)
+}
+
+func isPublicIP(ip net.IP) bool {
+	return ip != nil && ip.IsGlobalUnicast() &&
+		!ip.IsPrivate() && !ip.IsLoopback() &&
+		!ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() &&
+		!ip.IsUnspecified()
+}
+
+// ValidatePublicHTTPSURL rejects credentials and literal non-public addresses.
+// DNS answers are validated again at connection time to prevent DNS rebinding.
+func ValidatePublicHTTPSURL(rawURL string) error {
+	return validatePublicURL(rawURL, true)
+}
+
+// ValidatePublicWebsiteURL allows public HTTP/HTTPS monitoring targets while
+// excluding internal network and cloud metadata destinations.
+func ValidatePublicWebsiteURL(rawURL string) error {
+	return validatePublicURL(rawURL, false)
+}
+
+func validatePublicURL(rawURL string, requireHTTPS bool) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("URL must be absolute")
+	}
+	if requireHTTPS && !strings.EqualFold(parsed.Scheme, "https") {
+		return fmt.Errorf("URL must use HTTPS")
+	}
+	if !requireHTTPS && !strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "http") {
+		return fmt.Errorf("URL must use HTTP or HTTPS")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("URL must not contain embedded credentials")
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host == "" {
+		return fmt.Errorf("URL host is required")
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return fmt.Errorf("URL must not target localhost")
+	}
+	if ip := net.ParseIP(host); ip != nil && !isPublicIP(ip) {
+		return fmt.Errorf("URL must not target a private, loopback, link-local, or unspecified address")
+	}
+	return nil
+}
+
+// ValidateDiscordWebhookURL restricts Discord channels to Discord's webhook API.
+func ValidateDiscordWebhookURL(rawURL string) error {
+	if err := ValidatePublicHTTPSURL(rawURL); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(strings.TrimSpace(rawURL))
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host != "discord.com" && !strings.HasSuffix(host, ".discord.com") &&
+		host != "discordapp.com" && !strings.HasSuffix(host, ".discordapp.com") {
+		return fmt.Errorf("URL must use an official Discord host")
+	}
+	if !strings.HasPrefix(parsed.EscapedPath(), "/api/webhooks/") {
+		return fmt.Errorf("URL must be a Discord webhook endpoint")
+	}
+	return nil
 }
 
 func SendTelegram(token, chatID, message string) error {
@@ -47,6 +160,9 @@ func SendTelegram(token, chatID, message string) error {
 }
 
 func SendDiscord(webhookURL, message string) error {
+	if err := ValidateDiscordWebhookURL(webhookURL); err != nil {
+		return err
+	}
 	payload, _ := json.Marshal(map[string]string{
 		"content": message,
 	})
@@ -54,7 +170,7 @@ func SendDiscord(webhookURL, message string) error {
 	req, _ := http.NewRequest("POST", webhookURL, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := webhookClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -156,6 +272,9 @@ func sendSMTPMessage(client *smtp.Client, auth smtp.Auth, from, to string, body 
 }
 
 func SendWebhook(url string, payload map[string]interface{}) error {
+	if err := ValidatePublicHTTPSURL(url); err != nil {
+		return err
+	}
 	data, _ := json.Marshal(payload)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	req.Header.Set("Content-Type", "application/json")
@@ -178,6 +297,9 @@ type WebhookDeliveryResult struct {
 
 func SendSignedWebhook(url string, payload []byte, signingSecret, eventID, eventType string) (WebhookDeliveryResult, error) {
 	started := time.Now()
+	if err := ValidatePublicHTTPSURL(url); err != nil {
+		return WebhookDeliveryResult{}, err
+	}
 	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return WebhookDeliveryResult{}, err

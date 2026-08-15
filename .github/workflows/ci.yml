@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend tests
@@ -13,10 +16,10 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.6"
           cache-dependency-path: backend/go.sum
       - run: test -z "$(gofmt -l $(find . -name '*.go'))"
       - run: go test ./...
@@ -30,10 +33,10 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.24.x"
+          go-version: "1.26.6"
           cache-dependency-path: agent/go.sum
       - run: test -z "$(gofmt -l $(find . -name '*.go'))"
       - run: go test ./...
@@ -47,8 +50,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -62,12 +65,13 @@ jobs:
     name: Docker Compose validation
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: cp .env.example .env
       - run: |
           {
             echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
             echo "JWT_SECRET=$(openssl rand -base64 48)"
+            echo "SETUP_TOKEN=$(openssl rand -hex 32)"
             echo "ALLOWED_ORIGINS=https://ops.example.com"
             echo "PUBLIC_URL=https://ops.example.com"
             echo "CADDY_SITE_ADDRESS=ops.example.com"
@@ -81,16 +85,16 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: trufflesecurity/trufflehog@main
+      - uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         if: github.event_name == 'push'
         with:
           path: ./
           base: ${{ github.event.before }}
           head: ${{ github.sha }}
-      - uses: trufflesecurity/trufflehog@main
+      - uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         if: github.event_name == 'pull_request'
         with:
           path: ./
@@ -102,5 +106,5 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,18 +31,24 @@ func sameOrigin(r *http.Request) bool {
 	if err != nil || origin.Host == "" {
 		return false
 	}
-	requestHost := r.Host
-	if forwardedHost := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0]); forwardedHost != "" {
-		requestHost = forwardedHost
-	}
-	return strings.EqualFold(origin.Host, requestHost)
+	// Caddy preserves Host. Do not trust X-Forwarded-Host here because a client
+	// can supply it and weaken the WebSocket cross-origin check.
+	return strings.EqualFold(origin.Host, r.Host)
 }
 
 func clientAddress(r *http.Request) string {
-	if forwardedFor := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); forwardedFor != "" {
-		return forwardedFor
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		parts := strings.Split(forwardedFor, ",")
+		candidate := strings.TrimSpace(parts[len(parts)-1])
+		if parsed := net.ParseIP(candidate); parsed != nil {
+			return parsed.String()
+		}
 	}
-	return r.RemoteAddr
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func (h *Hub) CreateTicket(w http.ResponseWriter, r *http.Request) {

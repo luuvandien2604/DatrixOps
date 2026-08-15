@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -79,6 +80,11 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
+	providedToken := r.Header.Get("X-DatrixOps-Setup-Token")
+	if !validSetupToken(h.cfg.SetupToken, providedToken) {
+		response.Error(w, http.StatusUnauthorized, "INVALID_SETUP_TOKEN", "A valid local setup token is required")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 	var req completeRequest
 	decoder := json.NewDecoder(r.Body)
@@ -174,6 +180,10 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 		"status":  "configured",
 		"user_id": userID,
 	})
+}
+
+func validSetupToken(expected, provided string) bool {
+	return len(expected) >= 32 && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, publicURL string) {

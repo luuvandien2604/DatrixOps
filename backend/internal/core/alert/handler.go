@@ -10,6 +10,7 @@ import (
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
@@ -305,6 +306,9 @@ func validateChannel(channel AlertChannel) string {
 		webhookURL, _ := channel.Config["webhook_url"].(string)
 		if strings.TrimSpace(webhookURL) == "" {
 			return "Discord webhook URL is required"
+		}
+		if err := notifier.ValidateDiscordWebhookURL(webhookURL); err != nil {
+			return "Discord webhook " + err.Error()
 		}
 	case "email":
 		host, _ := channel.Config["smtp_host"].(string)

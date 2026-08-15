@@ -83,8 +83,31 @@ grep -q "Accept: application/octet-stream" "${PROJECT_ROOT}/deploy/fetch-agent-r
     exit 1
 }
 
-grep -q 'golang:1.25-alpine' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
+grep -q 'golang:1.26.6-alpine' "${PROJECT_ROOT}/deploy/fetch-agent-release.sh" || {
     echo "ERROR: deployment release verification must support clean hosts without Go" >&2
+    exit 1
+}
+
+grep -q 'X-DatrixOps-Setup-Token' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: initial administrator creation must require the local setup token" >&2
+    exit 1
+}
+grep -Fq 'SETUP_TOKEN=${SETUP_TOKEN:?SETUP_TOKEN is required}' "$PRODUCTION_COMPOSE" || {
+    echo "ERROR: production backend must receive a required setup token" >&2
+    exit 1
+}
+if grep -Eq 'raw\.githubusercontent\.com/.*/(main|master)/.*datrixops-agent' \
+    "${PROJECT_ROOT}/deploy/install.sh" "${PROJECT_ROOT}/deploy/upgrade.sh"; then
+    echo "ERROR: installer/updater must not fall back to unsigned Agent binaries from a branch" >&2
+    exit 1
+fi
+grep -q 'codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v${remote_release_ver}' \
+    "${PROJECT_ROOT}/deploy/upgrade.sh" || {
+    echo "ERROR: CE updater must use the resolved published version tag" >&2
+    exit 1
+}
+grep -q '/usr/local/bin/datrix update' "${PROJECT_ROOT}/deploy/upgrade.sh" || {
+    echo "ERROR: scheduled upgrades must use the installed CLI instead of piping a branch script to root" >&2
     exit 1
 }
 

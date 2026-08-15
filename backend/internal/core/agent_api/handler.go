@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,16 +31,28 @@ type Handler struct {
 	agentReleaseURL     string
 	agentReleaseLayout  string
 	dispatcher          *webhook.Dispatcher
+	webhookQueue        chan queuedWebhook
+}
+
+type queuedWebhook struct {
+	userID    string
+	eventType string
+	payload   webhook.EventPayload
 }
 
 func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL, agentReleaseLayout string) *Handler {
-	return &Handler{
+	handler := &Handler{
 		db:                  db,
 		desiredAgentVersion: desiredAgentVersion,
 		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
 		agentReleaseLayout:  strings.TrimSpace(agentReleaseLayout),
 		dispatcher:          webhook.NewDispatcher(db),
+		webhookQueue:        make(chan queuedWebhook, 256),
 	}
+	for range 4 {
+		go handler.runWebhookWorker()
+	}
+	return handler
 }
 
 type TopProcess struct {
@@ -155,7 +168,7 @@ func agentTokenFromRequest(r *http.Request) (string, bool) {
 	if authHeader == "" {
 		return "", false
 	}
-	parts := strings.Split(authHeader, " ")
+	parts := strings.Fields(authHeader)
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 		return "", false
 	}
@@ -897,7 +910,7 @@ func (h *Handler) dispatchServiceStateChanges(ctx context.Context, userID, serve
 				"startup":    service.StartupType,
 			},
 		}
-		go h.dispatchWebhookEvent(userID, "service.down", payload)
+		h.enqueueWebhookEvent(userID, "service.down", payload)
 	}
 }
 
@@ -928,7 +941,7 @@ func (h *Handler) dispatchCronExecutionWebhook(ctx context.Context, userID, serv
 			"command":    command,
 		},
 	}
-	go h.dispatchWebhookEvent(userID, "cron.failed", payload)
+	h.enqueueWebhookEvent(userID, "cron.failed", payload)
 }
 
 func (h *Handler) dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, eventType, version, result string) {
@@ -945,13 +958,25 @@ func (h *Handler) dispatchAgentUpdateWebhook(userID, serverID, serverName, taskI
 			"result":  truncateForWebhook(result, 512),
 		},
 	}
-	go h.dispatchWebhookEvent(userID, eventType, payload)
+	h.enqueueWebhookEvent(userID, eventType, payload)
 }
 
-func (h *Handler) dispatchWebhookEvent(userID, eventType string, payload webhook.EventPayload) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	_ = h.dispatcher.Dispatch(ctx, userID, eventType, payload)
+func (h *Handler) enqueueWebhookEvent(userID, eventType string, payload webhook.EventPayload) {
+	select {
+	case h.webhookQueue <- queuedWebhook{userID: userID, eventType: eventType, payload: payload}:
+	default:
+		slog.Warn("dropping webhook event because the bounded delivery queue is full", "event_type", eventType)
+	}
+}
+
+func (h *Handler) runWebhookWorker() {
+	for job := range h.webhookQueue {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		if err := h.dispatcher.Dispatch(ctx, job.userID, job.eventType, job.payload); err != nil {
+			slog.Warn("webhook delivery failed", "event_type", job.eventType, "error", err)
+		}
+		cancel()
+	}
 }
 
 func truncateForWebhook(value string, limit int) string {
@@ -973,7 +998,7 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.Split(authHeader, " ")
+	parts := strings.Fields(authHeader)
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
 		return

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -28,7 +29,7 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 				return
 			}
 
-			parts := strings.Split(authHeader, " ")
+			parts := strings.Fields(authHeader)
 			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 				response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
 				return
@@ -59,10 +60,11 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 					return
 				}
 
-				// Update last used (fire and forget)
-				go func() {
-					_, _ = db.Pool.Exec(context.Background(), `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, keyHash)
-				}()
+				// Keep this bounded and tied to the request so abusive API-key
+				// traffic cannot accumulate detached database goroutines.
+				updateCtx, cancel := context.WithTimeout(r.Context(), time.Second)
+				_, _ = db.Pool.Exec(updateCtx, `UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1`, keyHash)
+				cancel()
 
 				userID = uID
 				role = rRole
@@ -74,7 +76,7 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 						return nil, jwt.ErrSignatureInvalid
 					}
 					return jwtSecret, nil
-				})
+				}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 
 				if err != nil || !token.Valid {
 					response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired access token")
@@ -89,12 +91,16 @@ func RequireAuth(jwtSecret []byte, db *database.DB) func(http.Handler) http.Hand
 					return
 				}
 
-				// Extract role
-				role = "user"
-				if claims, ok := token.Claims.(jwt.MapClaims); ok {
-					if rClaim, ok := claims["role"].(string); ok {
-						role = rClaim
-					}
+				// Resolve the current role on every request. This immediately
+				// revokes deleted accounts and applies role changes instead of
+				// trusting a possibly stale role embedded in the access token.
+				if db == nil {
+					response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User validation is unavailable")
+					return
+				}
+				if err := db.Pool.QueryRow(r.Context(), `SELECT role FROM users WHERE id = $1`, userID).Scan(&role); err != nil {
+					response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User account is no longer active")
+					return
 				}
 			}
 

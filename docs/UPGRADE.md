@@ -6,7 +6,8 @@ Run on the self-hosted Control Plane:
 sudo /opt/datrixops/deploy/upgrade.sh
 ```
 
-The script creates a backup, downloads the current source package, synchronizes
+The script creates a backup, resolves the published version, downloads that
+immutable version-tagged source package, synchronizes
 the pinned application and Agent versions, verifies signed Agent artifacts,
 pulls container images, runs database migrations, recreates affected services
 and checks readiness.
@@ -75,3 +76,6 @@ for production installations:
 sudo /opt/datrixops/deploy/upgrade.sh --enable-auto-update
 sudo /opt/datrixops/deploy/upgrade.sh --disable-auto-update
 ```
+
+The scheduled job runs the already-installed `datrix update` command. It does
+not pipe a mutable script from the `main` branch into a root shell.

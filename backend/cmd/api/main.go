@@ -146,16 +146,19 @@ func main() {
 
 	// --- Middleware ---
 	var handler http.Handler = mux
+	handler = middleware.BodyLimit(4 << 20)(handler)
 	handler = middleware.CORS(cfg.AllowedOrigins)(handler)
 	handler = middleware.Logger(log)(handler)
 
 	// --- HTTP Server ---
 	srv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":" + cfg.Port,
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	// --- Graceful Shutdown ---

@@ -27,6 +27,10 @@ The installer:
 5. Downloads and verifies the signed Agent release.
 6. Pulls version-pinned images, runs migrations and starts all services.
 
+The generated environment includes a one-time setup token used by the local
+installer to create the first administrator. Agent self-monitoring is installed
+only from the signed release bundle; there is no unsigned binary fallback.
+
 The installer uses the exact Agent version and release tag pinned by the CE
 Server metadata. CE Server and Agent versions are independent; do not assume
 the Agent version equals the Server version.

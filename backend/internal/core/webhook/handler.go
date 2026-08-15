@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
@@ -79,7 +79,12 @@ func (h *Handler) CreateEndpoint(w http.ResponseWriter, r *http.Request) {
 		endpoint.Enabled = *req.Enabled
 	}
 	if endpoint.SigningSecret == "" {
-		endpoint.SigningSecret = randomSecret()
+		generatedSecret, generateErr := randomSecret()
+		if generateErr != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to generate webhook signing secret")
+			return
+		}
+		endpoint.SigningSecret = generatedSecret
 	}
 
 	if validationMessage := validateEndpoint(endpoint); validationMessage != "" {
@@ -134,7 +139,11 @@ func (h *Handler) UpdateEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 	rotatedSecret := ""
 	if req.RotateSecret {
-		rotatedSecret = randomSecret()
+		rotatedSecret, err = randomSecret()
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to rotate webhook signing secret")
+			return
+		}
 		endpoint.StoredSecret = rotatedSecret
 	}
 
@@ -189,7 +198,12 @@ func (h *Handler) TestEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	eventID := "evt_" + randomHex(16)
+	randomID, err := randomHex(16)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to generate webhook event ID")
+		return
+	}
+	eventID := "evt_" + randomID
 	payload := TestPayload{
 		EventID: eventID,
 		Event:   "webhook.test",
@@ -284,24 +298,8 @@ func validateEndpoint(endpoint Endpoint) string {
 }
 
 func validateEndpointURL(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "Webhook URL must be absolute"
-	}
-	if parsed.Scheme != "https" {
-		return "Webhook URL must use HTTPS"
-	}
-	if parsed.User != nil {
-		return "Webhook URL must not contain embedded credentials"
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return "Webhook URL host is required"
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			return "Webhook URL must not target private, loopback, or link-local addresses"
-		}
+	if err := notifier.ValidatePublicHTTPSURL(rawURL); err != nil {
+		return "Webhook " + err.Error()
 	}
 	return ""
 }
@@ -359,16 +357,20 @@ func endpointURLHost(rawURL string) string {
 	return parsed.Hostname()
 }
 
-func randomSecret() string {
-	return "whsec_" + randomHex(32)
+func randomSecret() (string, error) {
+	value, err := randomHex(32)
+	if err != nil {
+		return "", err
+	}
+	return "whsec_" + value, nil
 }
 
-func randomHex(size int) string {
+func randomHex(size int) (string, error) {
 	bytes := make([]byte, size)
 	if _, err := rand.Read(bytes); err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 16)
+		return "", err
 	}
-	return hex.EncodeToString(bytes)
+	return hex.EncodeToString(bytes), nil
 }
 
 func userIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {

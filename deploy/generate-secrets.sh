@@ -44,6 +44,9 @@ fi
 if [[ -z "$(current_value JWT_SECRET)" ]]; then
     set_value JWT_SECRET "$(openssl rand -hex 48)"
 fi
+if [[ -z "$(current_value SETUP_TOKEN)" ]]; then
+    set_value SETUP_TOKEN "$(openssl rand -hex 32)"
+fi
 
 echo "Secrets generated in ${ENV_FILE}."
 echo "Set CADDY_SITE_ADDRESS, PUBLIC_URL, ALLOWED_ORIGINS and AGENT_VERSION before installation."

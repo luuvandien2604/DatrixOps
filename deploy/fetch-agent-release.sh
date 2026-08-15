@@ -42,7 +42,7 @@ verify_release() {
         -v "${PROJECT_ROOT}:/src:ro" \
         -v "${release_dir}:/release:ro" \
         -w /src/agent \
-        golang:1.25-alpine \
+        golang:1.26.6-alpine \
         go run ./tools/verify-release --release-dir /release --version "$VERSION"
 }
 

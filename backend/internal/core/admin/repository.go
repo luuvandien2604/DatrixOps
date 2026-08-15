@@ -9,7 +9,10 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
 
-var ErrNotFound = errors.New("user not found")
+var (
+	ErrNotFound  = errors.New("user not found")
+	ErrLastAdmin = errors.New("cannot remove the last administrator")
+)
 
 type Repository struct {
 	db *database.DB
@@ -120,34 +123,91 @@ func (r *Repository) CreateUser(ctx context.Context, email, passwordHash, role s
 }
 
 func (r *Repository) UpdateUserRole(ctx context.Context, id, role string) error {
-	tag, err := r.db.Pool.Exec(ctx, `UPDATE users SET role = $2 WHERE id = $1`, id, role)
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Serialize administrator membership changes so two concurrent requests
+	// cannot both observe another administrator and remove the final one.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('datrixops-admin-membership'))`); err != nil {
+		return err
+	}
+
+	var currentRole string
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&currentRole); err != nil {
+		return ErrNotFound
+	}
+	if (currentRole == "admin" || currentRole == "superadmin") && role != "admin" && role != "superadmin" {
+		var adminCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE role IN ('admin', 'superadmin')`).Scan(&adminCount); err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return ErrLastAdmin
+		}
+	}
+
+	tag, err := tx.Exec(ctx, `UPDATE users SET role = $2 WHERE id = $1`, id, role)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) UpdateUserPassword(ctx context.Context, id, passwordHash string) error {
-	tag, err := r.db.Pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash)
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) DeleteUser(ctx context.Context, id string) error {
-	tag, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('datrixops-admin-membership'))`); err != nil {
+		return err
+	}
+
+	var currentRole string
+	if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&currentRole); err != nil {
+		return ErrNotFound
+	}
+	if currentRole == "admin" || currentRole == "superadmin" {
+		var adminCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE role IN ('admin', 'superadmin')`).Scan(&adminCount); err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return ErrLastAdmin
+		}
+	}
+
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }

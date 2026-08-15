@@ -74,6 +74,7 @@ services:
       - DATABASE_URL=postgres://datrixops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/datrixops?sslmode=disable
       - PORT=8080
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - SETUP_TOKEN=${SETUP_TOKEN:?SETUP_TOKEN is required}
       - AGENT_VERSION=${AGENT_VERSION:-1.5.9}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,20 +80,18 @@ func (l *rateLimiter) getVisitor(ip string) *rate.Limiter {
 
 // getIP attempts to get the real client IP.
 func getIP(r *http.Request) string {
-	ip := r.Header.Get("X-Real-IP")
-	if ip == "" {
-		ip = r.Header.Get("X-Forwarded-For")
+	// Caddy appends the actual client address to X-Forwarded-For. Use the
+	// right-most value so a caller-supplied prefix cannot bypass throttling.
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		candidate := strings.TrimSpace(parts[len(parts)-1])
+		if parsed := net.ParseIP(candidate); parsed != nil {
+			return parsed.String()
+		}
 	}
-	if ip == "" {
-		ip = r.RemoteAddr
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
 	}
-	// X-Forwarded-For could be a comma-separated list
-	if strings.Contains(ip, ",") {
-		ip = strings.Split(ip, ",")[0]
-	}
-	// Remove port from RemoteAddr
-	if strings.Contains(ip, ":") && !strings.Contains(ip, "]") {
-		ip = strings.Split(ip, ":")[0]
-	}
-	return strings.TrimSpace(ip)
+	return strings.TrimSpace(r.RemoteAddr)
 }

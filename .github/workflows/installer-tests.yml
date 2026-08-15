@@ -1,5 +1,8 @@
 name: Installer & Updater Tests
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -11,7 +14,7 @@ jobs:
     name: Linux Installer & Updater Tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate shell syntax
         run: |
           bash -n frontend/public/install.sh
@@ -35,7 +38,6 @@ jobs:
             echo "ERROR: installer should fail without args" >&2
             exit 1
           fi
-
           # Test invalid layout fails
           if bash frontend/public/install.sh --server http://127.0.0.1:8080 --token "$(printf 't%.0s' {1..32})" --agent-version 1.0.1 --agent-artifact-base-url http://127.0.0.1:8080 --agent-release-layout invalid 2>/dev/null; then
             echo "ERROR: installer should reject invalid layout" >&2
@@ -133,7 +135,7 @@ jobs:
     name: macOS Installer & Updater Tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate shell syntax
         run: |
           bash -n frontend/public/install.sh
@@ -262,7 +264,7 @@ jobs:
     name: Windows Installer & Updater Tests
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate PowerShell scripts syntax & AST
         shell: pwsh
         run: |

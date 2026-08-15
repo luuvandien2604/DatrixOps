@@ -83,8 +83,8 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Valid email address is required")
 		return
 	}
-	if len(req.Password) < 6 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must be at least 6 characters")
+	if len(req.Password) < 12 || len(req.Password) > 128 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 128 characters")
 		return
 	}
 	if req.Role != "admin" && req.Role != "operator" && req.Role != "viewer" {
@@ -140,6 +140,10 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusNotFound, "NOT_FOUND", "User not found")
 			return
 		}
+		if errors.Is(err, ErrLastAdmin) {
+			response.Error(w, http.StatusConflict, "LAST_ADMIN", "The last administrator cannot be demoted")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update user role")
 		return
 	}
@@ -170,8 +174,8 @@ func (h *Handler) UpdateUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Password) < 6 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must be at least 6 characters")
+	if len(req.Password) < 12 || len(req.Password) > 128 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 128 characters")
 		return
 	}
 
@@ -215,6 +219,10 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if err := h.repo.DeleteUser(r.Context(), targetID); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "NOT_FOUND", "User not found")
+			return
+		}
+		if errors.Is(err, ErrLastAdmin) {
+			response.Error(w, http.StatusConflict, "LAST_ADMIN", "The last administrator cannot be deleted")
 			return
 		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete user")

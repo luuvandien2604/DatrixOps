@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -84,7 +85,7 @@ func (c *DatrixClient) SendHeartbeat(ctx context.Context, metrics *collector.Met
 	}
 
 	var envelope apiEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 

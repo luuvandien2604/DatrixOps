@@ -14,6 +14,7 @@ type Config struct {
 	Port                     string
 	DatabaseURL              string
 	JWTSecret                string
+	SetupToken               string
 	AgentVersion             string
 	AllowedOrigins           string
 	PublicURL                string
@@ -47,6 +48,7 @@ func Load() (*Config, error) {
 		Port:                     getEnv("PORT", "8080"),
 		DatabaseURL:              strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		JWTSecret:                strings.TrimSpace(os.Getenv("JWT_SECRET")),
+		SetupToken:               strings.TrimSpace(os.Getenv("SETUP_TOKEN")),
 		AgentVersion:             strings.TrimSpace(getEnv("AGENT_VERSION", "dev")),
 		AllowedOrigins:           strings.TrimSpace(getEnv("ALLOWED_ORIGINS", "")),
 		PublicURL:                strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
@@ -78,7 +80,6 @@ func Load() (*Config, error) {
 	if _, weak := weakJWTSecrets[strings.ToLower(cfg.JWTSecret)]; weak {
 		return nil, fmt.Errorf("JWT_SECRET uses an unsafe placeholder value")
 	}
-
 	if cfg.PublicURL == "" {
 		cfg.PublicURL = firstOrigin(cfg.AllowedOrigins)
 	}

@@ -93,6 +93,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      SETUP_TOKEN: ${SETUP_TOKEN:?SETUP_TOKEN is required}
       PORT: "8080"
       DATRIXOPS_RUN_SCHEDULERS: "false"
     expose:

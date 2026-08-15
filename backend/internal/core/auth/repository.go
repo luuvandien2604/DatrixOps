@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -117,7 +119,7 @@ func (r *Repository) FindUserByID(ctx context.Context, id string) (*User, error)
 func (r *Repository) CreateRefreshToken(ctx context.Context, userID, token string, expiresAt time.Time) error {
 	_, err := r.db.Pool.Exec(ctx,
 		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
-		userID, token, expiresAt,
+		userID, refreshTokenHash(token), expiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create refresh token: %w", err)
@@ -129,8 +131,12 @@ func (r *Repository) CreateRefreshToken(ctx context.Context, userID, token strin
 func (r *Repository) FindRefreshToken(ctx context.Context, token string) (*RefreshToken, error) {
 	var rt RefreshToken
 	err := r.db.Pool.QueryRow(ctx,
-		"SELECT id, user_id, token, expires_at, created_at FROM refresh_tokens WHERE token = $1",
-		token,
+		`SELECT id, user_id, token, expires_at, created_at
+		 FROM refresh_tokens
+		 WHERE token = $1 OR token = $2
+		 ORDER BY CASE WHEN token = $1 THEN 0 ELSE 1 END
+		 LIMIT 1`,
+		refreshTokenHash(token), token,
 	).Scan(&rt.ID, &rt.UserID, &rt.Token, &rt.ExpiresAt, &rt.CreatedAt)
 
 	if err != nil {
@@ -142,13 +148,39 @@ func (r *Repository) FindRefreshToken(ctx context.Context, token string) (*Refre
 	return &rt, nil
 }
 
+// ConsumeRefreshToken atomically enforces one-time refresh-token rotation.
+// The plaintext fallback keeps sessions created by older releases valid once;
+// all newly issued tokens are stored only as SHA-256 digests.
+func (r *Repository) ConsumeRefreshToken(ctx context.Context, token string) (*RefreshToken, error) {
+	var rt RefreshToken
+	err := r.db.Pool.QueryRow(ctx,
+		`DELETE FROM refresh_tokens
+		 WHERE (token = $1 OR token = $2)
+		   AND expires_at > NOW()
+		 RETURNING id, user_id, token, expires_at, created_at`,
+		refreshTokenHash(token), token,
+	).Scan(&rt.ID, &rt.UserID, &rt.Token, &rt.ExpiresAt, &rt.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("consume refresh token: %w", err)
+	}
+	return &rt, nil
+}
+
 // DeleteRefreshToken removes a refresh token (logout).
 func (r *Repository) DeleteRefreshToken(ctx context.Context, token string) error {
-	_, err := r.db.Pool.Exec(ctx, "DELETE FROM refresh_tokens WHERE token = $1", token)
+	_, err := r.db.Pool.Exec(ctx, "DELETE FROM refresh_tokens WHERE token = $1 OR token = $2", refreshTokenHash(token), token)
 	if err != nil {
 		return fmt.Errorf("delete refresh token: %w", err)
 	}
 	return nil
+}
+
+func refreshTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // DeleteExpiredTokens cleanup job.

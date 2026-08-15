@@ -38,9 +38,10 @@ func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website
 	query := `
 		SELECT id, user_id, name, url, status, ssl_issuer, ssl_valid_to, ssl_days_remaining, last_check, created_at, updated_at
 		FROM websites
+		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Pool.Query(ctx, query)
+	rows, err := r.db.Pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +59,8 @@ func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website
 }
 
 func (r *repository) Delete(ctx context.Context, id string, userID string) error {
-	query := `DELETE FROM websites WHERE id = $1`
-	res, err := r.db.Pool.Exec(ctx, query, id)
+	query := `DELETE FROM websites WHERE id = $1 AND user_id = $2`
+	res, err := r.db.Pool.Exec(ctx, query, id, userID)
 	if err != nil {
 		return err
 	}

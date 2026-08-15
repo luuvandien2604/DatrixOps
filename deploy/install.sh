@@ -294,7 +294,7 @@ auto_configure_domain
 check_and_install_nginx
 
 log_step "Step 3/6: Validating environment configuration"
-required_keys=(POSTGRES_PASSWORD JWT_SECRET CADDY_SITE_ADDRESS PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
+required_keys=(POSTGRES_PASSWORD JWT_SECRET SETUP_TOKEN CADDY_SITE_ADDRESS PUBLIC_URL ALLOWED_ORIGINS AGENT_VERSION)
 missing_vars=()
 for key in "${required_keys[@]}"; do
     value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | tail -n 1)"
@@ -397,6 +397,7 @@ ensure_admin_account() {
     fi
     admin_username="${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}"
     admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
+    setup_token="$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)"
 
     timezone="$(cat /etc/timezone 2>/dev/null || true)"
     timezone="${timezone:-UTC}"
@@ -414,6 +415,7 @@ ensure_admin_account() {
         -o "$response_file" \
         -w '%{http_code}' \
         -H 'Content-Type: application/json' \
+        -H "X-DatrixOps-Setup-Token: ${setup_token}" \
         --data "$payload" \
         "${public_url}/api/v1/setup/complete")"
     if [[ "$http_code" != "201" ]]; then
@@ -427,6 +429,7 @@ ensure_admin_account() {
     printf 'USERNAME=%s\n' "$admin_username" >"$ADMIN_CREDENTIALS_FILE"
     chmod 0600 "$ADMIN_CREDENTIALS_FILE"
     unset admin_password
+    unset setup_token
     log_success "Initial administrator created."
 }
 
@@ -463,19 +466,8 @@ auto_self_enroll_host() {
             break
         fi
     done
-    if [[ -z "$agent_binary" ]]; then
-        log_info "Downloading Agent binary for self-host monitoring..."
-        local tmp_bin="/tmp/datrixops-agent-download"
-        if curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/frontend/public/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-            agent_binary="$tmp_bin"
-        elif curl -fsSL "https://raw.githubusercontent.com/luuvandien2604/datrixops-agent/main/bin/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-            agent_binary="$tmp_bin"
-        elif curl -fsSL "https://github.com/luuvandien2604/datrixops-agent/releases/latest/download/datrixops-agent-linux-${agent_arch}" -o "$tmp_bin" 2>/dev/null && [[ -s "$tmp_bin" ]]; then
-            agent_binary="$tmp_bin"
-        fi
-    fi
     if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-        log_warn "DatrixOps Agent binary could not be found or downloaded for self-monitoring."
+        log_warn "A cryptographically verified Agent binary was not found; self-monitoring installation was skipped."
         return 0
     fi
 

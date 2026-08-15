@@ -36,7 +36,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, userID, eventType string, pay
 	}
 
 	if payload.EventID == "" {
-		payload.EventID = "evt_" + randomHex(16)
+		randomID, err := randomHex(16)
+		if err != nil {
+			return fmt.Errorf("generate webhook event ID: %w", err)
+		}
+		payload.EventID = "evt_" + randomID
 	}
 	payload.Event = eventType
 	payload.Source = "datrixops.control_plane"

@@ -41,6 +41,14 @@ var (
 	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
 )
 
+type queuedAgentTask struct {
+	ctx       context.Context
+	apiClient *client.DatrixClient
+	task      client.Task
+}
+
+var agentTaskQueue = make(chan queuedAgentTask, 64)
+
 func main() {
 	// Detached uninstall helpers reuse the Agent binary but must bypass normal
 	// configuration, heartbeat, and terminal startup.
@@ -62,6 +70,9 @@ func main() {
 	}
 
 	apiClient := client.New(cfg)
+	for range 4 {
+		go runTaskWorker()
+	}
 
 	// Graceful shutdown context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -129,7 +140,11 @@ func sendHeartbeat(ctx context.Context, apiClient *client.DatrixClient, includeS
 	// Process Tasks
 	for _, task := range response.Tasks {
 		log.Printf("Received task %s: %s", task.ID, task.Type)
-		go processTask(ctx, apiClient, task)
+		select {
+		case agentTaskQueue <- queuedAgentTask{ctx: ctx, apiClient: apiClient, task: task}:
+		case <-ctx.Done():
+			return
+		}
 	}
 
 	if response.UpdateAvailable || response.UpdateRequired {
@@ -171,7 +186,9 @@ func prepareAgentUpdate(ctx context.Context, payload agentUpdatePayload) error {
 	}
 
 	updatePath := executablePath + ".update"
-	updateFile, err := os.OpenFile(updatePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0755)
+	// Keep unverified bytes non-executable until all signed metadata and binary
+	// validation checks have succeeded.
+	updateFile, err := os.OpenFile(updatePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("create staged update: %w", err)
 	}
@@ -672,6 +689,12 @@ func processTask(ctx context.Context, apiClient *client.DatrixClient, task clien
 				}
 			}
 		}
+	}
+}
+
+func runTaskWorker() {
+	for queued := range agentTaskQueue {
+		processTask(queued.ctx, queued.apiClient, queued.task)
 	}
 }
 

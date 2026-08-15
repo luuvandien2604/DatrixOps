@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
 
 type WebsiteJob struct {
@@ -135,15 +136,7 @@ type websiteProbeResult struct {
 }
 
 func probeWebsite(ctx context.Context, rawURL string, timeout time.Duration, now time.Time) websiteProbeResult {
-	client := &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return errors.New("redirect loop")
-			}
-			return nil
-		},
-	}
+	client := notifier.NewPublicHTTPClient(timeout, 10)
 	return probeWebsiteWithClient(ctx, rawURL, client, now)
 }
 

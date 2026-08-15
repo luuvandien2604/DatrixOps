@@ -39,7 +39,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 	website, err := h.svc.CreateWebsite(r.Context(), userID, req)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create website")
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 

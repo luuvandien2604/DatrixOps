@@ -21,6 +21,19 @@ func TestValidateCompleteRequestAcceptsSecureSetup(t *testing.T) {
 	}
 }
 
+func TestValidSetupTokenRequiresStrongExactSecret(t *testing.T) {
+	secret := strings.Repeat("s", 64)
+	if !validSetupToken(secret, secret) {
+		t.Fatal("expected exact high-entropy setup token to be accepted")
+	}
+	if validSetupToken(secret, secret+"x") || validSetupToken(secret, "") {
+		t.Fatal("expected incorrect setup token to be rejected")
+	}
+	if validSetupToken("short", "short") {
+		t.Fatal("expected weak configured setup token to fail closed")
+	}
+}
+
 func TestValidateCompleteRequestAcceptsCommunityIPPanel(t *testing.T) {
 	req := completeRequest{
 		Username:   "admin",
