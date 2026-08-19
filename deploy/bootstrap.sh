@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Reconnect stdin to controlling terminal if running through a pipe (e.g. curl ... | sudo bash)
-if [ ! -t 0 ] && [ -e /dev/tty ] && [ -r /dev/tty ]; then
-    exec < /dev/tty 2>/dev/null || true
-fi
-
 INSTALLER_API="https://api.github.com/repos/luuvandien2604/DatrixOps/contents/deploy/install.sh?ref=main"
 TEMP_INSTALLER="$(mktemp /tmp/datrixops-installer.XXXXXX.sh)"
 cleanup() { rm -f -- "$TEMP_INSTALLER"; }
@@ -21,4 +16,8 @@ curl -fsSL \
     "$INSTALLER_API" \
     -o "$TEMP_INSTALLER"
 
-bash "$TEMP_INSTALLER"
+if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+    bash "$TEMP_INSTALLER" "$@" < /dev/tty
+else
+    bash "$TEMP_INSTALLER" "$@"
+fi

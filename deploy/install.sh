@@ -15,11 +15,6 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
-# Reconnect stdin to controlling terminal if running through a pipe (e.g. curl ... | sudo bash)
-if [ ! -t 0 ] && [ -e /dev/tty ] && [ -r /dev/tty ]; then
-    exec < /dev/tty 2>/dev/null || true
-fi
-
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
