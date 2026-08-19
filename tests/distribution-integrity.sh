@@ -8,8 +8,8 @@ grep -q 'api.github.com/repos/luuvandien2604/DatrixOps/contents/deploy/install.s
     echo "ERROR: bootstrap must resolve the current installer through GitHub Contents API" >&2
     exit 1
 }
-grep -q 'PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"' "${PROJECT_ROOT}/deploy/install.sh" || {
-    echo "ERROR: installer must default to dedicated panel port 7800" >&2
+grep -q 'PANEL_PORT="${DATRIXOPS_PANEL_PORT:-80}"' "${PROJECT_ROOT}/deploy/install.sh" || {
+    echo "ERROR: installer must default to standard panel port 80" >&2
     exit 1
 }
 grep -q 'ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"' "${PROJECT_ROOT}/deploy/install.sh" || {

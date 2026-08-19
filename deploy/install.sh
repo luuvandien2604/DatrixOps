@@ -34,19 +34,29 @@ if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-se
     # Use codeload directly. The github.com archive redirect is unreliable on
     # some networks and can terminate larger downloads with curl error 56.
     TARBALL_URL="https://codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v${INSTALL_VERSION}"
+    TARBALL_FALLBACK_URL="https://codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/heads/main"
     TEMP_TAR="/tmp/datrixops-install-$$.tar.gz"
 
     log_info "Downloading DatrixOps CE v${INSTALL_VERSION} release package..."
     if ! curl -fsSL \
-        --retry 5 \
+        --retry 3 \
         --retry-delay 2 \
         --connect-timeout 15 \
         --max-time 600 \
         "${TARBALL_URL}" \
-        -o "${TEMP_TAR}"; then
-        rm -f "${TEMP_TAR}"
-        log_error "Failed to download DatrixOps package from ${TARBALL_URL}"
-        exit 1
+        -o "${TEMP_TAR}" 2>/dev/null; then
+        log_warn "Release tag v${INSTALL_VERSION} not found on remote. Downloading latest from main branch..."
+        if ! curl -fsSL \
+            --retry 5 \
+            --retry-delay 2 \
+            --connect-timeout 15 \
+            --max-time 600 \
+            "${TARBALL_FALLBACK_URL}" \
+            -o "${TEMP_TAR}"; then
+            rm -f "${TEMP_TAR}"
+            log_error "Failed to download DatrixOps package from ${TARBALL_FALLBACK_URL}"
+            exit 1
+        fi
     fi
 
     if [[ ! -s "${TEMP_TAR}" ]] || ! tar -tzf "${TEMP_TAR}" >/dev/null 2>&1; then
@@ -69,7 +79,7 @@ fi
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${PROJECT_ROOT}/.env"
 ADMIN_CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"
-PANEL_PORT="${DATRIXOPS_PANEL_PORT:-7800}"
+PANEL_PORT="${DATRIXOPS_PANEL_PORT:-80}"
 INITIAL_ADMIN_PASSWORD=""
 
 if [[ ! "$PANEL_PORT" =~ ^[0-9]+$ ]] || (( PANEL_PORT < 1 || PANEL_PORT > 65535 )); then
@@ -135,11 +145,11 @@ auto_configure_domain() {
 	current_domain="$(sed -n "s/^CADDY_SITE_ADDRESS=//p" "$ENV_FILE" | tail -n 1)"
 	if [[ "$current_domain" =~ ^http://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost)$ ]]; then
 		local existing_host="${current_domain#http://}"
-		set_env_value "DATRIXOPS_HTTP_PORT" "$PANEL_PORT"
-		set_env_value "DATRIXOPS_HTTPS_PORT" "7443"
-		set_env_value "PUBLIC_URL" "http://${existing_host}:${PANEL_PORT}"
-		set_env_value "ALLOWED_ORIGINS" "http://${existing_host}:${PANEL_PORT}"
-		log_success "Configured dedicated panel URL http://${existing_host}:${PANEL_PORT}."
+		set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
+		set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
+		set_env_value "PUBLIC_URL" "http://${existing_host}"
+		set_env_value "ALLOWED_ORIGINS" "http://${existing_host}"
+		log_success "Configured dedicated panel URL http://${existing_host}."
 		return
 	fi
 
@@ -151,8 +161,29 @@ auto_configure_domain() {
 
         if [ -t 0 ]; then
             log_info "VPS Public IP detected: ${detected_ip}"
-            printf "${CYAN}Enter domain or IP for DatrixOps [Press ENTER for '${detected_ip}']: ${NC}"
-            read -r target_domain || true
+            printf "\n${CYAN}============================================================${NC}\n"
+            printf "${CYAN}=== Select DatrixOps Access Mode                         ===${NC}\n"
+            printf "${CYAN}============================================================${NC}\n"
+            printf "  1) Public IP   : http://${detected_ip} (Default, port 80)\n"
+            printf "  2) Custom Domain : https://your-domain.com (Automatic HTTPS/SSL via Caddy)\n"
+            printf "${CYAN}Enter choice [1/2, default: 1]: ${NC}"
+            read -r access_choice || true
+
+            case "${access_choice:-1}" in
+                2)
+                    printf "${CYAN}Enter your domain name (e.g. monitor.example.com): ${NC}"
+                    read -r input_domain || true
+                    target_domain="${input_domain:-}"
+                    ;;
+                1)
+                    target_domain="${detected_ip}"
+                    ;;
+                *)
+                    target_domain="$access_choice"
+                    ;;
+            esac
+        else
+            target_domain="${DATRIXOPS_DOMAIN:-$detected_ip}"
         fi
 
         target_domain="${target_domain:-$detected_ip}"
@@ -164,18 +195,18 @@ auto_configure_domain() {
             target_domain="$detected_ip"
         fi
 
-		log_info "Configuring DatrixOps domain/IP: ${target_domain}"
+		log_info "Configuring DatrixOps with host: ${target_domain}"
 
 		if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
 			caddy_site_address="http://${target_domain}"
-			set_env_value "DATRIXOPS_HTTP_PORT" "$PANEL_PORT"
-			set_env_value "DATRIXOPS_HTTPS_PORT" "7443"
-			set_env_value "PUBLIC_URL" "http://${target_domain}:${PANEL_PORT}"
-			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}:${PANEL_PORT}"
+			set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
+			set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
+			set_env_value "PUBLIC_URL" "http://${target_domain}"
+			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
 		else
 			caddy_site_address="$target_domain"
-			set_env_value "DATRIXOPS_HTTP_PORT" "80"
-			set_env_value "DATRIXOPS_HTTPS_PORT" "443"
+			set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
+			set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
 			set_env_value "PUBLIC_URL" "https://${target_domain}"
 			set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
 		fi
@@ -395,8 +426,53 @@ ensure_admin_account() {
         legacy_admin_email="$(sed -n 's/^EMAIL=//p' "$ADMIN_CREDENTIALS_FILE" | tail -n 1)"
         admin_username="${admin_username:-${legacy_admin_email%%@*}}"
     fi
-    admin_username="${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}"
-    admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
+
+    if [ -t 0 ] && [[ -z "${admin_username:-}" || "$admin_username" == "admin" ]]; then
+        printf "\n${CYAN}============================================================${NC}\n"
+        printf "${CYAN}=== Administrator Account Configuration                  ===${NC}\n"
+        printf "${CYAN}============================================================${NC}\n"
+
+        while true; do
+            printf "${CYAN}Enter administrator username [default: admin]: ${NC}"
+            read -r input_username || true
+            admin_username="${input_username:-admin}"
+            admin_username="$(echo "$admin_username" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+            if [[ "$admin_username" =~ ^[a-z][a-z0-9_.-]{2,31}$ ]]; then
+                break
+            else
+                log_warn "Username must be 3-32 characters, start with a lowercase letter, and contain only a-z, 0-9, '.', '_', or '-'."
+            fi
+        done
+
+        while true; do
+            printf "${CYAN}Enter administrator password (min 12 characters) [Press ENTER to auto-generate]: ${NC}"
+            read -rs input_password || true
+            printf "\n"
+            if [[ -z "$input_password" ]]; then
+                admin_password="$(openssl rand -hex 16)"
+                log_info "Auto-generated secure random password."
+                break
+            elif [[ ${#input_password} -lt 12 ]]; then
+                log_warn "Password must be at least 12 characters long. Please try again."
+            elif [[ ${#input_password} -gt 128 ]]; then
+                log_warn "Password must not exceed 128 characters. Please try again."
+            else
+                printf "${CYAN}Confirm administrator password: ${NC}"
+                read -rs confirm_password || true
+                printf "\n"
+                if [[ "$input_password" != "$confirm_password" ]]; then
+                    log_warn "Passwords do not match. Please try again."
+                else
+                    admin_password="$input_password"
+                    log_success "Password configured successfully."
+                    break
+                fi
+            fi
+        done
+    else
+        admin_username="${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}"
+        admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
+    fi
     setup_token="$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)"
 
     timezone="$(cat /etc/timezone 2>/dev/null || true)"
