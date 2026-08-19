@@ -6,6 +6,7 @@ import { copyTextToClipboard } from '@/lib/clipboard';
 import CustomSelect from '@/components/CustomSelect';
 import {
   Check,
+  Clock,
   Copy,
   Download,
   FileText,
@@ -97,6 +98,8 @@ const formatAuditMessage = (log: AuditLog): string => {
   return `${log.action}${subject ? ` on ${subject}` : ''}${detailPairs.length ? ` | ${detailPairs.join(' ')}` : ''}`;
 };
 
+type LogTimeRange = '15m' | '1h' | '3h' | '6h' | '24h' | '7d' | 'all' | 'custom';
+
 export default function LogsPage() {
   const [servers, setServers] = useState<LogServer[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -105,64 +108,91 @@ export default function LogsPage() {
   const [selectedServerId, setSelectedServerId] = useState<string>('all');
   const [logLevel, setLogLevel] = useState<string>('all');
   const [logType, setLogType] = useState<LogType>('all');
+  const [timeRange, setTimeRange] = useState<LogTimeRange>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [remoteLogSource, setRemoteLogSource] = useState('journal');
   const [remoteLogLines, setRemoteLogLines] = useState('200');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
   const [fetchingRemoteLogs, setFetchingRemoteLogs] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadLogs = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const [serverData, auditData] = await Promise.all([
-          apiClient('/servers').catch(() => []),
-          apiClient('/audit-logs'),
-        ]);
-
-        if (cancelled) return;
-
-        const serverList = Array.isArray(serverData) ? serverData : [];
-        const serverById = new Map<string, LogServer>(serverList.map((server: LogServer) => [server.id, server]));
-        const auditRows: AuditLog[] = Array.isArray(auditData) ? auditData : [];
-
-        setServers(serverList);
-        setLogs(auditRows.map((auditLog) => {
-          const server = serverById.get(auditLog.resource_id);
-          return {
-            id: auditLog.id,
-            timestamp: auditLog.created_at,
-            server_id: auditLog.resource_type === 'SERVER' ? auditLog.resource_id : undefined,
-            server_name: server?.name || auditLog.resource_type || 'control-plane',
-            level: classifyAuditLevel(auditLog.action),
-            source: `audit:${(auditLog.resource_type || 'system').toLowerCase()}`,
-            message: formatAuditMessage(auditLog),
-          };
-        }));
-      } catch (err) {
-        if (cancelled) return;
-        console.error(err);
-        setLogs([]);
-        setLoadError(err instanceof Error ? err.message : 'Failed to load logs');
-      } finally {
-        if (!cancelled) setLoading(false);
+  const loadLogs = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      let auditUrl = '/audit-logs';
+      const params = new URLSearchParams();
+      if (timeRange !== 'all' && timeRange !== 'custom') {
+        params.set('range', timeRange);
+      } else if (timeRange === 'custom') {
+        if (customFrom) params.set('from', new Date(customFrom).toISOString());
+        if (customTo) params.set('to', new Date(customTo).toISOString());
       }
-    };
+      if (params.toString()) {
+        auditUrl += `?${params.toString()}`;
+      }
 
-    loadLogs();
+      const [serverData, auditData] = await Promise.all([
+        apiClient('/servers').catch(() => []),
+        apiClient(auditUrl),
+      ]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      const serverList = Array.isArray(serverData) ? serverData : [];
+      const serverById = new Map<string, LogServer>(serverList.map((server: LogServer) => [server.id, server]));
+      const auditRows: AuditLog[] = Array.isArray(auditData) ? auditData : [];
+
+      setServers(serverList);
+      setLogs(auditRows.map((auditLog) => {
+        const server = serverById.get(auditLog.resource_id);
+        return {
+          id: auditLog.id,
+          timestamp: auditLog.created_at,
+          server_id: auditLog.resource_type === 'SERVER' ? auditLog.resource_id : undefined,
+          server_name: server?.name || auditLog.resource_type || 'control-plane',
+          level: classifyAuditLevel(auditLog.action),
+          source: `audit:${(auditLog.resource_type || 'system').toLowerCase()}`,
+          message: formatAuditMessage(auditLog),
+        };
+      }));
+    } catch (err) {
+      console.error(err);
+      setLogs([]);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load logs');
+    } finally {
+      setLoading(false);
+    }
+  }, [timeRange, customFrom, customTo]);
+
+  useEffect(() => {
+    void loadLogs();
+  }, [loadLogs]);
 
   const filteredLogs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const now = Date.now();
+    let fromTs = 0;
+    let toTs = Infinity;
+
+    if (timeRange === '15m') fromTs = now - 15 * 60 * 1000;
+    else if (timeRange === '1h') fromTs = now - 60 * 60 * 1000;
+    else if (timeRange === '3h') fromTs = now - 3 * 3600 * 1000;
+    else if (timeRange === '6h') fromTs = now - 6 * 3600 * 1000;
+    else if (timeRange === '24h') fromTs = now - 24 * 3600 * 1000;
+    else if (timeRange === '7d') fromTs = now - 7 * 86400 * 1000;
+    else if (timeRange === 'custom') {
+      if (customFrom) fromTs = new Date(customFrom).getTime();
+      if (customTo) toTs = new Date(customTo).getTime();
+    }
 
     return logs.filter(log => {
+      if (fromTs > 0 || toTs < Infinity) {
+        const logTs = new Date(log.timestamp).getTime();
+        if (!isNaN(logTs)) {
+          if (logTs < fromTs || logTs > toTs) return false;
+        }
+      }
+
       if (selectedServerId !== 'all') {
         if (log.server_id !== selectedServerId) return false;
       }
@@ -182,7 +212,7 @@ export default function LogsPage() {
       }
       return true;
     });
-  }, [logs, selectedServerId, logLevel, logType, searchQuery]);
+  }, [logs, selectedServerId, logLevel, logType, timeRange, customFrom, customTo, searchQuery]);
 
   const visibleLogs = useMemo(() => filteredLogs.slice(0, MAX_VISIBLE_LOGS), [filteredLogs]);
   const selectedServer = servers.find((server) => server.id === selectedServerId);
@@ -349,70 +379,135 @@ export default function LogsPage() {
       </div>
 
       {/* Control Filters */}
-      <div className="ops-panel surface-regular no-hover-lift p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Server Selector */}
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
-          <CustomSelect
-            value={selectedServerId}
-            onChange={setSelectedServerId}
-            options={[
-              { value: 'all', label: 'All Servers Fleet' },
-              ...servers.map(s => ({ value: s.id, label: s.name, subLabel: s.ip_address || 'No IP' }))
-            ]}
-            className="w-full"
-          />
-        </div>
-
-        {/* Log Level Selector */}
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Log Level</label>
-          <CustomSelect
-            value={logLevel}
-            onChange={setLogLevel}
-            options={[
-              { value: 'all', label: 'All Levels (INFO, WARN, ERROR)' },
-              { value: 'info', label: 'INFO' },
-              { value: 'warn', label: 'WARN' },
-              { value: 'error', label: 'ERROR' },
-              { value: 'debug', label: 'DEBUG' },
-            ]}
-            className="w-full"
-          />
-        </div>
-
-        {/* Source Category */}
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Source Category</label>
-          <CustomSelect
-            value={logType}
-            onChange={(val) => setLogType(val as LogType)}
-            options={[
-              { value: 'all', label: 'All Sources' },
-              { value: 'audit', label: 'Audit Stream' },
-              { value: 'agent', label: 'DatrixOps Agent' },
-              { value: 'docker', label: 'Docker Containers' },
-              { value: 'system', label: 'Systemd Services' },
-            ]}
-            className="w-full"
-          />
-        </div>
-
-        {/* Search Query */}
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Filter Keyword</label>
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" />
-            <input
-              type="text"
-              placeholder="Search message text..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '44px' }}
-              className="w-full pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all"
+      <div className="ops-panel surface-regular no-hover-lift p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Server Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
+            <CustomSelect
+              value={selectedServerId}
+              onChange={setSelectedServerId}
+              options={[
+                { value: 'all', label: 'All Servers Fleet' },
+                ...servers.map(s => ({ value: s.id, label: s.name, subLabel: s.ip_address || 'No IP' }))
+              ]}
+              className="w-full"
             />
           </div>
+
+          {/* Time Range Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Time Range</label>
+            <CustomSelect
+              value={timeRange}
+              onChange={(val) => setTimeRange(val as LogTimeRange)}
+              options={[
+                { value: 'all', label: 'All Time Available' },
+                { value: '15m', label: 'Last 15 minutes' },
+                { value: '1h', label: 'Last 1 hour' },
+                { value: '3h', label: 'Last 3 hours' },
+                { value: '6h', label: 'Last 6 hours' },
+                { value: '24h', label: 'Last 24 hours' },
+                { value: '7d', label: 'Last 7 days' },
+                { value: 'custom', label: 'Custom Date Range...' },
+              ]}
+              className="w-full"
+            />
+          </div>
+
+          {/* Log Level Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Log Level</label>
+            <CustomSelect
+              value={logLevel}
+              onChange={setLogLevel}
+              options={[
+                { value: 'all', label: 'All Levels (INFO, WARN, ERROR)' },
+                { value: 'info', label: 'INFO' },
+                { value: 'warn', label: 'WARN' },
+                { value: 'error', label: 'ERROR' },
+                { value: 'debug', label: 'DEBUG' },
+              ]}
+              className="w-full"
+            />
+          </div>
+
+          {/* Source Category */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Source Category</label>
+            <CustomSelect
+              value={logType}
+              onChange={(val) => setLogType(val as LogType)}
+              options={[
+                { value: 'all', label: 'All Sources' },
+                { value: 'audit', label: 'Audit Stream' },
+                { value: 'agent', label: 'DatrixOps Agent' },
+                { value: 'docker', label: 'Docker Containers' },
+                { value: 'system', label: 'Systemd Services' },
+              ]}
+              className="w-full"
+            />
+          </div>
+
+          {/* Search Query */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Filter Keyword</label>
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" />
+              <input
+                type="text"
+                placeholder="Search message text..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '44px' }}
+                className="w-full pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all"
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Custom Range Bar (Shown only when timeRange === 'custom') */}
+        {timeRange === 'custom' && (
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--border-color)] text-xs">
+            <span className="font-semibold text-blue-400 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" /> Custom Time Window:
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="text-[var(--color-muted)] font-medium">From:</label>
+              <input
+                type="datetime-local"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[var(--color-muted)] font-medium">To:</label>
+              <input
+                type="datetime-local"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadLogs()}
+              className="ops-button secondary text-xs py-1 px-3"
+            >
+              Apply Filter
+            </button>
+            {(customFrom || customTo) && (
+              <button
+                type="button"
+                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                className="text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] underline ml-2"
+              >
+                Clear Range
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="ops-panel surface-regular no-hover-lift grid grid-cols-1 gap-4 p-4 md:grid-cols-[1fr_180px_220px_auto]">

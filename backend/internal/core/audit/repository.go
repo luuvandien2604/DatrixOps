@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -26,6 +27,12 @@ type AuditLog struct {
 	CreatedAt    time.Time              `json:"created_at"`
 }
 
+type ListFilter struct {
+	From  *time.Time
+	To    *time.Time
+	Limit int
+}
+
 func (r *Repository) Log(ctx context.Context, userID, action, resourceType, resourceID string, details map[string]interface{}) error {
 	var detailsBytes []byte
 	if details != nil {
@@ -40,13 +47,35 @@ func (r *Repository) Log(ctx context.Context, userID, action, resourceType, reso
 }
 
 func (r *Repository) ListLogs(ctx context.Context, userID string) ([]AuditLog, error) {
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, user_id, action, resource_type, resource_id, details, created_at 
+	return r.ListLogsFiltered(ctx, userID, ListFilter{Limit: 100})
+}
+
+func (r *Repository) ListLogsFiltered(ctx context.Context, userID string, filter ListFilter) ([]AuditLog, error) {
+	query := `SELECT id, user_id, action, resource_type, resource_id, details, created_at 
 		 FROM audit_logs 
-		 WHERE user_id = $1
-		 ORDER BY created_at DESC LIMIT 100`,
-		userID,
-	)
+		 WHERE user_id = $1`
+	args := []interface{}{userID}
+	argIdx := 2
+
+	if filter.From != nil && !filter.From.IsZero() {
+		query += fmt.Sprintf(` AND created_at >= $%d`, argIdx)
+		args = append(args, *filter.From)
+		argIdx++
+	}
+	if filter.To != nil && !filter.To.IsZero() {
+		query += fmt.Sprintf(` AND created_at <= $%d`, argIdx)
+		args = append(args, *filter.To)
+		argIdx++
+	}
+
+	limit := filter.Limit
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, argIdx)
+	args = append(args, limit)
+
+	rows, err := r.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
