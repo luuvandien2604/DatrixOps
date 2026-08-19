@@ -15,6 +15,11 @@ log_warn()    { printf "${YELLOW}[WARN]${NC} %s\n" "$*"; }
 log_error()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; }
 log_step()    { printf "\n${CYAN}===> %s${NC}\n" "$*"; }
 
+# Reconnect stdin to controlling terminal if running through a pipe (e.g. curl ... | sudo bash)
+if [ ! -t 0 ] && [ -e /dev/tty ] && [ -r /dev/tty ]; then
+    exec < /dev/tty 2>/dev/null || true
+fi
+
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
@@ -159,7 +164,12 @@ auto_configure_domain() {
 		local target_domain=""
 		local caddy_site_address=""
 
-        if [ -t 0 ]; then
+        local is_interactive=false
+        if [ -t 0 ] || [ -c /dev/tty ]; then
+            is_interactive=true
+        fi
+
+        if [ "$is_interactive" = true ] && [ -z "${DATRIXOPS_DOMAIN:-}" ]; then
             log_info "VPS Public IP detected: ${detected_ip}"
             printf "\n${CYAN}============================================================${NC}\n"
             printf "${CYAN}=== Select DatrixOps Access Mode                         ===${NC}\n"
@@ -167,12 +177,20 @@ auto_configure_domain() {
             printf "  1) Public IP   : http://${detected_ip} (Default, port 80)\n"
             printf "  2) Custom Domain : https://your-domain.com (Automatic HTTPS/SSL via Caddy)\n"
             printf "${CYAN}Enter choice [1/2, default: 1]: ${NC}"
-            read -r access_choice || true
+            if [ -c /dev/tty ]; then
+                read -r access_choice < /dev/tty || true
+            else
+                read -r access_choice || true
+            fi
 
             case "${access_choice:-1}" in
                 2)
                     printf "${CYAN}Enter your domain name (e.g. monitor.example.com): ${NC}"
-                    read -r input_domain || true
+                    if [ -c /dev/tty ]; then
+                        read -r input_domain < /dev/tty || true
+                    else
+                        read -r input_domain || true
+                    fi
                     target_domain="${input_domain:-}"
                     ;;
                 1)
@@ -427,14 +445,23 @@ ensure_admin_account() {
         admin_username="${admin_username:-${legacy_admin_email%%@*}}"
     fi
 
-    if [ -t 0 ] && [[ -z "${admin_username:-}" || "$admin_username" == "admin" ]]; then
+    local is_interactive=false
+    if [ -t 0 ] || [ -c /dev/tty ]; then
+        is_interactive=true
+    fi
+
+    if [ "$is_interactive" = true ] && [[ -z "${admin_username:-}" || "$admin_username" == "admin" ]] && [[ -z "${DATRIXOPS_ADMIN_PASSWORD:-}" ]]; then
         printf "\n${CYAN}============================================================${NC}\n"
         printf "${CYAN}=== Administrator Account Configuration                  ===${NC}\n"
         printf "${CYAN}============================================================${NC}\n"
 
         while true; do
             printf "${CYAN}Enter administrator username [default: admin]: ${NC}"
-            read -r input_username || true
+            if [ -c /dev/tty ]; then
+                read -r input_username < /dev/tty || true
+            else
+                read -r input_username || true
+            fi
             admin_username="${input_username:-admin}"
             admin_username="$(echo "$admin_username" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
             if [[ "$admin_username" =~ ^[a-z][a-z0-9_.-]{2,31}$ ]]; then
@@ -446,7 +473,11 @@ ensure_admin_account() {
 
         while true; do
             printf "${CYAN}Enter administrator password (min 12 characters) [Press ENTER to auto-generate]: ${NC}"
-            read -rs input_password || true
+            if [ -c /dev/tty ]; then
+                read -rs input_password < /dev/tty || true
+            else
+                read -rs input_password || true
+            fi
             printf "\n"
             if [[ -z "$input_password" ]]; then
                 admin_password="$(openssl rand -hex 16)"
@@ -458,7 +489,11 @@ ensure_admin_account() {
                 log_warn "Password must not exceed 128 characters. Please try again."
             else
                 printf "${CYAN}Confirm administrator password: ${NC}"
-                read -rs confirm_password || true
+                if [ -c /dev/tty ]; then
+                    read -rs confirm_password < /dev/tty || true
+                else
+                    read -rs confirm_password || true
+                fi
                 printf "\n"
                 if [[ "$input_password" != "$confirm_password" ]]; then
                     log_warn "Passwords do not match. Please try again."
@@ -574,7 +609,7 @@ auto_self_enroll_host() {
                 END IF;
 
                 SELECT id INTO v_server_id FROM servers
-                WHERE tags @> '"self-host"'::jsonb OR name LIKE '%Control Plane%'
+                WHERE tags ? 'self-host' OR name LIKE '%Control Plane%'
                 LIMIT 1;
 
                 IF v_server_id IS NULL THEN
