@@ -143,7 +143,13 @@ set_env_value() {
 auto_configure_domain() {
 	local current_domain
 	current_domain="$(sed -n "s/^CADDY_SITE_ADDRESS=//p" "$ENV_FILE" | tail -n 1)"
-	if [[ "$current_domain" =~ ^http://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost)$ ]]; then
+
+    local is_interactive=false
+    if [ -t 0 ] || [ -c /dev/tty ]; then
+        is_interactive=true
+    fi
+
+	if [ "$is_interactive" != true ] && [[ "$current_domain" =~ ^http://([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost)$ ]]; then
 		local existing_host="${current_domain#http://}"
 		set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
 		set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
@@ -153,79 +159,72 @@ auto_configure_domain() {
 		return
 	fi
 
-	if [[ -z "$current_domain" || "$current_domain" == "monitor.example.com" || "$current_domain" == "https://monitor.example.com" ]]; then
-		local detected_ip
-		detected_ip="$(detect_public_ip)"
-		local target_domain=""
-		local caddy_site_address=""
+	local detected_ip
+	detected_ip="$(detect_public_ip)"
+	local target_domain=""
+	local caddy_site_address=""
 
-        local is_interactive=false
-        if [ -t 0 ] || [ -c /dev/tty ]; then
-            is_interactive=true
-        fi
-
-        if [ "$is_interactive" = true ] && [ -z "${DATRIXOPS_DOMAIN:-}" ]; then
-            log_info "VPS Public IP detected: ${detected_ip}"
-            printf "\n${CYAN}============================================================${NC}\n"
-            printf "${CYAN}=== Select DatrixOps Access Mode                         ===${NC}\n"
-            printf "${CYAN}============================================================${NC}\n"
-            printf "  1) Public IP   : http://${detected_ip} (Default, port 80)\n"
-            printf "  2) Custom Domain : https://your-domain.com (Automatic HTTPS/SSL via Caddy)\n"
-            printf "${CYAN}Enter choice [1/2, default: 1]: ${NC}"
-            if [ -c /dev/tty ]; then
-                read -r access_choice < /dev/tty || true
-            else
-                read -r access_choice || true
-            fi
-
-            case "${access_choice:-1}" in
-                2)
-                    printf "${CYAN}Enter your domain name (e.g. monitor.example.com): ${NC}"
-                    if [ -c /dev/tty ]; then
-                        read -r input_domain < /dev/tty || true
-                    else
-                        read -r input_domain || true
-                    fi
-                    target_domain="${input_domain:-}"
-                    ;;
-                1)
-                    target_domain="${detected_ip}"
-                    ;;
-                *)
-                    target_domain="$access_choice"
-                    ;;
-            esac
+    if [ "$is_interactive" = true ] && [ -z "${DATRIXOPS_DOMAIN:-}" ]; then
+        log_info "VPS Public IP detected: ${detected_ip}"
+        printf "\n${CYAN}============================================================${NC}\n"
+        printf "${CYAN}=== Select DatrixOps Access Mode                         ===${NC}\n"
+        printf "${CYAN}============================================================${NC}\n"
+        printf "  1) Public IP     : http://${detected_ip} (Default, standard port 80)\n"
+        printf "  2) Custom Domain : https://your-domain.com (Automatic HTTPS/SSL via Caddy)\n"
+        printf "${CYAN}Enter choice [1/2, default: 1]: ${NC}"
+        if [ -c /dev/tty ]; then
+            read -r access_choice < /dev/tty || true
         else
-            target_domain="${DATRIXOPS_DOMAIN:-$detected_ip}"
+            read -r access_choice || true
         fi
 
-        target_domain="${target_domain:-$detected_ip}"
-        target_domain="${target_domain#http://}"
-        target_domain="${target_domain#https://}"
-        target_domain="${target_domain%/}"
+        case "${access_choice:-1}" in
+            2)
+                printf "${CYAN}Enter your domain name (e.g. monitor.example.com): ${NC}"
+                if [ -c /dev/tty ]; then
+                    read -r input_domain < /dev/tty || true
+                else
+                    read -r input_domain || true
+                fi
+                target_domain="${input_domain:-}"
+                ;;
+            1)
+                target_domain="${detected_ip}"
+                ;;
+            *)
+                target_domain="$access_choice"
+                ;;
+        esac
+    else
+        target_domain="${DATRIXOPS_DOMAIN:-${current_domain:-$detected_ip}}"
+    fi
 
-        if [[ -z "$target_domain" || "$target_domain" == "monitor.example.com" ]]; then
-            target_domain="$detected_ip"
-        fi
+    target_domain="${target_domain:-$detected_ip}"
+    target_domain="${target_domain#http://}"
+    target_domain="${target_domain#https://}"
+    target_domain="${target_domain%/}"
 
-		log_info "Configuring DatrixOps with host: ${target_domain}"
+    if [[ -z "$target_domain" || "$target_domain" == "monitor.example.com" ]]; then
+        target_domain="$detected_ip"
+    fi
 
-		if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$target_domain" == "localhost" ]]; then
-			caddy_site_address="http://${target_domain}"
-			set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
-			set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
-			set_env_value "PUBLIC_URL" "http://${target_domain}"
-			set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
-		else
-			caddy_site_address="$target_domain"
-			set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
-			set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
-			set_env_value "PUBLIC_URL" "https://${target_domain}"
-			set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
-		fi
-		set_env_value "CADDY_SITE_ADDRESS" "$caddy_site_address"
-		log_success "Configured ${ENV_FILE} with CADDY_SITE_ADDRESS=${caddy_site_address}."
+	log_info "Configuring DatrixOps with host: ${target_domain}"
+
+	if [[ "$target_domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ || "$target_domain" == "localhost" ]]; then
+		caddy_site_address="http://${target_domain}"
+		set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
+		set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
+		set_env_value "PUBLIC_URL" "http://${target_domain}"
+		set_env_value "ALLOWED_ORIGINS" "http://${target_domain}"
+	else
+		caddy_site_address="$target_domain"
+		set_env_value "DATRIXOPS_HTTP_PORT" "${DATRIXOPS_HTTP_PORT:-80}"
+		set_env_value "DATRIXOPS_HTTPS_PORT" "${DATRIXOPS_HTTPS_PORT:-443}"
+		set_env_value "PUBLIC_URL" "https://${target_domain}"
+		set_env_value "ALLOWED_ORIGINS" "https://${target_domain}"
 	fi
+	set_env_value "CADDY_SITE_ADDRESS" "$caddy_site_address"
+	log_success "Configured ${ENV_FILE} with CADDY_SITE_ADDRESS=${caddy_site_address}."
 }
 
 check_and_install_prereqs() {
