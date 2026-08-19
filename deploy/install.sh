@@ -227,6 +227,75 @@ auto_configure_domain() {
 	log_success "Configured ${ENV_FILE} with CADDY_SITE_ADDRESS=${caddy_site_address}."
 }
 
+CONFIGURED_ADMIN_USERNAME=""
+CONFIGURED_ADMIN_PASSWORD=""
+
+prompt_admin_credentials() {
+    local is_interactive=false
+    if [ -t 0 ] || [ -c /dev/tty ]; then
+        is_interactive=true
+    fi
+
+    if [ "$is_interactive" = true ] && [[ -z "${DATRIXOPS_ADMIN_PASSWORD:-}" ]]; then
+        printf "\n${CYAN}============================================================${NC}\n"
+        printf "${CYAN}=== Administrator Account Configuration                  ===${NC}\n"
+        printf "${CYAN}============================================================${NC}\n"
+
+        while true; do
+            printf "${CYAN}Enter administrator username [default: admin]: ${NC}"
+            if [ -c /dev/tty ]; then
+                read -r input_username < /dev/tty || true
+            else
+                read -r input_username || true
+            fi
+            CONFIGURED_ADMIN_USERNAME="${input_username:-admin}"
+            CONFIGURED_ADMIN_USERNAME="$(echo "$CONFIGURED_ADMIN_USERNAME" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+            if [[ "$CONFIGURED_ADMIN_USERNAME" =~ ^[a-z][a-z0-9_.-]{2,31}$ ]]; then
+                break
+            else
+                log_warn "Username must be 3-32 characters, start with a lowercase letter, and contain only a-z, 0-9, '.', '_', or '-'."
+            fi
+        done
+
+        while true; do
+            printf "${CYAN}Enter administrator password (min 12 characters) [Press ENTER to auto-generate]: ${NC}"
+            if [ -c /dev/tty ]; then
+                read -rs input_password < /dev/tty || true
+            else
+                read -rs input_password || true
+            fi
+            printf "\n"
+            if [[ -z "$input_password" ]]; then
+                CONFIGURED_ADMIN_PASSWORD="$(openssl rand -hex 16)"
+                log_info "Auto-generated secure random password."
+                break
+            elif [[ ${#input_password} -lt 12 ]]; then
+                log_warn "Password must be at least 12 characters long. Please try again."
+            elif [[ ${#input_password} -gt 128 ]]; then
+                log_warn "Password must not exceed 128 characters. Please try again."
+            else
+                printf "${CYAN}Confirm administrator password: ${NC}"
+                if [ -c /dev/tty ]; then
+                    read -rs confirm_password < /dev/tty || true
+                else
+                    read -rs confirm_password || true
+                fi
+                printf "\n"
+                if [[ "$input_password" != "$confirm_password" ]]; then
+                    log_warn "Passwords do not match. Please try again."
+                else
+                    CONFIGURED_ADMIN_PASSWORD="$input_password"
+                    log_success "Password configured successfully."
+                    break
+                fi
+            fi
+        done
+    else
+        CONFIGURED_ADMIN_USERNAME="${DATRIXOPS_ADMIN_USERNAME:-admin}"
+        CONFIGURED_ADMIN_PASSWORD="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
+    fi
+}
+
 check_and_install_prereqs() {
     if ! command -v openssl >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
         log_info "Prerequisite tools (openssl, curl, jq) are missing. Installing automatically..."
@@ -334,6 +403,7 @@ if [[ -n "${INSTALL_VERSION:-}" ]]; then
     fi
 fi
 auto_configure_domain
+prompt_admin_credentials
 check_and_install_nginx
 
 log_step "Step 3/6: Validating environment configuration"
@@ -439,69 +509,8 @@ ensure_admin_account() {
         admin_username="${admin_username:-${legacy_admin_email%%@*}}"
     fi
 
-    local is_interactive=false
-    if [ -t 0 ] || [ -c /dev/tty ]; then
-        is_interactive=true
-    fi
-
-    if [ "$is_interactive" = true ] && [[ -z "${admin_username:-}" || "$admin_username" == "admin" ]] && [[ -z "${DATRIXOPS_ADMIN_PASSWORD:-}" ]]; then
-        printf "\n${CYAN}============================================================${NC}\n"
-        printf "${CYAN}=== Administrator Account Configuration                  ===${NC}\n"
-        printf "${CYAN}============================================================${NC}\n"
-
-        while true; do
-            printf "${CYAN}Enter administrator username [default: admin]: ${NC}"
-            if [ -c /dev/tty ]; then
-                read -r input_username < /dev/tty || true
-            else
-                read -r input_username || true
-            fi
-            admin_username="${input_username:-admin}"
-            admin_username="$(echo "$admin_username" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
-            if [[ "$admin_username" =~ ^[a-z][a-z0-9_.-]{2,31}$ ]]; then
-                break
-            else
-                log_warn "Username must be 3-32 characters, start with a lowercase letter, and contain only a-z, 0-9, '.', '_', or '-'."
-            fi
-        done
-
-        while true; do
-            printf "${CYAN}Enter administrator password (min 12 characters) [Press ENTER to auto-generate]: ${NC}"
-            if [ -c /dev/tty ]; then
-                read -rs input_password < /dev/tty || true
-            else
-                read -rs input_password || true
-            fi
-            printf "\n"
-            if [[ -z "$input_password" ]]; then
-                admin_password="$(openssl rand -hex 16)"
-                log_info "Auto-generated secure random password."
-                break
-            elif [[ ${#input_password} -lt 12 ]]; then
-                log_warn "Password must be at least 12 characters long. Please try again."
-            elif [[ ${#input_password} -gt 128 ]]; then
-                log_warn "Password must not exceed 128 characters. Please try again."
-            else
-                printf "${CYAN}Confirm administrator password: ${NC}"
-                if [ -c /dev/tty ]; then
-                    read -rs confirm_password < /dev/tty || true
-                else
-                    read -rs confirm_password || true
-                fi
-                printf "\n"
-                if [[ "$input_password" != "$confirm_password" ]]; then
-                    log_warn "Passwords do not match. Please try again."
-                else
-                    admin_password="$input_password"
-                    log_success "Password configured successfully."
-                    break
-                fi
-            fi
-        done
-    else
-        admin_username="${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}"
-        admin_password="${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}"
-    fi
+    admin_username="${CONFIGURED_ADMIN_USERNAME:-${admin_username:-${DATRIXOPS_ADMIN_USERNAME:-admin}}}"
+    admin_password="${CONFIGURED_ADMIN_PASSWORD:-${DATRIXOPS_ADMIN_PASSWORD:-$(openssl rand -hex 16)}}"
     setup_token="$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)"
 
     timezone="$(cat /etc/timezone 2>/dev/null || true)"
