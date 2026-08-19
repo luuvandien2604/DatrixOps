@@ -439,7 +439,15 @@ log_info "Pulling pre-built container images from registry..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null || docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build < /dev/null || true
 
 log_info "Running database migrations..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null; then
+    log_warn "Database migration failed. Resetting stale PostgreSQL volume from previous installation..."
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down -v < /dev/null 2>/dev/null || true
+    log_info "Re-running database migrations on fresh PostgreSQL volume..."
+    if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null; then
+        log_error "Database migration failed. Please check database logs."
+        exit 1
+    fi
+fi
 
 log_info "Starting DatrixOps services in detached mode..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate
