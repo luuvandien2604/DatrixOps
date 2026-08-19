@@ -24,8 +24,7 @@ and operational history remain on infrastructure you manage.
 
 Recommended host: a fresh Ubuntu 20.04/22.04/24.04, Debian 12, or
 CentOS/RHEL/Rocky Linux server with 1 CPU, 2 GB RAM, 20 GB disk and inbound TCP
-port 7800. The installer uses a dedicated panel port and leaves existing host
-web services unchanged.
+ports 80 (HTTP) and 443 (HTTPS).
 
 Run as root:
 
@@ -33,9 +32,10 @@ Run as root:
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
 
-The installer downloads the source package to `/opt/datrixops`, generates
-secrets, verifies the signed Agent release, pulls version-pinned container
-images, runs migrations and starts the stack.
+The installer downloads the source package to `/opt/datrixops`, allows choosing
+between **Public IP** (`http://<server-ip>`) and **Custom Domain** (`https://<domain>` with automatic SSL via Caddy),
+prompts for custom administrator credentials (or auto-generates them), verifies the signed Agent release,
+pulls version-pinned container images, runs migrations and starts the stack.
 
 ## Independent versions
 
@@ -45,17 +45,14 @@ DatrixOps publishes CE Server and Agent independently. A CE Server release uses
 Agent does not rebuild or change CE Server images; see
 [Upgrade](docs/UPGRADE.md).
 
-The installer creates the first administrator automatically and prints the
-generated password once at the end. The password is not stored in plaintext;
-`/opt/datrixops/.admin-credentials` contains only the username. After
-installation, open:
+The installer creates the first administrator according to your input (or generates a random secure password).
+The password is not stored in plaintext; `/opt/datrixops/.admin-credentials` contains only the username.
+After installation, open:
 
 ```text
-http://<server-ip>:7800/login
+http://<server-ip>/login
 ```
-
-For production, configure a domain and HTTPS after validating the IP-based
-installation.
+*(or `https://<domain>/login` if domain mode was configured)*
 
 Manage the installation from the server with one command:
 

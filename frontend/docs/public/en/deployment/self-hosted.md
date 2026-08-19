@@ -8,16 +8,14 @@ Agent installed on every monitored server. PostgreSQL data, metrics, audit
 history and configuration stay on infrastructure you manage.
 
 ## Install the Control Plane
-
-Recommended host: Linux, 1 CPU, 2 GB RAM, 20 GB disk and inbound TCP port 7800. Run:
-
+ 
+Recommended host: Linux, 1 CPU, 2 GB RAM, 20 GB disk and inbound TCP ports 80 and 443. Run:
+ 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
-
-The installer prepares Docker, Caddy, secrets, signed Agent artifacts, database
-migrations and containers. It creates the first administrator automatically
-and prints the credentials. Open `http://<IP>:7800/login` to sign in.
+ 
+The installer allows choosing between **Public IP** (`http://<IP>`) and **Custom Domain** (`https://<domain>` with automatic SSL via Caddy), sets up administrator credentials, prepares Docker, database migrations and containers. Open `http://<IP>/login` (or `https://<domain>/login`) to sign in.
 
 ## Operational responsibility
 

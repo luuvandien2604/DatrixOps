@@ -8,16 +8,14 @@ từng server cần giám sát. PostgreSQL, metrics, audit history và cấu hì
 hạ tầng do bạn quản lý.
 
 ## Cài Control Plane
-
-Máy chủ khuyến nghị: Linux, 1 CPU, 2 GB RAM, 20 GB disk và TCP 7800 inbound. Chạy:
-
+ 
+Máy chủ khuyến nghị: Linux, 1 CPU, 2 GB RAM, 20 GB disk và cổng TCP 80, 443 inbound. Chạy:
+ 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
-
-Installer chuẩn bị Docker, Caddy, secret, signed Agent artifacts, database
-migration và container. Installer tự tạo administrator đầu tiên và in thông
-tin đăng nhập. Mở `http://<IP>:7800/login` để đăng nhập.
+ 
+Installer hỗ trợ tùy chọn cài đặt theo **Public IP** (`http://<IP>`) hoặc **Custom Domain** (`https://<domain>` với SSL tự động qua Caddy), tự đặt tài khoản quản trị viên, chuẩn bị Docker, database migration và container. Mở `http://<IP>/login` (hoặc `https://<domain>/login`) để đăng nhập.
 
 ## Trách nhiệm vận hành
 
