@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -329,7 +328,7 @@ func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serve
 		return
 	}
 
-	title, dashboardMessage, externalMessage := firingMessages(rule, serverName, currentValue)
+	title, dashboardMessage, notifSet := buildAlertNotification(rule, serverName, currentValue, true)
 	metadata, _ := json.Marshal(map[string]interface{}{
 		"metric":        rule.Metric,
 		"operator":      rule.Operator,
@@ -360,7 +359,7 @@ func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serve
 	}
 
 	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
-	j.sendNotifications(channels, externalMessage)
+	j.sendNotifications(channels, notifSet)
 	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "firing")
 }
 
@@ -406,7 +405,7 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 		return
 	}
 
-	title, dashboardMessage, externalMessage := resolvedMessages(rule, serverName, currentValue)
+	title, dashboardMessage, notifSet := buildAlertNotification(rule, serverName, currentValue, false)
 	metadata, _ := json.Marshal(map[string]interface{}{
 		"metric":        rule.Metric,
 		"operator":      rule.Operator,
@@ -437,7 +436,7 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 	}
 
 	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
-	j.sendNotifications(channels, externalMessage)
+	j.sendNotifications(channels, notifSet)
 	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "resolved")
 }
 
@@ -486,73 +485,182 @@ func (j *AlertJob) dispatchAlertWebhook(rule alert.AlertRule, serverID, serverNa
 	}()
 }
 
-// firingMessages tạo nội dung riêng cho Dashboard và external channel.
-func firingMessages(rule alert.AlertRule, serverName string, currentValue float64) (string, string, string) {
-	if rule.Metric == "status" {
-		return "Server offline: " + serverName,
-			fmt.Sprintf("Agent %s has not reported a heartbeat for more than one minute.", serverName),
-			fmt.Sprintf("🚨 <b>SERVER OFFLINE</b>\n<b>Server:</b> %s\nLast seen > 1 min ago.", serverName)
-	}
-
-	title := "Alert firing: " + rule.Name
-	dashboardMessage := fmt.Sprintf(
-		"%s on %s is %.2f%% (%s %.2f%%).",
-		metricLabel(rule.Metric),
-		serverName,
-		currentValue,
-		rule.Operator,
-		rule.Threshold,
-	)
-	externalMessage := fmt.Sprintf(
-		"🚨 <b>ALERT FIRING</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f%%",
-		rule.Name,
-		serverName,
-		currentValue,
-	)
-	return title, dashboardMessage, externalMessage
+type alertNotificationSet struct {
+	telegramMessage string
+	discordEmbed    notifier.DiscordEmbed
+	emailSubject    string
+	emailHTML       string
 }
 
-// resolvedMessages tạo nội dung phục hồi cho Dashboard và external channel.
-func resolvedMessages(rule alert.AlertRule, serverName string, currentValue float64) (string, string, string) {
+func buildAlertNotification(rule alert.AlertRule, serverName string, currentValue float64, isFiring bool) (string, string, alertNotificationSet) {
+	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05") + " UTC"
+	metricName := metricLabel(rule.Metric)
+
 	if rule.Metric == "status" {
-		return "Server online: " + serverName,
-			fmt.Sprintf("Agent %s is reporting heartbeat data again.", serverName),
-			fmt.Sprintf("✅ <b>SERVER ONLINE</b>\n<b>Server:</b> %s is back online.", serverName)
+		if isFiring {
+			title := "Server offline: " + serverName
+			dashMsg := fmt.Sprintf("Agent %s has not reported a heartbeat for more than one minute.", serverName)
+			teleMsg := fmt.Sprintf(
+				"<b>[DATRIXOPS ALERT] SERVER OFFLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Offline / Heartbeat Lost</b>\n<b>Condition:</b> No heartbeat received for &gt; 1 minute\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> System Critical",
+				serverName, nowStr,
+			)
+			discord := notifier.DiscordEmbed{
+				Title:       "[DATRIXOPS ALERT] SERVER OFFLINE: " + serverName,
+				Description: fmt.Sprintf("Agent **%s** has stopped reporting heartbeat telemetry.", serverName),
+				Color:       0xEF4444,
+				Fields: []notifier.DiscordEmbedField{
+					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Status", Value: "Offline", Inline: true},
+					{Name: "Duration", Value: "> 1 minute", Inline: true},
+					{Name: "Timestamp", Value: nowStr, Inline: false},
+				},
+				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+			}
+			emailSubj := "[DATRIXOPS ALERT] Server Offline: " + serverName
+			emailHTML := renderAlertEmail(serverName, "Server Offline Alert", "Heartbeat Status", "Offline", "No heartbeat > 1m", nowStr, true)
+			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
+		} else {
+			title := "Server online: " + serverName
+			dashMsg := fmt.Sprintf("Agent %s is reporting heartbeat data again.", serverName)
+			teleMsg := fmt.Sprintf(
+				"<b>[DATRIXOPS ALERT] SERVER ONLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Online / Connected</b>\n<b>Details:</b> Heartbeat reporting has resumed\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> Status Normal",
+				serverName, nowStr,
+			)
+			discord := notifier.DiscordEmbed{
+				Title:       "[DATRIXOPS ALERT] SERVER ONLINE: " + serverName,
+				Description: fmt.Sprintf("Agent **%s** is back online and reporting telemetry.", serverName),
+				Color:       0x10B981,
+				Fields: []notifier.DiscordEmbedField{
+					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Status", Value: "Online / Connected", Inline: true},
+					{Name: "Timestamp", Value: nowStr, Inline: false},
+				},
+				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+			}
+			emailSubj := "[DATRIXOPS RESOLVED] Server Online: " + serverName
+			emailHTML := renderAlertEmail(serverName, "Server Online Recovered", "Heartbeat Status", "Online", "Reporting telemetry", nowStr, false)
+			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
+		}
 	}
 
+	if isFiring {
+		title := "Alert firing: " + rule.Name
+		dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
+		teleMsg := fmt.Sprintf(
+			"<b>[DATRIXOPS ALERT] CRITICAL FIRING</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Rule:</b> <b>%s</b>\n<b>Metric:</b> %s\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%)\n<b>Duration:</b> &gt; %d minutes\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> Active Alert",
+			serverName, rule.Name, metricName, currentValue, rule.Operator, rule.Threshold, rule.DurationMinutes, nowStr,
+		)
+		discord := notifier.DiscordEmbed{
+			Title:       fmt.Sprintf("[DATRIXOPS ALERT] CRITICAL FIRING: %s", rule.Name),
+			Description: fmt.Sprintf("Metric threshold breached on server **%s**.", serverName),
+			Color:       0xEF4444,
+			Fields: []notifier.DiscordEmbedField{
+				{Name: "Server", Value: serverName, Inline: true},
+				{Name: "Metric", Value: metricName, Inline: true},
+				{Name: "Current Value", Value: fmt.Sprintf("%.2f%%", currentValue), Inline: true},
+				{Name: "Threshold", Value: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), Inline: true},
+				{Name: "Duration", Value: fmt.Sprintf("> %dm", rule.DurationMinutes), Inline: true},
+				{Name: "Timestamp", Value: nowStr, Inline: false},
+			},
+			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+		}
+		emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] Firing: %s on %s", rule.Name, serverName)
+		emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), nowStr, true)
+		return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
+	}
+
+	// Resolved
 	title := "Alert resolved: " + rule.Name
-	dashboardMessage := fmt.Sprintf(
-		"%s on %s returned to %.2f%%.",
-		metricLabel(rule.Metric),
-		serverName,
-		currentValue,
+	dashMsg := fmt.Sprintf("%s on %s returned to %.2f%%.", metricName, serverName, currentValue)
+	teleMsg := fmt.Sprintf(
+		"<b>[DATRIXOPS ALERT] RESOLVED OK</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Rule:</b> <b>%s</b>\n<b>Metric:</b> %s\n<b>Current Value:</b> <code>%.2f%%</code> (Normal)\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> Status Normal",
+		serverName, rule.Name, metricName, currentValue, nowStr,
 	)
-	externalMessage := fmt.Sprintf(
-		"✅ <b>ALERT RESOLVED</b>\n<b>Rule:</b> %s\n<b>Server:</b> %s\n<b>Value:</b> %.2f%%",
-		rule.Name,
-		serverName,
-		currentValue,
-	)
-	return title, dashboardMessage, externalMessage
+	discord := notifier.DiscordEmbed{
+		Title:       fmt.Sprintf("[DATRIXOPS ALERT] RESOLVED OK: %s", rule.Name),
+		Description: fmt.Sprintf("Metric has returned to normal operational limits on server **%s**.", serverName),
+		Color:       0x10B981,
+		Fields: []notifier.DiscordEmbedField{
+			{Name: "Server", Value: serverName, Inline: true},
+			{Name: "Metric", Value: metricName, Inline: true},
+			{Name: "Current Value", Value: fmt.Sprintf("%.2f%%", currentValue), Inline: true},
+			{Name: "Status", Value: "Resolved / Healthy", Inline: true},
+			{Name: "Timestamp", Value: nowStr, Inline: false},
+		},
+		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+	}
+	emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s on %s", rule.Name, serverName)
+	emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), "Normal", nowStr, false)
+	return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
+}
+
+func renderAlertEmail(server, rule, metric, value, threshold, timestamp string, isCritical bool) string {
+	statusBg := "#EF4444"
+	statusText := "CRITICAL ALERT"
+	if !isCritical {
+		statusBg = "#10B981"
+		statusText = "RESOLVED"
+	}
+
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; margin: 0; padding: 24px; }
+.card { max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; overflow: hidden; }
+.header { padding: 20px 24px; background: #1a243b; border-bottom: 1px solid #232f48; display: flex; align-items: center; justify-content: space-between; }
+.brand { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: #ffffff; }
+.badge { background: %s; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; }
+.content { padding: 24px; }
+.title { font-size: 18px; font-weight: 700; color: #ffffff; margin: 0 0 16px 0; }
+.table { width: 100%%; border-collapse: collapse; margin-bottom: 20px; }
+.table td { padding: 10px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+.label { color: #94a3b8; width: 35%%; }
+.val { color: #f1f5f9; font-weight: 600; font-family: monospace; }
+.footer { padding: 16px 24px; background: #0e1526; border-top: 1px solid #1e293b; text-align: center; font-size: 11px; color: #64748b; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <span class="brand">DATRIXOPS MONITORING</span>
+    <span class="badge">%s</span>
+  </div>
+  <div class="content">
+    <div class="title">%s</div>
+    <table class="table">
+      <tr><td class="label">Server</td><td class="val">%s</td></tr>
+      <tr><td class="label">Metric</td><td class="val">%s</td></tr>
+      <tr><td class="label">Current Value</td><td class="val">%s</td></tr>
+      <tr><td class="label">Condition</td><td class="val">%s</td></tr>
+      <tr><td class="label">Timestamp</td><td class="val">%s</td></tr>
+    </table>
+  </div>
+  <div class="footer">
+    Automated notification sent by DatrixOps Control Plane.
+  </div>
+</div>
+</body>
+</html>`, statusBg, statusText, rule, server, metric, value, threshold, timestamp)
 }
 
 // metricLabel chuyển mã metric thành nhãn dễ đọc trong notification.
 func metricLabel(metric string) string {
 	switch metric {
 	case "cpu":
-		return "CPU usage"
+		return "CPU Usage"
 	case "ram":
-		return "Memory usage"
+		return "Memory Usage"
 	case "disk":
-		return "Disk usage"
+		return "Disk Usage"
 	default:
 		return metric
 	}
 }
 
-// sendNotifications gửi message tới từng channel đã chọn của rule.
-// Một channel lỗi không chặn các channel còn lại.
-func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, message string) {
+// sendNotifications gửi message tới từng channel đã chọn của rule theo đúng định dạng tối ưu.
+func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, notif alertNotificationSet) {
 	for _, channel := range channels {
 		var err error
 		switch channel.Type {
@@ -560,15 +668,15 @@ func (j *AlertJob) sendNotifications(channels []alert.AlertChannel, message stri
 			token, _ := channel.Config["bot_token"].(string)
 			chatID, _ := channel.Config["chat_id"].(string)
 			if token != "" && chatID != "" {
-				err = notifier.SendTelegram(token, chatID, message)
+				err = notifier.SendTelegram(token, chatID, notif.telegramMessage)
 			}
 		case "discord":
 			webhookURL, _ := channel.Config["webhook_url"].(string)
 			if webhookURL != "" {
-				err = notifier.SendDiscord(webhookURL, message)
+				err = notifier.SendDiscordEmbed(webhookURL, notif.discordEmbed)
 			}
 		case "email":
-			err = notifier.SendEmail(emailConfigFromChannel(channel), alertEmailSubject(message), alertEmailBody(message))
+			err = notifier.SendHTMLEmail(emailConfigFromChannel(channel), notif.emailSubject, notif.emailHTML)
 		}
 		if err != nil {
 			j.logger.Warn("failed to send alert notification", "channel_id", channel.ID, "channel_type", channel.Type, "error", err)
@@ -605,33 +713,4 @@ func emailConfigFromChannel(channel alert.AlertChannel) notifier.EmailConfig {
 		To:       stringValue("to"),
 		UseTLS:   useTLS,
 	}
-}
-
-func alertEmailSubject(message string) string {
-	plain := alertEmailBody(message)
-	switch {
-	case strings.Contains(plain, "SERVER OFFLINE"):
-		return "DatrixOps alert: server offline"
-	case strings.Contains(plain, "SERVER ONLINE"):
-		return "DatrixOps resolved: server online"
-	case strings.Contains(plain, "ALERT RESOLVED"):
-		return "DatrixOps alert resolved"
-	default:
-		return "DatrixOps alert firing"
-	}
-}
-
-func alertEmailBody(message string) string {
-	replacements := map[string]string{
-		"<b>":   "",
-		"</b>":  "",
-		"&lt;":  "<",
-		"&gt;":  ">",
-		"&amp;": "&",
-	}
-	body := message
-	for old, next := range replacements {
-		body = strings.ReplaceAll(body, old, next)
-	}
-	return body
 }

@@ -358,6 +358,241 @@ export default function MonitoringPage() {
     range: timeRange,
   };
 
+  const allMetrics: MetricType[] = ['cpu', 'ram', 'network', 'disk'];
+  const expandedList = allMetrics.filter((type) => expandedMetrics[type]);
+  const collapsedList = allMetrics.filter((type) => !expandedMetrics[type]);
+
+  const renderExpandedCard = (type: MetricType) => {
+    switch (type) {
+      case 'cpu':
+        return (
+          <ExpandedCpuChartCard
+            key="expanded_cpu"
+            onCollapse={() => toggleExpand('cpu')}
+            timeline={chartTimeline}
+            chartContext={chartContext}
+            rangeLabel={rangeConfig.label}
+            resolution={effectiveBucketSeconds}
+            cpuProcesses={cpuProcesses}
+            activeSeries={activeSeries}
+            onToggleSeries={toggleSeries}
+            loading={initialLoading}
+          />
+        );
+      case 'ram':
+        return (
+          <ExpandedRamChartCard
+            key="expanded_ram"
+            onCollapse={() => toggleExpand('ram')}
+            timeline={chartTimeline}
+            chartContext={chartContext}
+            rangeLabel={rangeConfig.label}
+            resolution={effectiveBucketSeconds}
+            ramProcesses={ramProcesses}
+            activeSeries={activeSeries}
+            onToggleSeries={toggleSeries}
+            loading={initialLoading}
+          />
+        );
+      case 'network':
+        return (
+          <ExpandedNetworkChartCard
+            key="expanded_network"
+            onCollapse={() => toggleExpand('network')}
+            timeline={chartTimeline}
+            chartContext={chartContext}
+            rangeLabel={rangeConfig.label}
+            resolution={effectiveBucketSeconds}
+            activeSeries={activeSeries}
+            onToggleSeries={toggleSeries}
+            loading={initialLoading}
+          />
+        );
+      case 'disk':
+        return (
+          <ExpandedDiskChartCard
+            key="expanded_disk"
+            onCollapse={() => toggleExpand('disk')}
+            timeline={chartTimeline}
+            chartContext={chartContext}
+            rangeLabel={rangeConfig.label}
+            resolution={effectiveBucketSeconds}
+            activeSeries={activeSeries}
+            onToggleSeries={toggleSeries}
+            loading={initialLoading}
+          />
+        );
+    }
+  };
+
+  const renderCollapsedCard = (type: MetricType) => {
+    switch (type) {
+      case 'cpu':
+        return (
+          <MetricChartCard
+            key="collapsed_cpu"
+            title="CPU Usage (%)"
+            icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            onMaximize={() => toggleExpand('cpu')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} percentAxis />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="cpu"
+                  name="CPU Usage"
+                  stroke="var(--violet)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, fill: 'var(--violet)' }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+      case 'ram':
+        return (
+          <MetricChartCard
+            key="collapsed_ram"
+            title="Memory Usage (%)"
+            icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatMetricSummary(chartTimeline, 'ram', '%')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            onMaximize={() => toggleExpand('ram')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartContext.data}>
+                <defs>
+                  <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
+                <Tooltip content={<MetricsTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="ram"
+                  name="Memory Usage"
+                  stroke="var(--mint)"
+                  strokeWidth={2}
+                  fill="url(#monitoringRamFill)"
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+      case 'network':
+        return (
+          <MetricChartCard
+            key="collapsed_network"
+            title="Network Throughput (KB/s)"
+            icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            onMaximize={() => toggleExpand('network')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+      case 'disk':
+        return (
+          <MetricChartCard
+            key="collapsed_disk"
+            title="Disk I/O (KB/s)"
+            icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            onMaximize={() => toggleExpand('disk')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20">
       <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -368,7 +603,7 @@ export default function MonitoringPage() {
           </p>
           <h1>Resource Monitoring</h1>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            Click the expand icon on any chart to view live process breakdown. Multiple charts can be expanded simultaneously in-place.
+            Click the expand icon on any chart to view live process breakdown. Expanded charts stay full-width at the top, while collapsed charts remain in a neat grid below.
           </p>
           <p className="mt-2 font-mono text-xs text-[var(--text-tertiary)]">
             Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · Polling every {POLL_INTERVAL_MS / 1_000}s
@@ -435,221 +670,39 @@ export default function MonitoringPage() {
             </div>
           )}
 
-          {/* INDEPENDENT IN-PLACE EXPANDABLE GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* 1. CPU USAGE CARD */}
-            <div className={expandedMetrics.cpu ? 'col-span-full' : 'col-span-1'}>
-              {expandedMetrics.cpu ? (
-                <ExpandedCpuChartCard
-                  onCollapse={() => toggleExpand('cpu')}
-                  timeline={chartTimeline}
-                  chartContext={chartContext}
-                  rangeLabel={rangeConfig.label}
-                  resolution={effectiveBucketSeconds}
-                  cpuProcesses={cpuProcesses}
-                  activeSeries={activeSeries}
-                  onToggleSeries={toggleSeries}
-                  loading={initialLoading}
-                />
-              ) : (
-                <MetricChartCard
-                  title="CPU Usage (%)"
-                  icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
-                  rangeLabel={rangeConfig.label}
-                  summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
-                  freshness={`${effectiveBucketSeconds}s resolution`}
-                  loading={initialLoading}
-                  onMaximize={() => toggleExpand('cpu')}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartContext.data}>
-                      <ChartScaffolding {...chartContext} percentAxis />
-                      <Tooltip content={<MetricsTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="cpu"
-                        name="CPU Usage"
-                        stroke="var(--violet)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 4, fill: 'var(--violet)' }}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        type="linear"
-                        dataKey="downtimeZero"
-                        name="No metrics"
-                        stroke="var(--rose)"
-                        strokeWidth={4}
-                        strokeDasharray="7 5"
-                        strokeLinecap="round"
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </MetricChartCard>
-              )}
+          {/* 1. TOP EXPANDED CHARTS STACK (100% Full-Width) */}
+          {expandedList.length > 0 && (
+            <div className="space-y-6">
+              {expandedList.map((type) => (
+                <div key={type} className="w-full">
+                  {renderExpandedCard(type)}
+                </div>
+              ))}
             </div>
+          )}
 
-            {/* 2. MEMORY USAGE CARD */}
-            <div className={expandedMetrics.ram ? 'col-span-full' : 'col-span-1'}>
-              {expandedMetrics.ram ? (
-                <ExpandedRamChartCard
-                  onCollapse={() => toggleExpand('ram')}
-                  timeline={chartTimeline}
-                  chartContext={chartContext}
-                  rangeLabel={rangeConfig.label}
-                  resolution={effectiveBucketSeconds}
-                  ramProcesses={ramProcesses}
-                  activeSeries={activeSeries}
-                  onToggleSeries={toggleSeries}
-                  loading={initialLoading}
-                />
-              ) : (
-                <MetricChartCard
-                  title="Memory Usage (%)"
-                  icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
-                  rangeLabel={rangeConfig.label}
-                  summary={formatMetricSummary(chartTimeline, 'ram', '%')}
-                  freshness={`${effectiveBucketSeconds}s resolution`}
-                  loading={initialLoading}
-                  onMaximize={() => toggleExpand('ram')}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartContext.data}>
-                      <defs>
-                        <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
-                          <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
-                      <Tooltip content={<MetricsTooltip />} />
-                      <Area
-                        type="monotone"
-                        dataKey="ram"
-                        name="Memory Usage"
-                        stroke="var(--mint)"
-                        strokeWidth={2}
-                        fill="url(#monitoringRamFill)"
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                      <Line
-                        type="linear"
-                        dataKey="downtimeZero"
-                        name="No metrics"
-                        stroke="var(--rose)"
-                        strokeWidth={4}
-                        strokeDasharray="7 5"
-                        strokeLinecap="round"
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </MetricChartCard>
+          {/* 2. BOTTOM COLLAPSED CHARTS GRID (2-column balanced grid) */}
+          {collapsedList.length > 0 && (
+            <div>
+              {expandedList.length > 0 && (
+                <div className="mb-4 mt-8 flex items-center justify-between border-t border-[var(--border-color)] pt-6">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                    Standard Metrics Overview
+                  </h3>
+                  <span className="text-xs font-mono text-[var(--color-muted)]">
+                    {collapsedList.length} metrics collapsed
+                  </span>
+                </div>
               )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                {collapsedList.map((type) => (
+                  <div key={type} className="col-span-1">
+                    {renderCollapsedCard(type)}
+                  </div>
+                ))}
+              </div>
             </div>
-
-            {/* 3. NETWORK THROUGHPUT CARD */}
-            <div className={expandedMetrics.network ? 'col-span-full' : 'col-span-1'}>
-              {expandedMetrics.network ? (
-                <ExpandedNetworkChartCard
-                  onCollapse={() => toggleExpand('network')}
-                  timeline={chartTimeline}
-                  chartContext={chartContext}
-                  rangeLabel={rangeConfig.label}
-                  resolution={effectiveBucketSeconds}
-                  activeSeries={activeSeries}
-                  onToggleSeries={toggleSeries}
-                  loading={initialLoading}
-                />
-              ) : (
-                <MetricChartCard
-                  title="Network Throughput (KB/s)"
-                  icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
-                  rangeLabel={rangeConfig.label}
-                  summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
-                  freshness={`${effectiveBucketSeconds}s resolution`}
-                  loading={initialLoading}
-                  onMaximize={() => toggleExpand('network')}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartContext.data}>
-                      <ChartScaffolding {...chartContext} />
-                      <Tooltip content={<MetricsTooltip />} />
-                      <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                      <Line
-                        type="linear"
-                        dataKey="downtimeZero"
-                        name="No metrics"
-                        stroke="var(--rose)"
-                        strokeWidth={4}
-                        strokeDasharray="7 5"
-                        strokeLinecap="round"
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </MetricChartCard>
-              )}
-            </div>
-
-            {/* 4. DISK I/O CARD */}
-            <div className={expandedMetrics.disk ? 'col-span-full' : 'col-span-1'}>
-              {expandedMetrics.disk ? (
-                <ExpandedDiskChartCard
-                  onCollapse={() => toggleExpand('disk')}
-                  timeline={chartTimeline}
-                  chartContext={chartContext}
-                  rangeLabel={rangeConfig.label}
-                  resolution={effectiveBucketSeconds}
-                  activeSeries={activeSeries}
-                  onToggleSeries={toggleSeries}
-                  loading={initialLoading}
-                />
-              ) : (
-                <MetricChartCard
-                  title="Disk I/O (KB/s)"
-                  icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
-                  rangeLabel={rangeConfig.label}
-                  summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
-                  freshness={`${effectiveBucketSeconds}s resolution`}
-                  loading={initialLoading}
-                  onMaximize={() => toggleExpand('disk')}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartContext.data}>
-                      <ChartScaffolding {...chartContext} />
-                      <Tooltip content={<MetricsTooltip />} />
-                      <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                      <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
-                      <Line
-                        type="linear"
-                        dataKey="downtimeZero"
-                        name="No metrics"
-                        stroke="var(--rose)"
-                        strokeWidth={4}
-                        strokeDasharray="7 5"
-                        strokeLinecap="round"
-                        dot={false}
-                        connectNulls={false}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </MetricChartCard>
-              )}
-            </div>
-          </div>
+          )}
         </>
       )}
     </div>

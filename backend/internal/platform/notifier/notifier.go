@@ -182,6 +182,48 @@ func SendDiscord(webhookURL, message string) error {
 	return nil
 }
 
+type DiscordEmbedField struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline,omitempty"`
+}
+
+type DiscordEmbedFooter struct {
+	Text string `json:"text"`
+}
+
+type DiscordEmbed struct {
+	Title       string              `json:"title"`
+	Description string              `json:"description,omitempty"`
+	Color       int                 `json:"color,omitempty"`
+	Fields      []DiscordEmbedField `json:"fields,omitempty"`
+	Footer      *DiscordEmbedFooter `json:"footer,omitempty"`
+	Timestamp   string              `json:"timestamp,omitempty"`
+}
+
+func SendDiscordEmbed(webhookURL string, embed DiscordEmbed) error {
+	if err := ValidateDiscordWebhookURL(webhookURL); err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"embeds": []DiscordEmbed{embed},
+	})
+
+	req, _ := http.NewRequest("POST", webhookURL, bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := webhookClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("discord webhook returned status: %d", resp.StatusCode)
+	}
+	return nil
+}
+
 type EmailConfig struct {
 	Host     string
 	Port     int
@@ -193,6 +235,10 @@ type EmailConfig struct {
 }
 
 func SendEmail(config EmailConfig, subject, message string) error {
+	return SendHTMLEmail(config, subject, "<pre style=\"font-family: monospace; font-size: 14px;\">"+message+"</pre>")
+}
+
+func SendHTMLEmail(config EmailConfig, subject, htmlBody string) error {
 	if config.Port == 0 {
 		config.Port = 587
 	}
@@ -202,9 +248,9 @@ func SendEmail(config EmailConfig, subject, message string) error {
 		"To: " + config.To,
 		"Subject: " + subject,
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Type: text/html; charset=UTF-8",
 		"",
-		message,
+		htmlBody,
 	}, "\r\n")
 
 	var auth smtp.Auth
