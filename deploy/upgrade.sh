@@ -341,7 +341,7 @@ if [[ "$healthy" == "true" ]]; then
                 BEGIN
                     SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                     IF v_user_id IS NULL THEN RETURN; END IF;
-                    SELECT id INTO v_server_id FROM servers WHERE tags @> '\"self-host\"'::jsonb OR name LIKE '%Control Plane%' LIMIT 1;
+                    SELECT id INTO v_server_id FROM servers WHERE tags ? 'self-host' OR name LIKE '%Control Plane%' LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
                         VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
