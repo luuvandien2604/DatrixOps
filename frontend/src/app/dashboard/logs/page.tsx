@@ -405,13 +405,13 @@ export default function LogsPage() {
               onChange={(val) => setTimeRange(val as LogTimeRange)}
               options={[
                 { value: 'all', label: 'All Time Available' },
+                { value: 'custom', label: 'Custom Range (Tùy chỉnh ngày/giờ)' },
                 { value: '15m', label: 'Last 15 minutes' },
                 { value: '1h', label: 'Last 1 hour' },
                 { value: '3h', label: 'Last 3 hours' },
                 { value: '6h', label: 'Last 6 hours' },
                 { value: '24h', label: 'Last 24 hours' },
                 { value: '7d', label: 'Last 7 days' },
-                { value: 'custom', label: 'Custom Date Range...' },
               ]}
               className="w-full"
             />

@@ -97,7 +97,7 @@ export default function CustomSelect({
           width: `${coords.width}px`,
           zIndex: 'var(--z-dropdown)',
         }}
-        className="ops-popover surface-elevated max-h-60 overflow-y-auto py-1.5 font-sans"
+        className="ops-popover surface-elevated max-h-80 overflow-y-auto py-1.5 font-sans"
       >
         {options.length === 0 ? (
           <div className="px-3.5 py-2 text-xs text-slate-400 italic">No options available</div>

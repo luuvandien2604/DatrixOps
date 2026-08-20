@@ -11,7 +11,7 @@ import (
 // RegisterRoutes sets up the HTTP routes for the server module.
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	repo := NewRepository(db)
-	svc := NewService(repo, cfg.AgentVersion, cfg.PublicURL, cfg.AgentReleaseURL)
+	svc := NewService(repo, cfg.AgentVersion, cfg.PublicURL, cfg.AgentReleaseURL, cfg.AgentReleaseLayout)
 	h := NewHandler(svc, cfg.EnableRemoteScripts, cfg.EnableServiceControls, cfg.EnableReadOnlyLogs)
 
 	authMiddleware := middleware.RequireAuth([]byte(cfg.JWTSecret), db)

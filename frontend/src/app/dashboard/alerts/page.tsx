@@ -206,6 +206,23 @@ export default function AlertsPage() {
     }
   };
 
+  const toggleRule = async (ruleId: string, currentEnabled: boolean) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const updated = await apiClient(`/alerts/rules/${ruleId}/toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !currentEnabled }),
+      });
+      setRules((current) =>
+        current.map((r) => (r.id === ruleId ? { ...r, enabled: updated.enabled } : r))
+      );
+      setSuccessMessage(updated.enabled ? 'Đã bật alert rule.' : 'Đã tắt alert rule.');
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, 'Không thể cập nhật trạng thái alert rule.'));
+    }
+  };
+
   // createChannel tạo channel, đưa channel vừa tạo vào danh sách Rules,
   // tự chọn channel đó và chuyển về tab Rules để người dùng tiếp tục tạo alert.
   const createChannel = async (event: React.FormEvent) => {
@@ -592,14 +609,29 @@ export default function AlertsPage() {
             {rules.map((rule) => (
               <div
                 key={rule.id}
-                className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4"
+                className={`flex items-center justify-between gap-4 rounded-xl border p-4 transition-colors ${
+                  rule.enabled
+                    ? 'border-[var(--border-color)] bg-[var(--background-card)]'
+                    : 'border-[var(--border-color)]/50 bg-[var(--background-card)]/50 opacity-75'
+                }`}
               >
                 <div className="min-w-0">
-                  <h4 className="font-semibold text-[var(--foreground)]">{rule.name}</h4>
+                  <div className="flex items-center gap-2.5">
+                    <h4 className="font-semibold text-[var(--foreground)]">{rule.name}</h4>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        rule.enabled
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                      }`}
+                    >
+                      {rule.enabled ? 'Active' : 'Disabled'}
+                    </span>
+                  </div>
                   <p className="mt-1 text-sm text-[var(--color-muted)]">
                     {rule.metric === 'status'
-                      ? 'Alert when server is offline'
-                      : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
+                      ? 'Alert when server is offline (> 1m)'
+                      : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m duration)`}
                   </p>
 
                   <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
@@ -627,14 +659,34 @@ export default function AlertsPage() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  aria-label={`Delete rule ${rule.name}`}
-                  onClick={() => deleteRule(rule.id)}
-                  className="shrink-0 p-2 text-rose-500 hover:text-rose-400"
-                >
-                  <Trash2 className="h-5 w-5" />
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={rule.enabled}
+                    onClick={() => toggleRule(rule.id, rule.enabled)}
+                    title={rule.enabled ? 'Click to disable alert' : 'Click to enable alert'}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      rule.enabled ? 'bg-emerald-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        rule.enabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-label={`Delete rule ${rule.name}`}
+                    onClick={() => deleteRule(rule.id)}
+                    className="p-2 text-rose-500 hover:text-rose-400"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             ))}
 

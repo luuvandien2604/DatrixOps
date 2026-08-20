@@ -292,6 +292,43 @@ func (r *Repository) DeleteRule(ctx context.Context, id, userID string) error {
 	return nil
 }
 
+// ToggleRule bật hoặc tắt trạng thái hoạt động của một alert rule.
+func (r *Repository) ToggleRule(ctx context.Context, id, userID string, explicitState *bool) (*AlertRule, error) {
+	var rule AlertRule
+	var err error
+
+	if explicitState != nil {
+		err = r.db.Pool.QueryRow(ctx, `
+			UPDATE alert_rules
+			SET enabled = $3, updated_at = NOW()
+			WHERE id = $1 AND user_id = $2
+			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled, created_at, updated_at
+		`, id, userID, *explicitState).Scan(
+			&rule.ID, &rule.UserID, &rule.Name, &rule.Metric, &rule.Operator,
+			&rule.Threshold, &rule.DurationMinutes, &rule.ServerID, &rule.Enabled,
+			&rule.CreatedAt, &rule.UpdatedAt,
+		)
+	} else {
+		err = r.db.Pool.QueryRow(ctx, `
+			UPDATE alert_rules
+			SET enabled = NOT enabled, updated_at = NOW()
+			WHERE id = $1 AND user_id = $2
+			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled, created_at, updated_at
+		`, id, userID).Scan(
+			&rule.ID, &rule.UserID, &rule.Name, &rule.Metric, &rule.Operator,
+			&rule.Threshold, &rule.DurationMinutes, &rule.ServerID, &rule.Enabled,
+			&rule.CreatedAt, &rule.UpdatedAt,
+		)
+	}
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRuleNotFound
+		}
+		return nil, fmt.Errorf("toggle alert rule: %w", err)
+	}
+	return &rule, nil
+}
+
 // ListChannels trả toàn bộ notification channel thuộc user để quản lý và chọn khi tạo rule.
 func (r *Repository) ListChannels(ctx context.Context, userID string) ([]AlertChannel, error) {
 	rows, err := r.db.Pool.Query(ctx, `

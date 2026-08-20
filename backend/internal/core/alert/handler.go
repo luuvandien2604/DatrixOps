@@ -96,6 +96,32 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, rule)
 }
 
+// ToggleRule chuyển đổi bật/tắt alert rule.
+func (h *Handler) ToggleRule(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	id := r.PathValue("id")
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	rule, err := h.repo.ToggleRule(r.Context(), id, userID, body.Enabled)
+	if err != nil {
+		if errors.Is(err, ErrRuleNotFound) {
+			response.Error(w, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", "Alert rule not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update alert rule")
+		return
+	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "UPDATE_ALERT_RULE_STATUS", "ALERT_RULE", id, map[string]any{"enabled": rule.Enabled})
+	response.Success(w, http.StatusOK, rule)
+}
+
 // DeleteRule xóa một rule thuộc user hiện tại.
 func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)

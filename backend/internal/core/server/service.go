@@ -40,6 +40,7 @@ type Service struct {
 	desiredAgentVersion string
 	publicURL           string
 	agentReleaseURL     string
+	agentReleaseLayout  string
 }
 
 // AgentUninstallRequestResult is returned after a remote uninstall task has
@@ -52,12 +53,13 @@ type AgentUninstallRequestResult struct {
 }
 
 // NewService constructs the server domain service.
-func NewService(repo *Repository, desiredAgentVersion, publicURL, agentReleaseURL string) *Service {
+func NewService(repo *Repository, desiredAgentVersion, publicURL, agentReleaseURL, agentReleaseLayout string) *Service {
 	return &Service{
 		repo:                repo,
 		desiredAgentVersion: strings.TrimSpace(desiredAgentVersion),
 		publicURL:           strings.TrimRight(strings.TrimSpace(publicURL), "/"),
 		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
+		agentReleaseLayout:  strings.TrimSpace(agentReleaseLayout),
 	}
 }
 

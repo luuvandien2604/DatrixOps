@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -405,7 +406,7 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 		return
 	}
 
-	title, dashboardMessage, notifSet := buildAlertNotification(rule, serverName, currentValue, false)
+	title, dashboardMessage, _ := buildAlertNotification(rule, serverName, currentValue, false)
 	metadata, _ := json.Marshal(map[string]interface{}{
 		"metric":        rule.Metric,
 		"operator":      rule.Operator,
@@ -436,7 +437,8 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 	}
 
 	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels))
-	j.sendNotifications(channels, notifSet)
+	// Do not send resolved notifications to external channels (Telegram, Discord, Email) to reduce noise.
+	// j.sendNotifications(channels, notifSet)
 	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "resolved")
 }
 
@@ -492,16 +494,17 @@ type alertNotificationSet struct {
 	emailHTML       string
 }
 
+// buildAlertNotification tạo nội dung thông báo chuẩn hóa cho Telegram, Discord Embed và Email HTML.
 func buildAlertNotification(rule alert.AlertRule, serverName string, currentValue float64, isFiring bool) (string, string, alertNotificationSet) {
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05") + " UTC"
 	metricName := metricLabel(rule.Metric)
+	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
 
 	if rule.Metric == "status" {
 		if isFiring {
 			title := "Server offline: " + serverName
-			dashMsg := fmt.Sprintf("Agent %s has not reported a heartbeat for more than one minute.", serverName)
+			dashMsg := fmt.Sprintf("Agent %s has stopped reporting heartbeat for > 1m.", serverName)
 			teleMsg := fmt.Sprintf(
-				"<b>[DATRIXOPS ALERT] SERVER OFFLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Offline / Heartbeat Lost</b>\n<b>Condition:</b> No heartbeat received for &gt; 1 minute\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> System Critical",
+				"<b>[DATRIXOPS ALERT] SERVER OFFLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Offline / Heartbeat Lost</b>\n<b>Condition:</b> No heartbeat received (&gt; 1m)\n<b>Time:</b> %s",
 				serverName, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
@@ -510,11 +513,11 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0xEF4444,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
-					{Name: "Status", Value: "Offline", Inline: true},
-					{Name: "Duration", Value: "> 1 minute", Inline: true},
-					{Name: "Timestamp", Value: nowStr, Inline: false},
+					{Name: "Status", Value: "Offline / Unreachable", Inline: true},
+					{Name: "Condition", Value: "No heartbeat (> 1m)", Inline: true},
+					{Name: "Triggered At", Value: nowStr, Inline: true},
 				},
-				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := "[DATRIXOPS ALERT] Server Offline: " + serverName
 			emailHTML := renderAlertEmail(serverName, "Server Offline Alert", "Heartbeat Status", "Offline", "No heartbeat > 1m", nowStr, true)
@@ -523,19 +526,19 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 			title := "Server online: " + serverName
 			dashMsg := fmt.Sprintf("Agent %s is reporting heartbeat data again.", serverName)
 			teleMsg := fmt.Sprintf(
-				"<b>[DATRIXOPS ALERT] SERVER ONLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Online / Connected</b>\n<b>Details:</b> Heartbeat reporting has resumed\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> Status Normal",
+				"<b>[DATRIXOPS ALERT] SERVER ONLINE</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <b>Online / Connected</b>\n<b>Time:</b> %s",
 				serverName, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       "[DATRIXOPS ALERT] SERVER ONLINE: " + serverName,
-				Description: fmt.Sprintf("Agent **%s** is back online and reporting telemetry.", serverName),
+				Description: fmt.Sprintf("Agent **%s** is back online.", serverName),
 				Color:       0x10B981,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
 					{Name: "Status", Value: "Online / Connected", Inline: true},
-					{Name: "Timestamp", Value: nowStr, Inline: false},
+					{Name: "Triggered At", Value: nowStr, Inline: true},
 				},
-				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := "[DATRIXOPS RESOLVED] Server Online: " + serverName
 			emailHTML := renderAlertEmail(serverName, "Server Online Recovered", "Heartbeat Status", "Online", "Reporting telemetry", nowStr, false)
@@ -547,22 +550,21 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		title := "Alert firing: " + rule.Name
 		dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
 		teleMsg := fmt.Sprintf(
-			"<b>[DATRIXOPS ALERT] CRITICAL FIRING</b>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Rule:</b> <b>%s</b>\n<b>Metric:</b> %s\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%)\n<b>Duration:</b> &gt; %d minutes\n<b>Timestamp:</b> %s\n─────────────────────────────\n<b>Control Plane:</b> Active Alert",
-			serverName, rule.Name, metricName, currentValue, rule.Operator, rule.Threshold, rule.DurationMinutes, nowStr,
+			"<b>[DATRIXOPS ALERT] CRITICAL FIRING</b>\n─────────────────────────────\n<b>Rule:</b> <b>%s</b>\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> %s\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%, Duration: &gt; %dm)\n<b>Time:</b> %s",
+			rule.Name, serverName, metricName, currentValue, rule.Operator, rule.Threshold, rule.DurationMinutes, nowStr,
 		)
 		discord := notifier.DiscordEmbed{
-			Title:       fmt.Sprintf("[DATRIXOPS ALERT] CRITICAL FIRING: %s", rule.Name),
-			Description: fmt.Sprintf("Metric threshold breached on server **%s**.", serverName),
+			Title:       fmt.Sprintf("[DATRIXOPS ALERT] %s", rule.Name),
+			Description: fmt.Sprintf("Threshold breached on **%s**.", serverName),
 			Color:       0xEF4444,
 			Fields: []notifier.DiscordEmbedField{
 				{Name: "Server", Value: serverName, Inline: true},
 				{Name: "Metric", Value: metricName, Inline: true},
-				{Name: "Current Value", Value: fmt.Sprintf("%.2f%%", currentValue), Inline: true},
-				{Name: "Threshold", Value: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), Inline: true},
-				{Name: "Duration", Value: fmt.Sprintf("> %dm", rule.DurationMinutes), Inline: true},
-				{Name: "Timestamp", Value: nowStr, Inline: false},
+				{Name: "Current Value", Value: fmt.Sprintf("**%.2f%%**", currentValue), Inline: true},
+				{Name: "Condition", Value: fmt.Sprintf("%s %.2f%% (> %dm)", rule.Operator, rule.Threshold, rule.DurationMinutes), Inline: true},
+				{Name: "Triggered At", Value: nowStr, Inline: true},
 			},
-			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Infrastructure Monitoring"},
+			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 		}
 		emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] Firing: %s on %s", rule.Name, serverName)
 		emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), nowStr, true)
@@ -602,7 +604,7 @@ func renderAlertEmail(server, rule, metric, value, threshold, timestamp string, 
 		statusText = "RESOLVED"
 	}
 
-	return fmt.Sprintf(`<!DOCTYPE html>
+	tmpl := `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -610,13 +612,13 @@ func renderAlertEmail(server, rule, metric, value, threshold, timestamp string, 
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f8fafc; margin: 0; padding: 24px; }
 .card { max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; overflow: hidden; }
 .header { padding: 20px 24px; background: #1a243b; border-bottom: 1px solid #232f48; display: flex; align-items: center; justify-content: space-between; }
-.brand { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; color: #ffffff; }
-.badge { background: %s; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; }
+.brand { font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #ffffff; }
+.badge { background: {{STATUS_BG}}; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 1px; display: inline-block; }
 .content { padding: 24px; }
 .title { font-size: 18px; font-weight: 700; color: #ffffff; margin: 0 0 16px 0; }
-.table { width: 100%%; border-collapse: collapse; margin-bottom: 20px; }
+.table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
 .table td { padding: 10px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
-.label { color: #94a3b8; width: 35%%; }
+.label { color: #94a3b8; width: 35%; }
 .val { color: #f1f5f9; font-weight: 600; font-family: monospace; }
 .footer { padding: 16px 24px; background: #0e1526; border-top: 1px solid #1e293b; text-align: center; font-size: 11px; color: #64748b; }
 </style>
@@ -625,16 +627,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helve
 <div class="card">
   <div class="header">
     <span class="brand">DATRIXOPS MONITORING</span>
-    <span class="badge">%s</span>
+    <span class="badge">{{STATUS_TEXT}}</span>
   </div>
   <div class="content">
-    <div class="title">%s</div>
+    <div class="title">{{RULE_NAME}}</div>
     <table class="table">
-      <tr><td class="label">Server</td><td class="val">%s</td></tr>
-      <tr><td class="label">Metric</td><td class="val">%s</td></tr>
-      <tr><td class="label">Current Value</td><td class="val">%s</td></tr>
-      <tr><td class="label">Condition</td><td class="val">%s</td></tr>
-      <tr><td class="label">Timestamp</td><td class="val">%s</td></tr>
+      <tr><td class="label">Server</td><td class="val">{{SERVER_NAME}}</td></tr>
+      <tr><td class="label">Metric</td><td class="val">{{METRIC_NAME}}</td></tr>
+      <tr><td class="label">Current Value</td><td class="val">{{VALUE}}</td></tr>
+      <tr><td class="label">Condition</td><td class="val">{{CONDITION}}</td></tr>
+      <tr><td class="label">Timestamp</td><td class="val">{{TIMESTAMP}}</td></tr>
     </table>
   </div>
   <div class="footer">
@@ -642,7 +644,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helve
   </div>
 </div>
 </body>
-</html>`, statusBg, statusText, rule, server, metric, value, threshold, timestamp)
+</html>`
+
+	r := strings.NewReplacer(
+		"{{STATUS_BG}}", statusBg,
+		"{{STATUS_TEXT}}", statusText,
+		"{{RULE_NAME}}", rule,
+		"{{SERVER_NAME}}", server,
+		"{{METRIC_NAME}}", metric,
+		"{{VALUE}}", value,
+		"{{CONDITION}}", threshold,
+		"{{TIMESTAMP}}", timestamp,
+	)
+	return r.Replace(tmpl)
 }
 
 // metricLabel chuyển mã metric thành nhãn dễ đọc trong notification.
