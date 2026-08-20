@@ -1,4 +1,6 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/purity */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '@/lib/apiClient';

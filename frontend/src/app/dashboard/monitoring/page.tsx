@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import {
   Activity, CircleAlert, Clock3, Cpu, DatabaseBackup,
-  HardDrive, Maximize2, Minimize2, RefreshCw, Server as ServerIcon, Wifi, X,
+  HardDrive, Maximize2, RefreshCw, Server as ServerIcon, Wifi, X,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Line, LineChart,
