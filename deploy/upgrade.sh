@@ -229,7 +229,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.7.1"
+    target_app_ver="1.7.2"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
