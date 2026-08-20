@@ -157,16 +157,16 @@ export default function MonitoringPage() {
   const [now, setNow] = useState(() => Date.now());
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
-  // Independent in-place expanded metrics state (each metric can expand/collapse independently)
-  const [expandedMetrics, setExpandedMetrics] = useState<Record<MetricType, boolean>>({
-    cpu: false,
-    ram: false,
-    network: false,
-    disk: false,
-  });
+  // Order-preserving in-place expanded metrics list
+  const [expandedOrder, setExpandedOrder] = useState<MetricType[]>([]);
 
   const toggleExpand = (metric: MetricType) => {
-    setExpandedMetrics((prev) => ({ ...prev, [metric]: !prev[metric] }));
+    setExpandedOrder((prev) => {
+      if (prev.includes(metric)) {
+        return prev.filter((m) => m !== metric);
+      }
+      return [...prev, metric];
+    });
   };
 
   // Series visibility toggle state for the breakdown layers
@@ -359,8 +359,8 @@ export default function MonitoringPage() {
   };
 
   const allMetrics: MetricType[] = ['cpu', 'ram', 'network', 'disk'];
-  const expandedList = allMetrics.filter((type) => expandedMetrics[type]);
-  const collapsedList = allMetrics.filter((type) => !expandedMetrics[type]);
+  const expandedList = expandedOrder;
+  const collapsedList = allMetrics.filter((type) => !expandedOrder.includes(type));
 
   const renderExpandedCard = (type: MetricType) => {
     switch (type) {

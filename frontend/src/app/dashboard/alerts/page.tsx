@@ -215,6 +215,15 @@ export default function AlertsPage() {
     setSavingChannel(true);
 
     try {
+      if (channelType === 'discord') {
+        const trimmed = channelWebhook.trim();
+        if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
+          setErrorMessage('Vui lòng nhập đầy đủ Discord Webhook URL (bắt đầu bằng https://discord.com/api/webhooks/...), không phải Channel ID số.');
+          setSavingChannel(false);
+          return;
+        }
+      }
+
       const config = channelType === 'telegram'
         ? { bot_token: channelToken.trim(), chat_id: channelChatId.trim() }
         : channelType === 'discord'
@@ -711,7 +720,7 @@ export default function AlertsPage() {
               ) : channelType === 'discord' ? (
                 <div>
                   <label htmlFor="channel-webhook" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
-                    Webhook URL
+                    Discord Webhook URL
                   </label>
                   <input
                     id="channel-webhook"
@@ -721,7 +730,11 @@ export default function AlertsPage() {
                     type="url"
                     autoComplete="off"
                     className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                    placeholder="https://discord.com/api/webhooks/..."
                   />
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    In Discord: Channel Settings → Integrations → Webhooks → Copy Webhook URL.
+                  </p>
                 </div>
               ) : (
                 <>

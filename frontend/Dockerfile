@@ -19,6 +19,8 @@ COPY eslint.config.mjs .
 # Environment variables must be present at build time
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
+ARG NEXT_PUBLIC_DATRIXOPS_VERSION
+ENV NEXT_PUBLIC_DATRIXOPS_VERSION=${NEXT_PUBLIC_DATRIXOPS_VERSION}
 
 RUN npm run build
 

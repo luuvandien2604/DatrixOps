@@ -17,7 +17,7 @@ export function editionLabel(edition?: string) {
   return (edition ?? getEdition()) === 'cloud' ? 'DatrixOps Cloud' : 'Community Edition';
 }
 
-export const APP_VERSION = process.env.NEXT_PUBLIC_DATRIXOPS_VERSION || '1.7.0';
+export const APP_VERSION = process.env.NEXT_PUBLIC_DATRIXOPS_VERSION || '1.7.5';
 
 export function getAppVersion(): string {
   return APP_VERSION;
