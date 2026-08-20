@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
-import { editionLabel } from '@/lib/edition';
+import { editionLabel, getAppVersion } from '@/lib/edition';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { CommandPalette } from '@/components/CommandPalette';
 
@@ -291,10 +291,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {!collapsed && (
               <div className="min-w-0">
-                {/* Logo chính rõ và dày hơn. */}
-                <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
-                  DATRIX<span className="text-[var(--violet)]">OPS</span>
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
+                    DATRIX<span className="text-[var(--violet)]">OPS</span>
+                  </p>
+                  <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    v{getAppVersion()}
+                  </span>
+                </div>
 
                 {/* Dòng phụ sáng hơn để không bị chìm trên nền tối. */}
                 <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
@@ -425,6 +429,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <LogOut className="h-[18px] w-[18px] text-[var(--color-muted)]" />
             {!collapsed && <span>Sign out</span>}
           </button>
+
+          {!collapsed && (
+            <div className="mt-3 pt-3 border-t border-[var(--border-color)] px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
+              <span className="truncate">DatrixOps CE</span>
+              <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-blue-400 border border-white/10 font-bold">
+                v{getAppVersion()}
+              </span>
+            </div>
+          )}
         </div>
 
         <button
@@ -447,6 +460,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Breadcrumb tăng độ rõ và weight. */}
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
             <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              v{getAppVersion()}
+            </span>
             <span className="text-[var(--color-muted)]">/</span>
             <span className="text-[var(--color-muted)]">Production</span>
           </div>
