@@ -494,10 +494,13 @@ type alertNotificationSet struct {
 	emailHTML       string
 }
 
-// buildAlertNotification tạo nội dung thông báo chuẩn hóa cho Telegram, Discord Embed và Email HTML.
 func buildAlertNotification(rule alert.AlertRule, serverName string, currentValue float64, isFiring bool) (string, string, alertNotificationSet) {
 	metricName := metricLabel(rule.Metric)
-	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	loc, err := time.LoadLocation("Asia/Ho_Chi_Minh")
+	if err != nil {
+		loc = time.FixedZone("ICT", 7*3600)
+	}
+	nowStr := time.Now().In(loc).Format("2006-01-02 15:04:05 (GMT+7)")
 
 	if rule.Metric == "status" {
 		if isFiring {

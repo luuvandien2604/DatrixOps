@@ -1068,71 +1068,105 @@ export default function ServerDetailsPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {[
-                  { label: 'Hostname', value: inventory.hostname || 'Unknown', icon: ServerIcon },
-                  { label: 'Operating system', value: [inventory.platform, inventory.platform_version].filter(Boolean).join(' ') || 'Unknown', icon: ShieldCheck },
-                  { label: 'CPU', value: `${inventory.physical_cores || 'Unknown'} physical / ${inventory.logical_cores || 'Unknown'} logical`, icon: Cpu },
-                  { label: 'Installed memory', value: formatBytes(inventory.memory_total), icon: HardDrive },
-                  { label: 'Provider', value: server.provider || 'Unassigned', icon: Box },
-                  { label: 'Region', value: server.region || 'Unassigned', icon: Network },
-                  { label: 'Environment', value: server.environment || 'Unassigned', icon: Activity },
-                  { label: 'Running agent version', value: reportedAgentVersion || 'Unknown', icon: ShieldCheck },
-                ].map(({ label, value, icon: Icon }) => (
-                  <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--color-muted)]"><Icon className="h-4 w-4" /> {label}</div>
-                    <p className="break-words text-base font-semibold text-[var(--foreground)]">{value}</p>
+              {/* 4 Clean System Overview Cards */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
+                    <ServerIcon className="h-4 w-4 text-[var(--accent-primary)]" /> System & Hostname
                   </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
-                  <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]"><Cpu className="h-4 w-4" /> Hardware and agent</h3>
-                  <dl className="space-y-3 text-sm">
-                    {[
-                      ['CPU model', inventory.cpu_model || 'Unknown'],
-                      ['Architecture', inventory.architecture || 'Unknown'],
-                      ['Kernel', inventory.kernel_version || 'Unknown'],
-                      ['Running agent version', reportedAgentVersion || 'Unknown'],
-                      ['Collected at', formatTimestamp(inventory.collected_at)],
-                    ].map(([label, value]) => (
-                      <div key={label} className="flex flex-col justify-between gap-1 sm:flex-row sm:gap-4">
-                        <dt className="text-[var(--color-muted)]">{label}</dt>
-                        <dd className="break-all font-medium text-[var(--foreground)] sm:text-right">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <p className="truncate text-base font-bold text-[var(--foreground)]">{inventory.hostname || server.name || 'Unknown'}</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate">
+                    {[inventory.platform, inventory.platform_version].filter(Boolean).join(' ') || 'Linux'} · {inventory.kernel_version || 'Kernel N/A'}
+                  </p>
                 </div>
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
-                  <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]"><Network className="h-4 w-4" /> Private addresses</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {inventory.private_ips?.length ? inventory.private_ips.map(ip => (
-                      <code key={ip} className="rounded-full border border-[var(--border-color)] bg-[var(--background)] px-3 py-1.5 text-sm text-[var(--foreground)]">{ip}</code>
-                    )) : <span className="text-sm text-[var(--color-muted)]">No private addresses reported.</span>}
+
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
+                    <Cpu className="h-4 w-4 text-emerald-400" /> CPU & Architecture
                   </div>
+                  <p className="text-base font-bold text-[var(--foreground)]">
+                    {inventory.physical_cores || '—'} Cores ({inventory.logical_cores || '—'} Threads)
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate" title={inventory.cpu_model}>
+                    {inventory.cpu_model || 'Unknown CPU'} ({inventory.architecture || 'amd64'})
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
+                    <HardDrive className="h-4 w-4 text-blue-400" /> Installed Memory
+                  </div>
+                  <p className="text-base font-bold text-[var(--foreground)]">{formatBytes(inventory.memory_total)}</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">System RAM installed</p>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
+                    <ShieldCheck className="h-4 w-4 text-violet-400" /> DatrixOps Agent
+                  </div>
+                  <p className="text-base font-bold text-[var(--foreground)]">v{reportedAgentVersion || 'Unknown'}</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate">
+                    {inventory.collected_at ? `Collected ${formatTimestamp(inventory.collected_at)}` : 'Active'}
+                  </p>
                 </div>
               </div>
 
+              {/* Optional tags bar if custom environment or private IPs exist */}
+              {((server.provider && server.provider !== 'Unassigned') || (server.environment && server.environment !== 'Unassigned') || (inventory.private_ips && inventory.private_ips.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] px-4 py-3 text-xs">
+                  {server.provider && server.provider !== 'Unassigned' && (
+                    <span className="rounded-md border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-[var(--color-muted)]">
+                      Provider: <strong className="text-[var(--foreground)]">{server.provider}</strong>
+                    </span>
+                  )}
+                  {server.environment && server.environment !== 'Unassigned' && (
+                    <span className="rounded-md border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-[var(--color-muted)]">
+                      Env: <strong className="text-[var(--foreground)]">{server.environment}</strong>
+                    </span>
+                  )}
+                  {inventory.private_ips && inventory.private_ips.length > 0 && (
+                    <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
+                      <Network className="h-3.5 w-3.5" /> IPs:
+                      {inventory.private_ips.slice(0, 4).map(ip => (
+                        <code key={ip} className="rounded bg-[var(--background)] px-1.5 py-0.5 text-[11px] text-[var(--foreground)]">{ip}</code>
+                      ))}
+                      {inventory.private_ips.length > 4 && <span className="text-[10px] text-[var(--color-muted)]">+{inventory.private_ips.length - 4} more</span>}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Filesystems Table */}
               <div className="overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
-                <div className="border-b border-[var(--border-color)] p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]"><HardDrive className="h-4 w-4" /> Filesystems</h3>
+                <div className="border-b border-[var(--border-color)] p-4">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+                    <HardDrive className="h-4 w-4 text-[var(--accent-primary)]" /> Filesystems & Storage
+                  </h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                      <tr><th className="px-6 py-3">Device</th><th className="px-6 py-3">Mountpoint</th><th className="px-6 py-3">Filesystem</th><th className="px-6 py-3">Capacity</th></tr>
+                      <tr>
+                        <th className="px-6 py-3 font-medium">Device</th>
+                        <th className="px-6 py-3 font-medium">Mountpoint</th>
+                        <th className="px-6 py-3 font-medium">Type</th>
+                        <th className="px-6 py-3 font-medium">Capacity</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border-color)]">
                       {inventory.disks?.map(disk => (
-                        <tr key={`${disk.device}-${disk.mountpoint}`}>
+                        <tr key={`${disk.device}-${disk.mountpoint}`} className="hover:bg-[var(--background)]/50 transition-colors">
                           <td className="px-6 py-3 font-medium text-[var(--foreground)]">{disk.device}</td>
-                          <td className="px-6 py-3 text-[var(--foreground)]">{disk.mountpoint}</td>
-                          <td className="px-6 py-3 text-[var(--color-muted)]">{disk.file_system || 'Unknown'}</td>
-                          <td className="px-6 py-3 text-[var(--foreground)]">{formatBytes(disk.total_bytes)}</td>
+                          <td className="px-6 py-3 font-mono text-xs text-[var(--foreground)]">{disk.mountpoint}</td>
+                          <td className="px-6 py-3 text-xs text-[var(--color-muted)]">{disk.file_system || 'ext4'}</td>
+                          <td className="px-6 py-3 font-semibold text-[var(--foreground)]">{formatBytes(disk.total_bytes)}</td>
                         </tr>
                       ))}
-                      {!inventory.disks?.length && <tr><td colSpan={4} className="px-6 py-8 text-center text-[var(--color-muted)]">No filesystem inventory reported.</td></tr>}
+                      {!inventory.disks?.length && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-8 text-center text-[var(--color-muted)]">No filesystem inventory reported.</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1541,56 +1575,116 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'docker' && (
-        <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
-          <div className="p-5 border-b border-[var(--border-color)]">
-            <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2"><Box className="w-4 h-4" /> {osFamily === 'macos' || osFamily === 'windows' ? 'Local containers' : 'Docker containers'}</h3>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{osFamily === 'macos' || osFamily === 'windows' ? 'Containers reported through the local Docker-compatible engine.' : 'Containers reported through the local Docker Engine.'}</p>
+        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--border-color)] p-4 sm:p-5">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                <Box className="w-4 h-4 text-[var(--accent-primary)]" />
+                {osFamily === 'macos' || osFamily === 'windows' ? 'Local Containers' : 'Docker Containers'}
+              </h3>
+              <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                {osFamily === 'macos' || osFamily === 'windows' ? 'Containers reported through local Docker engine.' : 'Containers managed on this host.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                {(snapshot?.docker_containers || []).filter(c => c.state === 'running').length} running
+              </span>
+              <span className="rounded-full bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
+                {snapshot?.docker_containers?.length || 0} total
+              </span>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                <tr>
-                  <th className="px-6 py-3 font-medium">Name</th>
-                  <th className="px-6 py-3 font-medium">Image</th>
-                  <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium">CPU %</th>
-                  <th className="px-6 py-3 font-medium">RAM %</th>
-                  <th className="px-6 py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-color)]">
-                {snapshot?.docker_containers?.map(c => (
-                  <tr key={c.id} className="hover:bg-[var(--background)] transition-colors">
-                    <td className="px-6 py-3 font-medium text-[var(--foreground)]">{c.name}</td>
-                    <td className="px-6 py-3 text-[var(--color-muted)] truncate max-w-xs">{c.image}</td>
-                    <td className="px-6 py-3">
-                      <span className={`px-2 py-1 text-xs rounded-full font-medium border ${c.state === 'running' ? 'border-emerald-500/30 text-emerald-500' : 'border-[var(--border-color)] text-[var(--color-muted)]'}`}>
-                        {c.state.toUpperCase()}
+
+          <div className="divide-y divide-[var(--border-color)]">
+            {snapshot?.docker_containers?.map(c => {
+              const isRunning = c.state === 'running';
+              return (
+                <div
+                  key={c.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-[var(--background)]/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                        isRunning ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-slate-500'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-[var(--foreground)] truncate">{c.name}</span>
+                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                          isRunning ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        }`}>
+                          {c.state}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--color-muted)] truncate mt-0.5 max-w-md font-mono" title={c.image}>
+                        {c.image}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                    {/* Resource Usage */}
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-[var(--color-muted)]">
+                        CPU: <strong className="text-rose-400 font-mono">{c.cpu || '0%'}</strong>
                       </span>
-                    </td>
-                    <td className="px-6 py-3 text-rose-400">{c.cpu}</td>
-                    <td className="px-6 py-3 text-blue-400">{c.ram}</td>
-                    <td className="px-6 py-3 flex gap-2">
-                      {c.state !== 'running' && (
-                        <button onClick={() => handleDockerAction('docker_start', c.id)} className="text-emerald-500 hover:text-emerald-400 text-xs border border-emerald-500/30 px-2 py-1 rounded">Start</button>
+                      <span className="text-[var(--color-muted)]">
+                        RAM: <strong className="text-blue-400 font-mono">{c.ram || '0%'}</strong>
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5">
+                      {!isRunning && (
+                        <button
+                          type="button"
+                          onClick={() => handleDockerAction('docker_start', c.id)}
+                          className="px-2.5 py-1 text-xs font-semibold rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                        >
+                          Start
+                        </button>
                       )}
-                      {c.state === 'running' && (
+                      {isRunning && (
                         <>
-                          <button onClick={() => handleDockerAction('docker_stop', c.id)} className="text-rose-500 hover:text-rose-400 text-xs border border-rose-500/30 px-2 py-1 rounded">Stop</button>
-                          <button onClick={() => handleDockerAction('docker_restart', c.id)} className="text-amber-500 hover:text-amber-400 text-xs border border-amber-500/30 px-2 py-1 rounded">Restart</button>
+                          <button
+                            type="button"
+                            onClick={() => handleDockerAction('docker_restart', c.id)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
+                          >
+                            Restart
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDockerAction('docker_stop', c.id)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                          >
+                            Stop
+                          </button>
                         </>
                       )}
-                      <button onClick={() => handleDockerAction('docker_logs', c.id)} className="text-blue-500 hover:text-blue-400 text-xs border border-blue-500/30 px-2 py-1 rounded">Logs</button>
-                    </td>
-                  </tr>
-                ))}
-                {!snapshot?.docker_containers?.length && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-[var(--color-muted)]">{osFamily === 'macos' || osFamily === 'windows' ? 'No local containers were reported.' : 'No Docker containers were reported.'}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      <button
+                        type="button"
+                        onClick={() => handleDockerAction('docker_logs', c.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+                      >
+                        Logs
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {!snapshot?.docker_containers?.length && (
+              <div className="p-8 text-center text-xs text-[var(--color-muted)]">
+                {osFamily === 'macos' || osFamily === 'windows'
+                  ? 'No local containers were reported by this agent.'
+                  : 'No Docker containers were reported by this agent.'}
+              </div>
+            )}
           </div>
         </div>
       )}

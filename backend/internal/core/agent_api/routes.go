@@ -21,4 +21,5 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("POST /api/v1/agent/cron/executions", h.ReportCronExecution)
 	mux.HandleFunc("POST /api/v1/agent/tasks/result", h.ReportTaskResult)
 	mux.HandleFunc("POST /api/v1/agent/uninstall/confirm", h.ConfirmUninstall)
+	mux.HandleFunc("GET /api/v1/agent-releases/{path...}", h.ServeAgentRelease)
 }

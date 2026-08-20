@@ -1194,3 +1194,32 @@ func (h *Handler) ConfirmUninstall(w http.ResponseWriter, r *http.Request) {
 	}
 	response.Success(w, http.StatusOK, map[string]string{"status": req.Status})
 }
+
+// ServeAgentRelease chuyển tiếp các yêu cầu tải manifest, chữ ký và binary của agent
+// tới GitHub Releases tương ứng, đảm bảo tương thích 100% với agent mọi phiên bản.
+func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(r.PathValue("path"), "/")
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	parts := strings.Split(path, "/")
+	var version string
+	var filename string
+
+	if len(parts) >= 2 {
+		version = parts[0]
+		filename = strings.Join(parts[1:], "/")
+	} else {
+		version = h.desiredAgentVersion
+		filename = parts[0]
+	}
+
+	if !strings.HasPrefix(version, "v") {
+		version = "v" + version
+	}
+
+	targetURL := "https://github.com/luuvandien2604/DatrixOps/releases/download/" + version + "/" + filename
+	http.Redirect(w, r, targetURL, http.StatusFound)
+}

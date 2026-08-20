@@ -111,15 +111,52 @@ export default function LogsPage() {
   const [logLevel, setLogLevel] = useState<string>('all');
   const [logType, setLogType] = useState<LogType>('all');
   const [timeRange, setTimeRange] = useState<LogTimeRange>('all');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [fromTime, setFromTime] = useState('00:00');
+  const [toDate, setToDate] = useState('');
+  const [toTime, setToTime] = useState('23:59');
+  const [timeRangeError, setTimeRangeError] = useState('');
   const [remoteLogSource, setRemoteLogSource] = useState('journal');
   const [remoteLogLines, setRemoteLogLines] = useState('200');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
   const [fetchingRemoteLogs, setFetchingRemoteLogs] = useState(false);
 
+  const getCustomRange = React.useCallback(() => {
+    if (!fromDate && !toDate) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: '' };
+    let fromTs = 0;
+    let toTs = Infinity;
+    let fromISO = '';
+    let toISO = '';
+
+    if (fromDate) {
+      const dt = new Date(`${fromDate}T${fromTime || '00:00'}:00`);
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Ngày bắt đầu không hợp lệ' };
+      fromTs = dt.getTime();
+      fromISO = dt.toISOString();
+    }
+    if (toDate) {
+      const dt = new Date(`${toDate}T${toTime || '23:59'}:59`);
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Ngày kết thúc không hợp lệ' };
+      toTs = dt.getTime();
+      toISO = dt.toISOString();
+    }
+    if (fromTs > 0 && toTs < Infinity && fromTs > toTs) {
+      return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Thời gian bắt đầu không thể lớn hơn thời gian kết thúc.' };
+    }
+    return { fromISO, toISO, fromTs, toTs, error: '' };
+  }, [fromDate, fromTime, toDate, toTime]);
+
   const loadLogs = React.useCallback(async () => {
+    setTimeRangeError('');
+    if (timeRange === 'custom') {
+      const range = getCustomRange();
+      if (range.error) {
+        setTimeRangeError(range.error);
+        return;
+      }
+    }
+
     setLoading(true);
     setLoadError(null);
     try {
@@ -128,8 +165,9 @@ export default function LogsPage() {
       if (timeRange !== 'all' && timeRange !== 'custom') {
         params.set('range', timeRange);
       } else if (timeRange === 'custom') {
-        if (customFrom) params.set('from', new Date(customFrom).toISOString());
-        if (customTo) params.set('to', new Date(customTo).toISOString());
+        const range = getCustomRange();
+        if (range.fromISO) params.set('from', range.fromISO);
+        if (range.toISO) params.set('to', range.toISO);
       }
       if (params.toString()) {
         auditUrl += `?${params.toString()}`;
@@ -164,7 +202,7 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [timeRange, customFrom, customTo]);
+  }, [timeRange, getCustomRange]);
 
   useEffect(() => {
     void loadLogs();
@@ -183,8 +221,11 @@ export default function LogsPage() {
     else if (timeRange === '24h') fromTs = now - 24 * 3600 * 1000;
     else if (timeRange === '7d') fromTs = now - 7 * 86400 * 1000;
     else if (timeRange === 'custom') {
-      if (customFrom) fromTs = new Date(customFrom).getTime();
-      if (customTo) toTs = new Date(customTo).getTime();
+      const range = getCustomRange();
+      if (!range.error) {
+        fromTs = range.fromTs;
+        toTs = range.toTs;
+      }
     }
 
     return logs.filter(log => {
@@ -214,7 +255,7 @@ export default function LogsPage() {
       }
       return true;
     });
-  }, [logs, selectedServerId, logLevel, logType, timeRange, customFrom, customTo, searchQuery]);
+  }, [logs, selectedServerId, logLevel, logType, timeRange, getCustomRange, searchQuery]);
 
   const visibleLogs = useMemo(() => filteredLogs.slice(0, MAX_VISIBLE_LOGS), [filteredLogs]);
   const selectedServer = servers.find((server) => server.id === selectedServerId);
@@ -405,7 +446,7 @@ export default function LogsPage() {
               onChange={(val) => setTimeRange(val as LogTimeRange)}
               options={[
                 { value: 'all', label: 'All Time Available' },
-                { value: 'custom', label: 'Custom Range (Tùy chỉnh ngày/giờ)' },
+                { value: 'custom', label: 'Custom Range' },
                 { value: '15m', label: 'Last 15 minutes' },
                 { value: '1h', label: 'Last 1 hour' },
                 { value: '3h', label: 'Last 3 hours' },
@@ -470,43 +511,62 @@ export default function LogsPage() {
 
         {/* Custom Range Bar (Shown only when timeRange === 'custom') */}
         {timeRange === 'custom' && (
-          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--border-color)] text-xs">
-            <span className="font-semibold text-blue-400 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" /> Custom Time Window:
-            </span>
-            <div className="flex items-center gap-2">
-              <label className="text-[var(--color-muted)] font-medium">From:</label>
-              <input
-                type="datetime-local"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-[var(--color-muted)] font-medium">To:</label>
-              <input
-                type="datetime-local"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void loadLogs()}
-              className="ops-button secondary text-xs py-1 px-3"
-            >
-              Apply Filter
-            </button>
-            {(customFrom || customTo) && (
+          <div className="pt-3 border-t border-[var(--border-color)] text-xs space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-semibold text-blue-400 flex items-center gap-1.5 shrink-0">
+                <Clock className="w-3.5 h-3.5" /> Khoảng thời gian:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[var(--color-muted)] font-medium">Từ ngày:</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => { setFromDate(e.target.value); setTimeRangeError(''); }}
+                  className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
+                />
+                <input
+                  type="time"
+                  value={fromTime}
+                  onChange={(e) => { setFromTime(e.target.value); setTimeRangeError(''); }}
+                  className="px-2 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[var(--color-muted)] font-medium">Đến ngày:</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => { setToDate(e.target.value); setTimeRangeError(''); }}
+                  className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
+                />
+                <input
+                  type="time"
+                  value={toTime}
+                  onChange={(e) => { setToTime(e.target.value); setTimeRangeError(''); }}
+                  className="px-2 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20"
+                />
+              </div>
               <button
                 type="button"
-                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
-                className="text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] underline ml-2"
+                onClick={() => void loadLogs()}
+                className="ops-button primary text-xs py-1 px-3"
               >
-                Clear Range
+                Áp dụng
               </button>
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setFromDate(''); setToDate(''); setFromTime('00:00'); setToTime('23:59'); setTimeRangeError(''); }}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline ml-2"
+                >
+                  Xóa bộ lọc
+                </button>
+              )}
+            </div>
+            {timeRangeError && (
+              <div className="text-xs font-semibold text-rose-400 flex items-center gap-1">
+                ⚠️ {timeRangeError}
+              </div>
             )}
           </div>
         )}
@@ -596,8 +656,16 @@ export default function LogsPage() {
           ) : (
             visibleLogs.map((log, idx) => (
               <div key={log.id || idx} className="flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-slate-900/60 p-1.5 rounded transition-colors group">
-                <span className="text-slate-500 shrink-0 select-none w-24">
-                  {new Date(log.timestamp).toLocaleTimeString()}
+                <span className="text-slate-500 shrink-0 select-none text-[11px] min-w-[140px]">
+                  {new Date(log.timestamp).toLocaleString('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour12: false,
+                  })}
                 </span>
 
                 <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold shrink-0 ${
