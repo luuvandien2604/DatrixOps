@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import {
   Activity, CircleAlert, Clock3, Cpu, DatabaseBackup,
-  HardDrive, Maximize2, RefreshCw, Server as ServerIcon, Wifi, X,
+  HardDrive, Maximize2, Minimize2, RefreshCw, Server as ServerIcon, Wifi,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Line, LineChart,
@@ -44,7 +44,7 @@ type TimelinePoint = {
   diskRead: number | null;
   diskWrite: number | null;
 
-  // Breakdown sub-series for Focus/Maximized Inspector
+  // Breakdown sub-series for Focus/Expanded Inspector
   cpuUser: number | null;
   cpuSystem: number | null;
   cpuIOWait: number | null;
@@ -114,7 +114,29 @@ export default function MonitoringPage() {
   const [metricsError, setMetricsError] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
-  const [maximizedMetric, setMaximizedMetric] = useState<MetricType | null>(null);
+
+  // In-place expanded metric state ('cpu' | 'ram' | 'network' | 'disk' | null)
+  const [expandedMetric, setExpandedMetric] = useState<MetricType | null>(null);
+
+  // Series visibility toggle state for the expanded breakdown chart
+  const [activeSeries, setActiveSeries] = useState<Record<string, boolean>>({
+    user: true,
+    system: true,
+    iowait: true,
+    other: true,
+    totalCpu: true,
+    ramApps: true,
+    ramCache: true,
+    ramFree: true,
+    netIn: true,
+    netOut: true,
+    diskRead: true,
+    diskWrite: true,
+  });
+
+  const toggleSeries = (key: string) => {
+    setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const activeMetricsRequest = useRef<AbortController | null>(null);
   const router = useRouter();
@@ -122,7 +144,7 @@ export default function MonitoringPage() {
   const fetchServers = useCallback(async () => {
     try {
       const data = await apiClient('/servers');
-      const nextServers = Array.isArray(data) ? data as MonitoringServer[] : [];
+      const nextServers = Array.isArray(data) ? (data as MonitoringServer[]) : [];
       setServers(nextServers);
       setSelectedServerId((current) => {
         if (typeof window !== 'undefined') {
@@ -181,7 +203,7 @@ export default function MonitoringPage() {
         signal: controller.signal,
       });
       if (activeMetricsRequest.current !== controller) return;
-      setRawMetrics(Array.isArray(data) ? data as MetricApiPoint[] : []);
+      setRawMetrics(Array.isArray(data) ? (data as MetricApiPoint[]) : []);
       setMetricsLoaded(true);
       setMetricsError('');
       setNow(Date.now());
@@ -246,6 +268,185 @@ export default function MonitoringPage() {
     range: timeRange,
   };
 
+  // Render individual standard metric cards
+  const renderCard = (type: MetricType, isCompact = false) => {
+    switch (type) {
+      case 'cpu':
+        return (
+          <MetricChartCard
+            key="cpu"
+            title="CPU Usage (%)"
+            icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            isCompact={isCompact}
+            onMaximize={() => setExpandedMetric('cpu')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} percentAxis />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="cpu"
+                  name="CPU Usage"
+                  stroke="var(--violet)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, fill: 'var(--violet)' }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+
+      case 'ram':
+        return (
+          <MetricChartCard
+            key="ram"
+            title="Memory Usage (%)"
+            icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatMetricSummary(chartTimeline, 'ram', '%')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            isCompact={isCompact}
+            onMaximize={() => setExpandedMetric('ram')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartContext.data}>
+                <defs>
+                  <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
+                <Tooltip content={<MetricsTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="ram"
+                  name="Memory Usage"
+                  stroke="var(--mint)"
+                  strokeWidth={2}
+                  fill="url(#monitoringRamFill)"
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+
+      case 'network':
+        return (
+          <MetricChartCard
+            key="network"
+            title="Network Throughput (KB/s)"
+            icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            isCompact={isCompact}
+            onMaximize={() => setExpandedMetric('network')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+
+      case 'disk':
+        return (
+          <MetricChartCard
+            key="disk"
+            title="Disk I/O (KB/s)"
+            icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
+            rangeLabel={rangeConfig.label}
+            summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
+            freshness={`${effectiveBucketSeconds}s resolution`}
+            loading={initialLoading}
+            isCompact={isCompact}
+            onMaximize={() => setExpandedMetric('disk')}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartContext.data}>
+                <ChartScaffolding {...chartContext} />
+                <Tooltip content={<MetricsTooltip />} />
+                <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line
+                  type="linear"
+                  dataKey="downtimeZero"
+                  name="No metrics"
+                  stroke="var(--rose)"
+                  strokeWidth={4}
+                  strokeDasharray="7 5"
+                  strokeLinecap="round"
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </MetricChartCard>
+        );
+    }
+  };
+
+  const allMetrics: MetricType[] = ['cpu', 'ram', 'network', 'disk'];
+  const remainingMetrics = allMetrics.filter((m) => m !== expandedMetric);
+
   return (
     <div className="space-y-6 pb-20">
       <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -256,7 +457,7 @@ export default function MonitoringPage() {
           </p>
           <h1>Resource Monitoring</h1>
           <p className="mt-3 text-sm text-[var(--color-muted)]">
-            Click any chart to expand into an interactive multi-series breakdown view.
+            Click the expand icon on any chart to expand it full-width with multi-series layered breakdown.
           </p>
           <p className="mt-2 font-mono text-xs text-[var(--text-tertiary)]">
             Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · Polling every {POLL_INTERVAL_MS / 1_000}s
@@ -323,174 +524,41 @@ export default function MonitoringPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <MetricChartCard
-              title="CPU Usage (%)"
-              icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
-              rangeLabel={rangeConfig.label}
-              summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
-              freshness={`${effectiveBucketSeconds}s resolution`}
-              loading={initialLoading}
-              onMaximize={() => setMaximizedMetric('cpu')}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartContext.data}>
-                  <ChartScaffolding {...chartContext} percentAxis />
-                  <Tooltip content={<MetricsTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="cpu"
-                    name="CPU Usage"
-                    stroke="var(--violet)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4, fill: 'var(--violet)' }}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    activeDot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </MetricChartCard>
+          {/* IN-PLACE EXPANDED LAYOUT */}
+          {expandedMetric ? (
+            <div className="space-y-6">
+              {/* Full-Width Hero Expanded Chart Card */}
+              <ExpandedHeroChartCard
+                metric={expandedMetric}
+                onCollapse={() => setExpandedMetric(null)}
+                timeline={chartTimeline}
+                chartContext={chartContext}
+                rangeLabel={rangeConfig.label}
+                resolution={effectiveBucketSeconds}
+                activeSeries={activeSeries}
+                onToggleSeries={toggleSeries}
+                loading={initialLoading}
+              />
 
-            <MetricChartCard
-              title="Memory Usage (%)"
-              icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
-              rangeLabel={rangeConfig.label}
-              summary={formatMetricSummary(chartTimeline, 'ram', '%')}
-              freshness={`${effectiveBucketSeconds}s resolution`}
-              loading={initialLoading}
-              onMaximize={() => setMaximizedMetric('ram')}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartContext.data}>
-                  <defs>
-                    <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
-                      <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
-                  <Tooltip content={<MetricsTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="ram"
-                    name="Memory Usage"
-                    stroke="var(--mint)"
-                    strokeWidth={2}
-                    fill="url(#monitoringRamFill)"
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    activeDot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </MetricChartCard>
-
-            <MetricChartCard
-              title="Network Throughput (KB/s)"
-              icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
-              rangeLabel={rangeConfig.label}
-              summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
-              freshness={`${effectiveBucketSeconds}s resolution`}
-              loading={initialLoading}
-              onMaximize={() => setMaximizedMetric('network')}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartContext.data}>
-                  <ChartScaffolding {...chartContext} />
-                  <Tooltip content={<MetricsTooltip />} />
-                  <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    activeDot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </MetricChartCard>
-
-            <MetricChartCard
-              title="Disk I/O (KB/s)"
-              icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
-              rangeLabel={rangeConfig.label}
-              summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
-              freshness={`${effectiveBucketSeconds}s resolution`}
-              loading={initialLoading}
-              onMaximize={() => setMaximizedMetric('disk')}
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartContext.data}>
-                  <ChartScaffolding {...chartContext} />
-                  <Tooltip content={<MetricsTooltip />} />
-                  <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    activeDot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </MetricChartCard>
-          </div>
+              {/* Remaining 3 charts neatly aligned in a row below the expanded hero */}
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                    Other System Metrics (Click expand to inspect)
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                  {remainingMetrics.map((type) => renderCard(type, true))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Standard 2x2 Grid Layout */
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {allMetrics.map((type) => renderCard(type, false))}
+            </div>
+          )}
         </>
-      )}
-
-      {/* Focus Breakdown Modal */}
-      {maximizedMetric && (
-        <MaximizedChartModal
-          metric={maximizedMetric}
-          onClose={() => setMaximizedMetric(null)}
-          onSelectMetric={setMaximizedMetric}
-          timeline={chartTimeline}
-          chartContext={chartContext}
-          server={selectedServer}
-          timeRange={timeRange}
-          onTimeRangeChange={setTimeRange}
-          resolution={effectiveBucketSeconds}
-        />
       )}
     </div>
   );
@@ -503,6 +571,7 @@ function MetricChartCard({
   summary,
   freshness,
   loading,
+  isCompact = false,
   onMaximize,
   children,
 }: {
@@ -512,38 +581,41 @@ function MetricChartCard({
   summary: string;
   freshness: string;
   loading: boolean;
+  isCompact?: boolean;
   onMaximize?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <section className="ops-panel surface-regular no-hover-lift monitoring-chart-card p-5 sm:p-6 group relative">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+    <section className={`ops-panel surface-regular no-hover-lift monitoring-chart-card group relative ${isCompact ? 'p-4' : 'p-5 sm:p-6'}`}>
+      <div className={`flex flex-wrap items-start justify-between gap-2 ${isCompact ? 'mb-3' : 'mb-5'}`}>
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold">
+          <h2 className={`flex items-center gap-2 font-semibold ${isCompact ? 'text-sm' : 'text-base'}`}>
             {icon}
             {title}
           </h2>
-          <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">{summary}</p>
+          <p className="mt-1 font-mono text-xs text-[var(--text-secondary)] truncate">{summary}</p>
         </div>
-        <div className="flex items-start gap-3">
-          <div className="text-right text-xs text-[var(--color-muted)]">
-            <span className="block">{rangeLabel}</span>
-            <span className="mt-1 block font-mono text-[11px]">{freshness}</span>
-          </div>
+        <div className="flex items-start gap-2">
+          {!isCompact && (
+            <div className="text-right text-xs text-[var(--color-muted)]">
+              <span className="block">{rangeLabel}</span>
+              <span className="mt-1 block font-mono text-[11px]">{freshness}</span>
+            </div>
+          )}
           {onMaximize && (
             <button
               type="button"
               onClick={onMaximize}
               className="p-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.04] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/[0.08] transition-colors"
-              title="Maximize chart & view breakdown"
-              aria-label={`Maximize ${title} chart`}
+              title="Expand chart full-width"
+              aria-label={`Expand ${title} chart`}
             >
               <Maximize2 className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
-      <div className="relative h-72">
+      <div className={`relative ${isCompact ? 'h-48' : 'h-72'}`}>
         {children}
         {loading && (
           <div className="monitoring-chart-loading">
@@ -553,6 +625,490 @@ function MetricChartCard({
         )}
       </div>
     </section>
+  );
+}
+
+/* Full-Width In-Place Hero Expanded Chart Card */
+function ExpandedHeroChartCard({
+  metric,
+  onCollapse,
+  timeline,
+  chartContext,
+  rangeLabel,
+  resolution,
+  activeSeries,
+  onToggleSeries,
+  loading,
+}: {
+  metric: MetricType;
+  onCollapse: () => void;
+  timeline: TimelinePoint[];
+  chartContext: { data: TimelinePoint[]; domain: [number, number]; range: TimeRange };
+  rangeLabel: string;
+  resolution: number;
+  activeSeries: Record<string, boolean>;
+  onToggleSeries: (key: string) => void;
+  loading: boolean;
+}) {
+  const metricMeta = {
+    cpu: {
+      title: 'CPU Utilization Breakdown (%)',
+      icon: <Cpu className="w-5 h-5 text-violet-400" />,
+      description: 'Layered execution distribution: User Workload, Kernel/System, and Storage I/O Wait.',
+    },
+    ram: {
+      title: 'Memory Allocation Breakdown (%)',
+      icon: <DatabaseBackup className="w-5 h-5 text-emerald-400" />,
+      description: 'Layered memory mapping: Resident applications, OS filesystem cache & buffers, and Free reserve.',
+    },
+    network: {
+      title: 'Network Throughput Breakdown (KB/s)',
+      icon: <Wifi className="w-5 h-5 text-sky-400" />,
+      description: 'Bi-directional network stream: Inbound RX ingress & Outbound TX egress bandwidth.',
+    },
+    disk: {
+      title: 'Disk I/O Bandwidth Breakdown (KB/s)',
+      icon: <HardDrive className="w-5 h-5 text-amber-400" />,
+      description: 'Storage read & write throughput metrics over the selected time window.',
+    },
+  }[metric];
+
+  // Calculate statistics summary
+  const stats = useMemo(() => {
+    let key: keyof TimelinePoint = 'cpu';
+    let unit = '%';
+    if (metric === 'ram') { key = 'ram'; unit = '%'; }
+    else if (metric === 'network') { key = 'netIn'; unit = ' KB/s'; }
+    else if (metric === 'disk') { key = 'diskRead'; unit = ' KB/s'; }
+
+    const values = timeline
+      .filter((p) => p.hasData && p[key] != null)
+      .map((p) => Number(p[key]));
+
+    if (values.length === 0) {
+      return { current: '—', avg: '—', peak: '—', min: '—' };
+    }
+    const cur = values.at(-1) ?? 0;
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+
+    return {
+      current: `${cur.toFixed(1)}${unit}`,
+      avg: `${avg.toFixed(1)}${unit}`,
+      peak: `${max.toFixed(1)}${unit}`,
+      min: `${min.toFixed(1)}${unit}`,
+    };
+  }, [timeline, metric]);
+
+  return (
+    <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-white/[0.05] border border-white/10">
+            {metricMeta.icon}
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
+              {metricMeta.title}
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                Expanded View
+              </span>
+            </h2>
+            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+              {metricMeta.description} · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Collapse Button */}
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
+            title="Collapse back to 2x2 grid"
+            aria-label="Collapse chart to grid"
+          >
+            <Minimize2 className="w-4 h-4 text-blue-400" />
+            Thu nhỏ lưới
+          </button>
+        </div>
+      </div>
+
+      {/* Main Chart Canvas */}
+      <div className="mt-6 h-[380px] w-full relative">
+        {metric === 'cpu' && (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartContext.data}>
+              <defs>
+                <linearGradient id="userCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="sysCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="iowaitCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="otherCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ec4899" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#ec4899" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
+              <Tooltip content={<MetricsTooltip />} />
+              {activeSeries.other && (
+                <Area
+                  type="monotone"
+                  stackId="cpuStack"
+                  dataKey="cpuOther"
+                  name="Background & Other"
+                  stroke="#ec4899"
+                  fill="url(#otherCpuGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.iowait && (
+                <Area
+                  type="monotone"
+                  stackId="cpuStack"
+                  dataKey="cpuIOWait"
+                  name="I/O Wait"
+                  stroke="#f59e0b"
+                  fill="url(#iowaitCpuGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.system && (
+                <Area
+                  type="monotone"
+                  stackId="cpuStack"
+                  dataKey="cpuSystem"
+                  name="System & Kernel"
+                  stroke="#3b82f6"
+                  fill="url(#sysCpuGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.user && (
+                <Area
+                  type="monotone"
+                  stackId="cpuStack"
+                  dataKey="cpuUser"
+                  name="User Workload"
+                  stroke="#8b5cf6"
+                  fill="url(#userCpuGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.totalCpu && (
+                <Line
+                  type="monotone"
+                  dataKey="cpu"
+                  name="Total CPU %"
+                  stroke="#a855f7"
+                  strokeWidth={2.5}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              <Line
+                type="linear"
+                dataKey="downtimeZero"
+                name="No metrics"
+                stroke="var(--rose)"
+                strokeWidth={4}
+                strokeDasharray="7 5"
+                strokeLinecap="round"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+
+        {metric === 'ram' && (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartContext.data}>
+              <defs>
+                <linearGradient id="ramAppsGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="ramCacheGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="ramFreeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#64748b" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
+              <Tooltip content={<MetricsTooltip />} />
+              {activeSeries.ramFree && (
+                <Area
+                  type="monotone"
+                  stackId="ramStack"
+                  dataKey="ramFree"
+                  name="Free Reserve"
+                  stroke="#64748b"
+                  fill="url(#ramFreeGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.ramCache && (
+                <Area
+                  type="monotone"
+                  stackId="ramStack"
+                  dataKey="ramCache"
+                  name="Page Cache & Buffers"
+                  stroke="#06b6d4"
+                  fill="url(#ramCacheGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.ramApps && (
+                <Area
+                  type="monotone"
+                  stackId="ramStack"
+                  dataKey="ramApps"
+                  name="Application Resident"
+                  stroke="#10b981"
+                  fill="url(#ramAppsGrad)"
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              <Line
+                type="linear"
+                dataKey="downtimeZero"
+                name="No metrics"
+                stroke="var(--rose)"
+                strokeWidth={4}
+                strokeDasharray="7 5"
+                strokeLinecap="round"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+
+        {metric === 'network' && (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartContext.data}>
+              <defs>
+                <linearGradient id="netInGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="netOutGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <ChartScaffolding {...chartContext} />
+              <Tooltip content={<MetricsTooltip />} />
+              {activeSeries.netIn && (
+                <Area
+                  type="monotone"
+                  dataKey="netIn"
+                  name="Inbound RX"
+                  stroke="#8b5cf6"
+                  fill="url(#netInGrad)"
+                  strokeWidth={2}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.netOut && (
+                <Area
+                  type="monotone"
+                  dataKey="netOut"
+                  name="Outbound TX"
+                  stroke="#38bdf8"
+                  fill="url(#netOutGrad)"
+                  strokeWidth={2}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              <Line
+                type="linear"
+                dataKey="downtimeZero"
+                name="No metrics"
+                stroke="var(--rose)"
+                strokeWidth={4}
+                strokeDasharray="7 5"
+                strokeLinecap="round"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+
+        {metric === 'disk' && (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartContext.data}>
+              <ChartScaffolding {...chartContext} />
+              <Tooltip content={<MetricsTooltip />} />
+              {activeSeries.diskRead && (
+                <Line
+                  type="monotone"
+                  dataKey="diskRead"
+                  name="Read Throughput"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {activeSeries.diskWrite && (
+                <Line
+                  type="monotone"
+                  dataKey="diskWrite"
+                  name="Write Throughput"
+                  stroke="#f43f5e"
+                  strokeWidth={2.5}
+                  strokeDasharray="4 4"
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              <Line
+                type="linear"
+                dataKey="downtimeZero"
+                name="No metrics"
+                stroke="var(--rose)"
+                strokeWidth={4}
+                strokeDasharray="7 5"
+                strokeLinecap="round"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+
+        {loading && (
+          <div className="monitoring-chart-loading">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            Loading metrics…
+          </div>
+        )}
+      </div>
+
+      {/* Interactive Toggle Legend Bar */}
+      <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+        <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
+          Breakdown Layers (Bấm vào nhãn để ẩn/hiện từng dải màu):
+        </p>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {metric === 'cpu' && (
+            <>
+              <LegendBadge label="User Workload" color="#8b5cf6" active={activeSeries.user} onClick={() => onToggleSeries('user')} />
+              <LegendBadge label="System & Kernel" color="#3b82f6" active={activeSeries.system} onClick={() => onToggleSeries('system')} />
+              <LegendBadge label="I/O Wait" color="#f59e0b" active={activeSeries.iowait} onClick={() => onToggleSeries('iowait')} />
+              <LegendBadge label="Background & Other" color="#ec4899" active={activeSeries.other} onClick={() => onToggleSeries('other')} />
+              <LegendBadge label="Total CPU Reference" color="#a855f7" active={activeSeries.totalCpu} onClick={() => onToggleSeries('totalCpu')} />
+            </>
+          )}
+          {metric === 'ram' && (
+            <>
+              <LegendBadge label="Application Resident" color="#10b981" active={activeSeries.ramApps} onClick={() => onToggleSeries('ramApps')} />
+              <LegendBadge label="Page Cache & Buffers" color="#06b6d4" active={activeSeries.ramCache} onClick={() => onToggleSeries('ramCache')} />
+              <LegendBadge label="Free Reserve" color="#64748b" active={activeSeries.ramFree} onClick={() => onToggleSeries('ramFree')} />
+            </>
+          )}
+          {metric === 'network' && (
+            <>
+              <LegendBadge label="Inbound RX" color="#8b5cf6" active={activeSeries.netIn} onClick={() => onToggleSeries('netIn')} />
+              <LegendBadge label="Outbound TX" color="#38bdf8" active={activeSeries.netOut} onClick={() => onToggleSeries('netOut')} />
+            </>
+          )}
+          {metric === 'disk' && (
+            <>
+              <LegendBadge label="Read Bandwidth" color="#f59e0b" active={activeSeries.diskRead} onClick={() => onToggleSeries('diskRead')} />
+              <LegendBadge label="Write Bandwidth" color="#f43f5e" active={activeSeries.diskWrite} onClick={() => onToggleSeries('diskWrite')} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom KPI Statistics Grid */}
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Current Telemetry</p>
+          <p className="mt-1 text-lg font-bold text-[var(--foreground)]">{stats.current}</p>
+        </div>
+        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Average</p>
+          <p className="mt-1 text-lg font-bold text-blue-400">{stats.avg}</p>
+        </div>
+        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
+          <p className="mt-1 text-lg font-bold text-rose-400">{stats.peak}</p>
+        </div>
+        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
+          <p className="mt-1 text-lg font-bold text-emerald-400">{resolution}s</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LegendBadge({
+  label,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+        active
+          ? 'border-white/20 bg-white/[0.08] text-[var(--foreground)] shadow-sm'
+          : 'border-white/5 bg-transparent text-[var(--color-muted)] opacity-40 line-through'
+      }`}
+    >
+      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </button>
   );
 }
 
@@ -643,537 +1199,6 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
         </div>
       )}
     </div>
-  );
-}
-
-/* Maximized Deep-Dive Breakdown Modal Component */
-function MaximizedChartModal({
-  metric,
-  onClose,
-  onSelectMetric,
-  timeline,
-  chartContext,
-  server,
-  timeRange,
-  onTimeRangeChange,
-  resolution,
-}: {
-  metric: MetricType;
-  onClose: () => void;
-  onSelectMetric: (m: MetricType) => void;
-  timeline: TimelinePoint[];
-  chartContext: { data: TimelinePoint[]; domain: [number, number]; range: TimeRange };
-  server?: MonitoringServer;
-  timeRange: TimeRange;
-  onTimeRangeChange: (r: TimeRange) => void;
-  resolution: number;
-}) {
-  // Series Visibility Toggle state
-  const [activeSeries, setActiveSeries] = useState<Record<string, boolean>>({
-    user: true,
-    system: true,
-    iowait: true,
-    other: true,
-    totalCpu: true,
-    ramApps: true,
-    ramCache: true,
-    ramFree: true,
-    netIn: true,
-    netOut: true,
-    diskRead: true,
-    diskWrite: true,
-  });
-
-  const toggleSeries = (key: string) => {
-    setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  const metricMeta = {
-    cpu: {
-      title: 'CPU Utilization Breakdown (%)',
-      icon: <Cpu className="w-5 h-5 text-violet-400" />,
-      description: 'Layered execution distribution: User workload, Kernel/System, and Storage I/O Wait.',
-    },
-    ram: {
-      title: 'Memory Allocation Breakdown (%)',
-      icon: <DatabaseBackup className="w-5 h-5 text-emerald-400" />,
-      description: 'Layered memory mapping: Resident applications, OS filesystem cache & buffers, and Free reserve.',
-    },
-    network: {
-      title: 'Network Throughput (KB/s)',
-      icon: <Wifi className="w-5 h-5 text-sky-400" />,
-      description: 'Bi-directional network stream: Inbound RX ingress & Outbound TX egress bandwidth.',
-    },
-    disk: {
-      title: 'Disk I/O Bandwidth (KB/s)',
-      icon: <HardDrive className="w-5 h-5 text-amber-400" />,
-      description: 'Storage read & write throughput metrics over the selected time window.',
-    },
-  }[metric];
-
-  // Calculate statistics summary
-  const stats = useMemo(() => {
-    let key: keyof TimelinePoint = 'cpu';
-    let unit = '%';
-    if (metric === 'ram') { key = 'ram'; unit = '%'; }
-    else if (metric === 'network') { key = 'netIn'; unit = ' KB/s'; }
-    else if (metric === 'disk') { key = 'diskRead'; unit = ' KB/s'; }
-
-    const values = timeline
-      .filter((p) => p.hasData && p[key] != null)
-      .map((p) => Number(p[key]));
-
-    if (values.length === 0) {
-      return { current: '—', avg: '—', peak: '—', min: '—' };
-    }
-    const cur = values.at(-1) ?? 0;
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-
-    return {
-      current: `${cur.toFixed(1)}${unit}`,
-      avg: `${avg.toFixed(1)}${unit}`,
-      peak: `${max.toFixed(1)}${unit}`,
-      min: `${min.toFixed(1)}${unit}`,
-    };
-  }, [timeline, metric]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="ops-modal flex flex-col w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl">
-        {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-5 border-b border-[var(--border-color)] bg-white/[0.02]">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-white/[0.05] border border-white/10">
-              {metricMeta.icon}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-                {metricMeta.title}
-              </h2>
-              <p className="text-xs text-[var(--color-muted)]">
-                Server: <span className="font-semibold text-blue-400">{server?.name || 'Local Host'}</span> · {metricMeta.description}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Metric Switcher Tabs */}
-            <div className="flex items-center rounded-lg bg-black/30 p-1 border border-white/10 text-xs">
-              {(['cpu', 'ram', 'network', 'disk'] as MetricType[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => onSelectMetric(m)}
-                  className={`px-3 py-1 rounded-md font-semibold uppercase transition-all ${
-                    metric === m
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  {m === 'network' ? 'Net' : m}
-                </button>
-              ))}
-            </div>
-
-            {/* Time Range Selector */}
-            <CustomSelect
-              value={timeRange}
-              onChange={(val) => onTimeRangeChange(val as TimeRange)}
-              options={RANGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              className="w-40"
-            />
-
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-lg border border-white/10 bg-white/[0.05] text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-colors"
-              title="Close focus view (Esc)"
-              aria-label="Close focus view"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Modal Chart Body */}
-        <div className="p-6 flex-1 overflow-y-auto space-y-5 custom-scrollbar">
-          <div className="h-[380px] w-full relative">
-            {metric === 'cpu' && (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartContext.data}>
-                  <defs>
-                    <linearGradient id="userCpuGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="sysCpuGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="iowaitCpuGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="otherCpuGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
-                  <Tooltip content={<MetricsTooltip />} />
-                  {activeSeries.other && (
-                    <Area
-                      type="monotone"
-                      stackId="cpuStack"
-                      dataKey="cpuOther"
-                      name="Background & Other"
-                      stroke="#ec4899"
-                      fill="url(#otherCpuGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.iowait && (
-                    <Area
-                      type="monotone"
-                      stackId="cpuStack"
-                      dataKey="cpuIOWait"
-                      name="I/O Wait"
-                      stroke="#f59e0b"
-                      fill="url(#iowaitCpuGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.system && (
-                    <Area
-                      type="monotone"
-                      stackId="cpuStack"
-                      dataKey="cpuSystem"
-                      name="System & Kernel"
-                      stroke="#3b82f6"
-                      fill="url(#sysCpuGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.user && (
-                    <Area
-                      type="monotone"
-                      stackId="cpuStack"
-                      dataKey="cpuUser"
-                      name="User Workload"
-                      stroke="#8b5cf6"
-                      fill="url(#userCpuGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.totalCpu && (
-                    <Line
-                      type="monotone"
-                      dataKey="cpu"
-                      name="Total CPU %"
-                      stroke="#a855f7"
-                      strokeWidth={2.5}
-                      dot={false}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-
-            {metric === 'ram' && (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartContext.data}>
-                  <defs>
-                    <linearGradient id="ramAppsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="ramCacheGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="ramFreeGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#64748b" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
-                  <Tooltip content={<MetricsTooltip />} />
-                  {activeSeries.ramFree && (
-                    <Area
-                      type="monotone"
-                      stackId="ramStack"
-                      dataKey="ramFree"
-                      name="Free Reserve"
-                      stroke="#64748b"
-                      fill="url(#ramFreeGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.ramCache && (
-                    <Area
-                      type="monotone"
-                      stackId="ramStack"
-                      dataKey="ramCache"
-                      name="Page Cache & Buffers"
-                      stroke="#06b6d4"
-                      fill="url(#ramCacheGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.ramApps && (
-                    <Area
-                      type="monotone"
-                      stackId="ramStack"
-                      dataKey="ramApps"
-                      name="Application Resident"
-                      stroke="#10b981"
-                      fill="url(#ramAppsGrad)"
-                      strokeWidth={1.5}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-
-            {metric === 'network' && (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartContext.data}>
-                  <defs>
-                    <linearGradient id="netInGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="netOutGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.45} />
-                      <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <ChartScaffolding {...chartContext} />
-                  <Tooltip content={<MetricsTooltip />} />
-                  {activeSeries.netIn && (
-                    <Area
-                      type="monotone"
-                      dataKey="netIn"
-                      name="Inbound RX"
-                      stroke="#8b5cf6"
-                      fill="url(#netInGrad)"
-                      strokeWidth={2}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.netOut && (
-                    <Area
-                      type="monotone"
-                      dataKey="netOut"
-                      name="Outbound TX"
-                      stroke="#38bdf8"
-                      fill="url(#netOutGrad)"
-                      strokeWidth={2}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-
-            {metric === 'disk' && (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartContext.data}>
-                  <ChartScaffolding {...chartContext} />
-                  <Tooltip content={<MetricsTooltip />} />
-                  {activeSeries.diskRead && (
-                    <Line
-                      type="monotone"
-                      dataKey="diskRead"
-                      name="Read Throughput"
-                      stroke="#f59e0b"
-                      strokeWidth={2.5}
-                      dot={false}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  {activeSeries.diskWrite && (
-                    <Line
-                      type="monotone"
-                      dataKey="diskWrite"
-                      name="Write Throughput"
-                      stroke="#f43f5e"
-                      strokeWidth={2.5}
-                      strokeDasharray="4 4"
-                      dot={false}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
-                  )}
-                  <Line
-                    type="linear"
-                    dataKey="downtimeZero"
-                    name="No metrics"
-                    stroke="var(--rose)"
-                    strokeWidth={4}
-                    strokeDasharray="7 5"
-                    strokeLinecap="round"
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* Interactive Toggle Legend Bar */}
-          <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-            <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-              Active Breakdown Layers (Click badge to show/hide series):
-            </p>
-            <div className="flex flex-wrap items-center gap-3">
-              {metric === 'cpu' && (
-                <>
-                  <LegendBadge label="User Workload" color="#8b5cf6" active={activeSeries.user} onClick={() => toggleSeries('user')} />
-                  <LegendBadge label="System & Kernel" color="#3b82f6" active={activeSeries.system} onClick={() => toggleSeries('system')} />
-                  <LegendBadge label="I/O Wait" color="#f59e0b" active={activeSeries.iowait} onClick={() => toggleSeries('iowait')} />
-                  <LegendBadge label="Background & Other" color="#ec4899" active={activeSeries.other} onClick={() => toggleSeries('other')} />
-                  <LegendBadge label="Total CPU Reference" color="#a855f7" active={activeSeries.totalCpu} onClick={() => toggleSeries('totalCpu')} />
-                </>
-              )}
-              {metric === 'ram' && (
-                <>
-                  <LegendBadge label="Application Resident" color="#10b981" active={activeSeries.ramApps} onClick={() => toggleSeries('ramApps')} />
-                  <LegendBadge label="Page Cache & Buffers" color="#06b6d4" active={activeSeries.ramCache} onClick={() => toggleSeries('ramCache')} />
-                  <LegendBadge label="Free Reserve" color="#64748b" active={activeSeries.ramFree} onClick={() => toggleSeries('ramFree')} />
-                </>
-              )}
-              {metric === 'network' && (
-                <>
-                  <LegendBadge label="Inbound RX" color="#8b5cf6" active={activeSeries.netIn} onClick={() => toggleSeries('netIn')} />
-                  <LegendBadge label="Outbound TX" color="#38bdf8" active={activeSeries.netOut} onClick={() => toggleSeries('netOut')} />
-                </>
-              )}
-              {metric === 'disk' && (
-                <>
-                  <LegendBadge label="Read Bandwidth" color="#f59e0b" active={activeSeries.diskRead} onClick={() => toggleSeries('diskRead')} />
-                  <LegendBadge label="Write Bandwidth" color="#f43f5e" active={activeSeries.diskWrite} onClick={() => toggleSeries('diskWrite')} />
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Metric KPI Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-              <p className="text-xs font-semibold text-[var(--color-muted)] uppercase">Current Telemetry</p>
-              <p className="mt-1 text-xl font-bold text-[var(--foreground)]">{stats.current}</p>
-            </div>
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-              <p className="text-xs font-semibold text-[var(--color-muted)] uppercase">Average</p>
-              <p className="mt-1 text-xl font-bold text-blue-400">{stats.avg}</p>
-            </div>
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-              <p className="text-xs font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
-              <p className="mt-1 text-xl font-bold text-rose-400">{stats.peak}</p>
-            </div>
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-              <p className="text-xs font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
-              <p className="mt-1 text-xl font-bold text-emerald-400">{resolution}s</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LegendBadge({
-  label,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  color: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-        active
-          ? 'border-white/20 bg-white/[0.08] text-[var(--foreground)]'
-          : 'border-white/5 bg-transparent text-[var(--color-muted)] opacity-40 line-through'
-      }`}
-    >
-      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-    </button>
   );
 }
 
