@@ -132,6 +132,9 @@ export default function LogsPage() {
     if (fromDate) {
       const dt = new Date(`${fromDate}T${fromTime || '00:00'}:00`);
       if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Ngày bắt đầu không hợp lệ' };
+      if (dt.getTime() > Date.now() + 5 * 60 * 1000) {
+        return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Khoảng thời gian không thể nằm trong tương lai.' };
+      }
       fromTs = dt.getTime();
       fromISO = dt.toISOString();
     }
@@ -383,6 +386,9 @@ export default function LogsPage() {
       }));
       setLogs((current) => [...remoteEntries, ...current].slice(0, 1000));
       setLogType('all');
+      if (timeRange === 'custom') {
+        setTimeRange('all');
+      }
       toast.success(`Fetched ${remoteEntries.length} log lines`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to fetch remote logs');

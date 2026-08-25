@@ -1205,15 +1205,19 @@ func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parts := strings.Split(path, "/")
-	var version string
-	var filename string
+	filename := parts[len(parts)-1]
+	version := h.desiredAgentVersion
+	if version == "" {
+		version = "1.5.9"
+	}
 
-	if len(parts) >= 2 {
-		version = parts[0]
-		filename = strings.Join(parts[1:], "/")
-	} else {
-		version = h.desiredAgentVersion
-		filename = parts[0]
+	for _, p := range parts {
+		cleaned := strings.TrimPrefix(strings.TrimSpace(p), "v")
+		subParts := strings.Split(cleaned, ".")
+		if len(subParts) == 3 {
+			version = cleaned
+			break
+		}
 	}
 
 	if !strings.HasPrefix(version, "v") {
