@@ -67,7 +67,6 @@ type TimelinePoint = {
   ram_proc_2: number | null;
   ram_proc_3: number | null;
   ram_proc_4: number | null;
-  ram_cache: number | null;
   ram_other: number | null;
 
   // Zero is only emitted during confirmed downtime and is rendered separately.
@@ -183,7 +182,6 @@ export default function MonitoringPage() {
     ram_proc_2: true,
     ram_proc_3: true,
     ram_proc_4: true,
-    ram_cache: true,
     ram_other: true,
     totalRam: true,
     netIn: true,
@@ -972,7 +970,7 @@ function ExpandedCpuChartCard({
 }
 
 /* =========================================================================
-   2. EXPANDED RAM CHART CARD (No Free Reserve, Process Breakdown)
+   2. EXPANDED RAM CHART CARD (Matching CPU Style)
    ========================================================================= */
 function ExpandedRamChartCard({
   onCollapse,
@@ -1007,13 +1005,13 @@ function ExpandedRamChartCard({
           </div>
           <div>
             <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              Memory Allocation Breakdown (%)
+              Memory Utilization Breakdown (%)
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 Top Processes
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Phân tách dung lượng RAM sử dụng theo từng tiến trình và Page Cache · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              Phân tách chi tiết mức chiếm dụng RAM theo từng tiến trình thực tế · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
             </p>
           </div>
         </div>
@@ -1029,7 +1027,7 @@ function ExpandedRamChartCard({
         </button>
       </div>
 
-      {/* Chart Canvas (NO Free Reserve) */}
+      {/* Chart Canvas */}
       <div className="mt-6 h-[380px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
@@ -1040,16 +1038,12 @@ function ExpandedRamChartCard({
                   <stop offset="95%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.05} />
                 </linearGradient>
               ))}
-              <linearGradient id="ramCacheGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
-                <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.05} />
-              </linearGradient>
               <linearGradient id="ramOtherGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#64748b" stopOpacity={0.35} />
                 <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
               </linearGradient>
             </defs>
-            <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain={false} />
+            <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
             <Tooltip content={<MetricsTooltip />} />
 
             {activeSeries.ram_other && (
@@ -1057,23 +1051,9 @@ function ExpandedRamChartCard({
                 type="monotone"
                 stackId="ramStack"
                 dataKey="ram_other"
-                name="Other Resident Apps"
+                name="Other Processes & System"
                 stroke="#64748b"
                 fill="url(#ramOtherGrad)"
-                strokeWidth={1.5}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            )}
-
-            {activeSeries.ram_cache && (
-              <Area
-                type="monotone"
-                stackId="ramStack"
-                dataKey="ram_cache"
-                name="Page Cache & Buffers"
-                stroke="#06b6d4"
-                fill="url(#ramCacheGrad)"
                 strokeWidth={1.5}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -1103,7 +1083,7 @@ function ExpandedRamChartCard({
               <Line
                 type="monotone"
                 dataKey="ram"
-                name="Total Memory Used (%)"
+                name="Total Memory Reference"
                 stroke="#10b981"
                 strokeWidth={2.5}
                 dot={false}
@@ -1138,7 +1118,7 @@ function ExpandedRamChartCard({
       {/* Interactive Legend Badges */}
       <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
         <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Active Memory Layers (Bấm để ẩn/hiện từng thành phần RAM):
+          Active Process Layers (Bấm để ẩn/hiện từng tiến trình):
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
           {ramProcesses.map((proc, idx) => {
@@ -1154,13 +1134,7 @@ function ExpandedRamChartCard({
             );
           })}
           <LegendBadge
-            label="Page Cache & Buffers"
-            color="#06b6d4"
-            active={activeSeries.ram_cache !== false}
-            onClick={() => onToggleSeries('ram_cache')}
-          />
-          <LegendBadge
-            label="Other Resident Apps"
+            label="Other Processes & System"
             color="#64748b"
             active={activeSeries.ram_other !== false}
             onClick={() => onToggleSeries('ram_other')}
@@ -1657,24 +1631,22 @@ function buildTimeline(
       cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
     }
 
-    // Allocate real top process RAM values (NO Free reserve!)
+    // Allocate real top process RAM values (matching CPU breakdown pattern)
     let ram_proc_0: number | null = null;
     let ram_proc_1: number | null = null;
     let ram_proc_2: number | null = null;
     let ram_proc_3: number | null = null;
     let ram_proc_4: number | null = null;
-    let ram_cache: number | null = null;
     let ram_other: number | null = null;
 
     if (ramVal != null) {
-      ram_cache = Number((ramVal * 0.25).toFixed(1));
-      const activeAppRam = ramVal - ram_cache;
-      ram_proc_0 = Number(((ramProcesses[0]?.ram || 1) / totalWeightRam * activeAppRam * 0.8).toFixed(1));
-      ram_proc_1 = Number(((ramProcesses[1]?.ram || 0.8) / totalWeightRam * activeAppRam * 0.8).toFixed(1));
-      ram_proc_2 = Number(((ramProcesses[2]?.ram || 0.6) / totalWeightRam * activeAppRam * 0.8).toFixed(1));
-      ram_proc_3 = Number(((ramProcesses[3]?.ram || 0.4) / totalWeightRam * activeAppRam * 0.8).toFixed(1));
-      ram_proc_4 = Number(((ramProcesses[4]?.ram || 0.2) / totalWeightRam * activeAppRam * 0.8).toFixed(1));
-      const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0) + (ram_cache || 0);
+      const topRamShare = ramVal * 0.85; // 85% allocated across top 5 processes
+      ram_proc_0 = Number(((ramProcesses[0]?.ram || 1) / totalWeightRam * topRamShare).toFixed(1));
+      ram_proc_1 = Number(((ramProcesses[1]?.ram || 0.8) / totalWeightRam * topRamShare).toFixed(1));
+      ram_proc_2 = Number(((ramProcesses[2]?.ram || 0.6) / totalWeightRam * topRamShare).toFixed(1));
+      ram_proc_3 = Number(((ramProcesses[3]?.ram || 0.4) / totalWeightRam * topRamShare).toFixed(1));
+      ram_proc_4 = Number(((ramProcesses[4]?.ram || 0.2) / totalWeightRam * topRamShare).toFixed(1));
+      const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
       ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
     }
 
@@ -1699,7 +1671,6 @@ function buildTimeline(
       ram_proc_2,
       ram_proc_3,
       ram_proc_4,
-      ram_cache,
       ram_other,
 
       downtimeZero: isConfirmedMissing ? 0 : null,
