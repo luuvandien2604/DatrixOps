@@ -131,21 +131,21 @@ export default function LogsPage() {
 
     if (fromDate) {
       const dt = new Date(`${fromDate}T${fromTime || '00:00'}:00`);
-      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Ngày bắt đầu không hợp lệ' };
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Invalid start date' };
       if (dt.getTime() > Date.now() + 5 * 60 * 1000) {
-        return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Khoảng thời gian không thể nằm trong tương lai.' };
+        return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Time window cannot be in the future.' };
       }
       fromTs = dt.getTime();
       fromISO = dt.toISOString();
     }
     if (toDate) {
       const dt = new Date(`${toDate}T${toTime || '23:59'}:59`);
-      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Ngày kết thúc không hợp lệ' };
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Invalid end date' };
       toTs = dt.getTime();
       toISO = dt.toISOString();
     }
     if (fromTs > 0 && toTs < Infinity && fromTs > toTs) {
-      return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Thời gian bắt đầu không thể lớn hơn thời gian kết thúc.' };
+      return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Start time cannot be after end time.' };
     }
     return { fromISO, toISO, fromTs, toTs, error: '' };
   }, [fromDate, fromTime, toDate, toTime]);
@@ -427,8 +427,9 @@ export default function LogsPage() {
         </div>
       </div>
 
-      {/* Control Filters */}
-      <div className="ops-panel surface-regular no-hover-lift p-4 space-y-3">
+      {/* Unified Control & Filter Panel */}
+      <div className="ops-panel surface-regular no-hover-lift p-4 space-y-4">
+        {/* Main Filter Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Server Selector */}
           <div>
@@ -439,6 +440,22 @@ export default function LogsPage() {
               options={[
                 { value: 'all', label: 'All Servers Fleet' },
                 ...servers.map(s => ({ value: s.id, label: s.name, subLabel: s.ip_address || 'No IP' }))
+              ]}
+              className="w-full"
+            />
+          </div>
+
+          {/* Log Source Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Log Source</label>
+            <CustomSelect
+              value={remoteLogSource}
+              onChange={setRemoteLogSource}
+              options={[
+                { value: 'journal', label: 'systemd journal' },
+                { value: 'nginx_access', label: 'Nginx access log' },
+                { value: 'nginx_error', label: 'Nginx error log' },
+                { value: 'mysql_error', label: 'MySQL/MariaDB error log' },
               ]}
               className="w-full"
             />
@@ -481,23 +498,6 @@ export default function LogsPage() {
             />
           </div>
 
-          {/* Source Category */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Source Category</label>
-            <CustomSelect
-              value={logType}
-              onChange={(val) => setLogType(val as LogType)}
-              options={[
-                { value: 'all', label: 'All Sources' },
-                { value: 'audit', label: 'Audit Stream' },
-                { value: 'agent', label: 'DatrixOps Agent' },
-                { value: 'docker', label: 'Docker Containers' },
-                { value: 'system', label: 'Systemd Services' },
-              ]}
-              className="w-full"
-            />
-          </div>
-
           {/* Search Query */}
           <div>
             <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Filter Keyword</label>
@@ -515,15 +515,15 @@ export default function LogsPage() {
           </div>
         </div>
 
-        {/* Custom Range Bar (Shown only when timeRange === 'custom') */}
+        {/* Custom Range Sub-bar (Shown only when timeRange === 'custom') */}
         {timeRange === 'custom' && (
           <div className="pt-3 border-t border-[var(--border-color)] text-xs space-y-2">
             <div className="flex flex-wrap items-center gap-3">
               <span className="font-semibold text-blue-400 flex items-center gap-1.5 shrink-0">
-                <Clock className="w-3.5 h-3.5" /> Khoảng thời gian:
+                <Clock className="w-3.5 h-3.5" /> Time Window:
               </span>
               <div className="flex items-center gap-1.5">
-                <label className="text-[var(--color-muted)] font-medium">Từ ngày:</label>
+                <label className="text-[var(--color-muted)] font-medium">From:</label>
                 <input
                   type="date"
                   value={fromDate}
@@ -538,7 +538,7 @@ export default function LogsPage() {
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <label className="text-[var(--color-muted)] font-medium">Đến ngày:</label>
+                <label className="text-[var(--color-muted)] font-medium">To:</label>
                 <input
                   type="date"
                   value={toDate}
@@ -552,20 +552,13 @@ export default function LogsPage() {
                   className="px-2 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => void loadLogs()}
-                className="ops-button primary text-xs py-1 px-3"
-              >
-                Áp dụng
-              </button>
               {(fromDate || toDate) && (
                 <button
                   type="button"
                   onClick={() => { setFromDate(''); setToDate(''); setFromTime('00:00'); setToTime('23:59'); setTimeRangeError(''); }}
                   className="text-xs text-rose-400 hover:text-rose-300 underline ml-2"
                 >
-                  Xóa bộ lọc
+                  Clear Range
                 </button>
               )}
             </div>
@@ -576,53 +569,42 @@ export default function LogsPage() {
             )}
           </div>
         )}
-      </div>
 
-      <div className="ops-panel surface-regular no-hover-lift grid grid-cols-1 gap-4 p-4 md:grid-cols-[1fr_180px_220px_auto]">
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase text-[var(--color-muted)]">Read-only agent log source</label>
-          <CustomSelect
-            value={remoteLogSource}
-            onChange={setRemoteLogSource}
-            options={[
-	              { value: 'journal', label: 'systemd journal' },
-	              { value: 'nginx_access', label: 'Nginx access log' },
-	              { value: 'nginx_error', label: 'Nginx error log' },
-	              { value: 'mysql_error', label: 'MySQL/MariaDB error log' },
-	            ]}
-            className="w-full"
-          />
+        {/* Action Row inside the Unified Panel */}
+        <div className="pt-3 border-t border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-36">
+              <CustomSelect
+                value={remoteLogLines}
+                onChange={setRemoteLogLines}
+                options={[
+                  { value: '100', label: '100 lines' },
+                  { value: '200', label: '200 lines' },
+                  { value: '500', label: '500 lines' },
+                ]}
+                className="w-full text-xs"
+              />
+            </div>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-md border ${
+              canFetchRemoteLogs
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+            }`}>
+              {remoteLogReadiness}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void fetchRemoteLogs()}
+            disabled={!canFetchRemoteLogs || fetchingRemoteLogs}
+            className="ops-button primary text-xs py-2 px-4 flex items-center justify-center gap-2"
+            title={remoteLogReadiness}
+          >
+            {fetchingRemoteLogs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
+            {fetchingRemoteLogs ? 'Fetching…' : fetchLogsLabel}
+          </button>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase text-[var(--color-muted)]">Lines</label>
-          <CustomSelect
-            value={remoteLogLines}
-            onChange={setRemoteLogLines}
-            options={[
-              { value: '100', label: '100 lines' },
-              { value: '200', label: '200 lines' },
-              { value: '500', label: '500 lines' },
-            ]}
-            className="w-full"
-          />
-        </div>
-        <div className={`self-end rounded-md border px-3 py-2 text-xs font-semibold ${
-          canFetchRemoteLogs
-            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-            : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-        }`}>
-          {remoteLogReadiness}
-        </div>
-        <button
-          type="button"
-          onClick={() => void fetchRemoteLogs()}
-          disabled={!canFetchRemoteLogs || fetchingRemoteLogs}
-          className="ops-button primary self-end"
-          title={remoteLogReadiness}
-        >
-          {fetchingRemoteLogs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
-          {fetchingRemoteLogs ? 'Fetching…' : fetchLogsLabel}
-        </button>
       </div>
 
       {/* Terminal Log Console Window */}
