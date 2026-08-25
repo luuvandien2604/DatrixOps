@@ -393,8 +393,8 @@ func (h *Handler) GetBootstrapStatus(w http.ResponseWriter, r *http.Request) {
 	err := h.db.Pool.QueryRow(ctx,
 		`SELECT id, (bootstrap_completed_at IS NOT NULL) AS bootstrap_completed
 		 FROM servers
-		 WHERE bootstrap_rollback_token_hash = $1
-		    OR (agent_token_hash = $1 AND bootstrap_completed_at IS NOT NULL)`,
+		 WHERE agent_token_hash = $1
+		    OR bootstrap_rollback_token_hash = $1`,
 		tokenHash,
 	).Scan(&serverID, &bootstrapCompleted)
 
