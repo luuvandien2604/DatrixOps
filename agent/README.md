@@ -1,22 +1,20 @@
 # DatrixOps Agent
 
-The DatrixOps Agent runs on each monitored server and sends host metrics,
-inventory, process lists, container stats and task results to your DatrixOps Control Plane.
+The DatrixOps Agent runs on each monitored host and sends metrics, system services, cron executions, process lists, and container telemetry to the DatrixOps Control Plane.
 
 ## Installation
 
-To add a server to your Control Plane:
+To enroll a host into your Control Plane:
 1. Open **Dashboard → Servers → Add Server**.
-2. Select the target operating system (Linux, macOS, or Windows).
-3. Run the generated one-line command on that host. It includes a secure, short-lived enrollment token and the pinned release version.
+2. Select the target operating system (**Linux**, **macOS**, or **Windows**).
+3. Copy and run the generated one-line enrollment command on that host.
 
-## Key Features & Security
+## Architecture & Security
 
-- **Outbound Only**: The Agent establishes secure outbound HTTPS/WSS connections to your Control Plane; no open inbound firewall ports are required.
-- **Ed25519 Signed Releases**: In-app binary updates require an Ed25519-signed manifest, matching platform architecture, size, and SHA-256 checksum verification before activation.
-- **Multi-Platform**: Native support for Linux (`systemd`), macOS (`launchd`), and Windows (Windows Service).
-- **Process & Docker Telemetry**: Low-overhead real-time metrics for CPU, RAM, Disk, Network, System Services, Cron jobs, and Docker containers.
-- **Reverse Web Terminal**: Secure, audited reverse shell channel manageable directly from the Control Plane UI.
+- **Outbound Connections**: The Agent initiates outbound HTTPS and secure WebSocket connections to the Control Plane. No inbound ports need to be opened on the monitored host.
+- **Signed Binary Updates**: Remote updates verify Ed25519 cryptographic signatures and SHA-256 integrity hashes before activating new binaries.
+- **Multi-Platform Daemon**: Runs natively via `systemd` (Linux), `launchd` (macOS), or `Windows Service` (Windows).
+- **Reverse Web Terminal**: Secure, audited remote terminal channel manageable from the Control Plane dashboard.
 
 ## Service Management
 
@@ -31,7 +29,7 @@ sudo journalctl -u datrixops-agent -f --no-pager
 sudo systemctl restart datrixops-agent
 
 # Configuration location
-/etc/datrixops/agent.env (chmod 0600)
+/etc/datrixops/agent.env (mode 0600)
 ```
 
 ### macOS (`launchd`)
@@ -51,15 +49,4 @@ Get-Service -Name DatrixOpsAgent
 Restart-Service -Name DatrixOpsAgent
 ```
 
-## Manual Binary Upgrade
-
-If an older Agent needs to be updated directly via terminal without modifying existing tokens or configuration:
-
-```bash
-# Linux amd64
-sudo systemctl stop datrixops-agent
-sudo curl -fsSL https://github.com/luuvandien2604/DatrixOps/releases/download/v1.5.9/datrixops-agent-linux-amd64 -o /usr/local/bin/datrixops-agent
-sudo chmod +x /usr/local/bin/datrixops-agent
-sudo systemctl start datrixops-agent
-```
 
