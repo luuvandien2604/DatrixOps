@@ -1360,11 +1360,22 @@ export default function ServersPage() {
           <div role="alertdialog" aria-modal="true" aria-labelledby="delete-server-title" className="ops-modal flex w-full max-w-lg flex-col overflow-hidden border-rose-500/30">
             <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-rose-500/5">
               <Trash2 className="w-6 h-6 text-rose-500" />
-              <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">Uninstall Agent and Delete Server?</h2>
+              <h2 id="delete-server-title" className="text-xl font-bold text-[var(--foreground)]">
+                {serverToDelete.uninstallSupported ? 'Uninstall Agent and Delete Server?' : 'Delete Server Record?'}
+              </h2>
             </div>
             <div className="p-6">
-              <p className="text-[var(--color-muted)] mb-4">
-                DatrixOps will ask the online Agent on <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> to uninstall and delete.
+              <p className="text-[var(--color-muted)] mb-4 text-sm leading-relaxed">
+                {serverToDelete.uninstallSupported ? (
+                  <>
+                    DatrixOps will ask the online Agent on <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> to uninstall and delete its service.
+                  </>
+                ) : (
+                  <>
+                    Remove <strong className="text-[var(--foreground)]">{serverToDelete.name}</strong> from your DatrixOps dashboard.
+                    Remote agent self-uninstallation is supported on Linux. On macOS/Windows, you can stop or remove the local agent service manually if needed.
+                  </>
+                )}
               </p>
               <div className="mb-6">
                 <label htmlFor="delete-server-confirmation" className="block text-xs font-medium text-[var(--color-muted)] mb-2 uppercase tracking-wider">
@@ -1375,26 +1386,32 @@ export default function ServersPage() {
                   type="text"
                   value={confirmDeleteText}
                   onChange={(e) => setConfirmDeleteText(e.target.value)}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500"
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[var(--foreground)] focus:outline-none focus:border-rose-500 text-sm"
                   placeholder={serverToDelete.name}
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button onClick={closeDeleteDialog} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                <button onClick={closeDeleteDialog} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors text-sm">
                   Cancel
                 </button>
                 <button
                   disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer}
                   onClick={() => requestServerDeletion(true)}
-                  className="px-4 py-2 border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 rounded-lg font-medium transition-colors">
-                  Delete Record Only
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${
+                    !serverToDelete.uninstallSupported
+                      ? 'bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white'
+                      : 'border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50'
+                  }`}>
+                  {serverToDelete.uninstallSupported ? 'Delete Record Only' : 'Confirm Delete'}
                 </button>
-                <button
-                  disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer || serverToDelete.status !== 'online'}
-                  onClick={() => requestServerDeletion(false)}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors">
-                  Uninstall Agent & Delete
-                </button>
+                {serverToDelete.uninstallSupported && (
+                  <button
+                    disabled={confirmDeleteText !== serverToDelete.name || isDeletingServer || serverToDelete.status !== 'online'}
+                    onClick={() => requestServerDeletion(false)}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-lg font-medium transition-colors text-sm">
+                    Uninstall Agent & Delete
+                  </button>
+                )}
               </div>
             </div>
           </div>
