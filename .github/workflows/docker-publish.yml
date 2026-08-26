@@ -1,0 +1,80 @@
+name: Build and Publish Docker Images to GHCR
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build & Push Images to GHCR
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate image tags
+        id: meta
+        run: |
+          OWNER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          
+          # Đọc version từ deploy/version.json làm giá trị mặc định
+          DEFAULT_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' deploy/version.json 2>/dev/null | head -n 1 | tr -d ' "\r\n')"
+          if [[ ! "$DEFAULT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            DEFAULT_VERSION="1.8.0"
+          fi
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            RAW_TAG="${{ github.ref_name }}"
+            VERSION="${RAW_TAG#v}"
+            
+            # Tags khi push git tag (v1.8.0)
+            BACKEND_TAGS="ghcr.io/${OWNER}/datrixops-backend:${VERSION},ghcr.io/${OWNER}/datrixops-backend:v${VERSION},ghcr.io/${OWNER}/datrixops-backend:latest,ghcr.io/${OWNER}/datrixops-worker:${VERSION},ghcr.io/${OWNER}/datrixops-worker:v${VERSION},ghcr.io/${OWNER}/datrixops-worker:latest,ghcr.io/${OWNER}/datrixops-migrate:${VERSION},ghcr.io/${OWNER}/datrixops-migrate:v${VERSION},ghcr.io/${OWNER}/datrixops-migrate:latest"
+            FRONTEND_TAGS="ghcr.io/${OWNER}/datrixops-frontend:${VERSION},ghcr.io/${OWNER}/datrixops-frontend:v${VERSION},ghcr.io/${OWNER}/datrixops-frontend:latest"
+          else
+            VERSION="${DEFAULT_VERSION}"
+            
+            # Tags khi push branch main hoặc manual dispatch
+            BACKEND_TAGS="ghcr.io/${OWNER}/datrixops-backend:${VERSION},ghcr.io/${OWNER}/datrixops-backend:latest,ghcr.io/${OWNER}/datrixops-backend:main,ghcr.io/${OWNER}/datrixops-backend:main-${SHORT_SHA},ghcr.io/${OWNER}/datrixops-worker:${VERSION},ghcr.io/${OWNER}/datrixops-worker:latest,ghcr.io/${OWNER}/datrixops-worker:main,ghcr.io/${OWNER}/datrixops-worker:main-${SHORT_SHA},ghcr.io/${OWNER}/datrixops-migrate:${VERSION},ghcr.io/${OWNER}/datrixops-migrate:latest,ghcr.io/${OWNER}/datrixops-migrate:main,ghcr.io/${OWNER}/datrixops-migrate:main-${SHORT_SHA}"
+            FRONTEND_TAGS="ghcr.io/${OWNER}/datrixops-frontend:${VERSION},ghcr.io/${OWNER}/datrixops-frontend:latest,ghcr.io/${OWNER}/datrixops-frontend:main,ghcr.io/${OWNER}/datrixops-frontend:main-${SHORT_SHA}"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "backend_tags=${BACKEND_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "frontend_tags=${FRONTEND_TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Backend, Worker, Migrate images
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.backend_tags }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          build-args: |
+            NEXT_PUBLIC_API_URL=/api/v1
+            NEXT_PUBLIC_DATRIXOPS_VERSION=${{ steps.meta.outputs.version }}
+          push: true
+          tags: ${{ steps.meta.outputs.frontend_tags }}

@@ -9,6 +9,8 @@ export interface DocEntry {
   group: string;
   groupLabel: string;
   order: number;
+  cloudOnly?: boolean;
+  authRequired?: boolean;
   searchText?: string;
 }
 
@@ -86,6 +88,21 @@ const viNavigation: DocsNavigation = [
     ],
   },
   {
+    label: 'Cloud & Vận hành',
+    slug: 'cloud',
+    items: [
+      {
+        slug: 'cloud/development-and-release-workflow',
+        title: 'Quy trình phát triển & phát hành',
+        description: 'Quy trình chuẩn khi sửa đổi chức năng, kiểm thử và deploy trên Cloud, CE và Agent.',
+        group: 'cloud',
+        order: 75,
+        cloudOnly: true,
+        authRequired: true,
+      },
+    ],
+  },
+  {
     label: 'Trợ giúp',
     slug: 'help',
     items: [
@@ -145,6 +162,21 @@ const enNavigation: DocsNavigation = [
     slug: 'security',
     items: [
       { slug: 'security/agent-and-updates', title: 'Connections and signed updates', description: 'Agent Tokens, TLS, Ed25519, and SHA-256.', group: 'security', order: 70 },
+    ],
+  },
+  {
+    label: 'Cloud & Operations',
+    slug: 'cloud',
+    items: [
+      {
+        slug: 'cloud/development-and-release-workflow',
+        title: 'Development & Release Workflow',
+        description: 'Standard procedure for feature updates, testing, and deployment across Cloud, CE, and Agent.',
+        group: 'cloud',
+        order: 75,
+        cloudOnly: true,
+        authRequired: true,
+      },
     ],
   },
   {
@@ -213,6 +245,8 @@ export function getDocBySlug(parts: string[], locale: DocLocale = 'vi'): DocPage
     ...catalogEntry,
     title: String(data.title || catalogEntry.title),
     description: String(data.description || catalogEntry.description),
+    cloudOnly: Boolean(data.cloudOnly ?? catalogEntry.cloudOnly),
+    authRequired: Boolean(data.authRequired ?? catalogEntry.authRequired),
     content,
     headings: extractHeadings(content),
   };
