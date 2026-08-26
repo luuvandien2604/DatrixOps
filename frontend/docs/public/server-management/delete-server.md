@@ -117,17 +117,27 @@ Transient helper thường không còn trong `systemctl list-units` sau khi hoà
 
 ## Khi Agent offline hoặc không hỗ trợ
 
-Dashboard sẽ không queue remote uninstall. Chọn **Delete Record Only** chỉ khi bạn hiểu rằng Agent có thể vẫn tồn tại. Gỡ thủ công trên Linux:
+Dashboard sẽ không queue remote uninstall. Chọn **Delete Record Only** chỉ khi bạn hiểu rằng Agent có thể vẫn tồn tại. Gỡ thủ công theo từng hệ điều hành:
 
+### 🐧 Trên Linux
 ```bash
-sudo systemctl disable --now datrixops-agent.service
-sudo rm -f /etc/systemd/system/datrixops-agent.service
-sudo rm -rf /etc/systemd/system/datrixops-agent.service.d
-sudo rm -f /usr/local/bin/datrixops-agent
-sudo rm -f /usr/local/bin/datrixops-agent.update
-sudo rm -f /usr/local/bin/.datrixops-agent.update
+sudo systemctl stop datrixops-agent 2>/dev/null || true
+sudo systemctl disable datrixops-agent 2>/dev/null || true
+sudo rm -f /etc/systemd/system/datrixops-agent.service /etc/datrixops/agent.env /usr/local/bin/datrixops-agent*
 sudo systemctl daemon-reload
-sudo systemctl reset-failed datrixops-agent.service
+```
+
+### 🍎 Trên macOS
+```bash
+sudo launchctl bootout system/com.datrixops.agent 2>/dev/null || sudo launchctl unload /Library/LaunchDaemons/com.datrixops.agent.plist 2>/dev/null || true
+sudo rm -f /Library/LaunchDaemons/com.datrixops.agent.plist /usr/local/bin/datrixops-agent /var/log/datrixops-agent*.log
+```
+
+### 🪟 Trên Windows (PowerShell Administrator)
+```powershell
+Stop-ScheduledTask -TaskName "DatrixOpsAgent" -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName "DatrixOpsAgent" -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "C:\Program Files\DatrixOps" -ErrorAction SilentlyContinue
 ```
 
 ## Khi trạng thái bị kẹt
