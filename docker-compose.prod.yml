@@ -11,9 +11,9 @@ services:
       frontend:
         condition: service_healthy
     ports:
-      # Keep the existing public origin port. The gateway now owns it and
-      # forwards WebSocket upgrades directly to the Backend.
-      - "3000:80"
+      - "${DATRIXOPS_HTTP_PORT:-80}:80"
+      - "${DATRIXOPS_HTTPS_PORT:-443}:443"
+      - "${DATRIXOPS_HTTPS_PORT:-443}:443/udp"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
     healthcheck:
