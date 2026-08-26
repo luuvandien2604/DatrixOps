@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowUpRight, BookOpen, Languages, Lock, Menu, Search, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Languages, Menu, Search, X } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import type { DocEntry, DocLocale, DocsNavigation } from '@/lib/docs';
 
@@ -135,11 +135,8 @@ export default function DocsShell({
                     const active = pathname === href;
                     return (
                       <li key={item.slug}>
-                        <Link href={href} aria-current={active ? 'page' : undefined} className={`flex items-center justify-between ${active ? 'is-active' : ''}`} onClick={() => setMenuOpen(false)}>
-                          <span>{item.title}</span>
-                          {item.authRequired && (
-                            <Lock className="h-3 w-3 shrink-0 text-amber-400/80 opacity-70 ml-1.5" />
-                          )}
+                        <Link href={href} aria-current={active ? 'page' : undefined} className={active ? 'is-active' : ''} onClick={() => setMenuOpen(false)}>
+                          {item.title}
                         </Link>
                       </li>
                     );

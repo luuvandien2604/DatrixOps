@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ChevronRight, Lock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
 import { getAdjacentDocs, getDocBySlug, type DocLocale } from '@/lib/docs';
 import MarkdownArticle from '../MarkdownArticle';
-import DocAuthGuard from '../DocAuthGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,21 +81,11 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
           <strong>{doc.title}</strong>
         </nav>
         <header className="docs-article-header">
-          <div className="flex items-center gap-2">
-            <span>{doc.groupLabel}</span>
-            {doc.authRequired && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <Lock className="h-3 w-3" />
-                Cloud Auth
-              </span>
-            )}
-          </div>
+          <span>{doc.groupLabel}</span>
           <h1>{doc.title}</h1>
           <p>{doc.description}</p>
         </header>
-        <DocAuthGuard authRequired={doc.authRequired} cloudOnly={doc.cloudOnly} locale={locale}>
-          <MarkdownArticle content={doc.content} />
-        </DocAuthGuard>
+        <MarkdownArticle content={doc.content} />
         <nav className="docs-adjacent" aria-label={copy.adjacent}>
           {adjacent.previous ? (
             <Link href={`${prefix}/${adjacent.previous.slug}`}><ArrowLeft /><span><small>{copy.previous}</small>{adjacent.previous.title}</span></Link>
