@@ -388,6 +388,9 @@ check_and_install_docker
 log_step "Step 2/6: Generating environment configuration and security secrets"
 "${SCRIPT_DIR}/generate-secrets.sh" "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
+if [[ -f "${PROJECT_ROOT}/.env" && ! -e "${SCRIPT_DIR}/.env" ]]; then
+    ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+fi
 if [[ -n "${INSTALL_VERSION:-}" ]]; then
     # A bootstrap retry may reuse .env from an earlier failed installation.
     # Keep its generated secrets while restoring this Server release's pins.

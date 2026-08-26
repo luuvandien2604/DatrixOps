@@ -215,6 +215,10 @@ if [[ -z "$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)" ]]; then
     chmod 0600 "$ENV_FILE"
 fi
 
+if [[ -f "${PROJECT_ROOT}/.env" && ! -e "${SCRIPT_DIR}/.env" ]]; then
+    ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+fi
+
 target_app_ver="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     "${PROJECT_ROOT}/deploy/version.json" \
     "${SCRIPT_DIR}/version.json" \
