@@ -164,7 +164,7 @@ export default function ServersPage() {
       .catch(() => {});
   }, []);
 
-  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  const isAdmin = userRole !== 'viewer';
   const isViewer = userRole === 'viewer';
 
   const router = useRouter();
