@@ -71,6 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [role, setRole] = useState('user');
   const [userEmail, setUserEmail] = useState('');
   const [workspaceEdition, setWorkspaceEdition] = useState('community');
+  const [systemVersion, setSystemVersion] = useState<string>(() => getAppVersion());
   const [fleetSummary, setFleetSummary] = useState<{
     total_servers: number;
     online_servers: number;
@@ -102,6 +103,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     apiClient('/system/info')
       .then((info) => {
         if (typeof info?.edition === 'string') setWorkspaceEdition(info.edition);
+        const ver = info?.control_plane?.version || info?.version;
+        if (ver && ver !== 'dev') setSystemVersion(ver);
       })
       .catch(() => {});
     apiClient('/auth/me')
@@ -296,7 +299,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     DATRIX<span className="text-[var(--violet)]">OPS</span>
                   </p>
                   <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    v{getAppVersion()}
+                    v{systemVersion}
                   </span>
                 </div>
 
@@ -434,7 +437,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="mt-3 pt-3 border-t border-[var(--border-color)] px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
               <span className="truncate">DatrixOps CE</span>
               <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-blue-400 border border-white/10 font-bold">
-                v{getAppVersion()}
+                v{systemVersion}
               </span>
             </div>
           )}
@@ -461,7 +464,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
             <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              v{getAppVersion()}
+              v{systemVersion}
             </span>
             <span className="text-[var(--color-muted)]">/</span>
             <span className="text-[var(--color-muted)]">Production</span>
