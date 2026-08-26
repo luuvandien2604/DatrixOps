@@ -454,7 +454,7 @@ export default function ServersPage() {
       const hostName = 'DatrixOps Control Plane (Self-Host)';
       const createdServer = await apiClient('/servers', {
         method: 'POST',
-        body: JSON.stringify({ name: hostName, tags: ['self-host', 'control-plane'] })
+        data: { name: hostName, tags: ['self-host', 'control-plane'] }
       });
       if (createdServer && (createdServer.enrollment_token || createdServer.agent_token)) {
         setGeneratedAgentToken(createdServer.enrollment_token || createdServer.agent_token);
