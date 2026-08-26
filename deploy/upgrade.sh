@@ -89,6 +89,12 @@ if [[ ! "$remote_release_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 RELEASE_TARBALL_URL="${DATRIXOPS_UPDATE_URL:-https://codeload.github.com/luuvandien2604/DatrixOps/tar.gz/refs/tags/v${remote_release_ver}}"
 
+for arg in "$@"; do
+    if [[ "$arg" == "--force" || "$arg" == "-f" ]]; then
+        export DATRIXOPS_FORCE_UPDATE=1
+    fi
+done
+
 if [[ "${1:-}" == "--check" || "${1:-}" == "-c" ]]; then
     local_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
     if [[ -z "$local_ver" ]]; then
