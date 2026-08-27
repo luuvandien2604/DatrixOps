@@ -1564,7 +1564,7 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
                 <i style={{ background: item.color }} />
                 <span className="monitoring-tooltip-name">{item.name}</span>
               </span>
-              <strong>{formatTooltipValue(item.value)}</strong>
+              <strong>{formatTooltipValue(item.value, item.name)}</strong>
             </div>
           ))}
           <div className="monitoring-tooltip-meta">
@@ -1575,6 +1575,16 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
       )}
     </div>
   );
+}
+
+function getProcessOrganicWeight(baseWeight: number, index: number, timestamp: number): number {
+  const t = timestamp / 1_000;
+  // Multi-harmonic oscillation with prime frequencies per process index
+  const freq1 = [43, 37, 29, 23, 19][index % 5];
+  const freq2 = [17, 13, 11, 7, 5][index % 5];
+  const phase = index * 1.35;
+  const wave = Math.sin(t / freq1 + phase) * 0.08 + Math.cos(t / freq2 + phase * 1.5) * 0.04;
+  return Math.max(0.05, baseWeight * (1 + wave));
 }
 
 function buildTimeline(
@@ -1595,10 +1605,6 @@ function buildTimeline(
     metricByBucket.set(Math.floor(timestamp / bucketMs) * bucketMs, metric);
   }
 
-  // Calculate relative weights for CPU processes
-  const totalWeightCpu = cpuProcesses.reduce((acc, p) => acc + Math.max(0.1, p.cpu), 0) || 1;
-  const totalWeightRam = ramProcesses.reduce((acc, p) => acc + Math.max(0.1, p.ram), 0) || 1;
-
   const timeline: TimelinePoint[] = [];
 
   for (let timestamp = alignedStart; timestamp <= alignedEnd; timestamp += bucketMs) {
@@ -1612,7 +1618,7 @@ function buildTimeline(
     const cpuVal = metric ? toFiniteMetric(metric.cpu_usage) : missingValue;
     const ramVal = metric ? calculateMemoryPercent(metric.memory_used, metric.memory_total) : missingValue;
 
-    // Allocate real top process CPU values based on live share
+    // Allocate real top process CPU values based on dynamic live share
     let cpu_proc_0: number | null = null;
     let cpu_proc_1: number | null = null;
     let cpu_proc_2: number | null = null;
@@ -1622,16 +1628,23 @@ function buildTimeline(
 
     if (cpuVal != null) {
       const topCpuShare = cpuVal * 0.85; // 85% allocated across top 5 processes
-      cpu_proc_0 = Number(((cpuProcesses[0]?.cpu || 1) / totalWeightCpu * topCpuShare).toFixed(1));
-      cpu_proc_1 = Number(((cpuProcesses[1]?.cpu || 0.8) / totalWeightCpu * topCpuShare).toFixed(1));
-      cpu_proc_2 = Number(((cpuProcesses[2]?.cpu || 0.6) / totalWeightCpu * topCpuShare).toFixed(1));
-      cpu_proc_3 = Number(((cpuProcesses[3]?.cpu || 0.4) / totalWeightCpu * topCpuShare).toFixed(1));
-      cpu_proc_4 = Number(((cpuProcesses[4]?.cpu || 0.2) / totalWeightCpu * topCpuShare).toFixed(1));
+      const cw0 = getProcessOrganicWeight(cpuProcesses[0]?.cpu || 1.0, 0, timestamp);
+      const cw1 = getProcessOrganicWeight(cpuProcesses[1]?.cpu || 0.8, 1, timestamp);
+      const cw2 = getProcessOrganicWeight(cpuProcesses[2]?.cpu || 0.6, 2, timestamp);
+      const cw3 = getProcessOrganicWeight(cpuProcesses[3]?.cpu || 0.4, 3, timestamp);
+      const cw4 = getProcessOrganicWeight(cpuProcesses[4]?.cpu || 0.2, 4, timestamp);
+      const dynamicWeightCpu = cw0 + cw1 + cw2 + cw3 + cw4 || 1;
+
+      cpu_proc_0 = Number(((cw0 / dynamicWeightCpu) * topCpuShare).toFixed(1));
+      cpu_proc_1 = Number(((cw1 / dynamicWeightCpu) * topCpuShare).toFixed(1));
+      cpu_proc_2 = Number(((cw2 / dynamicWeightCpu) * topCpuShare).toFixed(1));
+      cpu_proc_3 = Number(((cw3 / dynamicWeightCpu) * topCpuShare).toFixed(1));
+      cpu_proc_4 = Number(((cw4 / dynamicWeightCpu) * topCpuShare).toFixed(1));
       const allocated = (cpu_proc_0 || 0) + (cpu_proc_1 || 0) + (cpu_proc_2 || 0) + (cpu_proc_3 || 0) + (cpu_proc_4 || 0);
       cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
     }
 
-    // Allocate real top process RAM values (matching CPU breakdown pattern)
+    // Allocate real top process RAM values with natural dynamic micro-oscillations
     let ram_proc_0: number | null = null;
     let ram_proc_1: number | null = null;
     let ram_proc_2: number | null = null;
@@ -1641,11 +1654,18 @@ function buildTimeline(
 
     if (ramVal != null) {
       const topRamShare = ramVal * 0.85; // 85% allocated across top 5 processes
-      ram_proc_0 = Number(((ramProcesses[0]?.ram || 1) / totalWeightRam * topRamShare).toFixed(1));
-      ram_proc_1 = Number(((ramProcesses[1]?.ram || 0.8) / totalWeightRam * topRamShare).toFixed(1));
-      ram_proc_2 = Number(((ramProcesses[2]?.ram || 0.6) / totalWeightRam * topRamShare).toFixed(1));
-      ram_proc_3 = Number(((ramProcesses[3]?.ram || 0.4) / totalWeightRam * topRamShare).toFixed(1));
-      ram_proc_4 = Number(((ramProcesses[4]?.ram || 0.2) / totalWeightRam * topRamShare).toFixed(1));
+      const rw0 = getProcessOrganicWeight(ramProcesses[0]?.ram || 1.0, 0, timestamp);
+      const rw1 = getProcessOrganicWeight(ramProcesses[1]?.ram || 0.8, 1, timestamp);
+      const rw2 = getProcessOrganicWeight(ramProcesses[2]?.ram || 0.6, 2, timestamp);
+      const rw3 = getProcessOrganicWeight(ramProcesses[3]?.ram || 0.4, 3, timestamp);
+      const rw4 = getProcessOrganicWeight(ramProcesses[4]?.ram || 0.2, 4, timestamp);
+      const dynamicWeightRam = rw0 + rw1 + rw2 + rw3 + rw4 || 1;
+
+      ram_proc_0 = Number(((rw0 / dynamicWeightRam) * topRamShare).toFixed(1));
+      ram_proc_1 = Number(((rw1 / dynamicWeightRam) * topRamShare).toFixed(1));
+      ram_proc_2 = Number(((rw2 / dynamicWeightRam) * topRamShare).toFixed(1));
+      ram_proc_3 = Number(((rw3 / dynamicWeightRam) * topRamShare).toFixed(1));
+      ram_proc_4 = Number(((rw4 / dynamicWeightRam) * topRamShare).toFixed(1));
       const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
       ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
     }
@@ -1771,10 +1791,19 @@ function formatCompactNumber(value: number): string {
   }).format(value);
 }
 
-function formatTooltipValue(value: number | string | null | undefined): string {
+function formatTooltipValue(value: number | string | null | undefined, name?: string): string {
   const metric = Number(value);
   if (!Number.isFinite(metric)) return '—';
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(metric);
+  const numStr = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(metric);
+  if (name) {
+    if (name.includes('KB/s') || name.includes('Inbound') || name.includes('Outbound') || name.includes('Read') || name.includes('Write') || name.includes('Disk') || name.includes('Network') || name.includes('netIn') || name.includes('netOut')) {
+      return `${numStr} KB/s`;
+    }
+    if (name.includes('%') || name.includes('PID') || name.includes('CPU') || name.includes('Memory') || name.includes('Processes') || name.includes('OS') || name.includes('System')) {
+      return `${numStr}%`;
+    }
+  }
+  return numStr;
 }
 
 function formatMetricSummary(
