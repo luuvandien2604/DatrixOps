@@ -1646,7 +1646,7 @@ function buildTimeline(
       cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
     }
 
-    // Allocate real top process RAM values with natural dynamic micro-oscillations
+    // Allocate real top process RAM values — use exact telemetry percentages (RAM is inherently stable on Linux)
     let ram_proc_0: number | null = null;
     let ram_proc_1: number | null = null;
     let ram_proc_2: number | null = null;
@@ -1655,11 +1655,11 @@ function buildTimeline(
     let ram_other: number | null = null;
 
     if (ramVal != null) {
-      ram_proc_0 = Number(getProcessOrganicWeight(ramProcesses[0]?.ram || 1.0, 0, timestamp).toFixed(1));
-      ram_proc_1 = Number(getProcessOrganicWeight(ramProcesses[1]?.ram || 0.8, 1, timestamp).toFixed(1));
-      ram_proc_2 = Number(getProcessOrganicWeight(ramProcesses[2]?.ram || 0.6, 2, timestamp).toFixed(1));
-      ram_proc_3 = Number(getProcessOrganicWeight(ramProcesses[3]?.ram || 0.4, 3, timestamp).toFixed(1));
-      ram_proc_4 = Number(getProcessOrganicWeight(ramProcesses[4]?.ram || 0.2, 4, timestamp).toFixed(1));
+      ram_proc_0 = Number((ramProcesses[0]?.ram || 0).toFixed(1));
+      ram_proc_1 = Number((ramProcesses[1]?.ram || 0).toFixed(1));
+      ram_proc_2 = Number((ramProcesses[2]?.ram || 0).toFixed(1));
+      ram_proc_3 = Number((ramProcesses[3]?.ram || 0).toFixed(1));
+      ram_proc_4 = Number((ramProcesses[4]?.ram || 0).toFixed(1));
       const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
       ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
     }
