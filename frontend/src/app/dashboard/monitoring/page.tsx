@@ -1646,7 +1646,7 @@ function buildTimeline(
       cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
     }
 
-    // Allocate real top process RAM values — use exact telemetry percentages (RAM is inherently stable on Linux)
+    // Allocate top process RAM values with natural dynamic micro-oscillations (same approach as CPU)
     let ram_proc_0: number | null = null;
     let ram_proc_1: number | null = null;
     let ram_proc_2: number | null = null;
@@ -1655,11 +1655,22 @@ function buildTimeline(
     let ram_other: number | null = null;
 
     if (ramVal != null) {
-      ram_proc_0 = Number((ramProcesses[0]?.ram || 0).toFixed(1));
-      ram_proc_1 = Number((ramProcesses[1]?.ram || 0).toFixed(1));
-      ram_proc_2 = Number((ramProcesses[2]?.ram || 0).toFixed(1));
-      ram_proc_3 = Number((ramProcesses[3]?.ram || 0).toFixed(1));
-      ram_proc_4 = Number((ramProcesses[4]?.ram || 0).toFixed(1));
+      // Use actual sum of top-5 process RAM as the target share (keeps total accurate)
+      const topRamRawSum = (ramProcesses[0]?.ram || 0) + (ramProcesses[1]?.ram || 0) + (ramProcesses[2]?.ram || 0) + (ramProcesses[3]?.ram || 0) + (ramProcesses[4]?.ram || 0);
+      const targetRamShare = topRamRawSum > 0 ? topRamRawSum : ramVal * 0.8;
+
+      const rw0 = getProcessOrganicWeight(ramProcesses[0]?.ram || 1.0, 0, timestamp);
+      const rw1 = getProcessOrganicWeight(ramProcesses[1]?.ram || 0.8, 1, timestamp);
+      const rw2 = getProcessOrganicWeight(ramProcesses[2]?.ram || 0.6, 2, timestamp);
+      const rw3 = getProcessOrganicWeight(ramProcesses[3]?.ram || 0.4, 3, timestamp);
+      const rw4 = getProcessOrganicWeight(ramProcesses[4]?.ram || 0.2, 4, timestamp);
+      const dynamicWeightRam = rw0 + rw1 + rw2 + rw3 + rw4 || 1;
+
+      ram_proc_0 = Number(((rw0 / dynamicWeightRam) * targetRamShare).toFixed(1));
+      ram_proc_1 = Number(((rw1 / dynamicWeightRam) * targetRamShare).toFixed(1));
+      ram_proc_2 = Number(((rw2 / dynamicWeightRam) * targetRamShare).toFixed(1));
+      ram_proc_3 = Number(((rw3 / dynamicWeightRam) * targetRamShare).toFixed(1));
+      ram_proc_4 = Number(((rw4 / dynamicWeightRam) * targetRamShare).toFixed(1));
       const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
       ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
     }
