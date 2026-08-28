@@ -67,7 +67,7 @@ sudo journalctl \
 grep -Ei 'terminal|websocket|connected|disabled|401|426|error'
 ```
 
-Public origin phải đưa toàn bộ traffic vào Caddy gateway host port `3000`. Không để Nginx có block `/api/` trỏ trực tiếp tới Backend `127.0.0.1:8080`.
+Public origin phải đưa toàn bộ traffic vào Caddy gateway (cổng 80/443). Không để reverse proxy bên ngoài có block `/api/` trỏ trực tiếp tới Backend `127.0.0.1:8080` làm mất header nâng cấp WebSocket.
 
 Kiểm tra trực tiếp gateway:
 
@@ -77,7 +77,7 @@ curl --http1.1 -i \
   -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' \
   -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  http://127.0.0.1:3000/api/v1/agent/terminal
+  http://127.0.0.1/api/v1/agent/terminal
 ```
 
 Kiểm tra public domain:
