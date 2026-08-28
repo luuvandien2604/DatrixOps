@@ -223,11 +223,21 @@ func isLocalOrIPHost(host string) bool {
 }
 
 func envBool(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	return envBoolDefault(key, false)
+}
+
+func envBoolDefault(key string, fallback bool) bool {
+	val, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(val) == "" {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(val)) {
 	case "1", "true", "yes", "on":
 		return true
-	default:
+	case "0", "false", "no", "off":
 		return false
+	default:
+		return fallback
 	}
 }
 
