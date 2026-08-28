@@ -2,8 +2,17 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="${DATRIXOPS_ROOT:-/opt/datrixops}"
+if [[ ! -d "$PROJECT_ROOT" && -d "$(pwd)/../deploy" ]]; then
+    PROJECT_ROOT="$(cd "$(pwd)/.." && pwd)"
+fi
 ENV_FILE="${PROJECT_ROOT}/.env"
+if [[ ! -f "$ENV_FILE" && -f "${PROJECT_ROOT}/deploy/.env" ]]; then
+    ENV_FILE="${PROJECT_ROOT}/deploy/.env"
+fi
 COMPOSE_FILE="${PROJECT_ROOT}/deploy/docker-compose.yml"
+if [[ ! -f "$COMPOSE_FILE" && -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+    COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
+fi
 CREDENTIALS_FILE="${PROJECT_ROOT}/.admin-credentials"
 
 die() {

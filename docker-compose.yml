@@ -72,6 +72,7 @@ services:
     logging: *default-logging
 
   migrate:
+    image: ghcr.io/luuvandien2604/datrixops-migrate:${DATRIXOPS_VERSION:-1.8.3}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -86,6 +87,7 @@ services:
     logging: *default-logging
 
   backend:
+    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-1.8.3}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -112,6 +114,7 @@ services:
     logging: *default-logging
 
   worker:
+    image: ghcr.io/luuvandien2604/datrixops-worker:${DATRIXOPS_VERSION:-1.8.3}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -137,6 +140,7 @@ services:
     logging: *default-logging
 
   frontend:
+    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-1.8.3}
     build:
       context: ./frontend
       dockerfile: Dockerfile

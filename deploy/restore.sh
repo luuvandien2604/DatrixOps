@@ -9,45 +9,41 @@ find_environment() {
         start_dir="$(pwd)"
     fi
 
-    ENV_FILE=""
-    PROJECT_ROOT=""
-
-    if [[ -f "${start_dir}/.env" ]]; then
-        ENV_FILE="${start_dir}/.env"
-        PROJECT_ROOT="${start_dir}"
-    elif [[ -f "$(cd "${start_dir}/.." 2>/dev/null && pwd)/.env" && "$(basename "$start_dir")" == "deploy" ]]; then
-        PROJECT_ROOT="$(cd "${start_dir}/.." 2>/dev/null && pwd)"
-        ENV_FILE="${PROJECT_ROOT}/.env"
-    elif [[ -f "${start_dir}/deploy/.env" ]]; then
-        PROJECT_ROOT="${start_dir}"
-        ENV_FILE="${start_dir}/deploy/.env"
-    elif [[ -f "/opt/datrixops/.env" ]]; then
-        PROJECT_ROOT="/opt/datrixops"
-        ENV_FILE="/opt/datrixops/.env"
-    elif [[ -f "/opt/datrixops/deploy/.env" ]]; then
-        PROJECT_ROOT="/opt/datrixops/deploy"
-        ENV_FILE="/opt/datrixops/deploy/.env"
-    elif [[ -f "$(pwd)/.env" ]]; then
-        PROJECT_ROOT="$(pwd)"
-        ENV_FILE="$(pwd)/.env"
-    fi
-
-    if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
-        PROJECT_ROOT="${PROJECT_ROOT:-${start_dir}}"
-        ENV_FILE="${PROJECT_ROOT}/.env"
-    fi
-
-    if [[ -d "${PROJECT_ROOT}/deploy" && -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
-        SCRIPT_DIR="${PROJECT_ROOT}/deploy"
-        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-    elif [[ -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
-        SCRIPT_DIR="${PROJECT_ROOT}"
-        COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
-    elif [[ -f "${start_dir}/docker-compose.yml" ]]; then
+    # Determine PROJECT_ROOT and SCRIPT_DIR
+    if [[ "$(basename "$start_dir")" == "deploy" ]]; then
+        PROJECT_ROOT="$(cd "${start_dir}/.." && pwd)"
         SCRIPT_DIR="${start_dir}"
-        COMPOSE_FILE="${start_dir}/docker-compose.yml"
+    elif [[ -d "${start_dir}/deploy" && -f "${start_dir}/deploy/docker-compose.yml" ]]; then
+        PROJECT_ROOT="${start_dir}"
+        SCRIPT_DIR="${start_dir}/deploy"
+    elif [[ -f "/opt/datrixops/deploy/docker-compose.yml" ]]; then
+        PROJECT_ROOT="/opt/datrixops"
+        SCRIPT_DIR="/opt/datrixops/deploy"
     else
+        PROJECT_ROOT="${start_dir}"
+        SCRIPT_DIR="${start_dir}"
+    fi
+
+    # Resolve ENV_FILE
+    if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    elif [[ -f "${SCRIPT_DIR}/.env" ]]; then
+        ENV_FILE="${SCRIPT_DIR}/.env"
+    elif [[ -f "/opt/datrixops/.env" ]]; then
+        ENV_FILE="/opt/datrixops/.env"
+    else
+        ENV_FILE="${PROJECT_ROOT}/.env"
+    fi
+
+    # Prefer deploy/docker-compose.yml (pre-built GHCR image compose)
+    if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+        COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    elif [[ -f "${PROJECT_ROOT}/deploy/docker-compose.yml" ]]; then
         SCRIPT_DIR="${PROJECT_ROOT}/deploy"
+        COMPOSE_FILE="${PROJECT_ROOT}/deploy/docker-compose.yml"
+    elif [[ -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+        COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
+    else
         COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
     fi
 }
