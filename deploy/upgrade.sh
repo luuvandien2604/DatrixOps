@@ -286,8 +286,12 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null || tru
 log_info "Running database migrations..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 
-log_info "Restarting services with updated code..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate < /dev/null
+log_info "Applying updated container services..."
+if [[ "${DATRIXOPS_FORCE_UPDATE:-0}" == "1" ]]; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate < /dev/null
+else
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d < /dev/null
+fi
 
 log_info "Performing health checks..."
 healthy=false
@@ -302,6 +306,11 @@ done
 
 if [[ "$healthy" == "true" ]]; then
     auto_self_enroll_host() {
+        if systemctl is-active --quiet datrixops-agent 2>/dev/null && [[ -f /etc/datrixops/agent.env ]]; then
+            log_info "Host self-monitoring agent is running and streaming metrics uninterrupted."
+            return 0
+        fi
+
         local pub_url
         pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
         pub_url="${pub_url%/}"
