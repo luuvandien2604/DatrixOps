@@ -41,6 +41,15 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 		dataOwnership = "provider-managed"
 	}
 
+	cpVersion := h.version
+	if cpVersion == "" || cpVersion == "dev" {
+		if h.cfg.DatrixopsVersion != "" {
+			cpVersion = h.cfg.DatrixopsVersion
+		} else {
+			cpVersion = "1.8.5"
+		}
+	}
+
 	w.Header().Set("Cache-Control", "no-store")
 	response.Success(w, http.StatusOK, map[string]any{
 		"edition":                 h.cfg.Edition,
@@ -53,7 +62,8 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 		"agent_release_layout":    h.cfg.AgentReleaseLayout,
 		"agent_artifact_base_url": h.cfg.AgentArtifactBaseURL,
 		"agent_version":           h.cfg.AgentVersion,
-		"control_plane":           map[string]string{"version": h.version, "commit": h.commit},
+		"control_plane":           map[string]string{"version": cpVersion, "commit": h.commit},
+		"version":                 cpVersion,
 		"update_check":            scheduler.GetUpdateStatus(),
 		"setup_completed":         setupCompletedAt != nil,
 		"registration_enabled":    h.cfg.PublicRegistration,

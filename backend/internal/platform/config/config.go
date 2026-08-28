@@ -23,6 +23,7 @@ type Config struct {
 	AgentArtifactBaseURL     string // exact version-specific artifact directory
 	Edition                  string
 	DeploymentMode           string
+	DatrixopsVersion         string
 	PublicRegistration       bool
 	EnableWebTerminal        bool
 	EnableRemoteScripts      bool
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 		AgentReleaseURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_RELEASE_BASE_URL")), "/"),
 		Edition:                  strings.ToLower(strings.TrimSpace(getEnv("DATRIXOPS_EDITION", "community"))),
 		DeploymentMode:           strings.ToLower(strings.TrimSpace(getEnv("DEPLOYMENT_MODE", "self-hosted"))),
+		DatrixopsVersion:         strings.TrimSpace(getEnv("DATRIXOPS_VERSION", "1.8.5")),
 		PublicRegistration:       envBool("ENABLE_PUBLIC_REGISTRATION"),
 		EnableWebTerminal:        envBool("ENABLE_WEB_TERMINAL"),
 		EnableRemoteScripts:      envBool("ENABLE_REMOTE_SCRIPTS"),

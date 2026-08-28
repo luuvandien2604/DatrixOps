@@ -1625,23 +1625,32 @@ function buildTimeline(
     let cpu_other: number | null = null;
 
     if (cpuVal != null) {
-      const topCpuRawSum = (cpuProcesses[0]?.cpu || 0) + (cpuProcesses[1]?.cpu || 0) + (cpuProcesses[2]?.cpu || 0) + (cpuProcesses[3]?.cpu || 0) + (cpuProcesses[4]?.cpu || 0);
-      const targetTopShare = topCpuRawSum > 0 ? Math.min(cpuVal * 0.85, topCpuRawSum) : cpuVal * 0.8;
+      if (cpuVal <= 0) {
+        cpu_proc_0 = 0;
+        cpu_proc_1 = 0;
+        cpu_proc_2 = 0;
+        cpu_proc_3 = 0;
+        cpu_proc_4 = 0;
+        cpu_other = 0;
+      } else {
+        const topCpuRawSum = (cpuProcesses[0]?.cpu || 0) + (cpuProcesses[1]?.cpu || 0) + (cpuProcesses[2]?.cpu || 0) + (cpuProcesses[3]?.cpu || 0) + (cpuProcesses[4]?.cpu || 0);
+        const targetTopShare = topCpuRawSum > 0 ? Math.min(cpuVal * 0.85, topCpuRawSum) : cpuVal * 0.8;
 
-      const cw0 = getProcessOrganicWeight(cpuProcesses[0]?.cpu || 1.0, 0, timestamp);
-      const cw1 = getProcessOrganicWeight(cpuProcesses[1]?.cpu || 0.8, 1, timestamp);
-      const cw2 = getProcessOrganicWeight(cpuProcesses[2]?.cpu || 0.6, 2, timestamp);
-      const cw3 = getProcessOrganicWeight(cpuProcesses[3]?.cpu || 0.4, 3, timestamp);
-      const cw4 = getProcessOrganicWeight(cpuProcesses[4]?.cpu || 0.2, 4, timestamp);
-      const dynamicWeightCpu = cw0 + cw1 + cw2 + cw3 + cw4 || 1;
+        const cw0 = getProcessOrganicWeight(cpuProcesses[0]?.cpu || 1.0, 0, timestamp);
+        const cw1 = getProcessOrganicWeight(cpuProcesses[1]?.cpu || 0.8, 1, timestamp);
+        const cw2 = getProcessOrganicWeight(cpuProcesses[2]?.cpu || 0.6, 2, timestamp);
+        const cw3 = getProcessOrganicWeight(cpuProcesses[3]?.cpu || 0.4, 3, timestamp);
+        const cw4 = getProcessOrganicWeight(cpuProcesses[4]?.cpu || 0.2, 4, timestamp);
+        const dynamicWeightCpu = cw0 + cw1 + cw2 + cw3 + cw4 || 1;
 
-      cpu_proc_0 = Number(((cw0 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-      cpu_proc_1 = Number(((cw1 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-      cpu_proc_2 = Number(((cw2 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-      cpu_proc_3 = Number(((cw3 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-      cpu_proc_4 = Number(((cw4 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-      const allocated = (cpu_proc_0 || 0) + (cpu_proc_1 || 0) + (cpu_proc_2 || 0) + (cpu_proc_3 || 0) + (cpu_proc_4 || 0);
-      cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
+        cpu_proc_0 = Number(((cw0 / dynamicWeightCpu) * targetTopShare).toFixed(1));
+        cpu_proc_1 = Number(((cw1 / dynamicWeightCpu) * targetTopShare).toFixed(1));
+        cpu_proc_2 = Number(((cw2 / dynamicWeightCpu) * targetTopShare).toFixed(1));
+        cpu_proc_3 = Number(((cw3 / dynamicWeightCpu) * targetTopShare).toFixed(1));
+        cpu_proc_4 = Number(((cw4 / dynamicWeightCpu) * targetTopShare).toFixed(1));
+        const allocated = (cpu_proc_0 || 0) + (cpu_proc_1 || 0) + (cpu_proc_2 || 0) + (cpu_proc_3 || 0) + (cpu_proc_4 || 0);
+        cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
+      }
     }
 
     // Allocate top process RAM values — exact telemetry from Agent
@@ -1653,13 +1662,22 @@ function buildTimeline(
     let ram_other: number | null = null;
 
     if (ramVal != null) {
-      ram_proc_0 = Number((ramProcesses[0]?.ram || 0).toFixed(1));
-      ram_proc_1 = Number((ramProcesses[1]?.ram || 0).toFixed(1));
-      ram_proc_2 = Number((ramProcesses[2]?.ram || 0).toFixed(1));
-      ram_proc_3 = Number((ramProcesses[3]?.ram || 0).toFixed(1));
-      ram_proc_4 = Number((ramProcesses[4]?.ram || 0).toFixed(1));
-      const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
-      ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
+      if (ramVal <= 0) {
+        ram_proc_0 = 0;
+        ram_proc_1 = 0;
+        ram_proc_2 = 0;
+        ram_proc_3 = 0;
+        ram_proc_4 = 0;
+        ram_other = 0;
+      } else {
+        ram_proc_0 = Number((ramProcesses[0]?.ram || 0).toFixed(1));
+        ram_proc_1 = Number((ramProcesses[1]?.ram || 0).toFixed(1));
+        ram_proc_2 = Number((ramProcesses[2]?.ram || 0).toFixed(1));
+        ram_proc_3 = Number((ramProcesses[3]?.ram || 0).toFixed(1));
+        ram_proc_4 = Number((ramProcesses[4]?.ram || 0).toFixed(1));
+        const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
+        ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
+      }
     }
 
     timeline.push({
