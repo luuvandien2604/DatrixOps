@@ -121,7 +121,7 @@ export default function ServersPage() {
   const [editEnvironment, setEditEnvironment] = useState('');
 
   // Update Agent
-  const [serverToUpdate, setServerToUpdate] = useState<{ id: string; name: string } | null>(null);
+  const [serverToUpdate, setServerToUpdate] = useState<{ id: string; name: string; currentVersion?: string; targetVersion?: string } | null>(null);
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
@@ -137,16 +137,16 @@ export default function ServersPage() {
     try {
       setCheckingUpdateServerId(server.id);
       const currentSystem: SystemInfo = await apiClient('/system/info');
-      await fetchServers(true);
-      const latestVer = currentSystem.update_check?.latest_version || currentSystem.agent_version || '';
+      const latestVer = currentSystem.agent_version || currentSystem.update_check?.latest_version || '1.5.12';
       const osInfo = parseJSON<ServerOSInfo>(server.os_info);
-      const runningVer = osInfo?.version || server?.version || '1.5.9';
+      const runningVer = osInfo?.version || server?.version || 'v1.5.9';
 
-      if (latestVer && runningVer && latestVer !== runningVer && Boolean(server.update_available)) {
-        toast.success(`New Agent update available: v${latestVer}!`);
-      } else {
-        toast.success(`Server "${server.name}" is running the latest Agent release (v${runningVer})`);
-      }
+      setServerToUpdate({
+        id: server.id,
+        name: server.name,
+        currentVersion: runningVer.startsWith('v') ? runningVer : `v${runningVer}`,
+        targetVersion: latestVer.startsWith('v') ? latestVer.slice(1) : latestVer,
+      });
     } catch {
       toast.error('Failed to check for updates');
     } finally {
@@ -774,7 +774,7 @@ export default function ServersPage() {
                                   : 'Agent uninstall failed'}
                             </div>
                           )}
-                          {(updateAvailable || updateInProgress || updateFailed) && (
+                          {(updateInProgress || updateFailed) && (
                             <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[10px] font-semibold ${
                               updateFailed
                                 ? 'border-rose-500/35 bg-rose-500/10 text-rose-500'
@@ -894,11 +894,7 @@ export default function ServersPage() {
                               onClick={event => {
                                 event.stopPropagation();
                                 if (isViewer || isCheckingUpdate || updateInProgress) return;
-                                if (updateAvailable || updateFailed) {
-                                  setServerToUpdate({ id: server.id, name: server.name });
-                                } else {
-                                  handleCheckUpdateForServer(server);
-                                }
+                                handleCheckUpdateForServer(server);
                               }}
                               disabled={isViewer || updateInProgress || isCheckingUpdate}
                               className={`rounded border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -1134,11 +1130,7 @@ export default function ServersPage() {
                         onClick={event => {
                           event.stopPropagation();
                           if (isViewer || isCheckingUpdate || updateInProgress) return;
-                          if (updateAvailable || updateFailed) {
-                            setServerToUpdate({ id: server.id, name: server.name });
-                          } else {
-                            handleCheckUpdateForServer(server);
-                          }
+                          handleCheckUpdateForServer(server);
                         }}
                         disabled={isViewer || updateInProgress || isCheckingUpdate}
                         className={`rounded border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -1499,17 +1491,27 @@ export default function ServersPage() {
       {/* Update Agent Modal */}
       {serverToUpdate && (
         <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" className="ops-modal flex w-full max-w-md flex-col overflow-hidden border-amber-500/35">
-            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-amber-500/10">
-              <RefreshCw className="w-6 h-6 text-amber-400" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent?</h2>
+          <div role="alertdialog" aria-modal="true" className="ops-modal flex w-full max-w-md flex-col overflow-hidden border-cyan-500/35">
+            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-cyan-500/10">
+              <RefreshCw className="w-6 h-6 text-cyan-400" />
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent</h2>
             </div>
             <div className="p-6">
-              <p className="text-[var(--color-muted)] mb-6">
-                You are about to send an update command to <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>.
+              <p className="text-[var(--color-muted)] mb-4 text-sm">
+                Check completed. Would you like to update the Agent on <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>?
               </p>
+              <div className="p-3.5 mb-6 rounded-lg border border-white/10 bg-white/5 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--color-muted)]">Current Version:</span>
+                  <span className="font-semibold text-slate-300 font-mono">{serverToUpdate.currentVersion || 'v1.5.9'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--color-muted)]">Target Release:</span>
+                  <span className="font-semibold text-emerald-400 font-mono">v{serverToUpdate.targetVersion || '1.5.12'}</span>
+                </div>
+              </div>
               <div className="flex justify-end gap-3">
-                <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors">
+                <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors text-sm">
                   Cancel
                 </button>
                 <button
@@ -1519,18 +1521,23 @@ export default function ServersPage() {
                     try {
                       const task: AgentUpdateTask = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
                         method: 'POST',
-                        data: { type: 'agent_update', payload: '{}', timeout_seconds: 300 }
+                        data: {
+                          type: 'agent_update',
+                          payload: JSON.stringify({ target_version: serverToUpdate.targetVersion || '1.5.12' }),
+                          timeout_seconds: 300
+                        }
                       });
                       setAgentUpdateTasks(current => ({ ...current, [serverToUpdate.id]: task }));
-                      toast.success(`Update queued for ${serverToUpdate.name}`);
+                      toast.success(`Update task dispatched for ${serverToUpdate.name} to v${serverToUpdate.targetVersion || '1.5.12'}`);
                       setServerToUpdate(null);
+                      fetchServers(true);
                     } catch (err: unknown) {
                       toast.error(errorMessage(err, 'Error updating agent'));
                     } finally {
                       setIsUpdatingAgent(false);
                     }
                   }}
-                  className="px-4 py-2 bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:opacity-70 rounded-lg font-bold transition-colors">
+                  className="px-4 py-2 bg-cyan-500 text-slate-950 hover:bg-cyan-400 disabled:opacity-70 rounded-lg font-bold transition-colors text-sm">
                   {isUpdatingAgent ? 'Queueing…' : 'Start Update'}
                 </button>
               </div>
