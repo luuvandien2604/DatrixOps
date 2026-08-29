@@ -127,8 +127,8 @@ show_status() {
     require_installation
     printf '%s\n' 'DatrixOps Server containers:'
     compose ps
-    printf '\n%s\n' 'DatrixOps Agent service:'
-    systemctl --no-pager status datrixops-agent || true
+    printf '\n%s\n' 'DatrixOps Self-Monitor service:'
+    systemctl --no-pager status datrixops-self-monitor 2>/dev/null || systemctl --no-pager status datrixops-agent || true
     printf '\nServer services are managed by Docker Compose; use `datrix status`, not `systemctl status datrixops`.\n'
 }
 
@@ -136,7 +136,7 @@ restart_services() {
     require_installation
     require_root
     compose restart
-    systemctl restart datrixops-agent 2>/dev/null || true
+    systemctl restart datrixops-self-monitor 2>/dev/null || systemctl restart datrixops-agent 2>/dev/null || true
 }
 
 follow_logs() {

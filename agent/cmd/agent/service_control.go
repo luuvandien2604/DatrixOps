@@ -23,7 +23,7 @@ type serviceControlResult struct {
 
 func executeServiceAction(ctx context.Context, action, serviceName, manager string) (string, error) {
 	switch strings.ToLower(serviceName) {
-	case "datrixops-agent", "datrixops-agent.service", "com.datrixops.agent", "datrixopsagent":
+	case "datrixops-agent", "datrixops-agent.service", "com.datrixops.agent", "datrixopsagent", "datrixops-self-monitor", "datrixops-self-monitor.service":
 		return "", fmt.Errorf("the DatrixOps Agent cannot control its own service")
 	}
 

@@ -194,10 +194,10 @@ func (s *Service) GetDashboardOverview(ctx context.Context, userID, timeRange st
 	return s.repo.GetDashboardOverview(ctx, userID, timeRange)
 }
 
-// UpdateServerMeta changes grouping and inventory metadata maintained by the
-// user rather than the Agent heartbeat.
-func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, groupName string, tags []string, provider, region, environment string) error {
-	return s.repo.UpdateServerMeta(ctx, id, userID, groupName, tags, provider, region, environment)
+// UpdateServerMeta changes grouping, naming, and inventory metadata maintained by the
+// dashboard. It never touches telemetry or machine identifiers.
+func (s *Service) UpdateServerMeta(ctx context.Context, id, userID, name, groupName string, tags []string, provider, region, environment string) error {
+	return s.repo.UpdateServerMeta(ctx, id, userID, name, groupName, tags, provider, region, environment)
 }
 
 // SetAgentAutoUpdate enables or disables automatic signed Agent updates.

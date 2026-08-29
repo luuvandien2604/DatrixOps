@@ -228,7 +228,7 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 // evaluateCondition tính giá trị hiện tại và kết luận rule có đang firing hay không.
 func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, serverID string, lastSeen *time.Time) (bool, float64, bool) {
 	if rule.Metric == "status" {
-		return lastSeen == nil || time.Since(*lastSeen) > time.Minute, 0, true
+		return lastSeen == nil || time.Since(*lastSeen) >= time.Minute, 0, true
 	}
 
 	metricExpression := "cpu_usage"
@@ -296,6 +296,12 @@ func (j *AlertJob) conditionSatisfiedLongEnough(ctx context.Context, rule alert.
 	if status == "firing" {
 		return true, nil
 	}
+
+	// For status/offline rules with 1m duration, trigger immediately when offline threshold is reached
+	if rule.Metric == "status" && rule.DurationMinutes <= 1 {
+		return true, nil
+	}
+
 	return !time.Now().Before(startedAt.Add(time.Duration(rule.DurationMinutes) * time.Minute)), nil
 }
 

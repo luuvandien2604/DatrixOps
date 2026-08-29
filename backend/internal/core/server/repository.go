@@ -345,22 +345,23 @@ func (r *Repository) ExpireStaleAgentUninstalls(ctx context.Context, userID stri
 	return nil
 }
 
-// UpdateServerMeta updates the group_name and tags of a server.
-func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID string, groupName string, tags []string, provider, region, environment string) error {
+// UpdateServerMeta updates the name, group_name, and tags of a server.
+func (r *Repository) UpdateServerMeta(ctx context.Context, id, userID, name, groupName string, tags []string, provider, region, environment string) error {
 	tagsJSON, err := json.Marshal(tags)
 	if err != nil {
 		return fmt.Errorf("marshal tags: %w", err)
 	}
 	tag, err := r.db.Pool.Exec(ctx,
 		`UPDATE servers
-		 SET group_name = NULLIF($1, ''),
-		     tags = $2,
-		     provider = NULLIF($3, ''),
-		     region = NULLIF($4, ''),
-		     environment = NULLIF($5, ''),
+		 SET name = COALESCE(NULLIF($1, ''), name),
+		     group_name = NULLIF($2, ''),
+		     tags = $3,
+		     provider = NULLIF($4, ''),
+		     region = NULLIF($5, ''),
+		     environment = NULLIF($6, ''),
 		     updated_at = NOW()
-		 WHERE id = $6 AND user_id = $7`,
-		groupName, tagsJSON, provider, region, environment, id, userID,
+		 WHERE id = $7 AND user_id = $8`,
+		name, groupName, tagsJSON, provider, region, environment, id, userID,
 	)
 	if err != nil {
 		return fmt.Errorf("update server meta: %w", err)

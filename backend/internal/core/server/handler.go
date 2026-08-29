@@ -524,7 +524,7 @@ func validateServiceTask(server *Server, taskType, rawPayload string) error {
 		return fmt.Errorf("service_name and service_manager are required")
 	}
 	switch strings.ToLower(payload.ServiceName) {
-	case "datrixops-agent", "datrixops-agent.service", "com.datrixops.agent", "datrixopsagent":
+	case "datrixops-agent", "datrixops-agent.service", "com.datrixops.agent", "datrixopsagent", "datrixops-self-monitor", "datrixops-self-monitor.service":
 		return fmt.Errorf("the DatrixOps Agent cannot control its own service")
 	}
 	if payload.ServiceManager != "systemd" && payload.ServiceManager != "launchd" && payload.ServiceManager != "windows-scm" {
@@ -772,6 +772,7 @@ func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateMetaRequest struct {
+	Name        string   `json:"name"`
 	GroupName   string   `json:"group_name"`
 	Tags        []string `json:"tags"`
 	Provider    string   `json:"provider"`
@@ -834,12 +835,13 @@ func (h *Handler) UpdateMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.UpdateServerMeta(r.Context(), id, userID, req.GroupName, req.Tags, req.Provider, req.Region, req.Environment); err != nil {
+	if err := h.svc.UpdateServerMeta(r.Context(), id, userID, req.Name, req.GroupName, req.Tags, req.Provider, req.Region, req.Environment); err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update server meta")
 		return
 	}
 
 	h.recordAudit(r.Context(), userID, "UPDATE_META", "SERVER", id, map[string]interface{}{
+		"name":        req.Name,
 		"group_name":  req.GroupName,
 		"tags":        req.Tags,
 		"provider":    req.Provider,

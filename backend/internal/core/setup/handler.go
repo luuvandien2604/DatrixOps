@@ -228,7 +228,7 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 	if err != nil {
 		_, _ = h.db.Pool.Exec(ctx,
 			`INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-			 VALUES ($1, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', $2, NOW(), '["self-host", "control-plane"]'::jsonb)`,
+			 VALUES ($1, 'Server', '127.0.0.1', 'offline', $2, NOW(), '["self-host", "control-plane"]'::jsonb)`,
 			userID, credentialHash,
 		)
 	} else {

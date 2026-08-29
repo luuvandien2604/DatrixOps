@@ -113,6 +113,7 @@ export default function ServersPage() {
 
   // Edit Meta
   const [editMetaServer, setEditMetaServer] = useState<ServerRecord | null>(null);
+  const [editServerName, setEditServerName] = useState('');
   const [editGroupName, setEditGroupName] = useState('');
   const [editTags, setEditTags] = useState('');
   const [editProvider, setEditProvider] = useState('');
@@ -451,7 +452,7 @@ export default function ServersPage() {
     }
     try {
       setLoading(true);
-      const hostName = 'DatrixOps Control Plane (Self-Host)';
+      const hostName = 'Server';
       const createdServer = await apiClient('/servers', {
         method: 'POST',
         data: { name: hostName, tags: ['self-host', 'control-plane'] }
@@ -855,6 +856,7 @@ export default function ServersPage() {
                                 event.stopPropagation();
                                 if (!isAdmin) return;
                                 setEditMetaServer(server);
+                                setEditServerName(server.name || '');
                                 setEditGroupName(server.group_name || '');
                                 setEditTags((server.tags || []).join(', '));
                                 setEditProvider(server.provider || '');
@@ -1102,6 +1104,7 @@ export default function ServersPage() {
                         onClick={event => {
                           event.stopPropagation();
                           setEditMetaServer(server);
+                          setEditServerName(server.name || '');
                           setEditGroupName(server.group_name || '');
                           setEditTags((server.tags || []).join(', '));
                           setEditProvider(server.provider || '');
@@ -1428,6 +1431,16 @@ export default function ServersPage() {
             </div>
             <div className="p-6">
               <div className="mb-4">
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Server Name</label>
+                <input
+                  type="text"
+                  value={editServerName}
+                  onChange={(e) => setEditServerName(e.target.value)}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-amber-500"
+                  placeholder="e.g. Server, Web-01, Database"
+                />
+              </div>
+              <div className="mb-4">
                 <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-2">Group Name</label>
                 <input
                   type="text"
@@ -1457,7 +1470,14 @@ export default function ServersPage() {
                     try {
                       await apiClient(`/servers/${editMetaServer.id}/meta`, {
                         method: 'PUT',
-                        data: { group_name: editGroupName.trim(), tags: tagsArray, provider: editProvider.trim(), region: editRegion.trim(), environment: editEnvironment.trim() }
+                        data: {
+                          name: editServerName.trim(),
+                          group_name: editGroupName.trim(),
+                          tags: tagsArray,
+                          provider: editProvider.trim(),
+                          region: editRegion.trim(),
+                          environment: editEnvironment.trim()
+                        }
                       });
                       fetchServers();
                       toast.success('Server information updated!');

@@ -363,10 +363,10 @@ if [[ "$healthy" == "true" ]]; then
                 BEGIN
                     SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                     IF v_user_id IS NULL THEN RETURN; END IF;
-                    SELECT id INTO v_server_id FROM servers WHERE tags ? 'self-host' OR name LIKE '%Control Plane%' LIMIT 1;
+                    SELECT id INTO v_server_id FROM servers WHERE tags ? 'self-host' OR name LIKE '%Control Plane%' OR name = 'Server' LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                        VALUES (v_user_id, 'DatrixOps Control Plane (Self-Host)', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
+                        VALUES (v_user_id, 'Server', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                     ELSE
                         UPDATE servers SET user_id = v_user_id, agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
                     END IF;
@@ -376,17 +376,17 @@ if [[ "$healthy" == "true" ]]; then
         install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
         rm -f /tmp/datrixops-agent-download 2>/dev/null || true
         install -d -m 0700 /etc/datrixops
-        printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/agent.env
-        chmod 0600 /etc/datrixops/agent.env
+        printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
+        chmod 0600 /etc/datrixops/self-monitor.env
 
-        cat > /etc/systemd/system/datrixops-agent.service <<SVCEOF
+        cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
 [Unit]
-Description=DatrixOps Agent (Self-Monitoring)
+Description=DatrixOps Self Monitor
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-EnvironmentFile=/etc/datrixops/agent.env
+EnvironmentFile=/etc/datrixops/self-monitor.env
 ExecStart=/usr/local/bin/datrixops-agent
 Restart=always
 RestartSec=10
@@ -394,9 +394,9 @@ RestartSec=10
 WantedBy=multi-user.target
 SVCEOF
         systemctl daemon-reload
-        systemctl enable --now datrixops-agent
-        systemctl restart datrixops-agent
-        log_success "Host VPS self-monitoring agent installed and started."
+        systemctl enable --now datrixops-self-monitor
+        systemctl restart datrixops-self-monitor
+        log_success "Host VPS self-monitoring service (datrixops-self-monitor) updated and restarted."
     }
     auto_self_enroll_host || true
 

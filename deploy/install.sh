@@ -632,7 +632,7 @@ auto_self_enroll_host() {
                         agent_token_hash, enrolled_at, tags
                     ) VALUES (
                         v_user_id,
-                        'DatrixOps Control Plane (Self-Host)',
+                        'Server',
                         '127.0.0.1',
                         'offline',
                         '${credential_hash}',
@@ -655,24 +655,24 @@ auto_self_enroll_host() {
     log_info "Installing DatrixOps Agent binary on host..."
     install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
 
-    # Create agent configuration
+    # Create self-monitor configuration
     install -d -m 0700 /etc/datrixops
-    cat > /etc/datrixops/agent.env <<AGENT_ENV
+    cat > /etc/datrixops/self-monitor.env <<AGENT_ENV
 DATRIXOPS_SERVER_URL=${pub_url}/api/v1
 DATRIXOPS_AGENT_TOKEN=${raw_credential}
 AGENT_ENV
-    chmod 0600 /etc/datrixops/agent.env
+    chmod 0600 /etc/datrixops/self-monitor.env
 
-    # Create systemd service
-    cat > /etc/systemd/system/datrixops-agent.service <<SERVICE_EOF
+    # Create dedicated self-monitor systemd service
+    cat > /etc/systemd/system/datrixops-self-monitor.service <<SERVICE_EOF
 [Unit]
-Description=DatrixOps Agent (Self-Monitoring)
+Description=DatrixOps Self Monitor
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/datrixops/agent.env
+EnvironmentFile=/etc/datrixops/self-monitor.env
 ExecStart=/usr/local/bin/datrixops-agent
 Restart=always
 RestartSec=10
@@ -683,13 +683,13 @@ ProtectHome=true
 [Install]
 WantedBy=multi-user.target
 SERVICE_EOF
-    chmod 0644 /etc/systemd/system/datrixops-agent.service
+    chmod 0644 /etc/systemd/system/datrixops-self-monitor.service
 
     systemctl daemon-reload
-    systemctl enable --now datrixops-agent
-    systemctl restart datrixops-agent
+    systemctl enable --now datrixops-self-monitor
+    systemctl restart datrixops-self-monitor
 
-    log_success "Host VPS self-monitoring agent installed and started."
+    log_success "Host VPS self-monitoring service (datrixops-self-monitor) installed and started."
 }
 auto_self_enroll_host
 install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix
