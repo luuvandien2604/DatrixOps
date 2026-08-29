@@ -274,8 +274,9 @@ func (h *Handler) normalizedTaskPayload(taskType, rawPayload string) (string, er
 	if payload == nil {
 		payload = make(map[string]any)
 	}
-	if strings.TrimSpace(h.svc.desiredAgentVersion) != "" {
-		payload["target_version"] = strings.TrimSpace(h.svc.desiredAgentVersion)
+	desiredAgentVer := h.svc.GetDesiredAgentVersion()
+	if strings.TrimSpace(desiredAgentVer) != "" {
+		payload["target_version"] = strings.TrimSpace(desiredAgentVer)
 		if h.svc.publicURL != "" {
 			payload["release_base_url"] = strings.TrimRight(h.svc.publicURL, "/") + "/api/v1/agent-releases"
 		} else {

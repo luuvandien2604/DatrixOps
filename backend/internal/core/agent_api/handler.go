@@ -19,6 +19,7 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/scheduler"
 )
 
 const (
@@ -53,6 +54,14 @@ func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL, agentRele
 		go handler.runWebhookWorker()
 	}
 	return handler
+}
+
+func (h *Handler) GetDesiredAgentVersion() string {
+	latestOnline := scheduler.GetLatestAgentVersion()
+	if latestOnline != "" && compareAgentVersions(latestOnline, h.desiredAgentVersion) >= 0 {
+		return latestOnline
+	}
+	return h.desiredAgentVersion
 }
 
 type TopProcess struct {
@@ -515,13 +524,14 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		println("Error inserting metric:", err.Error())
 	}
 
+	desiredVer := h.GetDesiredAgentVersion()
 	updateAvailable := req.Version != "" &&
-		h.desiredAgentVersion != "" &&
-		compareAgentVersions(req.Version, h.desiredAgentVersion) < 0
+		desiredVer != "" &&
+		compareAgentVersions(req.Version, desiredVer) < 0
 
 	if req.Version != "" &&
-		h.desiredAgentVersion != "" &&
-		compareAgentVersions(req.Version, h.desiredAgentVersion) == 0 {
+		desiredVer != "" &&
+		compareAgentVersions(req.Version, desiredVer) == 0 {
 		rows, _ := h.db.Pool.Query(ctx,
 			`UPDATE server_tasks
 			 SET status = 'completed',
@@ -550,7 +560,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	// rate-limited so heartbeats cannot create an endless retry loop.
 	if updateAvailable && compareAgentVersions(req.Version, minimumAutomaticUpdateVersion) >= 0 {
 		payload, payloadErr := json.Marshal(map[string]string{
-			"target_version":   strings.TrimSpace(h.desiredAgentVersion),
+			"target_version":   strings.TrimSpace(desiredVer),
 			"release_base_url": h.agentReleaseURL,
 			"release_layout":   h.agentReleaseLayout,
 			"trigger":          "automatic",
@@ -642,7 +652,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		// immediately. Keep it false so all releases require an approved task.
 		"update_required":  false,
 		"update_available": updateAvailable,
-		"latest_version":   h.desiredAgentVersion,
+		"latest_version":   h.GetDesiredAgentVersion(),
 		"tasks":            tasks,
 	})
 }
@@ -1206,13 +1216,14 @@ func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
 
 	parts := strings.Split(path, "/")
 	filename := parts[len(parts)-1]
-	version := h.desiredAgentVersion
+	version := h.GetDesiredAgentVersion()
 	if version == "" {
-		version = "1.5.9"
+		version = "1.5.10"
 	}
 
 	for _, p := range parts {
-		cleaned := strings.TrimPrefix(strings.TrimSpace(p), "v")
+		cleaned := strings.TrimPrefix(strings.TrimSpace(p), "agent-v")
+		cleaned = strings.TrimPrefix(cleaned, "v")
 		subParts := strings.Split(cleaned, ".")
 		if len(subParts) == 3 {
 			version = cleaned
@@ -1220,10 +1231,6 @@ func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !strings.HasPrefix(version, "v") {
-		version = "v" + version
-	}
-
-	targetURL := "https://github.com/luuvandien2604/DatrixOps/releases/download/" + version + "/" + filename
+	targetURL := "https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v" + version + "/" + filename
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }

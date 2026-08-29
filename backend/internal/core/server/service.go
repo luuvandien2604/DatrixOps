@@ -11,7 +11,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/luuvandien2604/DatrixOps/backend/internal/scheduler"
 )
 
 var (
@@ -37,6 +40,7 @@ var (
 
 type Service struct {
 	repo                *Repository
+	mu                  sync.RWMutex
 	desiredAgentVersion string
 	publicURL           string
 	agentReleaseURL     string
@@ -61,6 +65,20 @@ func NewService(repo *Repository, desiredAgentVersion, publicURL, agentReleaseUR
 		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
 		agentReleaseLayout:  strings.TrimSpace(agentReleaseLayout),
 	}
+}
+
+// GetDesiredAgentVersion returns the newest agent version dynamically discovered online,
+// falling back to the server configured default.
+func (s *Service) GetDesiredAgentVersion() string {
+	latestOnline := scheduler.GetLatestAgentVersion()
+	s.mu.RLock()
+	fallback := s.desiredAgentVersion
+	s.mu.RUnlock()
+
+	if latestOnline != "" && compareVersions(latestOnline, fallback) >= 0 {
+		return latestOnline
+	}
+	return fallback
 }
 
 // CreateServer creates a short-lived, one-time enrollment token. The permanent
@@ -190,12 +208,13 @@ func (s *Service) SetAgentAutoUpdate(ctx context.Context, id, userID string, ena
 // decorateAgentRelease adds latest_agent_version and update_available without
 // persisting derived release information in the database.
 func (s *Service) decorateAgentRelease(server *Server) {
-	if server == nil || s.desiredAgentVersion == "" {
+	desired := s.GetDesiredAgentVersion()
+	if server == nil || desired == "" {
 		return
 	}
-	server.LatestAgentVersion = s.desiredAgentVersion
+	server.LatestAgentVersion = desired
 	current := agentVersionFromOSInfo(server.OSInfo)
-	server.UpdateAvailable = current != "" && compareVersions(current, s.desiredAgentVersion) < 0
+	server.UpdateAvailable = current != "" && compareVersions(current, desired) < 0
 }
 
 // generateOneTimeToken returns a URL-safe raw token and its SHA-256 hash. Only
