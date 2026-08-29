@@ -140,6 +140,16 @@ func Load() (*Config, error) {
 			cfg.AgentArtifactBaseURL = cfg.AgentReleaseURL
 		}
 	}
+	if strings.Contains(cfg.AgentArtifactBaseURL, "github.com") && strings.Contains(cfg.AgentArtifactBaseURL, "/releases/download/") && cfg.AgentVersion != "" && cfg.AgentVersion != "dev" {
+		idx := strings.Index(cfg.AgentArtifactBaseURL, "/releases/download/")
+		prefix := cfg.AgentArtifactBaseURL[:idx+len("/releases/download/")]
+		cfg.AgentArtifactBaseURL = prefix + "agent-v" + cfg.AgentVersion
+	}
+	if strings.Contains(cfg.AgentReleaseURL, "github.com") && strings.Contains(cfg.AgentReleaseURL, "/releases/download/") && cfg.AgentVersion != "" && cfg.AgentVersion != "dev" {
+		idx := strings.Index(cfg.AgentReleaseURL, "/releases/download/")
+		prefix := cfg.AgentReleaseURL[:idx+len("/releases/download/")]
+		cfg.AgentReleaseURL = prefix + "agent-v" + cfg.AgentVersion
+	}
 
 	return cfg, nil
 }
