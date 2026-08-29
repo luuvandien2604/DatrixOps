@@ -11,7 +11,7 @@ x-logging: &default-logging
 x-backend-environment: &backend-environment
   DATABASE_URL: postgres://datrixops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/datrixops?sslmode=disable
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-  AGENT_VERSION: ${AGENT_VERSION:-1.5.10}
+  AGENT_VERSION: ${AGENT_VERSION:-1.5.12}
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
   PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
   DATRIXOPS_EDITION: ${DATRIXOPS_EDITION:-community}
@@ -72,7 +72,7 @@ services:
     logging: *default-logging
 
   migrate:
-    image: ghcr.io/luuvandien2604/datrixops-migrate:${DATRIXOPS_VERSION:-1.8.11}
+    image: ghcr.io/luuvandien2604/datrixops-migrate:${DATRIXOPS_VERSION:-1.8.12}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -87,7 +87,7 @@ services:
     logging: *default-logging
 
   backend:
-    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-1.8.11}
+    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-1.8.12}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -114,7 +114,7 @@ services:
     logging: *default-logging
 
   worker:
-    image: ghcr.io/luuvandien2604/datrixops-worker:${DATRIXOPS_VERSION:-1.8.11}
+    image: ghcr.io/luuvandien2604/datrixops-worker:${DATRIXOPS_VERSION:-1.8.12}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -140,7 +140,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-1.8.11}
+    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-1.8.12}
     build:
       context: ./frontend
       dockerfile: Dockerfile
