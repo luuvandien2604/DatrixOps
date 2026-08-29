@@ -44,6 +44,11 @@ var (
 	isFirst       = true
 )
 
+func init() {
+	// Initialize gopsutil CPU times snapshot so subsequent cpu.Percent(0, false) calls are non-blocking and instant
+	_, _ = cpu.Percent(0, false)
+}
+
 // Collect gathers the current system metrics.
 func Collect() (*Metrics, error) {
 	// 1. Get Host Info
@@ -59,8 +64,8 @@ func Collect() (*Metrics, error) {
 		return nil, fmt.Errorf("get cpu cores: %w", err)
 	}
 
-	// 3. Get CPU Usage
-	cpuUsageStats, err := cpu.Percent(time.Second, false)
+	// 3. Get CPU Usage (non-blocking, calculates usage since previous heartbeat tick)
+	cpuUsageStats, err := cpu.Percent(0, false)
 	var cpuUsage float64
 	if err == nil && len(cpuUsageStats) > 0 {
 		cpuUsage = cpuUsageStats[0]

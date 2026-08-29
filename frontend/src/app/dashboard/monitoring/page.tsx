@@ -1606,8 +1606,19 @@ function buildTimeline(
   const timeline: TimelinePoint[] = [];
 
   for (let timestamp = alignedStart; timestamp <= alignedEnd; timestamp += bucketMs) {
-    const metric = metricByBucket.get(timestamp);
-    const hasData = Boolean(metric);
+    let metric = metricByBucket.get(timestamp);
+    let hasData = Boolean(metric);
+
+    // If an isolated single bucket is empty between valid surrounding points (e.g. 10.5s cadence on a 10s grid),
+    // carry forward previous valid telemetry to prevent false 0% downtime dips on healthy servers
+    if (!hasData) {
+      const prevMetric = metricByBucket.get(timestamp - bucketMs);
+      const nextMetric = metricByBucket.get(timestamp + bucketMs);
+      if (prevMetric && nextMetric) {
+        metric = prevMetric;
+        hasData = true;
+      }
+    }
 
     const isConfirmedMissing =
       !hasData && timestamp < now - MISSING_DATA_GRACE_MS;
