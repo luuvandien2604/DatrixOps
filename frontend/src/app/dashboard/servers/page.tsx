@@ -752,13 +752,20 @@ export default function ServersPage() {
                           </button>
                         </td>
                         <td className="py-4 px-6">
-                          <div className="host-identity">
-                            <span className="font-medium text-[var(--foreground)] transition-colors group-hover:text-blue-400">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm text-[var(--foreground)] transition-colors group-hover:text-blue-400">
                               {server.name}
                             </span>
-                            <span className="agent-version-inline" title="Running agent version">
-                              v{runningAgentVersion}
-                            </span>
+                            {server.group_name && (
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[10px] font-medium tracking-wide">
+                                {server.group_name}
+                              </span>
+                            )}
+                            {server.tags && server.tags.map((t: string) => (
+                              <span key={t} className="px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md text-[10px] font-medium uppercase tracking-wider font-mono">
+                                {t}
+                              </span>
+                            ))}
                           </div>
                           {server.deletion_status && server.deletion_status !== 'active' && (
                             <div className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${
@@ -784,14 +791,7 @@ export default function ServersPage() {
                               {updateBadgeLabel}
                             </div>
                           )}
-                          {server.group_name && <div className="mt-1 text-xs font-semibold text-emerald-400">{server.group_name}</div>}
-                          <div className="flex gap-1 mt-1 flex-wrap">
-                            {server.tags && server.tags.map((t: string) => (
-                              <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
-                                {t}
-                              </span>
-                            ))}
-                          </div>
+
                         </td>
                         <td className="py-4 px-6 font-mono text-sm text-[var(--foreground)]">
                           {agentIPAddress || '—'}
@@ -1020,13 +1020,20 @@ export default function ServersPage() {
                           {isSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
                         </button>
                         <div>
-                          <div className="host-identity">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
                             <h3 className="font-bold text-[var(--foreground)] text-base group-hover:text-blue-400 transition-colors">
                               {server.name}
                             </h3>
-                            <span className="agent-version-inline" title="Running agent version">
-                              v{runningAgentVersion}
-                            </span>
+                            {server.group_name && (
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[10px] font-medium tracking-wide">
+                                {server.group_name}
+                              </span>
+                            )}
+                            {server.tags && server.tags.map((t: string) => (
+                              <span key={t} className="px-2 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md text-[10px] font-medium uppercase tracking-wider font-mono">
+                                {t}
+                              </span>
+                            ))}
                           </div>
                           <span className="font-mono text-xs text-[var(--color-muted)]">{server.ip_address || '—'}</span>
                         </div>
@@ -1040,21 +1047,7 @@ export default function ServersPage() {
                       </div>
                     </div>
 
-                    {/* Group & Tags */}
-                    {(server.group_name || (server.tags && server.tags.length > 0)) && (
-                      <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                        {server.group_name && (
-                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[10px] font-semibold">
-                            {server.group_name}
-                          </span>
-                        )}
-                        {server.tags && server.tags.map((t: string) => (
-                          <span key={t} className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[10px] uppercase">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+
 
                     {/* Stats Grid: Monospaced Numbers Only */}
                     <div className="grid grid-cols-3 gap-2 bg-white/[0.02] p-3 rounded-lg border border-white/5 my-3 text-center font-mono">
