@@ -405,8 +405,8 @@ export default function ServersPage() {
   const getInstallCommand = () => {
     const controlPlaneOrigin = typeof window === 'undefined' ? '' : window.location.origin;
     const services = customServices.trim();
-    const agentVersion = systemData?.agent_version || '1.5.9';
-    const agentArtifactBaseUrl = systemData?.agent_artifact_base_url || `https://github.com/luuvandien2604/DatrixOps/releases/download/v${agentVersion}`;
+    const agentVersion = systemData?.agent_version || '1.5.10';
+    const agentArtifactBaseUrl = systemData?.agent_artifact_base_url || `https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agentVersion}`;
     const isHttp = controlPlaneOrigin.startsWith('http://');
     const isLocalhost = controlPlaneOrigin.includes('localhost') || controlPlaneOrigin.includes('127.0.0.1');
     const allowInsecureFlag = isHttp && !isLocalhost;

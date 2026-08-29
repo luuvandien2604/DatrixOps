@@ -1231,6 +1231,7 @@ func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	targetURL := "https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v" + version + "/" + filename
+	tag := "agent-v" + strings.TrimPrefix(strings.TrimPrefix(version, "agent-v"), "v")
+	targetURL := "https://github.com/luuvandien2604/DatrixOps/releases/download/" + tag + "/" + filename
 	http.Redirect(w, r, targetURL, http.StatusFound)
 }
