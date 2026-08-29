@@ -1,5 +1,5 @@
 name: DatrixOps CI
-run-name: "🧪 CI Tests [${{ github.ref_name }}]: ${{ github.event.head_commit.message }}"
+run-name: "CI Tests [${{ github.ref_name }}]: ${{ github.event.head_commit.message }}"
 
 on:
   push:
