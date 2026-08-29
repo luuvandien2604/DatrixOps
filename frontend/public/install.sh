@@ -65,8 +65,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$SERVER_URL" || -z "$ENROLLMENT_TOKEN" || -z "$AGENT_VERSION" || -z "$AGENT_ARTIFACT_BASE_URL" ]]; then
-    echo "ERROR: --server, --token, --agent-version, and --agent-artifact-base-url are required." >&2
+if [[ -z "$SERVER_URL" || -z "$ENROLLMENT_TOKEN" || -z "$AGENT_ARTIFACT_BASE_URL" ]]; then
+    echo "ERROR: --server, --token, and --agent-artifact-base-url are required." >&2
     usage >&2
     exit 1
 fi
@@ -217,9 +217,8 @@ curl --fail --silent --show-error --location \
 }
 
 REMOTE_VERSION="$(tr -d '\r\n[:space:]' <"$VERSION_FILE")"
-if [[ "$REMOTE_VERSION" != "$AGENT_VERSION" ]]; then
-    echo "ERROR: Agent release version mismatch: remote release is $REMOTE_VERSION, requested $AGENT_VERSION." >&2
-    exit 1
+if [[ -z "$AGENT_VERSION" || "$AGENT_VERSION" == "auto" || "$REMOTE_VERSION" != "$AGENT_VERSION" ]]; then
+    AGENT_VERSION="$REMOTE_VERSION"
 fi
 
 curl --fail --silent --show-error --location \

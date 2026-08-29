@@ -2,6 +2,7 @@ package systeminfo
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
@@ -51,6 +52,19 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
+	agentVer := h.cfg.AgentVersion
+	if latest := scheduler.GetLatestAgentVersion(); latest != "" && (agentVer == "" || scheduler.CompareSemVer(latest, agentVer) > 0) {
+		agentVer = latest
+	}
+	agentArtifactBaseURL := h.cfg.AgentArtifactBaseURL
+	if strings.Contains(agentArtifactBaseURL, "github.com") && strings.Contains(agentArtifactBaseURL, "/releases/download/") && agentVer != "" {
+		idx := strings.Index(agentArtifactBaseURL, "/releases/download/")
+		prefix := agentArtifactBaseURL[:idx+len("/releases/download/")]
+		agentArtifactBaseURL = prefix + "agent-v" + agentVer
+	} else if agentArtifactBaseURL == "" && agentVer != "" {
+		agentArtifactBaseURL = "https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v" + agentVer
+	}
+
 	response.Success(w, http.StatusOK, map[string]any{
 		"edition":                 h.cfg.Edition,
 		"deployment_mode":         h.cfg.DeploymentMode,
@@ -60,8 +74,8 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 		"public_url":              h.cfg.PublicURL,
 		"agent_release_url":       h.cfg.AgentReleaseURL,
 		"agent_release_layout":    h.cfg.AgentReleaseLayout,
-		"agent_artifact_base_url": h.cfg.AgentArtifactBaseURL,
-		"agent_version":           h.cfg.AgentVersion,
+		"agent_artifact_base_url": agentArtifactBaseURL,
+		"agent_version":           agentVer,
 		"control_plane":           map[string]string{"version": cpVersion, "commit": h.commit},
 		"version":                 cpVersion,
 		"update_check":            scheduler.GetUpdateStatus(),

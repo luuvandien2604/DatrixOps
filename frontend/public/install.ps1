@@ -97,8 +97,8 @@ try {
 
     Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/agent-release.version" -OutFile $VersionPath -TimeoutSec 30
     $RemoteVersion = (Get-Content $VersionPath -Raw).Trim()
-    if ($RemoteVersion -ne $AgentVersion) {
-        throw "Agent release version mismatch: remote release is $RemoteVersion, requested $AgentVersion."
+    if ([string]::IsNullOrWhiteSpace($AgentVersion) -or $AgentVersion -eq "auto" -or $RemoteVersion -ne $AgentVersion) {
+        $AgentVersion = $RemoteVersion
     }
 
     Invoke-WebRequest -Uri "$AgentArtifactBaseUrl/$ArtifactName.sha256" -OutFile $ShaPath -TimeoutSec 30
