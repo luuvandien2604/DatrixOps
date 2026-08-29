@@ -198,10 +198,45 @@ export default function ServersPage() {
   }, [router]);
 
   useEffect(() => {
-    fetchServers();
+    let cancelled = false;
+    const loadInitial = async () => {
+      try {
+        const data: ServerRecord[] = await apiClient('/servers');
+        if (!cancelled) {
+          setServers(Array.isArray(data) ? data : []);
+          setLastRefreshedAt(new Date());
+          setAgentUpdateTasks(current => {
+            const next = { ...current };
+            for (const server of Array.isArray(data) ? data : []) {
+              if (server.active_agent_update_task) {
+                next[server.id] = server.active_agent_update_task;
+              } else if (next[server.id] && !['pending', 'processing'].includes(next[server.id].status)) {
+                delete next[server.id];
+              }
+            }
+            return next;
+          });
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const message = errorMessage(err, 'Unable to load servers');
+          if (message.includes('token') || message.includes('UNAUTHORIZED')) {
+            router.push('/login');
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    loadInitial();
     const interval = setInterval(() => fetchServers(true), 20_000);
-    return () => clearInterval(interval);
-  }, [fetchServers]);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [fetchServers, router]);
 
   useEffect(() => {
     const activeEntries = Object.entries(agentUpdateTasks).filter(([, task]) => ['pending', 'processing'].includes(task.status));
