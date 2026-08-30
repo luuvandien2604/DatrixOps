@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"strconv"
 	"strings"
 	"time"
@@ -101,18 +102,52 @@ type Snapshot struct {
 }
 
 func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot {
-	cronJobs, cronDiscoveryComplete := collectCronJobs()
-	return &Snapshot{
-		OSFamily:              currentOSFamily(),
-		SystemInfo:            collectSystemInfo(),
-		Inventory:             collectInventory(agentVersion),
-		CronJobs:              cronJobs,
-		CronDiscoveryComplete: cronDiscoveryComplete,
-		TopProcesses:          collectTopProcesses(),
-		Services:              collectServices(monitoredServices),
-		DockerContainers:      collectDockerContainers(),
-		PackageUpdate:         collectPackageUpdate(),
+	snap := &Snapshot{
+		OSFamily: currentOSFamily(),
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(7)
+
+	go func() {
+		defer wg.Done()
+		jobs, complete := collectCronJobs()
+		snap.CronJobs = jobs
+		snap.CronDiscoveryComplete = complete
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.SystemInfo = collectSystemInfo()
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.Inventory = collectInventory(agentVersion)
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.TopProcesses = collectTopProcesses()
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.Services = collectServices(monitoredServices)
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.DockerContainers = collectDockerContainers()
+	}()
+
+	go func() {
+		defer wg.Done()
+		snap.PackageUpdate = collectPackageUpdate()
+	}()
+
+	wg.Wait()
+	return snap
 }
 
 func collectSystemInfo() *SystemInfo {
