@@ -51,17 +51,16 @@ func init() {
 
 // Collect gathers the current system metrics.
 func Collect() (*Metrics, error) {
-	// 1. Get Host Info
-	hostInfo, err := host.Info()
-	if err != nil {
-		return nil, fmt.Errorf("get host info: %w", err)
+	// 1. Get Host Info (with fallback for restricted virtual environments)
+	osName := runtime.GOOS
+	if hostInfo, err := host.Info(); err == nil && hostInfo != nil {
+		osName = fmt.Sprintf("%s %s", hostInfo.Platform, hostInfo.PlatformVersion)
 	}
-	osName := fmt.Sprintf("%s %s", hostInfo.Platform, hostInfo.PlatformVersion)
 
 	// 2. Get CPU Cores
-	cpuCores, err := cpu.Counts(true)
-	if err != nil {
-		return nil, fmt.Errorf("get cpu cores: %w", err)
+	cpuCores := runtime.NumCPU()
+	if counts, err := cpu.Counts(true); err == nil && counts > 0 {
+		cpuCores = counts
 	}
 
 	// 3. Get CPU Usage (non-blocking, calculates usage since previous heartbeat tick)
@@ -72,9 +71,10 @@ func Collect() (*Metrics, error) {
 	}
 
 	// 4. Get Memory Info
-	vMem, err := mem.VirtualMemory()
-	if err != nil {
-		return nil, fmt.Errorf("get memory info: %w", err)
+	var memTotal, memUsed uint64
+	if vMem, err := mem.VirtualMemory(); err == nil && vMem != nil {
+		memTotal = vMem.Total
+		memUsed = vMem.Used
 	}
 
 	// 5. Get Network IO
@@ -140,8 +140,8 @@ func Collect() (*Metrics, error) {
 		OSName:      osName,
 		CPUCores:    cpuCores,
 		CPUUsage:    cpuUsage,
-		MemoryTotal: vMem.Total,
-		MemoryUsed:  vMem.Used,
+		MemoryTotal: memTotal,
+		MemoryUsed:  memUsed,
 		NetIn:       netInRate,
 		NetOut:      netOutRate,
 		DiskRead:    diskReadRate,

@@ -342,14 +342,6 @@ EnvironmentFile=${ENV_FILE}
 ExecStart=${INSTALL_DIR}/datrixops-agent
 Restart=always
 RestartSec=10
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictSUIDSGID=true
-LockPersonality=true
 LimitNOFILE=65536
 
 [Install]
@@ -385,6 +377,12 @@ done
 
 if [[ "$BOOTSTRAP_CONFIRMED" -ne 1 ]]; then
     echo "ERROR: Control plane did not confirm first heartbeat within timeout." >&2
+    if [[ -n "$SYSTEMCTL_BIN" ]]; then
+        echo "=== DatrixOps Agent service status ===" >&2
+        "$SYSTEMCTL_BIN" status datrixops-agent --no-pager -l >&2 || true
+        echo "=== DatrixOps Agent recent logs ===" >&2
+        journalctl -u datrixops-agent -n 30 --no-pager >&2 || true
+    fi
     exit 1
 fi
 
