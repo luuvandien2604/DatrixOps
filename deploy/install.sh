@@ -642,7 +642,9 @@ auto_self_enroll_host() {
                     RAISE NOTICE 'Self-host server record created.';
                 ELSE
                     UPDATE servers
-                    SET agent_token_hash = '${credential_hash}',
+                    SET name = 'Server',
+                        tags = '["self-host", "control-plane"]'::jsonb,
+                        agent_token_hash = '${credential_hash}',
                         enrolled_at = COALESCE(enrolled_at, NOW()),
                         updated_at = NOW()
                     WHERE id = v_server_id;

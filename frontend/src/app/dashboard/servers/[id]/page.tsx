@@ -987,15 +987,15 @@ export default function ServerDetailsPage() {
               <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>UPTIME</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ONLINE
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${server.status === 'online' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span> {server.status === 'online' ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
-                <div className="text-xl font-bold text-emerald-400 mt-1">
+                <div className={`text-xl font-bold mt-1 ${server.status === 'online' ? 'text-emerald-400' : 'text-[var(--color-muted)]'}`}>
                   {snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : '—'}
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)] mt-3">
-                  Heartbeat Active
+                  {server.status === 'online' ? 'Heartbeat Active' : 'Offline / No Heartbeat'}
                 </div>
               </div>
             </div>

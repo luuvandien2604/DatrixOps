@@ -313,11 +313,6 @@ done
 
 if [[ "$healthy" == "true" ]]; then
     auto_self_enroll_host() {
-        if systemctl is-active --quiet datrixops-agent 2>/dev/null && [[ -f /etc/datrixops/agent.env ]]; then
-            log_info "Host self-monitoring agent is running and streaming metrics uninterrupted."
-            return 0
-        fi
-
         local pub_url
         pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
         pub_url="${pub_url%/}"
@@ -347,7 +342,9 @@ if [[ "$healthy" == "true" ]]; then
         fi
 
         local raw_credential=""
-        if [[ -f /etc/datrixops/agent.env ]]; then
+        if [[ -f /etc/datrixops/self-monitor.env ]]; then
+            raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/self-monitor.env | tr -d '\r\n')"
+        elif [[ -f /etc/datrixops/agent.env ]]; then
             raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/agent.env | tr -d '\r\n')"
         fi
         if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
@@ -366,9 +363,9 @@ if [[ "$healthy" == "true" ]]; then
                     SELECT id INTO v_server_id FROM servers WHERE tags ? 'self-host' OR name LIKE '%Control Plane%' OR name = 'Server' LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                        VALUES (v_user_id, 'Server', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
+                        VALUES (v_user_id, 'Server', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '["self-host", "control-plane"]'::jsonb);
                     ELSE
-                        UPDATE servers SET user_id = v_user_id, agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
+                        UPDATE servers SET user_id = v_user_id, name = 'Server', tags = '["self-host", "control-plane"]'::jsonb, agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
                     END IF;
                 END \$\$;
             " < /dev/null || return 0

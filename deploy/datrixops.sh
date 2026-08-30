@@ -154,6 +154,70 @@ create_backup() {
     "${PROJECT_ROOT}/deploy/backup.sh"
 }
 
+repair_self_monitor() {
+    require_installation
+    require_root
+    printf "Diagnosing and re-activating Host Self-Monitoring service...\n"
+    local pub_url
+    pub_url="$(sed -n "s/^PUBLIC_URL=//p" "$ENV_FILE" | tail -n 1)"
+    pub_url="${pub_url%/}"
+    [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
+
+    local raw_credential=""
+    if [[ -f /etc/datrixops/self-monitor.env ]]; then
+        raw_credential="$(sed -n "s/^DATRIXOPS_AGENT_TOKEN=//p" /etc/datrixops/self-monitor.env | tr -d "\r\n")"
+    elif [[ -f /etc/datrixops/agent.env ]]; then
+        raw_credential="$(sed -n "s/^DATRIXOPS_AGENT_TOKEN=//p" /etc/datrixops/agent.env | tr -d "\r\n")"
+    fi
+    if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
+        raw_credential="$(openssl rand -base64 32 | tr -d "/+=\n" | head -c 43)"
+    fi
+    local credential_hash
+    credential_hash="$(printf "%s" "$raw_credential" | sha256sum | awk "{print \$1}")"
+
+    compose exec -T database \
+        psql -U datrixops -d datrixops -c "
+            DO \$\$
+            DECLARE v_user_id UUID; v_server_id UUID;
+            BEGIN
+                SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
+                IF v_user_id IS NULL THEN RETURN; END IF;
+                SELECT id INTO v_server_id FROM servers WHERE tags ? \x27self-host\x27 OR name LIKE \x27%Control Plane%\x27 OR name = \x27Server\x27 LIMIT 1;
+                IF v_server_id IS NULL THEN
+                    INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
+                    VALUES (v_user_id, \x27Server\x27, \x27127.0.0.1\x27, \x27offline\x27, \x27${credential_hash}\x27, NOW(), \x27[\"self-host\", \"control-plane\"]\x27::jsonb);
+                ELSE
+                    UPDATE servers SET user_id = v_user_id, name = \x27Server\x27, tags = \x27[\"self-host\", \"control-plane\"]\x27::jsonb, agent_token_hash = \x27${credential_hash}\x27, enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
+                END IF;
+            END \$\$;
+        " < /dev/null || true
+
+    mkdir -p /etc/datrixops
+    chmod 0700 /etc/datrixops
+    printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
+
+    cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
+[Unit]
+Description=DatrixOps Self Monitor
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+EnvironmentFile=/etc/datrixops/self-monitor.env
+ExecStart=/usr/local/bin/datrixops-agent
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    systemctl daemon-reload
+    systemctl enable --now datrixops-self-monitor
+    systemctl restart datrixops-self-monitor
+    printf "[SUCCESS] Host Self-Monitoring service (datrixops-self-monitor) reloaded and started!\n"
+    systemctl --no-pager status datrixops-self-monitor 2>/dev/null || true
+}
+
 show_help() {
     cat <<'EOF'
 Usage: datrix [command]
@@ -206,6 +270,7 @@ menu() {
             5) (trap - INT; restart_services) || action_status=$? ;;
             6) (trap - INT; upgrade_server) || action_status=$? ;;
             7) (trap - INT; create_backup) || action_status=$? ;;
+            8) (trap - INT; repair_self_monitor) || action_status=$? ;;
             0) printf 'Exited DatrixOps Management.\n'; return 0 ;;
             *) printf 'ERROR: Invalid selection.\n' >&2; action_status=2 ;;
         esac
@@ -227,6 +292,7 @@ case "${1:-}" in
     restart) restart_services ;;
     update|upgrade) upgrade_server ;;
     backup) create_backup ;;
+    self-monitor) repair_self_monitor ;;
     help|-h|--help) show_help ;;
     *) show_help; exit 2 ;;
 esac
