@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.15}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.16}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1

@@ -171,7 +171,7 @@ func (j *AlertJob) listEnabledChannelsByRule(ctx context.Context) (map[string][]
 
 // evaluateRule đánh giá rule trên một agent cụ thể hoặc toàn bộ agent của user.
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
-	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1`
+	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1 AND enrolled_at IS NOT NULL AND bootstrap_completed_at IS NOT NULL AND deletion_status IS NULL`
 	args := []interface{}{rule.UserID}
 
 	if rule.ServerID != nil {
@@ -228,7 +228,10 @@ func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, chann
 // evaluateCondition tính giá trị hiện tại và kết luận rule có đang firing hay không.
 func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, serverID string, lastSeen *time.Time) (bool, float64, bool) {
 	if rule.Metric == "status" {
-		return lastSeen == nil || time.Since(*lastSeen) >= time.Minute, 0, true
+		if lastSeen == nil {
+			return false, 0, false
+		}
+		return time.Since(*lastSeen) >= time.Minute, 0, true
 	}
 
 	metricExpression := "cpu_usage"

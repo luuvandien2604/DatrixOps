@@ -137,12 +137,13 @@ func main() {
 		retentionJob.Start()
 		defer retentionJob.Stop()
 
-		updateJob := scheduler.NewUpdateJob(cfg, log)
-		updateJob.Start()
-		defer updateJob.Stop()
 	} else {
 		log.Info("background schedulers disabled for this API process")
 	}
+
+	updateJob := scheduler.NewUpdateJob(cfg, log)
+	updateJob.Start()
+	defer updateJob.Stop()
 
 	// --- Middleware ---
 	var handler http.Handler = mux

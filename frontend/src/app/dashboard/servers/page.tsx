@@ -1350,7 +1350,11 @@ export default function ServersPage() {
                       onClick={async () => {
                         if (!newServerName.trim()) return;
                         try {
-                          const res = await apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } });
+                          const [res, sysInfo] = await Promise.all([
+                            apiClient('/servers', { method: 'POST', data: { name: newServerName.trim() } }),
+                            apiClient('/system/info?_t=' + Date.now()).catch(() => null)
+                          ]);
+                          if (sysInfo) setSystemData(sysInfo);
                           setGeneratedAgentToken(res.enrollment_token || res.agent_token);
                           toast.success('Installation command created successfully!');
                         } catch (err: unknown) {
