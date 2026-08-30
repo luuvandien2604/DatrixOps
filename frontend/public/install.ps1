@@ -205,7 +205,7 @@ try {
     # Step 4: Bounded Wait for Backend First-Heartbeat / Bootstrap Completion
     Write-Host "[*] Verifying first heartbeat with control plane..."
     $BootstrapConfirmed = $false
-    for ($i = 1; $i -le 15; $i++) {
+    for ($i = 1; $i -le 40; $i++) {
         try {
             $Headers = @{ Authorization = "Bearer $AgentToken" }
             $StatusRes = Invoke-RestMethod -Method Get -Uri "$ApiUrl/agent/bootstrap-status" -Headers $Headers -TimeoutSec 10 -ErrorAction SilentlyContinue

@@ -369,7 +369,7 @@ fi
 # Step 4: Bounded Wait for Backend First-Heartbeat / Bootstrap Completion
 echo "Verifying first heartbeat with control plane..."
 BOOTSTRAP_CONFIRMED=0
-for retry in $(seq 1 15); do
+for retry in $(seq 1 40); do
     STATUS_HTTP="$(
         curl --silent --show-error \
             --connect-timeout 5 --max-time 10 \
