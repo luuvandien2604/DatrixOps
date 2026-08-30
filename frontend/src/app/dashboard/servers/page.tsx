@@ -1,3 +1,16 @@
+const isNewerVersion = (target: string | undefined, current: string | undefined) => {
+  if (!target) return false;
+  if (!current) return true;
+  const parse = (value: string) => value.replace(/^v/i, "").split(".").map(part => Number.parseInt(part, 10) || 0);
+  const targetParts = parse(target);
+  const currentParts = parse(current);
+  for (let index = 0; index < Math.max(targetParts.length, currentParts.length); index += 1) {
+    if ((targetParts[index] || 0) > (currentParts[index] || 0)) return true;
+    if ((targetParts[index] || 0) < (currentParts[index] || 0)) return false;
+  }
+  return false;
+};
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -40,6 +53,7 @@ type ServerRecord = {
   environment?: string;
   os_info?: string | ServerOSInfo;
   snapshot?: string | ServerSnapshot;
+  inventory?: string | { agent_version?: string };
   version?: string;
   update_available?: boolean;
   latest_agent_version?: string;
@@ -51,7 +65,7 @@ type SystemInfo = {
   agent_version?: string;
   agent_artifact_base_url?: string;
   agent_release_layout?: string;
-  update_check?: { latest_version?: string };
+  update_check?: { latest_version?: string; latest_agent_version?: string };
 };
 type StatusFilter = 'all' | 'online' | 'offline' | 'critical' | 'update_available';
 
@@ -121,7 +135,7 @@ export default function ServersPage() {
   const [editEnvironment, setEditEnvironment] = useState('');
 
   // Update Agent
-  const [serverToUpdate, setServerToUpdate] = useState<{ id: string; name: string; currentVersion?: string; targetVersion?: string } | null>(null);
+  const [serverToUpdate, setServerToUpdate] = useState<{ id: string; name: string; currentVersion: string; targetVersion: string; hasUpdate: boolean } | null>(null);
   const [isUpdatingAgent, setIsUpdatingAgent] = useState(false);
   const [isUpdateAllOpen, setIsUpdateAllOpen] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
@@ -136,17 +150,49 @@ export default function ServersPage() {
   const handleCheckUpdateForServer = async (server: ServerRecord) => {
     try {
       setCheckingUpdateServerId(server.id);
-      const currentSystem: SystemInfo = await apiClient('/system/info');
-      const latestVer = currentSystem.agent_version || currentSystem.update_check?.latest_version || '1.5.12';
+      let latestVer = '1.5.13';
+
+      try {
+        const currentSystem: SystemInfo = await apiClient('/system/info');
+        if (currentSystem?.agent_version) {
+          latestVer = currentSystem.agent_version;
+        } else if (currentSystem?.update_check?.latest_agent_version) {
+          latestVer = currentSystem.update_check.latest_agent_version;
+        }
+      } catch {}
+
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/agent/version.txt?_t=${Date.now()}`);
+        if (res.ok) {
+          const rawTxt = (await res.text()).trim();
+          if (/^\d+\.\d+\.\d+/.test(rawTxt)) {
+            if (isNewerVersion(rawTxt, latestVer)) {
+              latestVer = rawTxt;
+            }
+          }
+        }
+      } catch {}
+
       const osInfo = parseJSON<ServerOSInfo>(server.os_info);
-      const runningVer = osInfo?.version || server?.version || 'v1.5.9';
+      const inventory = parseJSON<{ agent_version?: string }>(server.inventory);
+      const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
+      const runningVerRaw = osInfo?.version || inventory?.agent_version || snapshot?.inventory?.agent_version || server?.version || '1.5.12';
+
+      const cleanRunning = runningVerRaw.replace(/^v/i, '').trim();
+      const cleanTarget = latestVer.replace(/^v/i, '').trim();
+      const hasUpdate = isNewerVersion(cleanTarget, cleanRunning);
 
       setServerToUpdate({
         id: server.id,
         name: server.name,
-        currentVersion: runningVer.startsWith('v') ? runningVer : `v${runningVer}`,
-        targetVersion: latestVer.startsWith('v') ? latestVer.slice(1) : latestVer,
+        currentVersion: `v${cleanRunning}`,
+        targetVersion: `v${cleanTarget}`,
+        hasUpdate,
       });
+
+      if (!hasUpdate) {
+        toast.success(`${server.name} is running the latest Agent (v${cleanRunning})`);
+      }
     } catch {
       toast.error('Failed to check for updates');
     } finally {
@@ -1519,55 +1565,93 @@ export default function ServersPage() {
       {/* Update Agent Modal */}
       {serverToUpdate && (
         <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" className="ops-modal flex w-full max-w-md flex-col overflow-hidden border-cyan-500/35">
-            <div className="flex items-center gap-3 p-6 border-b border-white/5 bg-cyan-500/10">
-              <RefreshCw className="w-6 h-6 text-cyan-400" />
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Update Agent</h2>
+          <div role="alertdialog" aria-modal="true" className={`ops-modal flex w-full max-w-md flex-col overflow-hidden ${serverToUpdate.hasUpdate ? 'border-cyan-500/35' : 'border-emerald-500/35'}`}>
+            <div className={`flex items-center gap-3 p-6 border-b border-white/5 ${serverToUpdate.hasUpdate ? 'bg-cyan-500/10' : 'bg-emerald-500/10'}`}>
+              {serverToUpdate.hasUpdate ? (
+                <RefreshCw className="w-6 h-6 text-cyan-400" />
+              ) : (
+                <CircleCheck className="w-6 h-6 text-emerald-400" />
+              )}
+              <h2 className="text-xl font-bold text-[var(--foreground)]">
+                {serverToUpdate.hasUpdate ? 'Update Available' : 'Agent Up to Date'}
+              </h2>
             </div>
             <div className="p-6">
-              <p className="text-[var(--color-muted)] mb-4 text-sm">
-                Check completed. Would you like to update the Agent on <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>?
-              </p>
+              {serverToUpdate.hasUpdate ? (
+                <p className="text-[var(--color-muted)] mb-4 text-sm">
+                  A newer Agent release is available for <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong>. Would you like to update now?
+                </p>
+              ) : (
+                <p className="text-[var(--color-muted)] mb-4 text-sm">
+                  The Agent on <strong className="text-[var(--foreground)]">{serverToUpdate.name}</strong> is already running the latest release. No update is required.
+                </p>
+              )}
+
               <div className="p-3.5 mb-6 rounded-lg border border-white/10 bg-white/5 space-y-2 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--color-muted)]">Current Version:</span>
-                  <span className="font-semibold text-slate-300 font-mono">{serverToUpdate.currentVersion || 'v1.5.9'}</span>
+                  <span className="font-semibold text-slate-300 font-mono">{serverToUpdate.currentVersion}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[var(--color-muted)]">Target Release:</span>
-                  <span className="font-semibold text-emerald-400 font-mono">v{serverToUpdate.targetVersion || '1.5.12'}</span>
+                  <span className="text-[var(--color-muted)]">Latest Release:</span>
+                  <span className="font-semibold text-emerald-400 font-mono">{serverToUpdate.targetVersion}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-white/5">
+                  <span className="text-[var(--color-muted)]">Status:</span>
+                  {serverToUpdate.hasUpdate ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Upgrade Available
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Fully Up to Date
+                    </span>
+                  )}
                 </div>
               </div>
+
               <div className="flex justify-end gap-3">
-                <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors text-sm">
-                  Cancel
-                </button>
-                <button
-                  disabled={isUpdatingAgent}
-                  onClick={async () => {
-                    setIsUpdatingAgent(true);
-                    try {
-                      const task: AgentUpdateTask = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
-                        method: 'POST',
-                        data: {
-                          type: 'agent_update',
-                          payload: JSON.stringify({ target_version: serverToUpdate.targetVersion || '1.5.12' }),
-                          timeout_seconds: 300
+                {serverToUpdate.hasUpdate ? (
+                  <>
+                    <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 hover:bg-white/5 text-[var(--foreground)] rounded-lg font-medium transition-colors text-sm">
+                      Cancel
+                    </button>
+                    <button
+                      disabled={isUpdatingAgent}
+                      onClick={async () => {
+                        setIsUpdatingAgent(true);
+                        try {
+                          const target = serverToUpdate.targetVersion.replace(/^v/i, '');
+                          const task: AgentUpdateTask = await apiClient(`/servers/${serverToUpdate.id}/tasks`, {
+                            method: 'POST',
+                            data: {
+                              type: 'agent_update',
+                              payload: JSON.stringify({ target_version: target }),
+                              timeout_seconds: 300
+                            }
+                          });
+                          setAgentUpdateTasks(current => ({ ...current, [serverToUpdate.id]: task }));
+                          toast.success(`Update task dispatched for ${serverToUpdate.name} to v${target}`);
+                          setServerToUpdate(null);
+                          fetchServers(true);
+                        } catch (err: unknown) {
+                          toast.error(errorMessage(err, 'Error updating agent'));
+                        } finally {
+                          setIsUpdatingAgent(false);
                         }
-                      });
-                      setAgentUpdateTasks(current => ({ ...current, [serverToUpdate.id]: task }));
-                      toast.success(`Update task dispatched for ${serverToUpdate.name} to v${serverToUpdate.targetVersion || '1.5.12'}`);
-                      setServerToUpdate(null);
-                      fetchServers(true);
-                    } catch (err: unknown) {
-                      toast.error(errorMessage(err, 'Error updating agent'));
-                    } finally {
-                      setIsUpdatingAgent(false);
-                    }
-                  }}
-                  className="px-4 py-2 bg-cyan-500 text-slate-950 hover:bg-cyan-400 disabled:opacity-70 rounded-lg font-bold transition-colors text-sm">
-                  {isUpdatingAgent ? 'Queueing…' : 'Start Update'}
-                </button>
+                      }}
+                      className="px-4 py-2 bg-cyan-500 text-slate-950 hover:bg-cyan-400 disabled:opacity-70 rounded-lg font-bold transition-colors text-sm flex items-center gap-2">
+                      <RefreshCw className={`w-4 h-4 ${isUpdatingAgent ? 'animate-spin' : ''}`} />
+                      {isUpdatingAgent ? 'Queueing…' : `Start Update (${serverToUpdate.targetVersion})`}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => setServerToUpdate(null)} className="px-4 py-2 bg-emerald-500 text-slate-950 hover:bg-emerald-400 rounded-lg font-bold transition-colors text-sm">
+                      Close
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
