@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"sync"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
