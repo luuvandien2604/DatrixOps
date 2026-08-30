@@ -147,6 +147,39 @@ export default function ServersPage() {
   const [checkingUpdateServerId, setCheckingUpdateServerId] = useState<string | null>(null);
   const [systemData, setSystemData] = useState<SystemInfo | null>(null);
 
+  const refreshLatestAgentVersion = useCallback(async () => {
+    try {
+      let candidate = "1.5.13";
+      try {
+        const info: SystemInfo = await apiClient("/system/info?_t=" + Date.now());
+        if (info?.agent_version) {
+          candidate = info.agent_version;
+        } else if (info?.update_check?.latest_agent_version) {
+          candidate = info.update_check.latest_agent_version;
+        }
+      } catch {}
+
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/agent/version.txt?_t=${Date.now()}`);
+        if (res.ok) {
+          const txt = (await res.text()).trim();
+          if (/^\d+\.\d+\.\d+/.test(txt)) {
+            if (isNewerVersion(txt, candidate)) {
+              candidate = txt;
+            }
+          }
+        }
+      } catch {}
+
+      const clean = candidate.replace(/^v/i, "").trim();
+      setSystemData(prev => ({
+        ...prev,
+        agent_version: clean,
+        agent_artifact_base_url: `https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${clean}`,
+      }));
+    } catch {}
+  }, []);
+
   const handleCheckUpdateForServer = async (server: ServerRecord) => {
     try {
       setCheckingUpdateServerId(server.id);
@@ -201,14 +234,39 @@ export default function ServersPage() {
   };
 
   useEffect(() => {
+    let mounted = true;
     apiClient('/auth/me')
       .then((u) => {
-        if (u?.role) setUserRole(u.role);
+        if (mounted && u?.role) setUserRole(u.role);
       })
       .catch(() => {});
+
     apiClient('/system/info')
-      .then((data) => setSystemData(data))
+      .then((info: SystemInfo) => {
+        if (!mounted) return;
+        const candidate = info?.agent_version || '1.5.13';
+        setSystemData(info);
+
+        fetch(`https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/agent/version.txt?_t=${Date.now()}`)
+          .then(async res => {
+            if (mounted && res.ok) {
+              const txt = (await res.text()).trim();
+              if (/^\d+\.\d+\.\d+/.test(txt) && isNewerVersion(txt, candidate)) {
+                setSystemData(prev => ({
+                  ...prev,
+                  agent_version: txt.replace(/^v/i, ''),
+                  agent_artifact_base_url: `https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${txt.replace(/^v/i, '')}`,
+                }));
+              }
+            }
+          })
+          .catch(() => {});
+      })
       .catch(() => {});
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const isAdmin = userRole !== 'viewer';
@@ -487,8 +545,11 @@ export default function ServersPage() {
   const getInstallCommand = () => {
     const controlPlaneOrigin = typeof window === 'undefined' ? '' : window.location.origin;
     const services = customServices.trim();
-    const agentVersion = systemData?.agent_version || '1.5.12';
-    const agentArtifactBaseUrl = systemData?.agent_artifact_base_url || `https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agentVersion}`;
+    const agentVersion = (systemData?.agent_version || '1.5.13').replace(/^v/i, '').trim();
+    const defaultArtifactUrl = `https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agentVersion}`;
+    const agentArtifactBaseUrl = (systemData?.agent_artifact_base_url && systemData.agent_artifact_base_url.includes(agentVersion))
+      ? systemData.agent_artifact_base_url
+      : defaultArtifactUrl;
     const isHttp = controlPlaneOrigin.startsWith('http://');
     const isLocalhost = controlPlaneOrigin.includes('localhost') || controlPlaneOrigin.includes('127.0.0.1');
     const allowInsecureFlag = isHttp && !isLocalhost;
@@ -496,7 +557,7 @@ export default function ServersPage() {
     const powershellInsecureArg = allowInsecureFlag ? ' -AllowInsecureHttp' : '';
     const shellServicesArgument = services ? ` --services "${services}"` : '';
     const powershellServicesArgument = services ? ` -Services "${services}"` : '';
-    const agentReleaseLayout = systemData?.agent_release_layout || 'github';
+    const agentReleaseLayout = systemData?.agent_release_layout || 'legacy_direct';
     switch (selectedOs) {
       case 'linux':
         return `curl -fsSL ${agentArtifactBaseUrl}/install.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken} --agent-version ${agentVersion} --agent-artifact-base-url ${agentArtifactBaseUrl} --agent-release-layout ${agentReleaseLayout}${shellInsecureArg}${shellServicesArgument}`;
@@ -523,6 +584,7 @@ export default function ServersPage() {
   };
 
   const handleSelfMonitorClick = async () => {
+    refreshLatestAgentVersion();
     if (!isAdmin) return;
     const existingSelfHost = servers.find(
       s => s.name?.toLowerCase().includes('control plane') || s.tags?.includes('self-host')
@@ -592,7 +654,7 @@ export default function ServersPage() {
             Refresh
           </button>
           <button
-            onClick={() => setIsAddServerModalOpen(true)}
+            onClick={() => { refreshLatestAgentVersion(); setIsAddServerModalOpen(true); }}
             disabled={!isAdmin}
             title={!isAdmin ? 'Adding servers requires Admin role permission' : ''}
             className="ops-button primary disabled:cursor-not-allowed disabled:opacity-50">
