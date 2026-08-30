@@ -1,16 +1,3 @@
-const isNewerVersion = (target: string | undefined, current: string | undefined) => {
-  if (!target) return false;
-  if (!current) return true;
-  const parse = (value: string) => value.replace(/^v/i, "").split(".").map(part => Number.parseInt(part, 10) || 0);
-  const targetParts = parse(target);
-  const currentParts = parse(current);
-  for (let index = 0; index < Math.max(targetParts.length, currentParts.length); index += 1) {
-    if ((targetParts[index] || 0) > (currentParts[index] || 0)) return true;
-    if ((targetParts[index] || 0) < (currentParts[index] || 0)) return false;
-  }
-  return false;
-};
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -23,6 +10,19 @@ import {
   LayoutGrid, LayoutList, ToggleLeft, ToggleRight, CheckSquare, Square, ShieldCheck, Activity
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const isNewerVersion = (target: string | undefined, current: string | undefined) => {
+  if (!target) return false;
+  if (!current) return true;
+  const parse = (value: string) => value.replace(/^v/i, "").split(".").map(part => Number.parseInt(part, 10) || 0);
+  const targetParts = parse(target);
+  const currentParts = parse(current);
+  for (let index = 0; index < Math.max(targetParts.length, currentParts.length); index += 1) {
+    if ((targetParts[index] || 0) > (currentParts[index] || 0)) return true;
+    if ((targetParts[index] || 0) < (currentParts[index] || 0)) return false;
+  }
+  return false;
+};
 
 type AgentUpdateTask = { id: string; status: string; result?: string };
 type ServerSnapshot = {
