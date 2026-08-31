@@ -375,7 +375,11 @@ if [[ "$healthy" == "true" ]]; then
                        OR name ILIKE '%DatrixOps%' 
                        OR name ILIKE '%Control Plane%' 
                        OR name = 'Server' 
-                    ORDER BY created_at ASC LIMIT 1;
+                    ORDER BY 
+                       CASE WHEN status = 'online' THEN 0 ELSE 1 END,
+                       last_seen_at DESC NULLS LAST,
+                       created_at ASC
+                    LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
                         VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
@@ -388,7 +392,20 @@ if [[ "$healthy" == "true" ]]; then
                             enrolled_at = COALESCE(enrolled_at, NOW()), 
                             updated_at = NOW() 
                         WHERE id = v_server_id;
+
+                        DELETE FROM servers
+                        WHERE id != v_server_id
+                          AND (
+                              tags ? 'self-host'
+                              OR tags ? 'control-plane'
+                              OR name = 'Server'
+                              OR (name ILIKE '%DatrixOps%' AND status = 'offline' AND last_seen_at IS NULL)
+                          );
                     END IF;
+
+                    UPDATE server_tasks
+                    SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+                    WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
                 END \$\$;
             " < /dev/null || return 0
 
@@ -397,6 +414,11 @@ if [[ "$healthy" == "true" ]]; then
         install -d -m 0700 /etc/datrixops
         printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
         chmod 0600 /etc/datrixops/self-monitor.env
+
+        if systemctl is-active --quiet datrixops-agent 2>/dev/null; then
+            systemctl stop datrixops-agent 2>/dev/null || true
+            systemctl disable datrixops-agent 2>/dev/null || true
+        fi
 
         cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
 [Unit]

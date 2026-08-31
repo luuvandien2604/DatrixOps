@@ -638,7 +638,10 @@ auto_self_enroll_host() {
                    OR name ILIKE '%DatrixOps%' 
                    OR name ILIKE '%Control Plane%' 
                    OR name = 'Server'
-                ORDER BY created_at ASC
+                ORDER BY 
+                   CASE WHEN status = 'online' THEN 0 ELSE 1 END,
+                   last_seen_at DESC NULLS LAST,
+                   created_at ASC
                 LIMIT 1;
 
                 IF v_server_id IS NULL THEN
@@ -663,8 +666,21 @@ auto_self_enroll_host() {
                         enrolled_at = COALESCE(enrolled_at, NOW()),
                         updated_at = NOW()
                     WHERE id = v_server_id;
+
+                    DELETE FROM servers
+                    WHERE id != v_server_id
+                      AND (
+                          tags ? 'self-host'
+                          OR tags ? 'control-plane'
+                          OR name = 'Server'
+                          OR (name ILIKE '%DatrixOps%' AND status = 'offline' AND last_seen_at IS NULL)
+                      );
                     RAISE NOTICE 'Self-host server record updated.';
                 END IF;
+
+                UPDATE server_tasks
+                SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+                WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
             END \$\$;
         " < /dev/null || log_warn "Database registration notice (will auto-bind upon setup completion)."
 
