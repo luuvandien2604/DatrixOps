@@ -60,6 +60,8 @@ type ServerRecord = {
   auto_update_agent?: boolean;
   deletion_status?: string;
   active_agent_update_task?: AgentUpdateTask;
+  enrollment_token?: string;
+  agent_token?: string;
 };
 type SystemInfo = {
   agent_version?: string;
@@ -600,7 +602,7 @@ export default function ServersPage() {
     try {
       setLoading(true);
       const hostName = existingSelfHost?.name || 'DatrixOps';
-      const createdServer: any = await apiClient('/servers', {
+      const createdServer: ServerRecord = await apiClient('/servers', {
         method: 'POST',
         data: { name: hostName, tags: ['self-host', 'control-plane'] }
       });
