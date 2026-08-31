@@ -520,17 +520,26 @@ func parseCronField(field string, minValue, maxValue int) (map[int]bool, bool, b
 }
 
 func collectTopProcesses() []TopProcess {
-	procs, err := process.Processes()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
 		return nil
 	}
 
 	var results []TopProcess
 	for _, p := range procs {
-		name, _ := p.Name()
-		cpu, _ := p.CPUPercent()
-		ram, _ := p.MemoryPercent()
-		user, _ := p.Username()
+		if ctx.Err() != nil {
+			break
+		}
+		name, err := p.NameWithContext(ctx)
+		if err != nil {
+			continue
+		}
+		cpu, _ := p.CPUPercentWithContext(ctx)
+		ram, _ := p.MemoryPercentWithContext(ctx)
+		user, _ := p.UsernameWithContext(ctx)
 
 		// Skip processes with 0 cpu and 0 ram
 		if cpu > 0.1 || ram > 0.1 {

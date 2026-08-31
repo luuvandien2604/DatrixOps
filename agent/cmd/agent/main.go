@@ -84,8 +84,17 @@ func main() {
 		log.Printf("Terminal reverse channel disabled: %s", terminalSupport.Reason)
 	}
 
-	// Initial heartbeat immediately on startup with snapshot
-	sendHeartbeat(ctx, apiClient, true, cfg.MonitoredServices)
+	// Initial fast heartbeat immediately on startup for instant bootstrap confirmation
+	sendHeartbeat(ctx, apiClient, false, cfg.MonitoredServices)
+
+	// Follow up with a full snapshot heartbeat shortly after startup
+	go func() {
+		select {
+		case <-time.After(3 * time.Second):
+			sendHeartbeat(ctx, apiClient, true, cfg.MonitoredServices)
+		case <-ctx.Done():
+		}
+	}()
 
 	// Ticker for periodic heartbeats
 	ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
