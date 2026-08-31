@@ -633,13 +633,16 @@ auto_self_enroll_host() {
                 END IF;
 
                 SELECT id INTO v_server_id FROM servers
-                WHERE tags ? 'self-host' 
+                WHERE agent_token_hash = '${credential_hash}'
+                   OR tags ? 'self-host' 
                    OR tags ? 'control-plane' 
                    OR name ILIKE '%DatrixOps%' 
                    OR name ILIKE '%Control Plane%' 
                    OR name = 'Server'
                 ORDER BY 
-                   CASE WHEN status = 'online' THEN 0 ELSE 1 END,
+                   CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
+                        WHEN status = 'online' THEN 1
+                        ELSE 2 END,
                    last_seen_at DESC NULLS LAST,
                    created_at ASC
                 LIMIT 1;
@@ -661,7 +664,11 @@ auto_self_enroll_host() {
                 ELSE
                     UPDATE servers
                     SET name = COALESCE(NULLIF(name, ''), 'DatrixOps'),
-                        tags = '[\"self-host\", \"control-plane\"]'::jsonb,
+                        tags = CASE 
+                            WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
+                            WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
+                            ELSE tags 
+                        END,
                         agent_token_hash = '${credential_hash}',
                         enrolled_at = COALESCE(enrolled_at, NOW()),
                         updated_at = NOW()
@@ -670,10 +677,8 @@ auto_self_enroll_host() {
                     DELETE FROM servers
                     WHERE id != v_server_id
                       AND (
-                          tags ? 'self-host'
-                          OR tags ? 'control-plane'
-                          OR name = 'Server'
-                          OR (name ILIKE '%DatrixOps%' AND status = 'offline' AND last_seen_at IS NULL)
+                          (tags ? 'self-host' OR tags ? 'control-plane' OR name = 'Server')
+                          AND status = 'offline' AND last_seen_at IS NULL
                       );
                     RAISE NOTICE 'Self-host server record updated.';
                 END IF;

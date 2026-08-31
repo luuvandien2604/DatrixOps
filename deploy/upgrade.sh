@@ -370,42 +370,47 @@ if [[ "$healthy" == "true" ]]; then
                     SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                     IF v_user_id IS NULL THEN RETURN; END IF;
                     SELECT id INTO v_server_id FROM servers 
-                    WHERE tags ? 'self-host' 
-                       OR tags ? 'control-plane' 
-                       OR name ILIKE '%DatrixOps%' 
-                       OR name ILIKE '%Control Plane%' 
-                       OR name = 'Server' 
-                    ORDER BY 
-                       CASE WHEN status = 'online' THEN 0 ELSE 1 END,
-                       last_seen_at DESC NULLS LAST,
-                       created_at ASC
-                    LIMIT 1;
-                    IF v_server_id IS NULL THEN
-                        INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                        VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
-                    ELSE
-                        UPDATE servers 
-                        SET user_id = v_user_id, 
-                            name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
-                            tags = '[\"self-host\", \"control-plane\"]'::jsonb, 
-                            agent_token_hash = '${credential_hash}', 
-                            enrolled_at = COALESCE(enrolled_at, NOW()), 
-                            updated_at = NOW() 
-                        WHERE id = v_server_id;
+                WHERE agent_token_hash = '${credential_hash}'
+                   OR tags ? 'self-host' 
+                   OR tags ? 'control-plane' 
+                   OR name ILIKE '%DatrixOps%' 
+                   OR name ILIKE '%Control Plane%' 
+                   OR name = 'Server' 
+                ORDER BY 
+                   CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
+                        WHEN status = 'online' THEN 1
+                        ELSE 2 END,
+                   last_seen_at DESC NULLS LAST,
+                   created_at ASC
+                LIMIT 1;
+                IF v_server_id IS NULL THEN
+                    INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
+                    VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
+                ELSE
+                    UPDATE servers 
+                    SET user_id = v_user_id, 
+                        name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
+                        tags = CASE 
+                            WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
+                            WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
+                            ELSE tags 
+                        END, 
+                        agent_token_hash = '${credential_hash}', 
+                        enrolled_at = COALESCE(enrolled_at, NOW()), 
+                        updated_at = NOW() 
+                    WHERE id = v_server_id;
 
-                        DELETE FROM servers
-                        WHERE id != v_server_id
-                          AND (
-                              tags ? 'self-host'
-                              OR tags ? 'control-plane'
-                              OR name = 'Server'
-                              OR (name ILIKE '%DatrixOps%' AND status = 'offline' AND last_seen_at IS NULL)
-                          );
-                    END IF;
+                    DELETE FROM servers
+                    WHERE id != v_server_id
+                      AND (
+                          (tags ? 'self-host' OR tags ? 'control-plane' OR name = 'Server')
+                          AND status = 'offline' AND last_seen_at IS NULL
+                      );
+                END IF;
 
-                    UPDATE server_tasks
-                    SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
-                    WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
+                UPDATE server_tasks
+                SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+                WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
                 END \$\$;
             " < /dev/null || return 0
 
