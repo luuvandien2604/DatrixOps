@@ -337,7 +337,16 @@ if [[ "$healthy" == "true" ]]; then
         done
 
         if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-			log_warn "A cryptographically verified Agent binary was not found; self-monitoring installation was skipped."
+            local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agent_ver}/datrixops-agent-linux-${agent_arch}"
+            log_info "Downloading Agent binary for host self-monitoring from ${download_url}..."
+            curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null || true
+            if [[ -s /tmp/datrixops-agent-download ]]; then
+                agent_binary="/tmp/datrixops-agent-download"
+            fi
+        fi
+
+        if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+            log_warn "A verified Agent binary could not be loaded; host self-monitoring was skipped."
             return 0
         fi
 
@@ -360,12 +369,25 @@ if [[ "$healthy" == "true" ]]; then
                 BEGIN
                     SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                     IF v_user_id IS NULL THEN RETURN; END IF;
-                    SELECT id INTO v_server_id FROM servers WHERE tags ? 'self-host' OR name LIKE '%Control Plane%' OR name = 'Server' LIMIT 1;
+                    SELECT id INTO v_server_id FROM servers 
+                    WHERE tags ? 'self-host' 
+                       OR tags ? 'control-plane' 
+                       OR name ILIKE '%DatrixOps%' 
+                       OR name ILIKE '%Control Plane%' 
+                       OR name = 'Server' 
+                    ORDER BY created_at ASC LIMIT 1;
                     IF v_server_id IS NULL THEN
                         INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                        VALUES (v_user_id, 'Server', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '["self-host", "control-plane"]'::jsonb);
+                        VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                     ELSE
-                        UPDATE servers SET user_id = v_user_id, name = 'Server', tags = '["self-host", "control-plane"]'::jsonb, agent_token_hash = '${credential_hash}', enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
+                        UPDATE servers 
+                        SET user_id = v_user_id, 
+                            name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
+                            tags = '[\"self-host\", \"control-plane\"]'::jsonb, 
+                            agent_token_hash = '${credential_hash}', 
+                            enrolled_at = COALESCE(enrolled_at, NOW()), 
+                            updated_at = NOW() 
+                        WHERE id = v_server_id;
                     END IF;
                 END \$\$;
             " < /dev/null || return 0
@@ -387,6 +409,7 @@ EnvironmentFile=/etc/datrixops/self-monitor.env
 ExecStart=/usr/local/bin/datrixops-agent
 Restart=always
 RestartSec=10
+LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 SVCEOF

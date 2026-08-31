@@ -587,25 +587,29 @@ export default function ServersPage() {
     refreshLatestAgentVersion();
     if (!isAdmin) return;
     const existingSelfHost = servers.find(
-      s => s.name?.toLowerCase().includes('control plane') || s.tags?.includes('self-host')
+      s => s.name?.toLowerCase().includes('control plane') ||
+           s.name?.toLowerCase().includes('datrixops') ||
+           s.name?.toLowerCase() === 'server' ||
+           s.tags?.includes('self-host') ||
+           s.tags?.includes('control-plane')
     );
     if (existingSelfHost && existingSelfHost.status === 'online') {
-      toast.success('Control Plane host server is already monitored and currently ONLINE!');
+      toast.success(`Host server (${existingSelfHost.name}) is already monitored and ONLINE!`);
       return;
     }
     try {
       setLoading(true);
-      const hostName = 'Server';
-      const createdServer = await apiClient('/servers', {
+      const hostName = existingSelfHost?.name || 'DatrixOps';
+      const createdServer: any = await apiClient('/servers', {
         method: 'POST',
         data: { name: hostName, tags: ['self-host', 'control-plane'] }
       });
       if (createdServer && (createdServer.enrollment_token || createdServer.agent_token)) {
-        setGeneratedAgentToken(createdServer.enrollment_token || createdServer.agent_token);
+        setGeneratedAgentToken(createdServer.enrollment_token || createdServer.agent_token || '');
         setNewServerName(hostName);
         setSelectedOs('linux');
         setIsAddServerModalOpen(true);
-        toast.success('Generated self-monitoring token! Run the command on your VPS.');
+        toast.success('Generated self-monitoring token! Run the command on your VPS or run: sudo datrix repair-self-monitor');
       }
     } catch (err: unknown) {
       toast.error(errorMessage(err, 'Failed to generate self-monitoring token'));

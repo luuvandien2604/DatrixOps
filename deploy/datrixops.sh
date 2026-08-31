@@ -163,6 +163,23 @@ repair_self_monitor() {
     pub_url="${pub_url%/}"
     [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
 
+    local agent_arch
+    case "$(uname -m)" in
+        x86_64|amd64)  agent_arch="amd64" ;;
+        aarch64|arm64) agent_arch="arm64" ;;
+        *) agent_arch="amd64" ;;
+    esac
+
+    local agent_binary="/usr/local/bin/datrixops-agent"
+    if [[ ! -s "$agent_binary" ]]; then
+        local target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${PROJECT_ROOT}/deploy/version.json" 2>/dev/null | head -n 1 | tr -d ' "\r\n')"
+        target_agent_ver="${target_agent_ver:-1.5.14}"
+        local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${target_agent_ver}/datrixops-agent-linux-${agent_arch}"
+        printf "Downloading DatrixOps Agent %s binary from %s...\n" "$target_agent_ver" "$download_url"
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o "$agent_binary" || true
+        chmod 0755 "$agent_binary" 2>/dev/null || true
+    fi
+
     local raw_credential=""
     if [[ -f /etc/datrixops/self-monitor.env ]]; then
         raw_credential="$(sed -n "s/^DATRIXOPS_AGENT_TOKEN=//p" /etc/datrixops/self-monitor.env | tr -d "\r\n")"
@@ -182,12 +199,25 @@ repair_self_monitor() {
             BEGIN
                 SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
                 IF v_user_id IS NULL THEN RETURN; END IF;
-                SELECT id INTO v_server_id FROM servers WHERE tags ? \x27self-host\x27 OR name LIKE \x27%Control Plane%\x27 OR name = \x27Server\x27 LIMIT 1;
+                SELECT id INTO v_server_id FROM servers 
+                WHERE tags ? 'self-host' 
+                   OR tags ? 'control-plane' 
+                   OR name ILIKE '%DatrixOps%' 
+                   OR name ILIKE '%Control Plane%' 
+                   OR name = 'Server' 
+                ORDER BY created_at ASC LIMIT 1;
                 IF v_server_id IS NULL THEN
                     INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                    VALUES (v_user_id, \x27Server\x27, \x27127.0.0.1\x27, \x27offline\x27, \x27${credential_hash}\x27, NOW(), \x27[\"self-host\", \"control-plane\"]\x27::jsonb);
+                    VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                 ELSE
-                    UPDATE servers SET user_id = v_user_id, name = \x27Server\x27, tags = \x27[\"self-host\", \"control-plane\"]\x27::jsonb, agent_token_hash = \x27${credential_hash}\x27, enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW() WHERE id = v_server_id;
+                    UPDATE servers 
+                    SET user_id = v_user_id, 
+                        name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
+                        tags = '[\"self-host\", \"control-plane\"]'::jsonb, 
+                        agent_token_hash = '${credential_hash}', 
+                        enrolled_at = COALESCE(enrolled_at, NOW()), 
+                        updated_at = NOW() 
+                    WHERE id = v_server_id;
                 END IF;
             END \$\$;
         " < /dev/null || true
@@ -208,6 +238,7 @@ EnvironmentFile=/etc/datrixops/self-monitor.env
 ExecStart=/usr/local/bin/datrixops-agent
 Restart=always
 RestartSec=10
+LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 SVCEOF
@@ -230,6 +261,7 @@ Commands:
   restart              Restart DatrixOps services
   update               Upgrade to the latest CE Server release
   backup               Create a backup
+  repair-self-monitor  Repair and restart Host Self-Monitoring service
   help                 Show this help
 
 Run `datrix` without a command to open the management menu. Use `sudo datrix`
@@ -253,6 +285,7 @@ menu() {
         printf '%s\n' '  5) Restart services'
         printf '%s\n' '  6) Upgrade DatrixOps'
         printf '%s\n' '  7) Create backup'
+        printf '%s\n' '  8) Repair Self-Monitor service'
         printf '%s\n' '  0) Exit'
         printf '%s\n' '============================================================'
         printf 'Select: '
@@ -292,7 +325,7 @@ case "${1:-}" in
     restart) restart_services ;;
     update|upgrade) upgrade_server ;;
     backup) create_backup ;;
-    self-monitor) repair_self_monitor ;;
+    repair-self-monitor|self-monitor) repair_self_monitor ;;
     help|-h|--help) show_help ;;
     *) show_help; exit 2 ;;
 esac

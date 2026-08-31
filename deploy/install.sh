@@ -592,13 +592,23 @@ auto_self_enroll_host() {
         fi
     done
     if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-        log_warn "A cryptographically verified Agent binary was not found; self-monitoring installation was skipped."
+        local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agent_ver}/datrixops-agent-linux-${agent_arch}"
+        log_info "Downloading Agent binary for host self-monitoring from ${download_url}..."
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null || true
+        if [[ -s /tmp/datrixops-agent-download ]]; then
+            agent_binary="/tmp/datrixops-agent-download"
+        fi
+    fi
+    if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+        log_warn "A verified Agent binary could not be loaded; host self-monitoring was skipped."
         return 0
     fi
 
-    # Reuse existing credential if agent.env exists, otherwise generate a new permanent agent credential
+    # Reuse existing credential if self-monitor.env or agent.env exists, otherwise generate a new permanent agent credential
     local raw_credential=""
-    if [[ -f /etc/datrixops/agent.env ]]; then
+    if [[ -f /etc/datrixops/self-monitor.env ]]; then
+        raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/self-monitor.env | tr -d '\r\n')"
+    elif [[ -f /etc/datrixops/agent.env ]]; then
         raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/agent.env | tr -d '\r\n')"
     fi
     if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
@@ -623,7 +633,12 @@ auto_self_enroll_host() {
                 END IF;
 
                 SELECT id INTO v_server_id FROM servers
-                WHERE tags ? 'self-host' OR name LIKE '%Control Plane%'
+                WHERE tags ? 'self-host' 
+                   OR tags ? 'control-plane' 
+                   OR name ILIKE '%DatrixOps%' 
+                   OR name ILIKE '%Control Plane%' 
+                   OR name = 'Server'
+                ORDER BY created_at ASC
                 LIMIT 1;
 
                 IF v_server_id IS NULL THEN
@@ -632,18 +647,18 @@ auto_self_enroll_host() {
                         agent_token_hash, enrolled_at, tags
                     ) VALUES (
                         v_user_id,
-                        'Server',
+                        'DatrixOps',
                         '127.0.0.1',
                         'offline',
                         '${credential_hash}',
                         NOW(),
-                        '["self-host", "control-plane"]'::jsonb
+                        '[\"self-host\", \"control-plane\"]'::jsonb
                     );
                     RAISE NOTICE 'Self-host server record created.';
                 ELSE
                     UPDATE servers
-                    SET name = 'Server',
-                        tags = '["self-host", "control-plane"]'::jsonb,
+                    SET name = COALESCE(NULLIF(name, ''), 'DatrixOps'),
+                        tags = '[\"self-host\", \"control-plane\"]'::jsonb,
                         agent_token_hash = '${credential_hash}',
                         enrolled_at = COALESCE(enrolled_at, NOW()),
                         updated_at = NOW()
@@ -656,6 +671,7 @@ auto_self_enroll_host() {
     # Install agent binary
     log_info "Installing DatrixOps Agent binary on host..."
     install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
+    rm -f /tmp/datrixops-agent-download 2>/dev/null || true
 
     # Create self-monitor configuration
     install -d -m 0700 /etc/datrixops
@@ -678,9 +694,7 @@ EnvironmentFile=/etc/datrixops/self-monitor.env
 ExecStart=/usr/local/bin/datrixops-agent
 Restart=always
 RestartSec=10
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
