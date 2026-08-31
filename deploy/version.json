@@ -1,7 +1,7 @@
 {
-  "version": "1.8.21",
-  "agent_version": "1.5.15",
-  "agent_release_tag": "agent-v1.5.15",
+  "version": "1.8.22",
+  "agent_version": "1.5.16",
+  "agent_release_tag": "agent-v1.5.16",
   "minimum_agent_version": "1.5.2",
   "release_date": "2026-08-31",
   "changelog_url": "https://github.com/luuvandien2604/DatrixOps/releases"
