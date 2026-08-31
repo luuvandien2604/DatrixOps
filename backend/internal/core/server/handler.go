@@ -297,22 +297,67 @@ func (h *Handler) normalizedTaskPayload(taskType, rawPayload string) (string, er
 func (h *Handler) expireStaleAgentUpdateTasks(ctx context.Context, serverID string) {
 	_, _ = h.svc.repo.db.Pool.Exec(ctx,
 		`UPDATE server_tasks
-		 SET status = 'expired', completed_at = NOW(), updated_at = NOW()
+		 SET status = 'expired', result = '{"output": "Stale update task expired"}'::jsonb, completed_at = NOW(), updated_at = NOW()
 		 WHERE server_id = $1
 		   AND type = 'agent_update'
 		   AND status = 'pending'
-		   AND expires_at <= NOW()`,
+		   AND (expires_at <= NOW() OR created_at <= NOW() - INTERVAL '15 minutes')`,
 		serverID,
 	)
 	_, _ = h.svc.repo.db.Pool.Exec(ctx,
 		`UPDATE server_tasks
-		 SET status = 'timed_out', completed_at = NOW(), updated_at = NOW()
+		 SET status = 'timed_out', result = '{"output": "Update task timed out"}'::jsonb, completed_at = NOW(), updated_at = NOW()
 		 WHERE server_id = $1
 		   AND type = 'agent_update'
 		   AND status = 'processing'
 		   AND started_at + make_interval(secs => timeout_seconds) <= NOW()`,
 		serverID,
 	)
+}
+
+func (h *Handler) CancelTask(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	serverID := r.PathValue("id")
+	if serverID == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Server ID is required")
+		return
+	}
+
+	taskID := strings.TrimSpace(r.PathValue("taskId"))
+	if taskID != "" && taskID != "cancel-update" && taskID != "active" {
+		_, err := h.svc.repo.db.Pool.Exec(r.Context(),
+			`UPDATE server_tasks
+			 SET status = 'cancelled', result = '{"output": "Task cancelled by administrator"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+			 WHERE id = $1 AND server_id = $2 AND status IN ('pending', 'processing')`,
+			taskID, serverID,
+		)
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to cancel task")
+			return
+		}
+	} else {
+		// Cancel any pending or processing agent_update task for this server
+		_, err := h.svc.repo.db.Pool.Exec(r.Context(),
+			`UPDATE server_tasks
+			 SET status = 'cancelled', result = '{"output": "Update task cancelled by administrator"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+			 WHERE server_id = $1 AND type = 'agent_update' AND status IN ('pending', 'processing')`,
+			serverID,
+		)
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to cancel update task")
+			return
+		}
+	}
+
+	h.recordAudit(r.Context(), userID, "CANCEL_SERVER_TASK", "SERVER", serverID, map[string]interface{}{
+		"task_id": taskID,
+	})
+	response.Success(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }
 
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {

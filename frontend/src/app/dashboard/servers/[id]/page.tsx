@@ -434,6 +434,22 @@ export default function ServerDetailsPage() {
     }
   };
 
+  const cancelAgentUpdate = async () => {
+    if (!server) return;
+    if (isViewer) {
+      toast.error('Cancelling update task requires Operator or Admin role permission.');
+      return;
+    }
+    try {
+      await apiClient(`/servers/${server.id}/tasks/cancel-update`, { method: 'POST' });
+      setAgentUpdateTask(null);
+      toast.success('Agent update task was cancelled');
+      await fetchServer();
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, 'Unable to cancel update task'));
+    }
+  };
+
   const runAllowlistedScript = async (script: ScriptPolicy, idempotencyKey: string) => {
     if (!server) return;
     if (server.status !== 'online') {
@@ -901,15 +917,27 @@ export default function ServerDetailsPage() {
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  disabled={queueingAgentUpdate || agentUpdateInProgress || server.status !== 'online'}
-                  onClick={queueAgentUpdate}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/45 bg-amber-500/15 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:bg-amber-500/15 disabled:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300"
-                >
-                  <AgentUpdateIcon className={`h-4 w-4 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
-                  {queueingAgentUpdate ? 'Queueing update...' : agentUpdateLabel}
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {agentUpdateInProgress && (
+                    <button
+                      type="button"
+                      onClick={cancelAgentUpdate}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-rose-500/35 bg-rose-500/10 px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                    >
+                      <CircleX className="h-3.5 w-3.5" />
+                      Cancel task
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={queueingAgentUpdate || (agentUpdateInProgress && server.status === 'online') || server.status !== 'online'}
+                    onClick={queueAgentUpdate}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/45 bg-amber-500/15 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:bg-amber-500/15 disabled:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300"
+                  >
+                    <AgentUpdateIcon className={`h-4 w-4 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
+                    {queueingAgentUpdate ? 'Queueing update...' : agentUpdateLabel}
+                  </button>
+                </div>
               </div>
             </section>
           )}

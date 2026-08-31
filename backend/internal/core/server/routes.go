@@ -39,6 +39,8 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("POST /api/v1/servers/actions/update-agents", withRoles(h.UpdateAllAgents, "admin"))
 	mux.HandleFunc("POST /api/v1/servers/{id}/tasks", withRoles(h.CreateTask, "admin", "operator"))
 	mux.HandleFunc("GET /api/v1/servers/{id}/tasks/{taskId}", withAuth(h.GetTask))
+	mux.HandleFunc("DELETE /api/v1/servers/{id}/tasks/{taskId}", withRoles(h.CancelTask, "admin", "operator"))
+	mux.HandleFunc("POST /api/v1/servers/{id}/tasks/cancel-update", withRoles(h.CancelTask, "admin", "operator"))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", withRoles(h.Delete, "admin"))
 	mux.HandleFunc("PUT /api/v1/servers/{id}/meta", withRoles(h.UpdateMeta, "admin"))
 	mux.HandleFunc("PUT /api/v1/servers/{id}/agent-update-policy", withRoles(h.UpdateAgentUpdatePolicy, "admin"))
