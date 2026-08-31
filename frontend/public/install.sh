@@ -350,7 +350,8 @@ SERVICE_EOF
 chmod 0644 "$SERVICE_FILE"
 
 "$SYSTEMCTL_BIN" daemon-reload
-"$SYSTEMCTL_BIN" enable --now datrixops-agent
+"$SYSTEMCTL_BIN" enable datrixops-agent
+"$SYSTEMCTL_BIN" restart datrixops-agent
 sleep 2
 
 if ! "$SYSTEMCTL_BIN" is-active --quiet datrixops-agent; then
