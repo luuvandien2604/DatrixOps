@@ -677,9 +677,13 @@ auto_self_enroll_host() {
                     DELETE FROM servers
                     WHERE id != v_server_id
                       AND (
-                          (tags ? 'self-host' OR tags ? 'control-plane' OR name = 'Server')
-                          AND status = 'offline' AND last_seen_at IS NULL
-                      );
+                          tags ? 'self-host'
+                          OR tags ? 'control-plane'
+                          OR name ILIKE '%DatrixOps%'
+                          OR name ILIKE '%Control Plane%'
+                          OR name = 'Server'
+                      )
+                      AND status = 'offline';
                     RAISE NOTICE 'Self-host server record updated.';
                 END IF;
 

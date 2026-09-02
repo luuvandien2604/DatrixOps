@@ -233,9 +233,13 @@ repair_self_monitor() {
                     DELETE FROM servers
                     WHERE id != v_server_id
                       AND (
-                          (tags ? 'self-host' OR tags ? 'control-plane' OR name = 'Server')
-                          AND status = 'offline' AND last_seen_at IS NULL
-                      );
+                          tags ? 'self-host'
+                          OR tags ? 'control-plane'
+                          OR name ILIKE '%DatrixOps%'
+                          OR name ILIKE '%Control Plane%'
+                          OR name = 'Server'
+                      )
+                      AND status = 'offline';
                 END IF;
 
                 UPDATE server_tasks
@@ -248,11 +252,6 @@ repair_self_monitor() {
     chmod 0700 /etc/datrixops
     printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
     chmod 0600 /etc/datrixops/self-monitor.env
-
-    if systemctl is-active --quiet datrixops-agent 2>/dev/null; then
-        systemctl stop datrixops-agent 2>/dev/null || true
-        systemctl disable datrixops-agent 2>/dev/null || true
-    fi
 
     cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
 [Unit]
