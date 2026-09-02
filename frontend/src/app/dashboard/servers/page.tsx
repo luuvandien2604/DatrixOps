@@ -987,10 +987,10 @@ export default function ServersPage() {
                           <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ${
                             server.status === 'online'
                               ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-gray-500/10 text-[var(--color-muted)] border-gray-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                           }`}>
                             <div className={`w-1.5 h-1.5 rounded-full ${
-                              server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-gray-500'
+                              server.status === 'online' ? (isCritical ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500') : 'bg-rose-500'
                             }`}></div>
                             {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
                           </div>
@@ -1190,7 +1190,7 @@ export default function ServersPage() {
                       <div className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         server.status === 'online'
                           ? isCritical ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                       }`}>
                         {server.status === 'online' ? (isCritical ? 'CRITICAL' : 'ONLINE') : 'OFFLINE'}
                       </div>

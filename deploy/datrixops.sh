@@ -183,8 +183,6 @@ repair_self_monitor() {
     local raw_credential=""
     if [[ -f /etc/datrixops/self-monitor.env ]]; then
         raw_credential="$(sed -n "s/^DATRIXOPS_AGENT_TOKEN=//p" /etc/datrixops/self-monitor.env | tr -d "\r\n")"
-    elif [[ -f /etc/datrixops/agent.env ]]; then
-        raw_credential="$(sed -n "s/^DATRIXOPS_AGENT_TOKEN=//p" /etc/datrixops/agent.env | tr -d "\r\n")"
     fi
     if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
         raw_credential="$(openssl rand -base64 32 | tr -d "/+=\n" | head -c 43)"
