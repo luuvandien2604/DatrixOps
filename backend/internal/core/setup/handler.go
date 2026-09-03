@@ -188,7 +188,7 @@ func validSetupToken(expected, provided string) bool {
 
 func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, publicURL string) {
 	var token string
-	envContent, err := os.ReadFile("/etc/datrixops/agent.env")
+	envContent, err := os.ReadFile("/etc/datrixops/self-monitor.env")
 	if err == nil {
 		lines := strings.Split(string(envContent), "\n")
 		for _, line := range lines {
@@ -208,7 +208,7 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 			pub := strings.TrimRight(strings.TrimSpace(publicURL), "/")
 			if pub != "" {
 				envBody := fmt.Sprintf("DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n", pub, token)
-				_ = os.WriteFile("/etc/datrixops/agent.env", []byte(envBody), 0600)
+				_ = os.WriteFile("/etc/datrixops/self-monitor.env", []byte(envBody), 0600)
 			}
 		}
 	}
@@ -222,19 +222,35 @@ func (h *Handler) ensureSelfHostRegistration(ctx context.Context, userID, public
 
 	var existingID string
 	err = h.db.Pool.QueryRow(ctx,
-		`SELECT id FROM servers WHERE tags @> '"self-host"'::jsonb OR name LIKE '%Control Plane%' LIMIT 1`,
+		`SELECT id FROM servers 
+		 WHERE agent_token_hash = $1 
+		    OR tags ? 'self-host' 
+		    OR tags ? 'control-plane' 
+		    OR name ILIKE '%DatrixOps%' 
+		    OR name ILIKE '%Control Plane%' 
+		 ORDER BY 
+		    CASE WHEN agent_token_hash = $1 THEN 0
+		         WHEN status = 'online' THEN 1
+		         ELSE 2 END,
+		    last_seen_at DESC NULLS LAST
+		 LIMIT 1`,
+		credentialHash,
 	).Scan(&existingID)
 
 	if err != nil {
 		_, _ = h.db.Pool.Exec(ctx,
 			`INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-			 VALUES ($1, 'Server', '127.0.0.1', 'offline', $2, NOW(), '["self-host", "control-plane"]'::jsonb)`,
+			 VALUES ($1, 'DatrixOps', '127.0.0.1', 'offline', $2, NOW(), '["self-host", "control-plane"]'::jsonb)`,
 			userID, credentialHash,
 		)
 	} else {
 		_, _ = h.db.Pool.Exec(ctx,
 			`UPDATE servers
-			 SET user_id = $1, agent_token_hash = $2, enrolled_at = COALESCE(enrolled_at, NOW()), updated_at = NOW()
+			 SET user_id = $1, 
+			     name = COALESCE(NULLIF(name, ''), 'DatrixOps'),
+			     agent_token_hash = $2, 
+			     enrolled_at = COALESCE(enrolled_at, NOW()), 
+			     updated_at = NOW()
 			 WHERE id = $3`,
 			userID, credentialHash, existingID,
 		)
