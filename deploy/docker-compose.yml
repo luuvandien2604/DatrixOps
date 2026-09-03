@@ -10,9 +10,9 @@ x-logging: &default-logging
 x-backend-environment: &backend-environment
   DATABASE_URL: postgres://datrixops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/datrixops?sslmode=disable
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-  DATRIXOPS_VERSION: ${DATRIXOPS_VERSION:-1.8.25}
+  DATRIXOPS_VERSION: ${DATRIXOPS_VERSION:-1.8.26}
   AGENT_VERSION: ${AGENT_VERSION:-1.5.12}
-  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-${PUBLIC_URL:-http://localhost:3000}}
   PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
   DATRIXOPS_EDITION: ${DATRIXOPS_EDITION:-community}
   DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-self-hosted}
@@ -70,7 +70,7 @@ services:
     logging: *default-logging
 
   migrate:
-    image: ghcr.io/luuvandien2604/datrixops-migrate:${DATRIXOPS_VERSION:-1.8.25}
+    image: ghcr.io/luuvandien2604/datrixops-migrate:${DATRIXOPS_VERSION:-1.8.26}
     restart: "no"
     depends_on:
       database: { condition: service_healthy }
@@ -80,7 +80,7 @@ services:
     logging: *default-logging
 
   backend:
-    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-1.8.25}
+    image: ghcr.io/luuvandien2604/datrixops-backend:${DATRIXOPS_VERSION:-1.8.26}
     restart: unless-stopped
     depends_on:
       database: { condition: service_healthy }
@@ -103,7 +103,7 @@ services:
     logging: *default-logging
 
   worker:
-    image: ghcr.io/luuvandien2604/datrixops-worker:${DATRIXOPS_VERSION:-1.8.25}
+    image: ghcr.io/luuvandien2604/datrixops-worker:${DATRIXOPS_VERSION:-1.8.26}
     restart: unless-stopped
     depends_on:
       database: { condition: service_healthy }
@@ -123,7 +123,7 @@ services:
     logging: *default-logging
 
   frontend:
-    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-1.8.25}
+    image: ghcr.io/luuvandien2604/datrixops-frontend:${DATRIXOPS_VERSION:-1.8.26}
     restart: unless-stopped
     environment:
       PUBLIC_URL: ${PUBLIC_URL:?PUBLIC_URL is required}

@@ -8,6 +8,7 @@
 	header {
 		X-DatrixOps-Gateway "caddy"
 		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"

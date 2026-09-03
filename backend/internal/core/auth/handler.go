@@ -23,6 +23,21 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+const refreshCookieName = "datrixops_refresh_token"
+
+func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    token,
+		Path:     "/api/v1/auth",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -30,8 +45,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || len(req.Password) < 6 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Email is required and password must be at least 6 characters")
+	if req.Email == "" || len(req.Password) < 12 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Email is required and password must be at least 12 characters")
 		return
 	}
 
@@ -92,6 +107,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRefreshCookie(w, r, res.RefreshToken, 7*24*3600)
 	response.Success(w, http.StatusOK, res)
 }
 
@@ -100,23 +116,30 @@ type RefreshRequest struct {
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req RefreshRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
-		return
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		_ = decoder.Decode(&req)
 	}
 
-	if req.RefreshToken == "" || len(req.RefreshToken) > 256 {
+	refreshToken := strings.TrimSpace(req.RefreshToken)
+	if refreshToken == "" {
+		if cookie, err := r.Cookie(refreshCookieName); err == nil {
+			refreshToken = strings.TrimSpace(cookie.Value)
+		}
+	}
+
+	if refreshToken == "" || len(refreshToken) > 256 {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Refresh token is required")
 		return
 	}
 
-	res, err := h.svc.Refresh(r.Context(), req.RefreshToken)
+	res, err := h.svc.Refresh(r.Context(), refreshToken)
 	if err != nil {
 		if errors.Is(err, ErrInvalidToken) {
+			setRefreshCookie(w, r, "", -1)
 			response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired refresh token")
 			return
 		}
@@ -124,6 +147,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setRefreshCookie(w, r, res.RefreshToken, 7*24*3600)
 	response.Success(w, http.StatusOK, res)
 }
 
@@ -132,19 +156,26 @@ type LogoutRequest struct {
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req LogoutRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
-		return
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		_ = decoder.Decode(&req)
 	}
 
-	if req.RefreshToken != "" && len(req.RefreshToken) <= 256 {
-		_ = h.svc.Logout(r.Context(), req.RefreshToken)
+	refreshToken := strings.TrimSpace(req.RefreshToken)
+	if refreshToken == "" {
+		if cookie, err := r.Cookie(refreshCookieName); err == nil {
+			refreshToken = strings.TrimSpace(cookie.Value)
+		}
 	}
 
+	if refreshToken != "" && len(refreshToken) <= 256 {
+		_ = h.svc.Logout(r.Context(), refreshToken)
+	}
+
+	setRefreshCookie(w, r, "", -1)
 	// Always return 200 OK for logout even if token was invalid/missing
 	response.Success(w, http.StatusOK, nil)
 }

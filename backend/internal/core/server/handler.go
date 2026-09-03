@@ -328,6 +328,12 @@ func (h *Handler) CancelTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify server ownership
+	if _, err := h.svc.GetServer(r.Context(), serverID, userID); err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+
 	taskID := strings.TrimSpace(r.PathValue("taskId"))
 	if taskID != "" && taskID != "cancel-update" && taskID != "active" {
 		_, err := h.svc.repo.db.Pool.Exec(r.Context(),
