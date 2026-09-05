@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -498,12 +499,39 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	).Scan(&serverID, &userID, &serverName)
 
 	if err != nil {
-		if err.Error() == "no rows in result set" {
-			response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid agent token")
-		} else {
-			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update server status")
+		if errors.Is(err, pgx.ErrNoRows) || err.Error() == "no rows in result set" {
+			// Check if this heartbeat credential belongs to the host self-monitor
+			if server.CheckSelfMonitorToken(agentToken) {
+				_ = server.SyncSelfHost(ctx, h.db, nil)
+				// Re-attempt server status update with synchronized credential
+				err = h.db.Pool.QueryRow(ctx,
+					`UPDATE servers 
+					 SET status = 'online', 
+					     os_info = $1, 
+					     ip_address = COALESCE(NULLIF($5, ''), ip_address),
+					     snapshot = CASE WHEN $3 = '{}' THEN snapshot ELSE $3::jsonb END,
+					     inventory = CASE WHEN $4 = '{}' THEN inventory ELSE $4::jsonb END,
+					     inventory_updated_at = CASE WHEN $4 = '{}' THEN inventory_updated_at ELSE NOW() END,
+					     bootstrap_completed_at = COALESCE(bootstrap_completed_at, NOW()),
+					     bootstrap_rollback_token_hash = NULL,
+					     bootstrap_rollback_expires_at = NULL,
+					     last_seen_at = NOW(),
+					     updated_at = NOW() 
+					 WHERE agent_token = $2 OR agent_token_hash = $6
+					 RETURNING id, user_id, name`,
+					osInfoStr, agentToken, snapshotStr, inventoryStr, publicIP, agentTokenHash,
+				).Scan(&serverID, &userID, &serverName)
+			}
 		}
-		return
+
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) || err.Error() == "no rows in result set" {
+				response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid agent token")
+			} else {
+				response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update server status")
+			}
+			return
+		}
 	}
 
 	if req.Snapshot != nil && req.Snapshot.CronDiscoveryComplete {

@@ -167,6 +167,16 @@ repair_self_monitor() {
     pub_url="${pub_url%/}"
     [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
 
+    # Extract domain from pub_url and ensure loopback entry in /etc/hosts
+    local pub_host
+    pub_host="$(printf '%s' "$pub_url" | sed -e 's#^https\?://##' -e 's#/.*##' -e 's#:[0-9]*##')"
+    if [[ -n "$pub_host" && "$pub_host" != "localhost" && "$pub_host" != "127.0.0.1" ]]; then
+        if ! grep -qE "^[[:space:]]*127\.0\.0\.1[[:space:]]+.*\\b${pub_host}\\b" /etc/hosts 2>/dev/null; then
+            printf '127.0.0.1 %s\n' "$pub_host" >> /etc/hosts 2>/dev/null || true
+            printf "[INFO] Configured loopback entry 127.0.0.1 %s in /etc/hosts.\n" "$pub_host"
+        fi
+    fi
+
     local agent_arch
     case "$(uname -m)" in
         x86_64|amd64)  agent_arch="amd64" ;;
@@ -190,11 +200,17 @@ repair_self_monitor() {
     fi
     if [[ ! -s "$self_monitor_binary" ]]; then
         local target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${PROJECT_ROOT}/deploy/version.json" 2>/dev/null | head -n 1 | tr -d ' "\r\n')"
-        target_agent_ver="${target_agent_ver:-1.5.14}"
-        local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${target_agent_ver}/datrixops-agent-linux-${agent_arch}"
-        printf "Downloading Self-Monitor binary from %s...\n" "$download_url"
-        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o "$self_monitor_binary" || true
-        chmod 0755 "$self_monitor_binary" 2>/dev/null || true
+        target_agent_ver="${target_agent_ver:-1.5.16}"
+        for dl_ver in "$target_agent_ver" "1.5.16" "1.5.14" "1.5.12"; do
+            for dl_tag in "agent-v${dl_ver}" "v${dl_ver}"; do
+                local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/${dl_tag}/datrixops-agent-linux-${agent_arch}"
+                printf "Attempting download from %s...\n" "$download_url"
+                if curl -fsSL --retry 2 --connect-timeout 5 --max-time 90 "$download_url" -o "$self_monitor_binary" 2>/dev/null && [[ -s "$self_monitor_binary" ]]; then
+                    chmod 0755 "$self_monitor_binary" 2>/dev/null || true
+                    break 2
+                fi
+            done
+        done
     fi
 
     local raw_credential=""
@@ -206,6 +222,11 @@ repair_self_monitor() {
     fi
     local credential_hash
     credential_hash="$(printf "%s" "$raw_credential" | sha256sum | awk "{print \$1}")"
+
+    mkdir -p /etc/datrixops
+    chmod 0700 /etc/datrixops
+    printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
 
     compose exec -T database \
         psql -U datrixops -d datrixops -c "
@@ -230,11 +251,11 @@ repair_self_monitor() {
                 LIMIT 1;
                 IF v_server_id IS NULL THEN
                     INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                    VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
+                    VALUES (v_user_id, 'Control Plane', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
                 ELSE
                     UPDATE servers 
                     SET user_id = v_user_id, 
-                        name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
+                        name = COALESCE(NULLIF(name, ''), 'Control Plane'), 
                         tags = CASE 
                             WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
                             WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
@@ -262,11 +283,6 @@ repair_self_monitor() {
                 WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
             END \$\$;
         " < /dev/null || true
-
-    mkdir -p /etc/datrixops
-    chmod 0700 /etc/datrixops
-    printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-    chmod 0600 /etc/datrixops/self-monitor.env
 
     cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
 [Unit]

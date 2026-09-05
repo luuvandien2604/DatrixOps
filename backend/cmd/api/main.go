@@ -82,6 +82,11 @@ func main() {
 		Config: cfg,
 	}
 
+	// Ensure Host VPS Self-Monitoring credentials are synchronized with the database
+	if err := server.SyncSelfHost(context.Background(), c.DB, log); err != nil {
+		log.Warn("self-host startup synchronization skipped or pending setup", "error", err)
+	}
+
 	// --- Router ---
 	mux := http.NewServeMux()
 

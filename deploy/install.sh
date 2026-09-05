@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.27}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.28}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -566,6 +566,16 @@ auto_self_enroll_host() {
     pub_url="${pub_url%/}"
     [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
 
+    # Extract domain from pub_url and ensure loopback entry in /etc/hosts
+    local pub_host
+    pub_host="$(printf '%s' "$pub_url" | sed -e 's#^https\?://##' -e 's#/.*##' -e 's#:[0-9]*##')"
+    if [[ -n "$pub_host" && "$pub_host" != "localhost" && "$pub_host" != "127.0.0.1" ]]; then
+        if ! grep -qE "^[[:space:]]*127\.0\.0\.1[[:space:]]+.*\\b${pub_host}\\b" /etc/hosts 2>/dev/null; then
+            printf '127.0.0.1 %s\n' "$pub_host" >> /etc/hosts 2>/dev/null || true
+            log_info "Configured loopback entry 127.0.0.1 ${pub_host} in /etc/hosts."
+        fi
+    fi
+
     # Detect host architecture
     local agent_arch
     case "$(uname -m)" in
@@ -577,27 +587,34 @@ auto_self_enroll_host() {
     local agent_ver
     agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
     if [[ ! "$agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-        agent_ver="1.5.3"
+        agent_ver="1.5.16"
     fi
 
     # Find compiled agent binary
     local agent_binary=""
     for candidate in \
+        "/usr/local/bin/datrixops-self-monitor" \
         "${PROJECT_ROOT}/frontend/public/releases/${agent_ver}/datrixops-agent-linux-${agent_arch}" \
+        "${PROJECT_ROOT}/frontend/public/releases/"*/datrixops-agent-linux-"${agent_arch}" \
         "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
-        "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}"; do
+        "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
+        "/usr/local/bin/datrixops-agent"; do
         if [[ -f "$candidate" && -s "$candidate" ]]; then
             agent_binary="$candidate"
             break
         fi
     done
     if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-        local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agent_ver}/datrixops-agent-linux-${agent_arch}"
-        log_info "Downloading Agent binary for host self-monitoring from ${download_url}..."
-        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null || true
-        if [[ -s /tmp/datrixops-agent-download ]]; then
-            agent_binary="/tmp/datrixops-agent-download"
-        fi
+        for dl_ver in "$agent_ver" "1.5.16" "1.5.14" "1.5.12"; do
+            for dl_tag in "agent-v${dl_ver}" "v${dl_ver}"; do
+                local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/${dl_tag}/datrixops-agent-linux-${agent_arch}"
+                log_info "Attempting to load Agent binary from ${download_url}..."
+                if curl -fsSL --retry 2 --connect-timeout 5 --max-time 90 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null && [[ -s /tmp/datrixops-agent-download ]]; then
+                    agent_binary="/tmp/datrixops-agent-download"
+                    break 2
+                fi
+            done
+        done
     fi
     if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
         log_warn "A verified Agent binary could not be loaded; host self-monitoring was skipped."
@@ -651,7 +668,7 @@ auto_self_enroll_host() {
                         agent_token_hash, enrolled_at, tags
                     ) VALUES (
                         v_user_id,
-                        'DatrixOps',
+                        'Control Plane',
                         '127.0.0.1',
                         'offline',
                         '${credential_hash}',
@@ -661,7 +678,7 @@ auto_self_enroll_host() {
                     RAISE NOTICE 'Self-host server record created.';
                 ELSE
                     UPDATE servers
-                    SET name = COALESCE(NULLIF(name, ''), 'DatrixOps'),
+                    SET name = COALESCE(NULLIF(name, ''), 'Control Plane'),
                         tags = CASE 
                             WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
                             WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
@@ -693,8 +710,11 @@ auto_self_enroll_host() {
 
     # Install dedicated self-monitor binary
     log_info "Installing DatrixOps Self-Monitor binary on host..."
-    install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
+    if [[ "$agent_binary" != "/usr/local/bin/datrixops-self-monitor" ]]; then
+        install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
+    fi
     rm -f /tmp/datrixops-agent-download 2>/dev/null || true
+    chmod 0755 /usr/local/bin/datrixops-self-monitor
 
     # Create self-monitor configuration
     install -d -m 0700 /etc/datrixops

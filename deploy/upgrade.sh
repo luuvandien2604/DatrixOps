@@ -156,10 +156,176 @@ fi
     exit 1
 }
 
+auto_self_enroll_host() {
+    local pub_url
+    pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
+    pub_url="${pub_url%/}"
+    [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
+
+    # Extract domain from pub_url and ensure loopback entry in /etc/hosts
+    local pub_host
+    pub_host="$(printf '%s' "$pub_url" | sed -e 's#^https\?://##' -e 's#/.*##' -e 's#:[0-9]*##')"
+    if [[ -n "$pub_host" && "$pub_host" != "localhost" && "$pub_host" != "127.0.0.1" ]]; then
+        if ! grep -qE "^[[:space:]]*127\.0\.0\.1[[:space:]]+.*\\b${pub_host}\\b" /etc/hosts 2>/dev/null; then
+            printf '127.0.0.1 %s\n' "$pub_host" >> /etc/hosts 2>/dev/null || true
+            log_info "Configured loopback entry 127.0.0.1 ${pub_host} in /etc/hosts."
+        fi
+    fi
+
+    local agent_arch
+    case "$(uname -m)" in
+        x86_64|amd64)  agent_arch="amd64" ;;
+        aarch64|arm64) agent_arch="arm64" ;;
+        *) return 0 ;;
+    esac
+
+    local agent_ver
+    agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    if [[ ! "$agent_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        agent_ver="1.5.16"
+    fi
+
+    local agent_binary=""
+    for candidate in \
+        "/usr/local/bin/datrixops-self-monitor" \
+        "${PROJECT_ROOT}/frontend/public/releases/${agent_ver}/datrixops-agent-linux-${agent_arch}" \
+        "${PROJECT_ROOT}/frontend/public/releases/"*/datrixops-agent-linux-"${agent_arch}" \
+        "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
+        "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
+        "/usr/local/bin/datrixops-agent"; do
+        if [[ -f "$candidate" && -s "$candidate" ]]; then
+            agent_binary="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+        for dl_ver in "$agent_ver" "1.5.16" "1.5.14" "1.5.12"; do
+            for dl_tag in "agent-v${dl_ver}" "v${dl_ver}"; do
+                local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/${dl_tag}/datrixops-agent-linux-${agent_arch}"
+                log_info "Attempting to load Agent binary from ${download_url}..."
+                if curl -fsSL --retry 2 --connect-timeout 5 --max-time 90 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null && [[ -s /tmp/datrixops-agent-download ]]; then
+                    agent_binary="/tmp/datrixops-agent-download"
+                    break 2
+                fi
+            done
+        done
+    fi
+
+    if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
+        log_warn "A verified Agent binary could not be loaded; host self-monitoring was skipped."
+        return 0
+    fi
+
+    if [[ "$agent_binary" != "/usr/local/bin/datrixops-self-monitor" ]]; then
+        install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
+    fi
+    rm -f /tmp/datrixops-agent-download 2>/dev/null || true
+    chmod 0755 /usr/local/bin/datrixops-self-monitor
+
+    local raw_credential=""
+    if [[ -f /etc/datrixops/self-monitor.env ]]; then
+        raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/self-monitor.env | tr -d '\r\n')"
+    fi
+    if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
+        raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
+    fi
+    local credential_hash
+    credential_hash="$(printf '%s' "$raw_credential" | sha256sum | awk '{print $1}')"
+
+    install -d -m 0700 /etc/datrixops
+    printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
+
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+        psql -U datrixops -d datrixops -c "
+            DO \$\$
+            DECLARE v_user_id UUID; v_server_id UUID;
+            BEGIN
+                SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
+                IF v_user_id IS NULL THEN RETURN; END IF;
+                SELECT id INTO v_server_id FROM servers 
+            WHERE agent_token_hash = '${credential_hash}'
+               OR tags ? 'self-host' 
+               OR tags ? 'control-plane' 
+               OR name ILIKE '%DatrixOps%' 
+               OR name ILIKE '%Control Plane%' 
+               OR name = 'Server' 
+            ORDER BY 
+               CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
+                    WHEN status = 'online' THEN 1
+                    ELSE 2 END,
+               last_seen_at DESC NULLS LAST,
+               created_at ASC
+            LIMIT 1;
+            IF v_server_id IS NULL THEN
+                INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
+                VALUES (v_user_id, 'Control Plane', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
+            ELSE
+                UPDATE servers 
+                SET user_id = v_user_id, 
+                    name = COALESCE(NULLIF(name, ''), 'Control Plane'), 
+                    tags = CASE 
+                        WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
+                        WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
+                        ELSE tags 
+                    END, 
+                    agent_token_hash = '${credential_hash}', 
+                    enrolled_at = COALESCE(enrolled_at, NOW()), 
+                    updated_at = NOW() 
+                WHERE id = v_server_id;
+
+                DELETE FROM servers
+                WHERE id != v_server_id
+                  AND (
+                      tags ? 'self-host'
+                      OR tags ? 'control-plane'
+                      OR name ILIKE '%DatrixOps%'
+                      OR name ILIKE '%Control Plane%'
+                      OR name = 'Server'
+                  )
+                  AND status = 'offline';
+            END IF;
+
+            UPDATE server_tasks
+            SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
+            WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
+            END \$\$;
+        " < /dev/null || log_warn "Database pre-registration notice (will auto-bind via backend sync)."
+
+    cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
+[Unit]
+Description=DatrixOps Self Monitor
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+EnvironmentFile=/etc/datrixops/self-monitor.env
+ExecStart=/usr/local/bin/datrixops-self-monitor
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    systemctl daemon-reload
+    systemctl enable --now datrixops-self-monitor
+    systemctl restart datrixops-self-monitor
+    if systemctl is-active --quiet datrixops-self-monitor 2>/dev/null; then
+        log_success "Host VPS self-monitoring service (datrixops-self-monitor) updated and active."
+    else
+        log_warn "Host VPS self-monitoring service started; verify with: datrix status"
+    fi
+}
+
 installed_release_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" | tail -n 1 | tr -d ' "\r\n')"
 if [[ "$installed_release_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     if [[ "$remote_release_ver" == "$installed_release_ver" && "${DATRIXOPS_FORCE_UPDATE:-0}" != "1" ]]; then
         log_success "DatrixOps CE Server v${installed_release_ver} is already up to date."
+        log_info "Verifying and synchronizing Host VPS Self-Monitoring service..."
+        auto_self_enroll_host || true
+        install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix 2>/dev/null || true
+        ln -sf /usr/local/bin/datrix /usr/local/bin/datrixops 2>/dev/null || true
         exit 0
     fi
     lowest_version="$(printf '%s\n%s\n' "$installed_release_ver" "$remote_release_ver" | sort -V | head -n 1)"
@@ -235,7 +401,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.27"
+    target_app_ver="1.8.28"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -312,136 +478,6 @@ for _ in $(seq 1 24); do
 done
 
 if [[ "$healthy" == "true" ]]; then
-    auto_self_enroll_host() {
-        local pub_url
-        pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
-        pub_url="${pub_url%/}"
-        [[ -n "$pub_url" ]] || pub_url="http://127.0.0.1"
-
-        local agent_arch
-        case "$(uname -m)" in
-            x86_64|amd64)  agent_arch="amd64" ;;
-            aarch64|arm64) agent_arch="arm64" ;;
-            *) return 0 ;;
-        esac
-
-        local agent_binary=""
-        for candidate in \
-            "${PROJECT_ROOT}/frontend/public/releases/${agent_ver}/datrixops-agent-linux-${agent_arch}" \
-            "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
-            "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}"; do
-            if [[ -f "$candidate" && -s "$candidate" ]]; then
-                agent_binary="$candidate"
-                break
-            fi
-        done
-
-        if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-            local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${agent_ver}/datrixops-agent-linux-${agent_arch}"
-            log_info "Downloading Agent binary for host self-monitoring from ${download_url}..."
-            curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o /tmp/datrixops-agent-download 2>/dev/null || true
-            if [[ -s /tmp/datrixops-agent-download ]]; then
-                agent_binary="/tmp/datrixops-agent-download"
-            fi
-        fi
-
-        if [[ -z "$agent_binary" || ! -s "$agent_binary" ]]; then
-            log_warn "A verified Agent binary could not be loaded; host self-monitoring was skipped."
-            return 0
-        fi
-
-        local raw_credential=""
-        if [[ -f /etc/datrixops/self-monitor.env ]]; then
-            raw_credential="$(sed -n 's/^DATRIXOPS_AGENT_TOKEN=//p' /etc/datrixops/self-monitor.env | tr -d '\r\n')"
-        fi
-        if [[ -z "$raw_credential" || "$raw_credential" =~ ^[0-9a-f]{64}$ ]]; then
-            raw_credential="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 43)"
-        fi
-        local credential_hash
-        credential_hash="$(printf '%s' "$raw_credential" | sha256sum | awk '{print $1}')"
-
-        docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
-            psql -U datrixops -d datrixops -c "
-                DO \$\$
-                DECLARE v_user_id UUID; v_server_id UUID;
-                BEGIN
-                    SELECT id INTO v_user_id FROM users ORDER BY created_at ASC LIMIT 1;
-                    IF v_user_id IS NULL THEN RETURN; END IF;
-                    SELECT id INTO v_server_id FROM servers 
-                WHERE agent_token_hash = '${credential_hash}'
-                   OR tags ? 'self-host' 
-                   OR tags ? 'control-plane' 
-                   OR name ILIKE '%DatrixOps%' 
-                   OR name ILIKE '%Control Plane%' 
-                   OR name = 'Server' 
-                ORDER BY 
-                   CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
-                        WHEN status = 'online' THEN 1
-                        ELSE 2 END,
-                   last_seen_at DESC NULLS LAST,
-                   created_at ASC
-                LIMIT 1;
-                IF v_server_id IS NULL THEN
-                    INSERT INTO servers (user_id, name, ip_address, status, agent_token_hash, enrolled_at, tags)
-                    VALUES (v_user_id, 'DatrixOps', '127.0.0.1', 'offline', '${credential_hash}', NOW(), '[\"self-host\", \"control-plane\"]'::jsonb);
-                ELSE
-                    UPDATE servers 
-                    SET user_id = v_user_id, 
-                        name = COALESCE(NULLIF(name, ''), 'DatrixOps'), 
-                        tags = CASE 
-                            WHEN tags IS NULL OR tags = '[]'::jsonb THEN '[\"self-host\", \"control-plane\"]'::jsonb
-                            WHEN NOT (tags ? 'self-host') AND NOT (tags ? 'control-plane') THEN tags || '[\"self-host\", \"control-plane\"]'::jsonb
-                            ELSE tags 
-                        END, 
-                        agent_token_hash = '${credential_hash}', 
-                        enrolled_at = COALESCE(enrolled_at, NOW()), 
-                        updated_at = NOW() 
-                    WHERE id = v_server_id;
-
-                    DELETE FROM servers
-                    WHERE id != v_server_id
-                      AND (
-                          tags ? 'self-host'
-                          OR tags ? 'control-plane'
-                          OR name ILIKE '%DatrixOps%'
-                          OR name ILIKE '%Control Plane%'
-                          OR name = 'Server'
-                      )
-                      AND status = 'offline';
-                END IF;
-
-                UPDATE server_tasks
-                SET status = 'cancelled', result = '{\"output\": \"Cleared during self-monitor setup\"}'::jsonb, completed_at = NOW(), updated_at = NOW()
-                WHERE status IN ('pending', 'processing') AND (server_id = v_server_id OR created_at < NOW() - INTERVAL '5 minutes');
-                END \$\$;
-            " < /dev/null || return 0
-
-        install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
-        rm -f /tmp/datrixops-agent-download 2>/dev/null || true
-        install -d -m 0700 /etc/datrixops
-        printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-        chmod 0600 /etc/datrixops/self-monitor.env
-
-        cat > /etc/systemd/system/datrixops-self-monitor.service <<SVCEOF
-[Unit]
-Description=DatrixOps Self Monitor
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=simple
-EnvironmentFile=/etc/datrixops/self-monitor.env
-ExecStart=/usr/local/bin/datrixops-self-monitor
-Restart=always
-RestartSec=10
-LimitNOFILE=65536
-[Install]
-WantedBy=multi-user.target
-SVCEOF
-        systemctl daemon-reload
-        systemctl enable --now datrixops-self-monitor
-        systemctl restart datrixops-self-monitor
-        log_success "Host VPS self-monitoring service (datrixops-self-monitor) updated and restarted."
-    }
     auto_self_enroll_host || true
 
     install -m 0755 "${SCRIPT_DIR}/datrixops.sh" /usr/local/bin/datrix
