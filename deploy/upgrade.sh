@@ -235,7 +235,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.26"
+    target_app_ver="1.8.27"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -416,7 +416,7 @@ if [[ "$healthy" == "true" ]]; then
                 END \$\$;
             " < /dev/null || return 0
 
-        install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
+        install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
         rm -f /tmp/datrixops-agent-download 2>/dev/null || true
         install -d -m 0700 /etc/datrixops
         printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
@@ -430,7 +430,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/datrixops/self-monitor.env
-ExecStart=/usr/local/bin/datrixops-agent
+ExecStart=/usr/local/bin/datrixops-self-monitor
 Restart=always
 RestartSec=10
 LimitNOFILE=65536

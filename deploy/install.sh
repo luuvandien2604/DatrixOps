@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.26}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.27}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -691,9 +691,9 @@ auto_self_enroll_host() {
             END \$\$;
         " < /dev/null || log_warn "Database registration notice (will auto-bind upon setup completion)."
 
-    # Install agent binary
-    log_info "Installing DatrixOps Agent binary on host..."
-    install -m 0755 "$agent_binary" /usr/local/bin/datrixops-agent
+    # Install dedicated self-monitor binary
+    log_info "Installing DatrixOps Self-Monitor binary on host..."
+    install -m 0755 "$agent_binary" /usr/local/bin/datrixops-self-monitor
     rm -f /tmp/datrixops-agent-download 2>/dev/null || true
 
     # Create self-monitor configuration
@@ -714,7 +714,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/datrixops/self-monitor.env
-ExecStart=/usr/local/bin/datrixops-agent
+ExecStart=/usr/local/bin/datrixops-self-monitor
 Restart=always
 RestartSec=10
 LimitNOFILE=65536

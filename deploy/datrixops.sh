@@ -127,8 +127,12 @@ show_status() {
     require_installation
     printf '%s\n' 'DatrixOps Server containers:'
     compose ps
-    printf '\n%s\n' 'DatrixOps Self-Monitor service:'
-    systemctl --no-pager status datrixops-self-monitor 2>/dev/null || systemctl --no-pager status datrixops-agent || true
+    printf '\n%s\n' 'DatrixOps Self-Monitor service (internal host monitoring):'
+    systemctl --no-pager status datrixops-self-monitor 2>/dev/null || printf 'datrixops-self-monitor is not active. Run `datrix repair-self-monitor` to activate.\n'
+    if systemctl is-active --quiet datrixops-agent 2>/dev/null; then
+        printf '\n%s\n' 'DatrixOps Agent service (external monitoring, e.g. Cloud):'
+        systemctl --no-pager status datrixops-agent 2>/dev/null || true
+    fi
     printf '\nServer services are managed by Docker Compose; use `datrix status`, not `systemctl status datrixops`.\n'
 }
 
@@ -136,7 +140,7 @@ restart_services() {
     require_installation
     require_root
     compose restart
-    systemctl restart datrixops-self-monitor 2>/dev/null || systemctl restart datrixops-agent 2>/dev/null || true
+    systemctl restart datrixops-self-monitor 2>/dev/null || true
 }
 
 follow_logs() {
@@ -170,14 +174,27 @@ repair_self_monitor() {
         *) agent_arch="amd64" ;;
     esac
 
-    local agent_binary="/usr/local/bin/datrixops-agent"
-    if [[ ! -s "$agent_binary" ]]; then
+    local self_monitor_binary="/usr/local/bin/datrixops-self-monitor"
+    if [[ ! -s "$self_monitor_binary" ]]; then
+        for candidate in \
+            "${PROJECT_ROOT}/frontend/public/releases/"*/datrixops-agent-linux-"${agent_arch}" \
+            "${PROJECT_ROOT}/agent/bin/datrixops-agent-linux-${agent_arch}" \
+            "${PROJECT_ROOT}/frontend/public/datrixops-agent-linux-${agent_arch}" \
+            "/usr/local/bin/datrixops-agent"; do
+            if [[ -f "$candidate" && -s "$candidate" ]]; then
+                cp "$candidate" "$self_monitor_binary"
+                chmod 0755 "$self_monitor_binary"
+                break
+            fi
+        done
+    fi
+    if [[ ! -s "$self_monitor_binary" ]]; then
         local target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${PROJECT_ROOT}/deploy/version.json" 2>/dev/null | head -n 1 | tr -d ' "\r\n')"
         target_agent_ver="${target_agent_ver:-1.5.14}"
         local download_url="https://github.com/luuvandien2604/DatrixOps/releases/download/agent-v${target_agent_ver}/datrixops-agent-linux-${agent_arch}"
-        printf "Downloading DatrixOps Agent %s binary from %s...\n" "$target_agent_ver" "$download_url"
-        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o "$agent_binary" || true
-        chmod 0755 "$agent_binary" 2>/dev/null || true
+        printf "Downloading Self-Monitor binary from %s...\n" "$download_url"
+        curl -fsSL --retry 3 --connect-timeout 10 --max-time 180 "$download_url" -o "$self_monitor_binary" || true
+        chmod 0755 "$self_monitor_binary" 2>/dev/null || true
     fi
 
     local raw_credential=""
@@ -259,7 +276,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/datrixops/self-monitor.env
-ExecStart=/usr/local/bin/datrixops-agent
+ExecStart=/usr/local/bin/datrixops-self-monitor
 Restart=always
 RestartSec=10
 LimitNOFILE=65536

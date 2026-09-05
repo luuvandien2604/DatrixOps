@@ -112,6 +112,8 @@ export default function ServersPage() {
   const [selectedOs, setSelectedOs] = useState<'linux' | 'macos' | 'windows'>('linux');
   const [customServices, setCustomServices] = useState('');
   const [installCommandCopied, setInstallCommandCopied] = useState(false);
+  const [isSelfMonitorModalOpen, setIsSelfMonitorModalOpen] = useState(false);
+  const [selfMonitorCopied, setSelfMonitorCopied] = useState(false);
 
   // Confirmation dialogs
   const [serverToRestart, setServerToRestart] = useState<{ id: string; name: string } | null>(null);
@@ -585,39 +587,18 @@ export default function ServersPage() {
     }
   };
 
-  const handleSelfMonitorClick = async () => {
-    refreshLatestAgentVersion();
+  const selfHostServer = servers.find(
+    s => s.name?.toLowerCase().includes('control plane') ||
+         s.name?.toLowerCase().includes('datrixops') ||
+         s.name?.toLowerCase() === 'server' ||
+         s.tags?.includes('self-host') ||
+         s.tags?.includes('control-plane')
+  );
+  const isSelfHostOnline = selfHostServer?.status === 'online';
+
+  const handleSelfMonitorClick = () => {
     if (!isAdmin) return;
-    const existingSelfHost = servers.find(
-      s => s.name?.toLowerCase().includes('control plane') ||
-           s.name?.toLowerCase().includes('datrixops') ||
-           s.name?.toLowerCase() === 'server' ||
-           s.tags?.includes('self-host') ||
-           s.tags?.includes('control-plane')
-    );
-    if (existingSelfHost && existingSelfHost.status === 'online') {
-      toast.success(`Host server (${existingSelfHost.name}) is already monitored and ONLINE!`);
-      return;
-    }
-    try {
-      setLoading(true);
-      const hostName = existingSelfHost?.name || 'DatrixOps';
-      const createdServer: ServerRecord = await apiClient('/servers', {
-        method: 'POST',
-        data: { name: hostName, tags: ['self-host', 'control-plane'] }
-      });
-      if (createdServer && (createdServer.enrollment_token || createdServer.agent_token)) {
-        setGeneratedAgentToken(createdServer.enrollment_token || createdServer.agent_token || '');
-        setNewServerName(hostName);
-        setSelectedOs('linux');
-        setIsAddServerModalOpen(true);
-        toast.success('Generated self-monitoring token! Run the command on your VPS or run: sudo datrix repair-self-monitor');
-      }
-    } catch (err: unknown) {
-      toast.error(errorMessage(err, 'Failed to generate self-monitoring token'));
-    } finally {
-      setLoading(false);
-    }
+    setIsSelfMonitorModalOpen(true);
   };
 
   return (
@@ -1316,6 +1297,109 @@ export default function ServersPage() {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Host VPS Self-Monitoring Modal */}
+      {isSelfMonitorModalOpen && (
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="self-monitor-title" className="ops-modal flex w-full max-w-xl flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 id="self-monitor-title" className="text-lg font-bold text-[var(--foreground)]">Host VPS Self-Monitoring</h2>
+                  <p className="text-xs text-[var(--color-muted)]">Dedicated internal monitoring service for DatrixOps CE</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close self-monitor dialog"
+                onClick={() => setIsSelfMonitorModalOpen(false)}
+                className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Current Status */}
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <div>
+                  <div className="text-xs text-[var(--color-muted)] uppercase tracking-wider font-semibold">Service Status</div>
+                  <div className="text-sm font-medium text-[var(--foreground)] mt-0.5">
+                    {selfHostServer?.name || 'Control Plane'}
+                  </div>
+                </div>
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
+                  isSelfHostOnline
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${isSelfHostOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                  {isSelfHostOnline ? 'ONLINE' : 'OFFLINE'}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-2">
+                <p>
+                  DatrixOps Community Edition includes a dedicated internal background service (<code className="text-blue-400 font-mono">datrixops-self-monitor</code>) to monitor this host VPS directly.
+                </p>
+                <p>
+                  This service is completely independent from the standard Agent (<code className="text-slate-300 font-mono">datrixops-agent</code>). You can safely monitor this machine locally in CE while concurrently installing the DatrixOps Agent to report to <strong>DatrixOps Cloud</strong> without any conflict.
+                </p>
+              </div>
+
+              {/* Command Box */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">
+                  Activation / Repair Command (run on host VPS via SSH):
+                </label>
+                <div className="relative overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950 shadow-inner dark:border-white/10 dark:bg-black/50">
+                  <div className="overflow-x-auto py-3.5 pl-4 pr-28 font-mono text-sm text-emerald-300">
+                    <code>sudo datrix repair-self-monitor</code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText('sudo datrix repair-self-monitor');
+                        setSelfMonitorCopied(true);
+                        toast.success('Command copied to clipboard');
+                        setTimeout(() => setSelfMonitorCopied(false), 2500);
+                      } catch {
+                        toast.error('Unable to copy command');
+                      }
+                    }}
+                    className={`absolute right-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors ${
+                      selfMonitorCopied
+                        ? 'border-emerald-300/40 bg-emerald-400/20 text-emerald-100'
+                        : 'border-white/15 bg-white/10 text-white hover:bg-white/20'
+                    }`}
+                  >
+                    {selfMonitorCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {selfMonitorCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+                  This command configures and starts <code className="font-mono text-slate-300">datrixops-self-monitor.service</code>. It will not touch or stop any external <code className="font-mono text-slate-300">datrixops-agent.service</code>.
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSelfMonitorModalOpen(false)}
+                  className="ops-button secondary px-5 py-2"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
