@@ -400,7 +400,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.29"
+    target_app_ver="1.8.30"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -432,7 +432,7 @@ if [[ -n "$target_agent_ver" ]]; then
         set_env_value "$env_target" "AGENT_RELEASE_BASE_URL" "$target_agent_url"
         set_env_value "$env_target" "AGENT_RELEASE_LAYOUT" "legacy_direct"
         set_env_value "$env_target" "AGENT_ARTIFACT_BASE_URL" "$target_agent_url"
-        for feature_key in "ENABLE_READ_ONLY_LOGS" "ENABLE_SERVICE_CONTROLS" "ENABLE_WEB_TERMINAL"; do
+        for feature_key in "ENABLE_READ_ONLY_LOGS" "ENABLE_SERVICE_CONTROLS" "ENABLE_WEB_TERMINAL" "ENABLE_REMOTE_SCRIPTS"; do
             current_feat_val="$(sed -n "s/^[[:space:]]*${feature_key}=//p" "$env_target" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
             if [[ -z "$current_feat_val" || "$current_feat_val" == "false" ]]; then
                 set_env_value "$env_target" "$feature_key" "true"
@@ -441,7 +441,7 @@ if [[ -n "$target_agent_ver" ]]; then
     done
     log_info "Synced DATRIXOPS_VERSION=${target_app_ver} to environment configuration."
     log_info "Synced AGENT_VERSION=${target_agent_ver} to environment configuration."
-    log_info "Enabled Log Explorer, Web Terminal, and Service Controls in configuration."
+    log_info "Enabled Log Explorer, Web Terminal, Remote Scripts, and Service Controls in configuration."
 fi
 
 agent_ver="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"

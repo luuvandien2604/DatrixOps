@@ -2,6 +2,13 @@
 	admin off
 }
 
+http://127.0.0.1 {
+	@health path /health /ready /health/live /health/ready
+	reverse_proxy @health backend:8080 {
+		header_up X-DatrixOps-Gateway "caddy"
+	}
+}
+
 {$CADDY_SITE_ADDRESS} {
 	encode zstd gzip
 

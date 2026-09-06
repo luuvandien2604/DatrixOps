@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.29}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.30}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -404,6 +404,12 @@ if [[ -n "${INSTALL_VERSION:-}" ]]; then
         set_env_value "AGENT_RELEASE_LAYOUT" "legacy_direct"
         set_env_value "AGENT_ARTIFACT_BASE_URL" "$pinned_agent_url"
     fi
+    for feature_key in "ENABLE_READ_ONLY_LOGS" "ENABLE_SERVICE_CONTROLS" "ENABLE_WEB_TERMINAL" "ENABLE_REMOTE_SCRIPTS"; do
+        current_feat_val="$(sed -n "s/^[[:space:]]*${feature_key}=//p" "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+        if [[ -z "$current_feat_val" || "$current_feat_val" == "false" ]]; then
+            set_env_value "$feature_key" "true"
+        fi
+    done
 fi
 auto_configure_domain
 prompt_admin_credentials
