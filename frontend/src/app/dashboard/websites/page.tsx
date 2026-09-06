@@ -34,6 +34,7 @@ export default function WebsitesPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
   const [channels, setChannels] = useState<AlertChannel[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
@@ -79,10 +80,14 @@ export default function WebsitesPage() {
 
   useEffect(() => {
     const initialRequest = window.setTimeout(() => {
+      setCurrentTimestamp(Date.now());
       void fetchWebsites();
       void fetchChannels();
     }, 0);
-    const interval = setInterval(() => void fetchWebsites(), 30000);
+    const interval = setInterval(() => {
+      setCurrentTimestamp(Date.now());
+      void fetchWebsites();
+    }, 30000);
     return () => {
       window.clearTimeout(initialRequest);
       clearInterval(interval);
@@ -147,8 +152,8 @@ export default function WebsitesPage() {
   };
 
   const formatDowntime = (startedAt?: string) => {
-    if (!startedAt) return null;
-    const diffMs = Date.now() - new Date(startedAt).getTime();
+    if (!startedAt || currentTimestamp === 0) return null;
+    const diffMs = currentTimestamp - new Date(startedAt).getTime();
     if (diffMs < 0) return null;
     const mins = Math.floor(diffMs / 60000);
     if (mins < 1) return 'vừa down (< 1m)';
