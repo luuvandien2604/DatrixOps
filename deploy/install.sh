@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.28}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.29}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -653,7 +653,6 @@ auto_self_enroll_host() {
                    OR tags ? 'control-plane' 
                    OR name ILIKE '%DatrixOps%' 
                    OR name ILIKE '%Control Plane%' 
-                   OR name = 'Server'
                 ORDER BY 
                    CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
                         WHEN status = 'online' THEN 1
@@ -696,7 +695,6 @@ auto_self_enroll_host() {
                           OR tags ? 'control-plane'
                           OR name ILIKE '%DatrixOps%'
                           OR name ILIKE '%Control Plane%'
-                          OR name = 'Server'
                       )
                       AND status = 'offline';
                     RAISE NOTICE 'Self-host server record updated.';
@@ -717,12 +715,13 @@ auto_self_enroll_host() {
     chmod 0755 /usr/local/bin/datrixops-self-monitor
 
     # Create self-monitor configuration
-    install -d -m 0700 /etc/datrixops
+    install -d -m 0755 /etc/datrixops
+    chmod 0755 /etc/datrixops
     cat > /etc/datrixops/self-monitor.env <<AGENT_ENV
 DATRIXOPS_SERVER_URL=${pub_url}/api/v1
 DATRIXOPS_AGENT_TOKEN=${raw_credential}
 AGENT_ENV
-    chmod 0600 /etc/datrixops/self-monitor.env
+    chmod 0644 /etc/datrixops/self-monitor.env
 
     # Create dedicated self-monitor systemd service
     cat > /etc/systemd/system/datrixops-self-monitor.service <<SERVICE_EOF

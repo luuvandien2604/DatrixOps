@@ -16,21 +16,23 @@ import (
 const selfMonitorEnvPath = "/etc/datrixops/self-monitor.env"
 
 // ReadSelfMonitorToken extracts the raw DATRIXOPS_AGENT_TOKEN and its SHA-256 hash
-// from /etc/datrixops/self-monitor.env if the file exists.
+// from /etc/datrixops/self-monitor.env or DATRIXOPS_SELF_MONITOR_TOKEN if available.
 func ReadSelfMonitorToken() (rawToken, tokenHash string, exists bool) {
 	content, err := os.ReadFile(selfMonitorEnvPath)
-	if err != nil {
-		return "", "", false
+	if err == nil {
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "DATRIXOPS_AGENT_TOKEN=") {
+				rawToken = strings.TrimSpace(strings.TrimPrefix(line, "DATRIXOPS_AGENT_TOKEN="))
+				rawToken = strings.Trim(rawToken, "\"'")
+				break
+			}
+		}
 	}
 
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "DATRIXOPS_AGENT_TOKEN=") {
-			rawToken = strings.TrimSpace(strings.TrimPrefix(line, "DATRIXOPS_AGENT_TOKEN="))
-			rawToken = strings.Trim(rawToken, "\"'")
-			break
-		}
+	if rawToken == "" {
+		rawToken = strings.TrimSpace(os.Getenv("DATRIXOPS_SELF_MONITOR_TOKEN"))
 	}
 
 	if rawToken == "" {
@@ -43,13 +45,25 @@ func ReadSelfMonitorToken() (rawToken, tokenHash string, exists bool) {
 }
 
 // CheckSelfMonitorToken returns true if providedToken matches the token configured
-// in /etc/datrixops/self-monitor.env.
+// in /etc/datrixops/self-monitor.env or DATRIXOPS_SELF_MONITOR_TOKEN.
 func CheckSelfMonitorToken(providedToken string) bool {
-	rawToken, _, exists := ReadSelfMonitorToken()
-	if !exists || rawToken == "" {
+	providedToken = strings.TrimSpace(providedToken)
+	if providedToken == "" {
 		return false
 	}
-	return strings.TrimSpace(providedToken) == rawToken
+
+	rawToken, _, exists := ReadSelfMonitorToken()
+	if exists && rawToken != "" && providedToken == rawToken {
+		return true
+	}
+
+	if envToken := strings.TrimSpace(os.Getenv("DATRIXOPS_SELF_MONITOR_TOKEN")); envToken != "" {
+		if providedToken == envToken {
+			return true
+		}
+	}
+
+	return false
 }
 
 // SyncSelfHost ensures that the server record in the database matches the credentials
@@ -91,7 +105,6 @@ func SyncSelfHost(ctx context.Context, db *database.DB, log *slog.Logger) error 
 		    OR tags ? 'control-plane'
 		    OR name ILIKE '%DatrixOps%'
 		    OR name ILIKE '%Control Plane%'
-		    OR name = 'Server'
 		 ORDER BY
 		    CASE WHEN agent_token_hash = $1 THEN 0
 		         WHEN status = 'online' THEN 1
@@ -154,7 +167,6 @@ func SyncSelfHost(ctx context.Context, db *database.DB, log *slog.Logger) error 
 			       OR tags ? 'control-plane'
 			       OR name ILIKE '%DatrixOps%'
 			       OR name ILIKE '%Control Plane%'
-			       OR name = 'Server'
 			   )
 			   AND status = 'offline'`,
 			existingServerID,

@@ -224,9 +224,9 @@ repair_self_monitor() {
     credential_hash="$(printf "%s" "$raw_credential" | sha256sum | awk "{print \$1}")"
 
     mkdir -p /etc/datrixops
-    chmod 0700 /etc/datrixops
+    chmod 0755 /etc/datrixops
     printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-    chmod 0600 /etc/datrixops/self-monitor.env
+    chmod 0644 /etc/datrixops/self-monitor.env
 
     compose exec -T database \
         psql -U datrixops -d datrixops -c "
@@ -241,7 +241,6 @@ repair_self_monitor() {
                    OR tags ? 'control-plane' 
                    OR name ILIKE '%DatrixOps%' 
                    OR name ILIKE '%Control Plane%' 
-                   OR name = 'Server' 
                 ORDER BY 
                    CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
                         WHEN status = 'online' THEN 1
@@ -273,7 +272,6 @@ repair_self_monitor() {
                           OR tags ? 'control-plane'
                           OR name ILIKE '%DatrixOps%'
                           OR name ILIKE '%Control Plane%'
-                          OR name = 'Server'
                       )
                       AND status = 'offline';
                 END IF;

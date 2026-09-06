@@ -171,7 +171,7 @@ rollback_bootstrap() {
             echo "Enrollment token successfully released." >&2
         else
             mkdir -p "$CONFIG_DIR"
-            chmod 0700 "$CONFIG_DIR" 2>/dev/null || true
+            chmod 0755 "$CONFIG_DIR" 2>/dev/null || true
             RECOVERY_FILE="${CONFIG_DIR}/bootstrap-recovery.json"
             {
                 printf '{\n'
@@ -315,9 +315,15 @@ fi
 ENROLLED=1
 
 # Step 3: Install & Start Service
-install -d -m 0700 "$CONFIG_DIR"
+install -d -m 0755 "$CONFIG_DIR"
+chmod 0755 "$CONFIG_DIR" 2>/dev/null || true
 install -d -m 0755 "$INSTALL_DIR"
 install -d -m 0755 "$(dirname "$SERVICE_FILE")"
+
+# Preserve DatrixOps CE self-monitor credential readability for Docker backend
+if [[ -f "${CONFIG_DIR}/self-monitor.env" ]]; then
+    chmod 0644 "${CONFIG_DIR}/self-monitor.env" 2>/dev/null || true
+fi
 
 {
     printf 'DATRIXOPS_SERVER_URL=%s\n' "$API_URL"
@@ -357,6 +363,13 @@ sleep 2
 if ! "$SYSTEMCTL_BIN" is-active --quiet datrixops-agent; then
     echo "ERROR: DatrixOps Agent service failed to start." >&2
     exit 1
+fi
+
+# If DatrixOps CE host self-monitor service is present, ensure it remains undisturbed and active
+if [[ -n "$SYSTEMCTL_BIN" ]] && "$SYSTEMCTL_BIN" list-unit-files 2>/dev/null | grep -Eq '\bdatrixops-self-monitor\.service\b'; then
+    if ! "$SYSTEMCTL_BIN" is-active --quiet datrixops-self-monitor 2>/dev/null; then
+        "$SYSTEMCTL_BIN" restart datrixops-self-monitor 2>/dev/null || true
+    fi
 fi
 
 # Step 4: Bounded Wait for Backend First-Heartbeat / Bootstrap Completion

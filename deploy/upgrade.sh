@@ -233,9 +233,10 @@ auto_self_enroll_host() {
     local credential_hash
     credential_hash="$(printf '%s' "$raw_credential" | sha256sum | awk '{print $1}')"
 
-    install -d -m 0700 /etc/datrixops
+    install -d -m 0755 /etc/datrixops
+    chmod 0755 /etc/datrixops
     printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-    chmod 0600 /etc/datrixops/self-monitor.env
+    chmod 0644 /etc/datrixops/self-monitor.env
 
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
         psql -U datrixops -d datrixops -c "
@@ -250,7 +251,6 @@ auto_self_enroll_host() {
                OR tags ? 'control-plane' 
                OR name ILIKE '%DatrixOps%' 
                OR name ILIKE '%Control Plane%' 
-               OR name = 'Server' 
             ORDER BY 
                CASE WHEN agent_token_hash = '${credential_hash}' THEN 0
                     WHEN status = 'online' THEN 1
@@ -282,7 +282,6 @@ auto_self_enroll_host() {
                       OR tags ? 'control-plane'
                       OR name ILIKE '%DatrixOps%'
                       OR name ILIKE '%Control Plane%'
-                      OR name = 'Server'
                   )
                   AND status = 'offline';
             END IF;
@@ -401,7 +400,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.28"
+    target_app_ver="1.8.29"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
