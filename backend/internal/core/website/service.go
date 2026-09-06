@@ -36,9 +36,10 @@ func (s *service) CreateWebsite(ctx context.Context, userID string, req CreateWe
 	}
 
 	w := &Website{
-		UserID: userID,
-		Name:   req.Name,
-		URL:    req.URL,
+		UserID:     userID,
+		Name:       req.Name,
+		URL:        req.URL,
+		ChannelIDs: req.ChannelIDs,
 	}
 
 	if err := s.repo.Create(ctx, w); err != nil {

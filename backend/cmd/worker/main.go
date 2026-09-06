@@ -124,7 +124,7 @@ func startWorkerHeartbeat(db *database.DB, log *slog.Logger) func() {
 
 func startSchedulers(db *database.DB, log *slog.Logger, cfg *config.Config) func() {
 	websiteRepo := website.NewRepository(db)
-	websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
+	websiteJob := scheduler.NewWebsiteJob(websiteRepo, db, log)
 	websiteJob.Start()
 
 	alertJob := scheduler.NewAlertJob(db, log)

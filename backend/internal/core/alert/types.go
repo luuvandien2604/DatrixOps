@@ -34,14 +34,16 @@ type AlertRule struct {
 	Metric          string             `json:"metric"`   // cpu, ram, status
 	Operator        string             `json:"operator"` // >, <, ==
 	Threshold       float64            `json:"threshold"`
-	DurationMinutes int                `json:"duration_minutes"`
-	ServerID        *string            `json:"server_id"`
-	ServerName      *string            `json:"server_name,omitempty"`
-	Enabled         bool               `json:"enabled"`
-	ChannelIDs      []string           `json:"channel_ids,omitempty"`
-	Channels        []AlertRuleChannel `json:"channels"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
+	DurationMinutes       int                `json:"duration_minutes"`
+	RepeatIntervalMinutes int                `json:"repeat_interval_minutes"`
+	TargetName            *string            `json:"target_name,omitempty"`
+	ServerID              *string            `json:"server_id"`
+	ServerName            *string            `json:"server_name,omitempty"`
+	Enabled               bool               `json:"enabled"`
+	ChannelIDs            []string           `json:"channel_ids,omitempty"`
+	Channels              []AlertRuleChannel `json:"channels"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
 }
 
 // DashboardNotification là một sự kiện alert hiển thị trong chuông thông báo.

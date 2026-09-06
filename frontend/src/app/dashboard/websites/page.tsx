@@ -3,10 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   Globe, Plus, Trash2, CheckCircle2, XCircle, Shield, ShieldAlert,
-  ShieldCheck, RefreshCw, Activity, ExternalLink
+  ShieldCheck, RefreshCw, Activity, ExternalLink, Bell, Check
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
+
+interface AlertChannel {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+}
 
 interface Website {
   id: string;
@@ -19,10 +26,14 @@ interface Website {
   last_check?: string;
   response_time_ms?: number;
   history_24h?: number[];
+  down_started_at?: string;
+  channel_ids?: string[];
 }
 
 export default function WebsitesPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
+  const [channels, setChannels] = useState<AlertChannel[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
@@ -54,8 +65,23 @@ export default function WebsitesPage() {
     }
   }
 
+  async function fetchChannels() {
+    try {
+      const data = await apiClient('/alerts/channels');
+      if (Array.isArray(data)) {
+        const enabledOnly = data.filter((c: AlertChannel) => c.enabled);
+        setChannels(enabledOnly);
+      }
+    } catch (err) {
+      console.error('Failed to fetch alert channels:', err);
+    }
+  }
+
   useEffect(() => {
-    const initialRequest = window.setTimeout(() => void fetchWebsites(), 0);
+    const initialRequest = window.setTimeout(() => {
+      void fetchWebsites();
+      void fetchChannels();
+    }, 0);
     const interval = setInterval(() => void fetchWebsites(), 30000);
     return () => {
       window.clearTimeout(initialRequest);
@@ -76,13 +102,26 @@ export default function WebsitesPage() {
     }
   };
 
+  const openAddModal = () => {
+    if (isViewer) {
+      toast.error('Adding websites requires Operator or Admin role');
+      return;
+    }
+    setSelectedChannelIds(channels.map((c) => c.id));
+    setIsModalOpen(true);
+  };
+
   const handleAddWebsite = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
     try {
       await apiClient('/websites', {
-        data: { name: newName, url: newUrl }
+        data: {
+          name: newName,
+          url: newUrl,
+          channel_ids: selectedChannelIds,
+        }
       });
       setIsModalOpen(false);
       setNewName('');
@@ -107,6 +146,17 @@ export default function WebsitesPage() {
     }
   };
 
+  const formatDowntime = (startedAt?: string) => {
+    if (!startedAt) return null;
+    const diffMs = Date.now() - new Date(startedAt).getTime();
+    if (diffMs < 0) return null;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'vừa down (< 1m)';
+    if (mins < 60) return `down ${mins}m`;
+    const hours = Math.floor(mins / 60);
+    return `down ${hours}h ${mins % 60}m`;
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
@@ -129,13 +179,7 @@ export default function WebsitesPage() {
             Refresh
           </button>
           <button
-            onClick={() => {
-              if (isViewer) {
-                toast.error('Adding websites requires Operator or Admin role');
-                return;
-              }
-              setIsModalOpen(true);
-            }}
+            onClick={openAddModal}
             disabled={isViewer}
             title={isViewer ? 'Adding websites requires Operator or Admin role' : ''}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -155,7 +199,7 @@ export default function WebsitesPage() {
           <h3 className="text-lg font-medium text-[var(--foreground)] mb-2">No websites monitored yet</h3>
           <p className="text-[var(--color-muted)] text-sm mb-4">Add a URL (https://...) to start real-time health checks.</p>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openAddModal}
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus className="w-4 h-4" /> Add Website
@@ -190,7 +234,18 @@ export default function WebsitesPage() {
                       <div>
                         <h3 className="font-bold text-[var(--foreground)] text-base flex items-center gap-2">
                           {w.name}
-                          {isUp ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-rose-400" />}
+                          {isUp ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <>
+                              <XCircle className="w-4 h-4 text-rose-400" />
+                              {formatDowntime(w.down_started_at) && (
+                                <span className="text-[11px] font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
+                                  {formatDowntime(w.down_started_at)}
+                                </span>
+                              )}
+                            </>
+                          )}
                         </h3>
                         <a
                           href={w.url}
@@ -302,6 +357,61 @@ export default function WebsitesPage() {
                 <label htmlFor="website-url" className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">Target URL (including https://)</label>
                 <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-[var(--foreground)] focus:border-blue-500 outline-none" placeholder="https://service.example.com" />
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-blue-400" />
+                    Kênh nhận cảnh báo (Alert Channels)
+                  </span>
+                  {channels.length > 0 && (
+                    <span className="text-[11px] text-blue-400 font-normal">
+                      {selectedChannelIds.length}/{channels.length} đã chọn
+                    </span>
+                  )}
+                </label>
+                {channels.length === 0 ? (
+                  <p className="text-xs text-[var(--color-muted)] bg-white/5 p-2.5 rounded-lg border border-white/5">
+                    Chưa có kênh nào được kích hoạt. Cảnh báo sẽ lưu trên bảng điều khiển.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto rounded-lg border border-white/10 p-2 bg-black/20">
+                    {channels.map((c) => {
+                      const selected = selectedChannelIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedChannelIds((curr) =>
+                              curr.includes(c.id) ? curr.filter((id) => id !== c.id) : [...curr, c.id]
+                            );
+                          }}
+                          className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-xs transition-colors border ${
+                            selected
+                              ? 'border-blue-500/40 bg-blue-500/15 text-blue-300'
+                              : 'border-transparent bg-white/5 text-[var(--color-muted)] hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] ${
+                              selected ? 'border-blue-400 bg-blue-500 text-white' : 'border-white/20 bg-transparent'
+                            }`}>
+                              {selected && <Check className="w-3 h-3" />}
+                            </span>
+                            <span className="font-semibold truncate text-[var(--foreground)]">{c.name}</span>
+                          </div>
+                          <span className="uppercase text-[10px] opacity-70 font-mono">{c.type}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[11px] text-[var(--color-muted)] mt-1.5">
+                  Tự động gửi cảnh báo khi website bị DOWN, thông báo RESOLVED khi phục hồi, và cảnh báo chứng chỉ SSL sắp hết hạn (&le; 14 ngày).
+                </p>
+              </div>
+
               <div className="pt-2 flex justify-end gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-[var(--color-muted)] hover:text-white">Cancel</button>
                 <button type="submit" disabled={submitting} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">

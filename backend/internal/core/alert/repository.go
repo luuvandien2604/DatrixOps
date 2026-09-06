@@ -54,6 +54,8 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 			r.operator,
 			r.threshold,
 			r.duration_minutes,
+			COALESCE(r.repeat_interval_minutes, 0),
+			r.target_name,
 			r.server_id,
 			s.name AS server_name,
 			r.enabled,
@@ -83,6 +85,8 @@ func (r *Repository) ListRules(ctx context.Context, userID string) ([]AlertRule,
 			&rule.Operator,
 			&rule.Threshold,
 			&rule.DurationMinutes,
+			&rule.RepeatIntervalMinutes,
+			&rule.TargetName,
 			&rule.ServerID,
 			&rule.ServerName,
 			&rule.Enabled,
@@ -204,10 +208,12 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 			operator,
 			threshold,
 			duration_minutes,
+			repeat_interval_minutes,
+			target_name,
 			server_id,
 			enabled
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at
 	`,
 		rule.UserID,
@@ -216,6 +222,8 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 		rule.Operator,
 		rule.Threshold,
 		rule.DurationMinutes,
+		rule.RepeatIntervalMinutes,
+		rule.TargetName,
 		rule.ServerID,
 		rule.Enabled,
 	).Scan(&rule.ID, &rule.CreatedAt, &rule.UpdatedAt); err != nil {
@@ -302,10 +310,10 @@ func (r *Repository) ToggleRule(ctx context.Context, id, userID string, explicit
 			UPDATE alert_rules
 			SET enabled = $3, updated_at = NOW()
 			WHERE id = $1 AND user_id = $2
-			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled, created_at, updated_at
+			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, COALESCE(repeat_interval_minutes, 0), target_name, server_id, enabled, created_at, updated_at
 		`, id, userID, *explicitState).Scan(
 			&rule.ID, &rule.UserID, &rule.Name, &rule.Metric, &rule.Operator,
-			&rule.Threshold, &rule.DurationMinutes, &rule.ServerID, &rule.Enabled,
+			&rule.Threshold, &rule.DurationMinutes, &rule.RepeatIntervalMinutes, &rule.TargetName, &rule.ServerID, &rule.Enabled,
 			&rule.CreatedAt, &rule.UpdatedAt,
 		)
 	} else {
@@ -313,10 +321,10 @@ func (r *Repository) ToggleRule(ctx context.Context, id, userID string, explicit
 			UPDATE alert_rules
 			SET enabled = NOT enabled, updated_at = NOW()
 			WHERE id = $1 AND user_id = $2
-			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, server_id, enabled, created_at, updated_at
+			RETURNING id, user_id, name, metric, operator, threshold, duration_minutes, COALESCE(repeat_interval_minutes, 0), target_name, server_id, enabled, created_at, updated_at
 		`, id, userID).Scan(
 			&rule.ID, &rule.UserID, &rule.Name, &rule.Metric, &rule.Operator,
-			&rule.Threshold, &rule.DurationMinutes, &rule.ServerID, &rule.Enabled,
+			&rule.Threshold, &rule.DurationMinutes, &rule.RepeatIntervalMinutes, &rule.TargetName, &rule.ServerID, &rule.Enabled,
 			&rule.CreatedAt, &rule.UpdatedAt,
 		)
 	}
@@ -408,6 +416,38 @@ func (r *Repository) CreateChannel(ctx context.Context, channel *AlertChannel) e
 		return fmt.Errorf("create alert channel: %w", err)
 	}
 	return nil
+}
+
+// GetChannel lấy thông tin một notification channel theo id và userID.
+func (r *Repository) GetChannel(ctx context.Context, id, userID string) (*AlertChannel, error) {
+	var channel AlertChannel
+	var configBytes []byte
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT id, user_id, name, type, config, enabled, created_at, updated_at
+		FROM alert_channels
+		WHERE id = $1 AND user_id = $2
+	`, id, userID).Scan(
+		&channel.ID,
+		&channel.UserID,
+		&channel.Name,
+		&channel.Type,
+		&configBytes,
+		&channel.Enabled,
+		&channel.CreatedAt,
+		&channel.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChannelNotFound
+		}
+		return nil, fmt.Errorf("get alert channel: %w", err)
+	}
+
+	channel.Config = make(map[string]interface{})
+	if err := json.Unmarshal(configBytes, &channel.Config); err != nil {
+		return nil, fmt.Errorf("decode alert channel config: %w", err)
+	}
+	return &channel, nil
 }
 
 // DeleteChannel xóa channel trong transaction.

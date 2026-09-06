@@ -3,10 +3,12 @@ package alert
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
@@ -62,9 +64,17 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 			rule.ServerID = &normalizedServerID
 		}
 	}
-	if rule.Metric == "status" {
+	if rule.Metric == "status" || rule.Metric == "container" || rule.Metric == "service" {
 		rule.Operator = "=="
 		rule.Threshold = 0
+	}
+	if rule.TargetName != nil {
+		normalizedTarget := strings.TrimSpace(*rule.TargetName)
+		if normalizedTarget == "" {
+			rule.TargetName = nil
+		} else {
+			rule.TargetName = &normalizedTarget
+		}
 	}
 	if validationMessage := validateRule(rule); validationMessage != "" {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", validationMessage)
@@ -85,13 +95,15 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auditlog.Record(r.Context(), h.repo.db, userID, "CREATE_ALERT_RULE", "ALERT_RULE", rule.ID, map[string]any{
-		"name":             rule.Name,
-		"metric":           rule.Metric,
-		"operator":         rule.Operator,
-		"threshold":        rule.Threshold,
-		"duration_minutes": rule.DurationMinutes,
-		"server_id":        rule.ServerID,
-		"channel_ids":      rule.ChannelIDs,
+		"name":                    rule.Name,
+		"metric":                  rule.Metric,
+		"operator":                rule.Operator,
+		"threshold":               rule.Threshold,
+		"duration_minutes":        rule.DurationMinutes,
+		"repeat_interval_minutes": rule.RepeatIntervalMinutes,
+		"target_name":             rule.TargetName,
+		"server_id":               rule.ServerID,
+		"channel_ids":             rule.ChannelIDs,
 	})
 	response.Success(w, http.StatusCreated, rule)
 }
@@ -216,6 +228,73 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// TestChannelConfig kiểm tra gửi thông báo mẫu trực tiếp bằng cấu hình chưa lưu.
+func (h *Handler) TestChannelConfig(w http.ResponseWriter, r *http.Request) {
+	_, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	var payload struct {
+		Type   string                 `json:"type"`
+		Config map[string]interface{} `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request payload")
+		return
+	}
+
+	payload.Type = strings.ToLower(strings.TrimSpace(payload.Type))
+	tempChannel := AlertChannel{
+		Name:   "Test Channel",
+		Type:   payload.Type,
+		Config: payload.Config,
+	}
+	if validationMessage := validateChannel(tempChannel); validationMessage != "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", validationMessage)
+		return
+	}
+
+	if err := sendTestNotification(payload.Type, payload.Config); err != nil {
+		response.Error(w, http.StatusBadRequest, "TEST_FAILED", "Failed to send test notification: "+err.Error())
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": "Test notification sent successfully",
+	})
+}
+
+// TestExistingChannel kiểm tra gửi thông báo mẫu dùng channel đã lưu trong cơ sở dữ liệu.
+func (h *Handler) TestExistingChannel(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	id := r.PathValue("id")
+	channel, err := h.repo.GetChannel(r.Context(), id, userID)
+	if err != nil {
+		if errors.Is(err, ErrChannelNotFound) {
+			response.Error(w, http.StatusNotFound, "CHANNEL_NOT_FOUND", "Notification channel not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve notification channel")
+		return
+	}
+
+	if err := sendTestNotification(channel.Type, channel.Config); err != nil {
+		response.Error(w, http.StatusBadRequest, "TEST_FAILED", "Failed to send test notification: "+err.Error())
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": "Test notification sent successfully",
+	})
+}
+
 // ListNotifications trả danh sách notification mới nhất và unread_count cho badge.
 func (h *Handler) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
@@ -292,6 +371,9 @@ func validateRule(rule AlertRule) string {
 	if rule.DurationMinutes <= 0 || rule.DurationMinutes > 1440 {
 		return "Duration must be between 1 and 1440 minutes"
 	}
+	if rule.RepeatIntervalMinutes < 0 || rule.RepeatIntervalMinutes > 1440 {
+		return "Repeat interval must be between 0 and 1440 minutes"
+	}
 	if len(rule.ChannelIDs) == 0 {
 		return "Select at least one notification channel"
 	}
@@ -304,7 +386,7 @@ func validateRule(rule AlertRule) string {
 		if rule.Threshold < 0 || rule.Threshold > 100 {
 			return "Threshold must be between 0 and 100"
 		}
-	case "status":
+	case "status", "container", "service":
 		rule.Operator = "=="
 	default:
 		return "Unsupported alert metric"
@@ -391,4 +473,82 @@ func maskConfiguredString(value interface{}) string {
 		return "configured"
 	}
 	return ""
+}
+
+func sendTestNotification(channelType string, cfg map[string]interface{}) error {
+	loc, err := time.LoadLocation("Asia/Ho_Chi_Minh")
+	if err != nil {
+		loc = time.FixedZone("ICT", 7*3600)
+	}
+	nowStr := time.Now().In(loc).Format("2006-01-02 15:04:05 (GMT+7)")
+
+	switch channelType {
+	case "telegram":
+		botToken, _ := cfg["bot_token"].(string)
+		chatID, _ := cfg["chat_id"].(string)
+		msg := fmt.Sprintf(
+			"<b>[DATRIXOPS TEST] THÔNG BÁO KIỂM TRA</b>\n─────────────────────────────\nKênh nhận thông báo Telegram đã được kết nối thành công!\n<b>Trạng thái:</b> Sẵn sàng nhận cảnh báo\n<b>Thời gian:</b> <code>%s</code>",
+			nowStr,
+		)
+		return notifier.SendTelegram(botToken, chatID, msg)
+	case "discord":
+		webhookURL, _ := cfg["webhook_url"].(string)
+		embed := notifier.DiscordEmbed{
+			Title:       "[DATRIXOPS TEST] THÔNG BÁO KIỂM TRA",
+			Description: "Kênh nhận cảnh báo Discord đã được thiết lập thành công từ DatrixOps.",
+			Color:       0x10B981,
+			Fields: []notifier.DiscordEmbedField{
+				{Name: "Trạng thái", Value: "Sẵn sàng nhận cảnh báo", Inline: true},
+				{Name: "Thời gian", Value: nowStr, Inline: true},
+			},
+			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring Test"},
+		}
+		return notifier.SendDiscordEmbed(webhookURL, embed)
+	case "email":
+		emailCfg := parseEmailConfig(cfg)
+		body := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px;">
+<div style="max-width: 500px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; padding: 24px;">
+  <h2 style="color: #10B981; margin-top: 0;">[DATRIXOPS TEST] Xác nhận cấu hình Email</h2>
+  <p>Hệ thống giám sát DatrixOps đã kết nối thành công tới máy chủ SMTP của bạn.</p>
+  <p style="color: #94a3b8; font-size: 13px;">Thời gian kiểm tra: %s</p>
+</div>
+</body>
+</html>`, nowStr)
+		return notifier.SendHTMLEmail(emailCfg, "[DATRIXOPS TEST] Xác nhận cấu hình kênh Email", body)
+	default:
+		return errors.New("unsupported channel type")
+	}
+}
+
+func parseEmailConfig(cfg map[string]interface{}) notifier.EmailConfig {
+	port := 587
+	switch v := cfg["smtp_port"].(type) {
+	case float64:
+		if v >= 1 && v <= 65535 {
+			port = int(v)
+		}
+	case int:
+		if v >= 1 && v <= 65535 {
+			port = v
+		}
+	}
+	useTLS := false
+	if rawTLS, ok := cfg["use_tls"].(bool); ok {
+		useTLS = rawTLS
+	}
+	strVal := func(k string) string {
+		v, _ := cfg[k].(string)
+		return v
+	}
+	return notifier.EmailConfig{
+		Host:     strVal("smtp_host"),
+		Port:     port,
+		Username: strVal("username"),
+		Password: strVal("password"),
+		From:     strVal("from"),
+		To:       strVal("to"),
+		UseTLS:   useTLS,
+	}
 }

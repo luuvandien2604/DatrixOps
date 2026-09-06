@@ -32,6 +32,8 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 
 	mux.HandleFunc("GET /api/v1/alerts/channels", withAuth(handler.ListChannels))
 	mux.HandleFunc("POST /api/v1/alerts/channels", withAdmin(handler.CreateChannel))
+	mux.HandleFunc("POST /api/v1/alerts/channels/test", withAdmin(handler.TestChannelConfig))
+	mux.HandleFunc("POST /api/v1/alerts/channels/{id}/test", withAdmin(handler.TestExistingChannel))
 	mux.HandleFunc("DELETE /api/v1/alerts/channels/{id}", withAdmin(handler.DeleteChannel))
 
 	mux.HandleFunc("GET /api/v1/alerts/notifications", withAuth(handler.ListNotifications))

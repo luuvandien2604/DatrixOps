@@ -126,7 +126,7 @@ func main() {
 	// --- Scheduler ---
 	if envBool("DATRIXOPS_RUN_SCHEDULERS") {
 		websiteRepo := website.NewRepository(c.DB)
-		websiteJob := scheduler.NewWebsiteJob(websiteRepo, log)
+		websiteJob := scheduler.NewWebsiteJob(websiteRepo, c.DB, log)
 		websiteJob.Start()
 		defer websiteJob.Stop()
 

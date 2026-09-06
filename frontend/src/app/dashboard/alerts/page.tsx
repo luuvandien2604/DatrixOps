@@ -3,10 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   Bell,
+  Box,
   Check,
   CheckCircle2,
+  Clock,
+  Layers,
   Loader2,
   Plus,
+  Send,
   Server,
   ShieldAlert,
   Trash2,
@@ -39,6 +43,8 @@ interface AlertRule {
   server_name?: string | null;
   channel_ids: string[];
   channels: RuleChannel[];
+  repeat_interval_minutes?: number;
+  target_name?: string | null;
 }
 
 interface AlertChannel {
@@ -72,12 +78,16 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [savingRule, setSavingRule] = useState(false);
   const [savingChannel, setSavingChannel] = useState(false);
+  const [testingNewChannel, setTestingNewChannel] = useState(false);
+  const [testingChannelId, setTestingChannelId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
   // Rule form state.
   const [ruleName, setRuleName] = useState('');
   const [ruleMetric, setRuleMetric] = useState('cpu');
+  const [ruleTargetName, setRuleTargetName] = useState('');
+  const [ruleRepeatInterval, setRuleRepeatInterval] = useState('0');
   const [ruleOperator, setRuleOperator] = useState('>');
   const [ruleThreshold, setRuleThreshold] = useState('90');
   const [ruleDuration, setRuleDuration] = useState('1');
@@ -154,6 +164,84 @@ export default function AlertsPage() {
     );
   };
 
+  // getChannelConfig tổng hợp config theo loại channel được chọn.
+  const getChannelConfig = () => {
+    if (channelType === 'telegram') {
+      return { bot_token: channelToken.trim(), chat_id: channelChatId.trim() };
+    }
+    if (channelType === 'discord') {
+      return { webhook_url: channelWebhook.trim() };
+    }
+    return {
+      smtp_host: channelSMTPHost.trim(),
+      smtp_port: Number.parseInt(channelSMTPPort, 10) || 587,
+      username: channelSMTPUsername.trim(),
+      password: channelSMTPPassword,
+      from: channelEmailFrom.trim(),
+      to: channelEmailTo.trim(),
+      use_tls: channelUseTLS,
+    };
+  };
+
+  // testNewChannel gửi thông báo thử nghiệm với cấu hình vừa nhập trước khi lưu.
+  const testNewChannel = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (channelType === 'discord') {
+      const trimmed = channelWebhook.trim();
+      if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
+        setErrorMessage('Vui lòng nhập đầy đủ Discord Webhook URL (bắt đầu bằng https://discord.com/api/webhooks/...).');
+        return;
+      }
+    } else if (channelType === 'telegram') {
+      if (!channelToken.trim() || !channelChatId.trim()) {
+        setErrorMessage('Vui lòng nhập đầy đủ Telegram Bot Token và Chat ID.');
+        return;
+      }
+    } else if (channelType === 'email') {
+      if (!channelSMTPHost.trim() || !channelEmailFrom.trim() || !channelEmailTo.trim()) {
+        setErrorMessage('Vui lòng nhập đầy đủ thông tin SMTP host, From và Recipient.');
+        return;
+      }
+    }
+
+    setTestingNewChannel(true);
+    try {
+      await apiClient('/alerts/channels/test', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: channelName.trim() || 'Kênh thử nghiệm',
+          type: channelType,
+          config: getChannelConfig(),
+        }),
+      });
+      setSuccessMessage('Đã gửi thông báo thử nghiệm thành công! Vui lòng kiểm tra ứng dụng nhận tin.');
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(getApiErrorMessage(error, 'Không thể gửi thông báo thử nghiệm. Vui lòng kiểm tra lại cấu hình.'));
+    } finally {
+      setTestingNewChannel(false);
+    }
+  };
+
+  // testExistingChannel gửi thông báo thử nghiệm cho channel đã lưu trong danh sách.
+  const testExistingChannel = async (id: string, name: string) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setTestingChannelId(id);
+    try {
+      await apiClient(`/alerts/channels/${id}/test`, {
+        method: 'POST',
+      });
+      setSuccessMessage(`Đã gửi thông báo thử nghiệm đến kênh "${name}" thành công!`);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(getApiErrorMessage(error, `Gửi thông báo thử nghiệm đến kênh "${name}" thất bại.`));
+    } finally {
+      setTestingChannelId(null);
+    }
+  };
+
   // createRule gửi channel_ids để backend tạo rule và liên kết channel trong một transaction.
   const createRule = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -165,8 +253,16 @@ export default function AlertsPage() {
       return;
     }
 
+    const isSpecialMetric = ruleMetric === 'status' || ruleMetric === 'container' || ruleMetric === 'service';
+    if (ruleMetric === 'container' || ruleMetric === 'service') {
+      if (!ruleTargetName.trim()) {
+        setErrorMessage(`Vui lòng nhập tên ${ruleMetric === 'container' ? 'Container' : 'Service'} cần theo dõi.`);
+        return;
+      }
+    }
+
     const threshold = Number.parseFloat(ruleThreshold);
-    if (ruleMetric !== 'status' && (!Number.isFinite(threshold) || threshold < 0 || threshold > 100)) {
+    if (!isSpecialMetric && (!Number.isFinite(threshold) || threshold < 0 || threshold > 100)) {
       setErrorMessage('Threshold must be between 0 and 100.');
       return;
     }
@@ -183,16 +279,20 @@ export default function AlertsPage() {
         body: JSON.stringify({
           name: ruleName.trim(),
           metric: ruleMetric,
-          operator: ruleOperator,
-          threshold: ruleMetric === 'status' ? 0 : threshold,
+          operator: isSpecialMetric ? '!=' : ruleOperator,
+          threshold: isSpecialMetric ? 0 : threshold,
           duration_minutes: duration,
           server_id: selectedServerId === 'all' ? null : selectedServerId,
           channel_ids: selectedChannelIds,
+          repeat_interval_minutes: Number.parseInt(ruleRepeatInterval, 10) || 0,
+          target_name: (ruleMetric === 'container' || ruleMetric === 'service') ? ruleTargetName.trim() : null,
         }),
       });
 
       setRules((current) => [createdRule, ...current]);
       setRuleName('');
+      setRuleTargetName('');
+      setRuleRepeatInterval('0');
       setRuleThreshold('90');
       setRuleDuration('1');
       setSelectedServerId('all');
@@ -241,19 +341,7 @@ export default function AlertsPage() {
         }
       }
 
-      const config = channelType === 'telegram'
-        ? { bot_token: channelToken.trim(), chat_id: channelChatId.trim() }
-        : channelType === 'discord'
-          ? { webhook_url: channelWebhook.trim() }
-          : {
-              smtp_host: channelSMTPHost.trim(),
-              smtp_port: Number.parseInt(channelSMTPPort, 10) || 587,
-              username: channelSMTPUsername.trim(),
-              password: channelSMTPPassword,
-              from: channelEmailFrom.trim(),
-              to: channelEmailTo.trim(),
-              use_tls: channelUseTLS,
-            };
+      const config = getChannelConfig();
 
       const createdChannel = await apiClient('/alerts/channels', {
         method: 'POST',
@@ -454,18 +542,65 @@ export default function AlertsPage() {
                 </label>
                 <CustomSelect
                   value={ruleMetric}
-                  onChange={setRuleMetric}
+                  onChange={(val) => {
+                    setRuleMetric(val);
+                    if (val === 'status' || val === 'container' || val === 'service') {
+                      setRuleDuration('1');
+                    }
+                  }}
                   options={[
-                    { value: 'cpu', label: 'CPU Usage' },
-                    { value: 'ram', label: 'RAM Usage' },
-                    { value: 'disk', label: 'Disk Usage' },
-                    { value: 'status', label: 'Offline status' },
+                    { value: 'cpu', label: 'CPU Usage (%)' },
+                    { value: 'ram', label: 'RAM Usage (%)' },
+                    { value: 'disk', label: 'Disk Usage (%)' },
+                    { value: 'status', label: 'Server Offline Status' },
+                    { value: 'container', label: 'Docker Container' },
+                    { value: 'service', label: 'Systemd Service' },
                   ]}
                   className="w-full"
                 />
               </div>
 
-              {ruleMetric !== 'status' && (
+              {ruleMetric === 'container' && (
+                <div>
+                  <label htmlFor="rule-target-name" className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--color-muted)]">
+                    <Box className="h-4 w-4 text-blue-400" /> Tên Docker Container
+                  </label>
+                  <input
+                    id="rule-target-name"
+                    required
+                    value={ruleTargetName}
+                    onChange={(event) => setRuleTargetName(event.target.value)}
+                    type="text"
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                    placeholder="Ví dụ: nginx, web_app, postgres"
+                  />
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    Cảnh báo khi container này bị dừng (exited/dead) hoặc không tìm thấy.
+                  </p>
+                </div>
+              )}
+
+              {ruleMetric === 'service' && (
+                <div>
+                  <label htmlFor="rule-target-name" className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--color-muted)]">
+                    <Layers className="h-4 w-4 text-purple-400" /> Tên Systemd Service
+                  </label>
+                  <input
+                    id="rule-target-name"
+                    required
+                    value={ruleTargetName}
+                    onChange={(event) => setRuleTargetName(event.target.value)}
+                    type="text"
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                    placeholder="Ví dụ: nginx, mariadb, docker"
+                  />
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    Cảnh báo khi systemd service không ở trạng thái active (running).
+                  </p>
+                </div>
+              )}
+
+              {ruleMetric !== 'status' && ruleMetric !== 'container' && ruleMetric !== 'service' && (
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label htmlFor="rule-operator" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
@@ -501,21 +636,59 @@ export default function AlertsPage() {
               )}
 
               <div>
-                <label htmlFor="rule-duration" className="mb-1 block text-sm font-medium text-[var(--color-muted)]">
-                  Condition duration (minutes)
+                <label htmlFor="rule-duration" className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--color-muted)]">
+                  <Clock className="h-4 w-4" /> {ruleMetric === 'status' ? 'Ngưỡng mất kết nối (Phút)' : 'Thời gian duy trì điều kiện (Phút)'}
                 </label>
-                <input
-                  id="rule-duration"
-                  required
-                  min="1"
-                  max="1440"
-                  value={ruleDuration}
-                  onChange={(event) => setRuleDuration(event.target.value)}
-                  type="number"
-                  className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                {ruleMetric === 'status' ? (
+                  <CustomSelect
+                    value={ruleDuration}
+                    onChange={setRuleDuration}
+                    options={[
+                      { value: '1', label: '1 phút (Nhanh nhất - khuyến nghị)' },
+                      { value: '2', label: '2 phút' },
+                      { value: '5', label: '5 phút' },
+                      { value: '10', label: '10 phút' },
+                      { value: '15', label: '15 phút' },
+                    ]}
+                    className="w-full"
+                  />
+                ) : (
+                  <input
+                    id="rule-duration"
+                    required
+                    min="1"
+                    max="1440"
+                    value={ruleDuration}
+                    onChange={(event) => setRuleDuration(event.target.value)}
+                    type="number"
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
+                  />
+                )}
+                <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+                  {ruleMetric === 'status'
+                    ? 'Server không gửi heartbeat sau khoảng thời gian này sẽ kích hoạt cảnh báo OFFLINE.'
+                    : 'Điều kiện vi phạm phải liên tục kéo dài qua thời gian này trước khi kích hoạt cảnh báo.'}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="rule-repeat" className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--color-muted)]">
+                  <Bell className="h-4 w-4" /> Nhắc lại cảnh báo (Re-notification)
+                </label>
+                <CustomSelect
+                  value={ruleRepeatInterval}
+                  onChange={setRuleRepeatInterval}
+                  options={[
+                    { value: '0', label: 'Chỉ gửi 1 lần (Không nhắc lại)' },
+                    { value: '15', label: 'Mỗi 15 phút nếu chưa phục hồi' },
+                    { value: '30', label: 'Mỗi 30 phút nếu chưa phục hồi' },
+                    { value: '60', label: 'Mỗi 1 giờ nếu chưa phục hồi' },
+                    { value: '120', label: 'Mỗi 2 giờ nếu chưa phục hồi' },
+                  ]}
+                  className="w-full"
                 />
                 <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                  The condition must remain true for this long before an incident is opened.
+                  Gửi lại thông báo định kỳ nếu sự cố vẫn tiếp diễn chưa được giải quyết.
                 </p>
               </div>
 
@@ -630,14 +803,27 @@ export default function AlertsPage() {
                   </div>
                   <p className="mt-1 text-sm text-[var(--color-muted)]">
                     {rule.metric === 'status'
-                      ? 'Alert when server is offline (> 1m)'
-                      : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m duration)`}
+                      ? `Alert when server is offline (> ${rule.duration_minutes}m)`
+                      : rule.metric === 'container'
+                        ? `Docker Container "${rule.target_name || '*'}" stopped (${rule.duration_minutes}m)`
+                        : rule.metric === 'service'
+                          ? `Systemd Service "${rule.target_name || '*'}" inactive (${rule.duration_minutes}m)`
+                          : `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m duration)`}
                   </p>
 
-                  <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                    <Server className="h-3.5 w-3.5 text-[var(--violet-strong)]" />
-                    {rule.server_name ? `Agent: ${rule.server_name}` : 'All agents'}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+                    <span className="flex items-center gap-1.5 font-semibold text-[var(--foreground)]">
+                      <Server className="h-3.5 w-3.5 text-[var(--violet-strong)]" />
+                      {rule.server_name ? `Agent: ${rule.server_name}` : 'All agents'}
+                    </span>
+
+                    {rule.repeat_interval_minutes && rule.repeat_interval_minutes > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-400">
+                        <Clock className="h-3 w-3" />
+                        Nhắc lại mỗi {rule.repeat_interval_minutes}m
+                      </span>
+                    ) : null}
+                  </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {(rule.channels ?? []).length > 0 ? (
@@ -891,14 +1077,25 @@ export default function AlertsPage() {
                 </>
               )}
 
-              <button
-                type="submit"
-                disabled={savingChannel}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingChannel && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save Channel
-              </button>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={testNewChannel}
+                  disabled={testingNewChannel || savingChannel}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-400 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {testingNewChannel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Thử nghiệm (Test)
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingChannel || testingNewChannel}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingChannel && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Lưu Channel
+                </button>
+              </div>
             </form>
           </div>
 
@@ -936,20 +1133,38 @@ export default function AlertsPage() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    aria-label={
-                      inUse
-                        ? `Channel ${channel.name} is used by alert rules`
-                        : `Delete channel ${channel.name}`
-                    }
-                    title={inUse ? 'Delete or update the linked alert rules first' : 'Delete channel'}
-                    onClick={() => void deleteChannel(channel.id)}
-                    disabled={inUse}
-                    className="shrink-0 rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    <Trash2 className="h-5 w-5" />
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      aria-label={`Test channel ${channel.name}`}
+                      title="Gửi thông báo thử nghiệm"
+                      disabled={testingChannelId === channel.id}
+                      onClick={() => void testExistingChannel(channel.id, channel.name)}
+                      className="flex items-center gap-1.5 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2.5 py-1.5 text-xs font-semibold text-blue-400 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {testingChannelId === channel.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Test
+                    </button>
+
+                    <button
+                      type="button"
+                      aria-label={
+                        inUse
+                          ? `Channel ${channel.name} is used by alert rules`
+                          : `Delete channel ${channel.name}`
+                      }
+                      title={inUse ? 'Delete or update the linked alert rules first' : 'Delete channel'}
+                      onClick={() => void deleteChannel(channel.id)}
+                      disabled={inUse}
+                      className="shrink-0 rounded-lg p-2 text-rose-600 transition-colors hover:bg-rose-500/10 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
