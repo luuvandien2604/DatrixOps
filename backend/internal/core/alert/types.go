@@ -28,12 +28,12 @@ type AlertRuleChannel struct {
 // AlertRule định nghĩa điều kiện cảnh báo, phạm vi agent và các channel nhận tin.
 // ServerID nil nghĩa là rule áp dụng cho toàn bộ agent thuộc user hiện tại.
 type AlertRule struct {
-	ID              string             `json:"id"`
-	UserID          string             `json:"user_id"`
-	Name            string             `json:"name"`
-	Metric          string             `json:"metric"`   // cpu, ram, status
-	Operator        string             `json:"operator"` // >, <, ==
-	Threshold       float64            `json:"threshold"`
+	ID                    string             `json:"id"`
+	UserID                string             `json:"user_id"`
+	Name                  string             `json:"name"`
+	Metric                string             `json:"metric"`   // cpu, ram, status
+	Operator              string             `json:"operator"` // >, <, ==
+	Threshold             float64            `json:"threshold"`
 	DurationMinutes       int                `json:"duration_minutes"`
 	RepeatIntervalMinutes int                `json:"repeat_interval_minutes"`
 	TargetName            *string            `json:"target_name,omitempty"`
