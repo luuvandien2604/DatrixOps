@@ -173,7 +173,7 @@ func (j *AlertJob) listEnabledChannelsByRule(ctx context.Context) (map[string][]
 
 // evaluateRule đánh giá rule trên một agent cụ thể hoặc toàn bộ agent của user.
 func (j *AlertJob) evaluateRule(ctx context.Context, rule alert.AlertRule, channels []alert.AlertChannel) {
-	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1 AND enrolled_at IS NOT NULL AND bootstrap_completed_at IS NOT NULL AND deletion_status IS NULL`
+	query := `SELECT id, name, last_seen_at FROM servers WHERE user_id = $1 AND enrolled_at IS NOT NULL AND bootstrap_completed_at IS NOT NULL AND COALESCE(deletion_status, 'active') = 'active'`
 	args := []interface{}{rule.UserID}
 
 	if rule.ServerID != nil {
@@ -1092,25 +1092,37 @@ func evaluateServiceCondition(targetName string, snapshotJSON []byte) (satisfied
 		return false, 0, false
 	}
 	target := strings.ToLower(strings.TrimSpace(targetName))
-	if target != "" {
+	cleanTarget := strings.TrimSuffix(target, ".service")
+	if cleanTarget != "" {
 		var found bool
 		for _, s := range snap.Services {
-			sName := strings.ToLower(s.Name)
-			dName := strings.ToLower(s.DisplayName)
-			if sName == target || dName == target || strings.Contains(sName, target) {
+			sName := strings.ToLower(strings.TrimSpace(s.Name))
+			dName := strings.ToLower(strings.TrimSpace(s.DisplayName))
+			cleanSName := strings.TrimSuffix(sName, ".service")
+			cleanDName := strings.TrimSuffix(dName, ".service")
+
+			if cleanSName == cleanTarget || cleanDName == cleanTarget || sName == target || dName == target || strings.Contains(cleanSName, cleanTarget) {
 				found = true
-				if strings.ToLower(s.Status) != "running" && strings.ToLower(s.Status) != "active" {
-					return true, 0, true
+				status := strings.ToLower(strings.TrimSpace(s.Status))
+				subStatus := strings.ToLower(strings.TrimSpace(s.SubStatus))
+
+				// Service is normal only if status is running/active/ok and subStatus is not failed/dead
+				if (status == "running" || status == "active" || status == "ok") && subStatus != "failed" && subStatus != "dead" {
+					return false, 0, true
 				}
-				return false, 0, true
+				// Otherwise service is stopped, dead, failed, inactive, not_installed -> trigger alert
+				return true, 0, true
 			}
 		}
 		if !found {
+			// Service not found in snapshot -> trigger alert
 			return true, 0, true
 		}
 	} else {
 		for _, s := range snap.Services {
-			if strings.ToLower(s.Status) == "failed" || strings.ToLower(s.SubStatus) == "failed" {
+			status := strings.ToLower(strings.TrimSpace(s.Status))
+			subStatus := strings.ToLower(strings.TrimSpace(s.SubStatus))
+			if status == "failed" || status == "dead" || subStatus == "failed" || subStatus == "dead" {
 				return true, 0, true
 			}
 		}

@@ -128,10 +128,8 @@ export default function AlertsPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   // Rules Tab Filter States
-  const [ruleCategoryFilter, setRuleCategoryFilter] = useState<'all' | 'status' | 'container' | 'service' | 'metric' | 'website'>('all');
   const [ruleStatusFilter, setRuleStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
   const [ruleSearchQuery, setRuleSearchQuery] = useState('');
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [incidentFilter, setIncidentFilter] = useState<'all' | 'unread' | 'read'>('all');
 
   // Create Alert Form State
@@ -582,30 +580,18 @@ export default function AlertsPage() {
     }
   };
 
-  // Rule counts by category
-  const offlineRules = rules.filter((r) => r.metric === 'status');
-  const dockerRules = rules.filter((r) => r.metric === 'container');
-  const serviceRules = rules.filter((r) => r.metric === 'service');
-  const metricRules = rules.filter((r) => ['cpu', 'ram', 'disk'].includes(r.metric));
-  const websiteRules = rules.filter((r) => ['website', 'ssl'].includes(r.metric));
-
   // Filter rules list
   const filteredRules = rules.filter((rule) => {
-    if (ruleCategoryFilter === 'status' && rule.metric !== 'status') return false;
-    if (ruleCategoryFilter === 'container' && rule.metric !== 'container') return false;
-    if (ruleCategoryFilter === 'service' && rule.metric !== 'service') return false;
-    if (ruleCategoryFilter === 'metric' && !['cpu', 'ram', 'disk'].includes(rule.metric)) return false;
-    if (ruleCategoryFilter === 'website' && !['website', 'ssl'].includes(rule.metric)) return false;
-
     if (ruleStatusFilter === 'active' && !rule.enabled) return false;
     if (ruleStatusFilter === 'disabled' && rule.enabled) return false;
 
     if (ruleSearchQuery.trim()) {
       const q = ruleSearchQuery.toLowerCase();
       const matchName = rule.name.toLowerCase().includes(q);
+      const matchMetric = rule.metric.toLowerCase().includes(q);
       const matchTarget = (rule.target_name || '').toLowerCase().includes(q);
       const matchServer = (rule.server_name || '').toLowerCase().includes(q);
-      return matchName || matchTarget || matchServer;
+      return matchName || matchMetric || matchTarget || matchServer;
     }
     return true;
   });
@@ -772,133 +758,40 @@ export default function AlertsPage() {
         <div className="space-y-4">
           {/* Filter Bar */}
           <div className="flex flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Category Chips */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('all')}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                All ({rules.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('status')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'status'
-                    ? 'bg-cyan-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Server className="h-3.5 w-3.5" /> Server Offline ({offlineRules.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('container')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'container'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Box className="h-3.5 w-3.5" /> Docker ({dockerRules.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('service')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'service'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Layers className="h-3.5 w-3.5" /> Systemd ({serviceRules.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('metric')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'metric'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Activity className="h-3.5 w-3.5" /> Metrics ({metricRules.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRuleCategoryFilter('website')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  ruleCategoryFilter === 'website'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Globe2 className="h-3.5 w-3.5" /> Website & SSL ({websiteRules.length})
-              </button>
-            </div>
-
-            {/* Status & Search & Action */}
-            <div className="flex items-center gap-2 shrink-0">
-              {isSearchExpanded || ruleSearchQuery ? (
-                <div className="relative flex items-center transition-all duration-200 w-48 sm:w-60">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-muted)]" />
-                  <input
-                    type="text"
-                    autoFocus
-                    value={ruleSearchQuery}
-                    onChange={(e) => setRuleSearchQuery(e.target.value)}
-                    placeholder="Search rules..."
-                    className="h-8 w-full rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] pl-9 pr-7 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRuleSearchQuery('');
-                      setIsSearchExpanded(false);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5"
-                    title="Close search"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ) : (
+            {/* Search Input */}
+            <div className="relative w-full sm:w-80 md:w-96">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
+              <input
+                type="text"
+                value={ruleSearchQuery}
+                onChange={(e) => setRuleSearchQuery(e.target.value)}
+                placeholder="Search alert rules by name, target, or server..."
+                className="h-9 w-full rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+              {ruleSearchQuery && (
                 <button
                   type="button"
-                  onClick={() => setIsSearchExpanded(true)}
-                  title="Search rules"
-                  className="h-8 w-8 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] hover:bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition shrink-0"
+                  onClick={() => setRuleSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5"
+                  title="Clear search"
                 >
-                  <Search className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
+            </div>
 
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-[var(--color-muted)] font-medium">Status:</span>
               <select
                 value={ruleStatusFilter}
                 onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
-                className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-2.5 text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-blue-500 shrink-0"
+                className="h-9 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
               >
-                <option value="all">All Statuses</option>
-                <option value="active">Active only</option>
-                <option value="disabled">Disabled only</option>
+                <option value="all">All Statuses ({rules.length})</option>
+                <option value="active">Active only ({rules.filter((r) => r.enabled).length})</option>
+                <option value="disabled">Disabled only ({rules.filter((r) => !r.enabled).length})</option>
               </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('create');
-                  setErrorMessage('');
-                  setSuccessMessage('');
-                }}
-                className="h-8 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-500 shrink-0"
-              >
-                <Plus className="h-3.5 w-3.5" /> New Alert
-              </button>
             </div>
           </div>
 

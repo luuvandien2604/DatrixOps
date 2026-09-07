@@ -96,7 +96,32 @@ func TestEvaluateServiceCondition(t *testing.T) {
 		t.Errorf("expected satisfied=true for failed service, got val=%f", val)
 	}
 
-	// 3. Service "missing" -> should satisfy violation
+	// 3. Service "apache2" with status "stopped" and sub_status "dead"
+	snapApache := map[string]interface{}{
+		"services": []interface{}{
+			map[string]interface{}{
+				"name":         "apache2",
+				"display_name": "apache2.service",
+				"status":       "stopped",
+				"sub_status":   "dead",
+			},
+		},
+	}
+	rawApache, _ := json.Marshal(snapApache)
+
+	// 3a. Target "apache2" -> should satisfy violation (alert firing)
+	satisfied, val, ok = evaluateServiceCondition("apache2", rawApache)
+	if !ok || !satisfied {
+		t.Errorf("expected satisfied=true for stopped apache2 service, got satisfied=%v, val=%f", satisfied, val)
+	}
+
+	// 3b. Target "apache2.service" -> should satisfy violation
+	satisfied, val, ok = evaluateServiceCondition("apache2.service", rawApache)
+	if !ok || !satisfied {
+		t.Errorf("expected satisfied=true for stopped apache2.service, got satisfied=%v, val=%f", satisfied, val)
+	}
+
+	// 4. Service "missing" -> should satisfy violation
 	satisfied, val, ok = evaluateServiceCondition("missing", raw)
 	if !ok {
 		t.Fatalf("expected ok=true")
