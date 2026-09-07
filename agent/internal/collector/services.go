@@ -52,7 +52,14 @@ func collectServices(configured []string) []ServiceStatus {
 		}(index, serviceName)
 	}
 	waitGroup.Wait()
-	return results
+
+	installed := make([]ServiceStatus, 0, len(results))
+	for _, s := range results {
+		if s.Status != "not_installed" {
+			installed = append(installed, s)
+		}
+	}
+	return installed
 }
 
 // InspectService returns the current state from the native service manager.

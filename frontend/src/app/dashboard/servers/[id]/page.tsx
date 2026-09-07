@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
@@ -737,10 +737,12 @@ export default function ServerDetailsPage() {
   ];
   // Old agents sent a Linux-only list without a service manager. Do not show
   // those entries as valid launchd or Windows services.
+  // Only display services that are actually installed and exist on the machine.
   const services = reportedServices.filter(service =>
-    osFamily === 'unknown'
+    (osFamily === 'unknown'
       || (osFamily === 'linux' && !service.source)
-      || service.source === serviceManager,
+      || service.source === serviceManager)
+    && service.status !== 'not_installed',
   );
   const hasIncompatibleLegacyServices = reportedServices.length > services.length;
   // Heartbeat version is authoritative for the binary that is running now.
@@ -1456,8 +1458,8 @@ export default function ServerDetailsPage() {
             {[
               { label: 'Running', value: serviceCounts.running || 0, icon: CircleCheck, tone: 'text-emerald-500' },
               { label: serviceContent.stopped, value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
-              { label: serviceContent.missing, value: serviceCounts.not_installed || 0, icon: TerminalSquare, tone: 'text-[var(--color-muted)]' },
               { label: 'Unknown', value: serviceCounts.unknown || 0, icon: CircleHelp, tone: 'text-amber-500' },
+              { label: 'Total Services', value: services.length, icon: Layers, tone: 'text-blue-500' },
             ].map(({ label, value, icon: Icon, tone }) => (
               <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
                 <div className={`flex items-center gap-2 text-sm font-semibold ${tone}`}><Icon className="h-4 w-4" />{label}</div>
@@ -1485,7 +1487,6 @@ export default function ServerDetailsPage() {
                     { value: 'all', label: 'All statuses' },
                     { value: 'running', label: 'Running' },
                     { value: 'stopped', label: serviceContent.stopped },
-                    { value: 'not_installed', label: serviceContent.missing },
                     { value: 'unknown', label: 'Unknown' },
                   ]}
                   className="w-48"
