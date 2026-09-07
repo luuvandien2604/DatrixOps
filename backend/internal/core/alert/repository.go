@@ -450,6 +450,96 @@ func (r *Repository) GetChannel(ctx context.Context, id, userID string) (*AlertC
 	return &channel, nil
 }
 
+// GetRuleWithChannels lấy thông tin một alert rule và các channels đã liên kết.
+func (r *Repository) GetRuleWithChannels(ctx context.Context, id, userID string) (*AlertRule, []AlertChannel, error) {
+	var rule AlertRule
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT
+			r.id,
+			r.user_id,
+			r.name,
+			r.metric,
+			r.operator,
+			r.threshold,
+			r.duration_minutes,
+			COALESCE(r.repeat_interval_minutes, 0),
+			r.target_name,
+			r.server_id,
+			s.name AS server_name,
+			r.enabled,
+			r.created_at,
+			r.updated_at
+		FROM alert_rules r
+		LEFT JOIN servers s ON s.id = r.server_id
+		WHERE r.id = $1 AND r.user_id = $2
+	`, id, userID).Scan(
+		&rule.ID,
+		&rule.UserID,
+		&rule.Name,
+		&rule.Metric,
+		&rule.Operator,
+		&rule.Threshold,
+		&rule.DurationMinutes,
+		&rule.RepeatIntervalMinutes,
+		&rule.TargetName,
+		&rule.ServerID,
+		&rule.ServerName,
+		&rule.Enabled,
+		&rule.CreatedAt,
+		&rule.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, ErrRuleNotFound
+		}
+		return nil, nil, fmt.Errorf("get alert rule: %w", err)
+	}
+
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT
+			c.id,
+			c.user_id,
+			c.name,
+			c.type,
+			c.config,
+			c.enabled
+		FROM alert_rule_channels arc
+		JOIN alert_channels c ON c.id = arc.alert_channel_id
+		WHERE arc.alert_rule_id = $1
+		  AND c.user_id = $2
+		  AND c.enabled = true
+	`, id, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list channels for rule: %w", err)
+	}
+	defer rows.Close()
+
+	channels := make([]AlertChannel, 0)
+	for rows.Next() {
+		var c AlertChannel
+		var configBytes []byte
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Name, &c.Type, &configBytes, &c.Enabled); err != nil {
+			return nil, nil, fmt.Errorf("scan rule channel: %w", err)
+		}
+		c.Config = make(map[string]interface{})
+		if err := json.Unmarshal(configBytes, &c.Config); err == nil {
+			channels = append(channels, c)
+		}
+	}
+	return &rule, channels, nil
+}
+
+// CreateNotification ghi một notification vào dashboard_notifications.
+func (r *Repository) CreateNotification(ctx context.Context, userID, ruleID string, serverID *string, kind, severity, title, message string, metadata map[string]any) error {
+	metaJSON, _ := json.Marshal(metadata)
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO dashboard_notifications (
+			user_id, alert_rule_id, server_id, kind, severity, title, message, metadata
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, userID, ruleID, serverID, kind, severity, title, message, metaJSON)
+	return err
+}
+
 // DeleteChannel xóa channel trong transaction.
 // Hàm chỉ chặn khi có rule hợp lệ của chính user đang dùng channel.
 func (r *Repository) DeleteChannel(ctx context.Context, id, userID string) error {

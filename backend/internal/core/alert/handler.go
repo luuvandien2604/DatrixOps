@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -292,6 +293,140 @@ func (h *Handler) TestExistingChannel(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{
 		"status":  "success",
 		"message": "Test notification sent successfully",
+	})
+}
+
+// TestAlertRule mô phỏng kích hoạt một rule và gửi cảnh báo mẫu tới tất cả các channel đã liên kết.
+func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	id := r.PathValue("id")
+	rule, channels, err := h.repo.GetRuleWithChannels(r.Context(), id, userID)
+	if err != nil {
+		if errors.Is(err, ErrRuleNotFound) {
+			response.Error(w, http.StatusNotFound, "RULE_NOT_FOUND", "Alert rule not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve alert rule")
+		return
+	}
+
+	if len(channels) == 0 {
+		response.Error(w, http.StatusBadRequest, "NO_CHANNELS", "Quy tắc này chưa liên kết kênh thông báo nào. Vui lòng chỉnh sửa rule và thêm ít nhất 1 kênh.")
+		return
+	}
+
+	serverName := "Toàn bộ máy chủ (All agents)"
+	if rule.ServerName != nil && *rule.ServerName != "" {
+		serverName = *rule.ServerName
+	}
+
+	metricLabel := rule.Metric
+	switch rule.Metric {
+	case "status":
+		metricLabel = fmt.Sprintf("Mất kết nối máy chủ (Offline > %dm)", rule.DurationMinutes)
+	case "container":
+		target := "*"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		metricLabel = fmt.Sprintf("Docker Container \"%s\" bị dừng/unhealthy", target)
+	case "service":
+		target := "*"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		metricLabel = fmt.Sprintf("Systemd Service \"%s\" không active", target)
+	default:
+		metricLabel = fmt.Sprintf("%s %s %.1f%% (Duy trì > %dm)", strings.ToUpper(rule.Metric), rule.Operator, rule.Threshold, rule.DurationMinutes)
+	}
+
+	nowStr := time.Now().Format("2006-01-02 15:04:05")
+	var sendErrors []string
+
+	for _, ch := range channels {
+		var sendErr error
+		switch ch.Type {
+		case "telegram":
+			chatID, _ := ch.Config["chat_id"].(string)
+			botToken, _ := ch.Config["bot_token"].(string)
+			msg := fmt.Sprintf("🚨 <b>[DATRIXOPS TEST ALERT]</b>\n\n"+
+				"📌 <b>Quy tắc:</b> %s\n"+
+				"🖥 <b>Máy chủ:</b> %s\n"+
+				"⚙️ <b>Điều kiện:</b> %s\n"+
+				"⚡ <b>Trạng thái:</b> Mô phỏng cảnh báo sự cố (Test Alert)\n"+
+				"🕒 <b>Thời gian:</b> %s\n\n"+
+				"<i>Đây là thông báo thử nghiệm để xác nhận quy tắc cảnh báo hoạt động chính xác.</i>",
+				html.EscapeString(rule.Name),
+				html.EscapeString(serverName),
+				html.EscapeString(metricLabel),
+				nowStr,
+			)
+			sendErr = notifier.SendTelegram(botToken, chatID, msg)
+		case "discord":
+			webhookURL, _ := ch.Config["webhook_url"].(string)
+			embed := notifier.DiscordEmbed{
+				Title:       fmt.Sprintf("🚨 [DATRIXOPS TEST ALERT] %s", rule.Name),
+				Description: "Đây là thông báo thử nghiệm mô phỏng sự cố cho quy tắc này.",
+				Color:       0xEF4444,
+				Fields: []notifier.DiscordEmbedField{
+					{Name: "Máy chủ mục tiêu", Value: serverName, Inline: true},
+					{Name: "Điều kiện cảnh báo", Value: metricLabel, Inline: true},
+					{Name: "Trạng thái", Value: "Mô phỏng kích hoạt (Test Trigger)", Inline: true},
+					{Name: "Thời gian", Value: nowStr, Inline: true},
+				},
+				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Alert Rule Test"},
+			}
+			sendErr = notifier.SendDiscordEmbed(webhookURL, embed)
+		case "email":
+			emailCfg := parseEmailConfig(ch.Config)
+			body := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px;">
+<div style="max-width: 500px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; padding: 24px;">
+  <h2 style="color: #EF4444; margin-top: 0;">[DATRIXOPS TEST ALERT] %s</h2>
+  <p>Đây là thông báo thử nghiệm mô phỏng sự cố của quy tắc <strong>%s</strong>.</p>
+  <ul style="color: #cbd5e1; line-height: 1.8;">
+    <li><strong>Máy chủ:</strong> %s</li>
+    <li><strong>Điều kiện:</strong> %s</li>
+    <li><strong>Thời gian:</strong> %s</li>
+  </ul>
+</div>
+</body>
+</html>`, html.EscapeString(rule.Name), html.EscapeString(rule.Name), html.EscapeString(serverName), html.EscapeString(metricLabel), nowStr)
+			sendErr = notifier.SendHTMLEmail(emailCfg, fmt.Sprintf("[DATRIXOPS TEST ALERT] %s", rule.Name), body)
+		}
+
+		if sendErr != nil {
+			sendErrors = append(sendErrors, fmt.Sprintf("%s: %v", ch.Name, sendErr))
+		}
+	}
+
+	// Ghi notification vào dashboard_notifications
+	dashTitle := fmt.Sprintf("[TEST ALERT] %s", rule.Name)
+	dashMsg := fmt.Sprintf("Mô phỏng cảnh báo cho máy chủ %s (%s). Đã gửi tới %d kênh.", serverName, metricLabel, len(channels))
+	_ = h.repo.CreateNotification(r.Context(), userID, rule.ID, rule.ServerID, "test_alert", "warning", dashTitle, dashMsg, map[string]any{
+		"metric":      rule.Metric,
+		"rule_name":   rule.Name,
+		"server_name": serverName,
+	})
+
+	if len(sendErrors) > 0 && len(sendErrors) == len(channels) {
+		response.Error(w, http.StatusBadRequest, "TEST_FAILED", fmt.Sprintf("Gửi thông báo thử nghiệm thất bại: %s", strings.Join(sendErrors, "; ")))
+		return
+	}
+
+	auditlog.Record(r.Context(), h.repo.db, userID, "TEST_ALERT_RULE", "ALERT_RULE", rule.ID, map[string]any{
+		"name":     rule.Name,
+		"channels": len(channels),
+	})
+
+	response.Success(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": fmt.Sprintf("Đã gửi cảnh báo thử nghiệm tới %d kênh nhận tin.", len(channels)),
 	})
 }
 
