@@ -955,17 +955,17 @@ export default function ServerDetailsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* CPU Usage */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>CPU USAGE</span>
-                  <span className={totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                  <span className={totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-semibold'}>
                     {totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'HIGH' : 'NORMAL'}
                   </span>
                 </div>
-                <div className={`text-2xl font-bold ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-400' : 'text-[var(--foreground)]'}`}>
+                <div className={`text-2xl font-bold ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-500' : 'text-[var(--foreground)]'}`}>
                   {totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
                   <div
                     className={`h-full rounded-full ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${Math.min(totalCPUUsage || 0, 100)}%` }}
@@ -974,7 +974,7 @@ export default function ServerDetailsPage() {
               </div>
 
               {/* RAM Usage */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>RAM USAGE</span>
                   <span className="text-[11px] text-[var(--color-muted)]">
@@ -984,7 +984,7 @@ export default function ServerDetailsPage() {
                 <div className="text-2xl font-bold text-[var(--foreground)]">
                   {totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
                   <div
                     className="h-full rounded-full bg-blue-500"
                     style={{ width: `${Math.min(totalMemoryUsage || 0, 100)}%` }}
@@ -993,7 +993,7 @@ export default function ServerDetailsPage() {
               </div>
 
               {/* Disk Usage */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>DISK USAGE</span>
                   <span className="text-[11px] text-[var(--color-muted)]">
@@ -1003,7 +1003,7 @@ export default function ServerDetailsPage() {
                 <div className="text-2xl font-bold text-[var(--foreground)]">
                   {parsedOSInfo.disk_usage !== undefined ? `${parsedOSInfo.disk_usage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/5 mt-3">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
                   <div
                     className={`h-full rounded-full ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : 'bg-amber-500'}`}
                     style={{ width: `${Math.min(Number(parsedOSInfo.disk_usage || 0), 100)}%` }}
@@ -1012,11 +1012,11 @@ export default function ServerDetailsPage() {
               </div>
 
               {/* Uptime */}
-              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4 font-mono">
+              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
                 <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
                   <span>UPTIME</span>
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${server.status === 'online' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`}></span> {server.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${server.status === 'online' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span> {server.status === 'online' ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
                 <div className={`text-xl font-bold mt-1 ${server.status === 'online' ? 'text-emerald-400' : 'text-[var(--color-muted)]'}`}>
@@ -1493,20 +1493,23 @@ export default function ServerDetailsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
+            <div className="divide-y divide-[var(--border-color)]">
               {filteredServices.map(service => {
                 const statusLabel = service.status === 'stopped'
                   ? serviceContent.stopped
                   : service.status === 'not_installed'
                     ? serviceContent.missing
                     : service.status.replace(/_/g, ' ');
-                const statusStyle = service.status === 'running'
+                const isRunning = service.status === 'running';
+                const isStopped = service.status === 'stopped';
+                const isMissing = service.status === 'not_installed';
+                const statusStyle = isRunning
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
-                  : service.status === 'stopped'
+                  : isStopped
                     ? 'border-rose-500/30 bg-rose-500/10 text-rose-500'
                     : service.status === 'unknown'
                       ? 'border-amber-500/30 bg-amber-500/10 text-amber-500'
-                      : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--color-muted)]';
+                      : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)]';
                 const serviceIsControllable = server.status === 'online'
                   && supportsServiceControls
                   && ['running', 'stopped'].includes(service.status)
@@ -1516,49 +1519,70 @@ export default function ServerDetailsPage() {
                     action: 'start',
                     label: 'Start',
                     icon: Play,
-                    tone: 'text-emerald-500 hover:border-emerald-500/50 hover:bg-emerald-500/10',
+                    tone: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20',
                     disabled: !serviceIsControllable || service.status === 'running',
                   },
                   {
                     action: 'stop',
                     label: 'Stop',
                     icon: Square,
-                    tone: 'text-rose-500 hover:border-rose-500/50 hover:bg-rose-500/10',
+                    tone: 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20',
                     disabled: !serviceIsControllable || service.status !== 'running',
                   },
                   {
                     action: 'restart',
                     label: 'Restart',
                     icon: RotateCw,
-                    tone: 'text-amber-500 hover:border-amber-500/50 hover:bg-amber-500/10',
+                    tone: 'border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20',
                     disabled: !serviceIsControllable,
                   },
                   {
                     action: 'reload',
                     label: 'Reload',
                     icon: RefreshCw,
-                    tone: 'text-blue-500 hover:border-blue-500/50 hover:bg-blue-500/10',
+                    tone: 'border-blue-500/30 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20',
                     disabled: !serviceIsControllable || service.status !== 'running' || service.source === 'windows-scm',
                     unavailableReason: service.source === 'windows-scm' ? 'Windows SCM does not provide a generic reload action.' : undefined,
                   },
                 ];
                 return (
-                  <article key={service.name} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
-                    <div className="flex items-start justify-between gap-4">
+                  <div
+                    key={service.name}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-[var(--background)]/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                          isRunning
+                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
+                            : isStopped
+                              ? 'bg-rose-500'
+                              : isMissing
+                                ? 'bg-slate-400'
+                                : 'bg-amber-500'
+                        }`}
+                      />
                       <div className="min-w-0">
-                        <h4 className="truncate font-semibold text-[var(--foreground)]">{service.display_name || service.name}</h4>
-                        <p className="mt-1 truncate font-mono text-xs text-[var(--color-muted)]">{service.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-[var(--foreground)] truncate">
+                            {service.display_name || service.name}
+                          </span>
+                          <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${statusStyle}`}>
+                            {statusLabel}
+                          </span>
+                          {service.startup_type && (
+                            <span className="text-[11px] text-[var(--color-muted)] font-mono">
+                              Startup: {service.startup_type}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[var(--color-muted)] truncate mt-0.5 max-w-xl font-mono" title={service.description || service.name}>
+                          {service.name}{service.description ? ` • ${service.description}` : ''}
+                        </p>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyle}`}>{statusLabel}</span>
                     </div>
-                    {service.description && <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">{service.description}</p>}
-                    <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--border-color)] pt-4 text-sm">
-                      <div><dt className="text-[var(--color-muted)]">Manager</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.source === 'windows-scm' ? 'Windows SCM' : service.source || `${serviceManager} (legacy snapshot)`}</dd></div>
-                      <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'Loading model' : 'Startup'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.startup_type || 'Unknown'}</dd></div>
-                      <div><dt className="text-[var(--color-muted)]">{osFamily === 'macos' ? 'launchd state' : 'Native state'}</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{service.sub_status || '—'}</dd></div>
-                      <div><dt className="text-[var(--color-muted)]">Checked</dt><dd className="mt-1 font-medium text-[var(--foreground)]">{formatTimestamp(service.last_checked_at)}</dd></div>
-                    </dl>
-                    <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border-color)] pt-4">
+
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
                       {serviceActions.map(({ action, label, icon: Icon, tone, disabled, unavailableReason }) => (
                         <button
                           key={action}
@@ -1566,18 +1590,18 @@ export default function ServerDetailsPage() {
                           disabled={disabled}
                           title={unavailableReason || (!supportsServiceControls ? `Update the agent to version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.` : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
                           onClick={() => setServiceActionRequest({ action, service })}
-                          className={`inline-flex items-center gap-1.5 rounded-full border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold transition-colors ${tone} disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--border-color)] disabled:hover:bg-transparent`}
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-md border transition-colors inline-flex items-center gap-1.5 ${tone} disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent`}
                         >
                           <Icon className="h-3.5 w-3.5" />
                           {label}
                         </button>
                       ))}
                     </div>
-                  </article>
+                  </div>
                 );
               })}
               {!filteredServices.length && (
-                <div className="col-span-full p-10 text-center text-[var(--color-muted)]">
+                <div className="p-10 text-center text-[var(--color-muted)]">
                   {services.length
                     ? `No ${serviceContent.title} match the current filters.`
                     : hasIncompatibleLegacyServices
@@ -1618,7 +1642,7 @@ export default function ServerDetailsPage() {
               <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-400">
                 {(snapshot?.docker_containers || []).filter(c => c.state === 'running').length} running
               </span>
-              <span className="rounded-full bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
+              <span className="rounded-full bg-[var(--surface-subtle)] border border-[var(--border-color)] px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
                 {snapshot?.docker_containers?.length || 0} total
               </span>
             </div>
@@ -1654,16 +1678,6 @@ export default function ServerDetailsPage() {
                   </div>
 
                   <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
-                    {/* Resource Usage */}
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-[var(--color-muted)]">
-                        CPU: <strong className="text-rose-400 font-mono">{c.cpu || '0%'}</strong>
-                      </span>
-                      <span className="text-[var(--color-muted)]">
-                        RAM: <strong className="text-blue-400 font-mono">{c.ram || '0%'}</strong>
-                      </span>
-                    </div>
-
                     {/* Actions */}
                     <div className="flex items-center gap-1.5">
                       {!isRunning && (

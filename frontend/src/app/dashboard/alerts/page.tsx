@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Bell,
   Box,
@@ -678,13 +679,6 @@ export default function AlertsPage() {
             }`}
           >
             <span>Alert Rules</span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${
-              activeTab === 'rules'
-                ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                : 'bg-[var(--surface-subtle)] text-[var(--color-muted)]'
-            }`}>
-              {rules.length}
-            </span>
             {activeTab === 'rules' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -721,13 +715,6 @@ export default function AlertsPage() {
           >
             <Bell className="h-4 w-4" />
             <span>Notification Channels</span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${
-              activeTab === 'channels'
-                ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                : 'bg-[var(--surface-subtle)] text-[var(--color-muted)]'
-            }`}>
-              {channels.length}
-            </span>
             {activeTab === 'channels' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -764,11 +751,6 @@ export default function AlertsPage() {
           >
             <Flame className="h-4 w-4" />
             <span>Incident History</span>
-            {unreadIncidentsCount > 0 && (
-              <span className="inline-flex items-center rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
-                {unreadIncidentsCount}
-              </span>
-            )}
             {activeTab === 'incidents' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -2002,40 +1984,32 @@ export default function AlertsPage() {
                       key={item.id}
                       className={`relative overflow-hidden rounded-2xl border transition-all ${
                         isFiring
-                          ? 'border-l-4 border-l-rose-500 border-[var(--border-color)]/60 bg-[#16181d]'
+                          ? 'border-l-4 border-l-rose-500 border-[var(--border-color)] bg-[var(--background-card)]'
                           : isResolved
-                            ? 'border-l-4 border-l-emerald-500 border-[var(--border-color)]/60 bg-[#16181d]'
+                            ? 'border-l-4 border-l-emerald-500 border-[var(--border-color)] bg-[var(--background-card)]'
                             : isReminder
-                              ? 'border-l-4 border-l-amber-500 border-[var(--border-color)]/60 bg-[#16181d]'
-                              : 'border-l-4 border-l-blue-500 border-[var(--border-color)]/60 bg-[#16181d]'
-                      } p-5 shadow-lg`}
+                              ? 'border-l-4 border-l-amber-500 border-[var(--border-color)] bg-[var(--background-card)]'
+                              : 'border-l-4 border-l-blue-500 border-[var(--border-color)] bg-[var(--background-card)]'
+                      } p-5 shadow-sm hover:shadow-md`}
                     >
                       {/* Card Header */}
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3.5 min-w-0">
-                          {/* Icon Badge */}
-                          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
-                            isFiring
-                              ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                              : isResolved
-                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                                : isReminder
-                                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                                  : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
-                          }`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Outline Icon */}
+                          <div className="shrink-0">
                             {isFiring ? (
-                              <span className="text-xs font-mono font-bold tracking-tighter">ER</span>
+                              <AlertTriangle className="h-5 w-5 text-rose-500" />
                             ) : isResolved ? (
-                              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                             ) : isReminder ? (
-                              <Clock className="h-5 w-5 text-amber-400" />
+                              <Clock className="h-5 w-5 text-amber-500" />
                             ) : (
-                              <Send className="h-5 w-5 text-blue-400" />
+                              <Send className="h-5 w-5 text-blue-500" />
                             )}
                           </div>
 
                           <div className="min-w-0">
-                            <h4 className="text-base font-bold text-white tracking-tight truncate">
+                            <h4 className="text-base font-bold text-[var(--foreground)] tracking-tight truncate">
                               {item.title}
                             </h4>
                             <p className="text-xs text-[var(--color-muted)] mt-0.5">
@@ -2047,19 +2021,19 @@ export default function AlertsPage() {
                         {/* Status Badge Pill */}
                         <div className="flex items-center gap-2 shrink-0">
                           {isUnread && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[10px] font-bold text-blue-400 uppercase tracking-wider">
-                              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[10px] font-bold text-blue-500 uppercase tracking-wider">
+                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
                               Unread
                             </span>
                           )}
                           <span className={`rounded-full px-3.5 py-1 text-xs font-semibold tracking-wide ${
                             isFiring
-                              ? 'bg-[#3f191f] text-[#f87171] border border-rose-900/60'
+                              ? 'bg-rose-500/10 text-rose-600 dark:bg-[#3f191f] dark:text-[#f87171] border border-rose-500/30 dark:border-rose-900/60'
                               : isResolved
-                                ? 'bg-[#133827] text-[#34d399] border border-emerald-900/60'
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:bg-[#133827] dark:text-[#34d399] border border-emerald-500/30 dark:border-emerald-900/60'
                                 : isReminder
-                                  ? 'bg-[#3c2a10] text-[#fbbf24] border border-amber-900/60'
-                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                                  ? 'bg-amber-500/10 text-amber-600 dark:bg-[#3c2a10] dark:text-[#fbbf24] border border-amber-500/30 dark:border-amber-900/60'
+                                  : 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-500/30 dark:border-blue-500/40'
                           }`}>
                             {isFiring ? 'Failed' : isResolved ? 'Active' : isReminder ? 'Reminder' : 'Test'}
                           </span>
@@ -2069,44 +2043,44 @@ export default function AlertsPage() {
                       {/* 2-Column Key/Value Grid */}
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6">
                         <div>
-                          <span className="block text-xs text-[var(--color-muted)] mb-0.5">Server</span>
-                          <span className="font-bold text-white text-sm tracking-wide">{serverName}</span>
+                          <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Server</span>
+                          <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{serverName}</span>
                         </div>
 
                         {isResolved ? (
                           <>
                             <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Downtime</span>
-                              <span className="font-bold text-white text-sm tracking-wide">{downtime}</span>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Downtime</span>
+                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{downtime}</span>
                             </div>
                             <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Failed at</span>
-                              <span className="font-bold text-white text-sm tracking-wide">{failedAt}</span>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Failed at</span>
+                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{failedAt}</span>
                             </div>
                             <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Recovered at</span>
-                              <span className="font-bold text-white text-sm tracking-wide">{recoveredAt}</span>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Recovered at</span>
+                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{recoveredAt}</span>
                             </div>
                           </>
                         ) : (
                           <div>
-                            <span className="block text-xs text-[var(--color-muted)] mb-0.5">Failed at</span>
-                            <span className="font-bold text-white text-sm tracking-wide">{failedAt}</span>
+                            <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Failed at</span>
+                            <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{failedAt}</span>
                           </div>
                         )}
                       </div>
 
                       {/* Horizontal Divider */}
-                      <div className="border-t border-white/[0.08] my-3.5" />
+                      <div className="border-t border-[var(--border-color)] my-3.5" />
 
                       {/* Footer */}
                       <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
-                        <span className="font-medium">DatrixOps Monitoring</span>
+                        <span className="font-normal">DatrixOps Monitoring</span>
                         {isUnread && (
                           <button
                             type="button"
                             onClick={() => void markIncidentRead(item.id)}
-                            className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition flex items-center gap-1.5"
+                            className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 transition flex items-center gap-1.5"
                           >
                             <Check className="h-3.5 w-3.5" /> Mark as read
                           </button>

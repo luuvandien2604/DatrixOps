@@ -750,6 +750,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
 					{Name: "Downtime", Value: downtimeStr, Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: failedAtStr, Inline: true},
 					{Name: "Recovered at", Value: nowStr, Inline: true},
 				},
@@ -801,6 +802,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
 					{Name: "Downtime", Value: downtimeStr, Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: failedAtStr, Inline: true},
 					{Name: "Recovered at", Value: nowStr, Inline: true},
 				},
@@ -852,6 +854,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
 					{Name: "Downtime", Value: downtimeStr, Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: failedAtStr, Inline: true},
 					{Name: "Recovered at", Value: nowStr, Inline: true},
 				},
@@ -925,6 +928,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Server", Value: serverName, Inline: true},
 			{Name: "Downtime", Value: downtimeStr, Inline: true},
+			{Name: "\u200b", Value: "\u200b", Inline: true},
 			{Name: "Failed at", Value: failedAtStr, Inline: true},
 			{Name: "Recovered at", Value: nowStr, Inline: true},
 		},
