@@ -6,7 +6,6 @@ import Link from 'next/link';
 import {
   Activity,
   AlertCircle,
-  AlertTriangle,
   ArrowRight,
   Bell,
   Box,
@@ -91,8 +90,38 @@ interface IncidentNotification {
   title: string;
   message: string;
   server_name?: string | null;
+  rule_name?: string | null;
+  metadata?: {
+    failed_at?: string;
+    recovered_at?: string;
+    downtime_duration?: string;
+    rule_name?: string;
+    server_name?: string;
+    target_name?: string;
+    current_value?: number;
+    threshold?: number;
+    operator?: string;
+    metric?: string;
+  } | null;
   read_at?: string | null;
   created_at: string;
+}
+
+function formatIncidentDate(dateStr?: string | null) {
+  if (!dateStr) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(dateStr)) return dateStr;
+  try {
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return dateStr;
+  }
 }
 
 type AlertTab = 'rules' | 'create' | 'channels' | 'websites' | 'incidents';
@@ -760,19 +789,20 @@ export default function AlertsPage() {
           <div className="flex flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Search Input */}
             <div className="relative w-full sm:w-80 md:w-96">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)] z-10" />
               <input
                 type="text"
                 value={ruleSearchQuery}
                 onChange={(e) => setRuleSearchQuery(e.target.value)}
                 placeholder="Search alert rules by name, target, or server..."
-                className="h-9 w-full rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                style={{ paddingLeft: '40px', paddingRight: '32px' }}
+                className="h-9 w-full rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
               {ruleSearchQuery && (
                 <button
                   type="button"
                   onClick={() => setRuleSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 z-10"
                   title="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1955,92 +1985,132 @@ export default function AlertsPage() {
                   return true;
                 })
                 .map((item) => {
-                  const isFiring = item.kind === 'alert_firing' || item.severity === 'critical';
-                  const isResolved = item.kind === 'alert_resolved' || item.severity === 'resolved';
+                  const isFiring = item.kind === 'alert_firing' || item.severity === 'critical' || item.kind === 'website_down';
+                  const isResolved = item.kind === 'alert_resolved' || item.severity === 'resolved' || item.kind === 'website_up';
                   const isReminder = item.kind === 'alert_reminder';
                   const isTest = item.kind === 'test_alert';
                   const isUnread = !item.read_at;
 
+                  const serverName = item.server_name || item.metadata?.server_name || 'Control Plane';
+                  const ruleName = item.rule_name || item.metadata?.rule_name || (isTest ? 'Test Alert' : isFiring || isResolved ? 'Systemd Service Alert' : 'System Alert');
+                  const failedAt = item.metadata?.failed_at || formatIncidentDate(item.created_at);
+                  const recoveredAt = item.metadata?.recovered_at || (isResolved ? formatIncidentDate(item.created_at) : '');
+                  const downtime = item.metadata?.downtime_duration || '1m';
+
                   return (
                     <div
                       key={item.id}
-                      className={`flex items-start gap-4 rounded-xl border p-4 transition ${
-                        isUnread
-                          ? 'border-blue-500/50 bg-blue-500/[0.04] ring-1 ring-blue-500/30'
-                          : isFiring
-                            ? 'border-rose-500/20 bg-rose-500/[0.03] opacity-80'
-                            : isResolved
-                              ? 'border-emerald-500/20 bg-emerald-500/[0.03] opacity-80'
-                              : 'border-[var(--border-color)] bg-[var(--background-card)] opacity-75'
-                      }`}
-                    >
-                      {/* Status Badge Icon */}
-                      <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                      className={`relative overflow-hidden rounded-2xl border transition-all ${
                         isFiring
-                          ? 'bg-rose-500 text-white'
+                          ? 'border-l-4 border-l-rose-500 border-[var(--border-color)]/60 bg-[#16181d]'
                           : isResolved
-                            ? 'bg-emerald-500 text-white'
+                            ? 'border-l-4 border-l-emerald-500 border-[var(--border-color)]/60 bg-[#16181d]'
                             : isReminder
-                              ? 'bg-purple-500 text-white'
-                              : 'bg-amber-500 text-white'
-                      }`}>
-                        {isFiring && <AlertTriangle className="h-5 w-5" />}
-                        {isResolved && <CheckCircle2 className="h-5 w-5" />}
-                        {isReminder && <Clock className="h-5 w-5" />}
-                        {isTest && <Send className="h-5 w-5" />}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
-                              isFiring
-                                ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30'
-                                : isResolved
-                                  ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                                  : 'bg-purple-500/15 text-purple-500 border border-purple-500/30'
-                            }`}>
-                              {isFiring ? 'FIRING' : isResolved ? 'RESOLVED' : isReminder ? 'REMINDER' : 'TEST'}
-                            </span>
-
-                            {isUnread ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 text-[10px] font-bold text-blue-400 uppercase tracking-wider">
-                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                UNREAD
-                              </span>
+                              ? 'border-l-4 border-l-amber-500 border-[var(--border-color)]/60 bg-[#16181d]'
+                              : 'border-l-4 border-l-blue-500 border-[var(--border-color)]/60 bg-[#16181d]'
+                      } p-5 shadow-lg`}
+                    >
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          {/* Icon Badge */}
+                          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${
+                            isFiring
+                              ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                              : isResolved
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                                : isReminder
+                                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                                  : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                          }`}>
+                            {isFiring ? (
+                              <span className="text-xs font-mono font-bold tracking-tighter">ER</span>
+                            ) : isResolved ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                            ) : isReminder ? (
+                              <Clock className="h-5 w-5 text-amber-400" />
                             ) : (
-                              <span className="text-[10px] font-medium text-[var(--color-muted)]">
-                                Read
-                              </span>
+                              <Send className="h-5 w-5 text-blue-400" />
                             )}
-
-                            <h4 className="font-semibold text-[var(--foreground)]">{item.title}</h4>
                           </div>
 
-                          {isUnread && (
-                            <button
-                              type="button"
-                              onClick={() => void markIncidentRead(item.id)}
-                              className="h-7 px-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-[11px] font-semibold text-blue-400 transition flex items-center gap-1 shrink-0"
-                              title="Mark this incident as read"
-                            >
-                              <Check className="h-3 w-3" /> Mark as read
-                            </button>
-                          )}
+                          <div className="min-w-0">
+                            <h4 className="text-base font-bold text-white tracking-tight truncate">
+                              {item.title}
+                            </h4>
+                            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                              Rule: {ruleName}
+                            </p>
+                          </div>
                         </div>
 
-                        <p className="mt-1 text-xs text-[var(--foreground)] font-medium leading-relaxed">
-                          {item.message}
-                        </p>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[var(--color-muted)]">
-                          {item.server_name && (
-                            <span className="flex items-center gap-1 font-semibold text-[var(--foreground)]">
-                              <Server className="h-3 w-3" /> {item.server_name}
+                        {/* Status Badge Pill */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isUnread && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                              <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                              Unread
                             </span>
                           )}
-                          <span>{new Date(item.created_at).toLocaleString('en-US')}</span>
+                          <span className={`rounded-full px-3.5 py-1 text-xs font-semibold tracking-wide ${
+                            isFiring
+                              ? 'bg-[#3f191f] text-[#f87171] border border-rose-900/60'
+                              : isResolved
+                                ? 'bg-[#133827] text-[#34d399] border border-emerald-900/60'
+                                : isReminder
+                                  ? 'bg-[#3c2a10] text-[#fbbf24] border border-amber-900/60'
+                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                          }`}>
+                            {isFiring ? 'Failed' : isResolved ? 'Active' : isReminder ? 'Reminder' : 'Test'}
+                          </span>
                         </div>
+                      </div>
+
+                      {/* 2-Column Key/Value Grid */}
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6">
+                        <div>
+                          <span className="block text-xs text-[var(--color-muted)] mb-0.5">Server</span>
+                          <span className="font-bold text-white text-sm tracking-wide">{serverName}</span>
+                        </div>
+
+                        {isResolved ? (
+                          <>
+                            <div>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Downtime</span>
+                              <span className="font-bold text-white text-sm tracking-wide">{downtime}</span>
+                            </div>
+                            <div>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Failed at</span>
+                              <span className="font-bold text-white text-sm tracking-wide">{failedAt}</span>
+                            </div>
+                            <div>
+                              <span className="block text-xs text-[var(--color-muted)] mb-0.5">Recovered at</span>
+                              <span className="font-bold text-white text-sm tracking-wide">{recoveredAt}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div>
+                            <span className="block text-xs text-[var(--color-muted)] mb-0.5">Failed at</span>
+                            <span className="font-bold text-white text-sm tracking-wide">{failedAt}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Horizontal Divider */}
+                      <div className="border-t border-white/[0.08] my-3.5" />
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
+                        <span className="font-medium">DatrixOps Monitoring</span>
+                        {isUnread && (
+                          <button
+                            type="button"
+                            onClick={() => void markIncidentRead(item.id)}
+                            className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition flex items-center gap-1.5"
+                          >
+                            <Check className="h-3.5 w-3.5" /> Mark as read
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

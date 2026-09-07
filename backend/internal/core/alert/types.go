@@ -49,16 +49,18 @@ type AlertRule struct {
 // DashboardNotification là một sự kiện alert hiển thị trong chuông thông báo.
 // ReadAt nil nghĩa là thông báo chưa được người dùng xem.
 type DashboardNotification struct {
-	ID          string     `json:"id"`
-	Kind        string     `json:"kind"`
-	Severity    string     `json:"severity"`
-	Title       string     `json:"title"`
-	Message     string     `json:"message"`
-	AlertRuleID *string    `json:"alert_rule_id,omitempty"`
-	ServerID    *string    `json:"server_id,omitempty"`
-	ServerName  *string    `json:"server_name,omitempty"`
-	ReadAt      *time.Time `json:"read_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          string                 `json:"id"`
+	Kind        string                 `json:"kind"`
+	Severity    string                 `json:"severity"`
+	Title       string                 `json:"title"`
+	Message     string                 `json:"message"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	AlertRuleID *string                `json:"alert_rule_id,omitempty"`
+	RuleName    *string                `json:"rule_name,omitempty"`
+	ServerID    *string                `json:"server_id,omitempty"`
+	ServerName  *string                `json:"server_name,omitempty"`
+	ReadAt      *time.Time             `json:"read_at,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
 }
 
 // NotificationListResponse trả danh sách thông báo cùng số lượng chưa xem.

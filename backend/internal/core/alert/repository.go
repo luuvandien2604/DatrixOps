@@ -626,14 +626,18 @@ func (r *Repository) ListNotifications(ctx context.Context, userID string, limit
 			n.severity,
 			n.title,
 			n.message,
+			COALESCE(n.metadata, '{}'::jsonb),
 			n.alert_rule_id,
+			COALESCE(r.name, n.metadata->>'rule_name', ''),
 			n.server_id,
-			s.name AS server_name,
+			COALESCE(s.name, n.metadata->>'server_name', ''),
 			n.read_at,
 			n.created_at
 		FROM dashboard_notifications n
 		LEFT JOIN servers s
 		  ON s.id = n.server_id
+		LEFT JOIN alert_rules r
+		  ON r.id = n.alert_rule_id
 		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
 		LIMIT $2
@@ -645,19 +649,33 @@ func (r *Repository) ListNotifications(ctx context.Context, userID string, limit
 
 	for rows.Next() {
 		var item DashboardNotification
+		var metaJSON []byte
+		var ruleName string
+		var serverName string
 		if err := rows.Scan(
 			&item.ID,
 			&item.Kind,
 			&item.Severity,
 			&item.Title,
 			&item.Message,
+			&metaJSON,
 			&item.AlertRuleID,
+			&ruleName,
 			&item.ServerID,
-			&item.ServerName,
+			&serverName,
 			&item.ReadAt,
 			&item.CreatedAt,
 		); err != nil {
 			return result, fmt.Errorf("scan dashboard notification: %w", err)
+		}
+		if len(metaJSON) > 0 {
+			_ = json.Unmarshal(metaJSON, &item.Metadata)
+		}
+		if ruleName != "" {
+			item.RuleName = &ruleName
+		}
+		if serverName != "" {
+			item.ServerName = &serverName
 		}
 		result.Items = append(result.Items, item)
 	}

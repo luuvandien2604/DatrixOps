@@ -26,6 +26,28 @@ func TestFormatDuration(t *testing.T) {
 	}
 }
 
+func TestFormatDurationShort(t *testing.T) {
+	tests := []struct {
+		d        time.Duration
+		expected string
+	}{
+		{0, "0s"},
+		{45 * time.Second, "45s"},
+		{60 * time.Second, "1m"},
+		{2*time.Minute + 15*time.Second, "2m 15s"},
+		{1 * time.Hour, "1h"},
+		{1*time.Hour + 20*time.Minute, "1h 20m"},
+		{26 * time.Hour, "1d 2h"},
+	}
+
+	for _, tt := range tests {
+		got := formatDurationShort(tt.d)
+		if got != tt.expected {
+			t.Errorf("formatDurationShort(%v) = %q, want %q", tt.d, got, tt.expected)
+		}
+	}
+}
+
 func TestEvaluateContainerCondition(t *testing.T) {
 	snap := map[string]interface{}{
 		"docker_containers": []interface{}{

@@ -346,7 +346,7 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 	if err != nil {
 		loc = time.FixedZone("ICT", 7*3600)
 	}
-	nowStr := time.Now().In(loc).Format("2006-01-02 15:04:05 (GMT+7)")
+	nowStr := time.Now().In(loc).Format("02/01/2006 15:04:05")
 
 	statusText := "N/A"
 	if res.statusCode != nil {
@@ -354,7 +354,7 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 	}
 	reason := failureLabel(res.failureKind)
 
-	title := fmt.Sprintf("Website down: %s", w.Name)
+	title := fmt.Sprintf("%s down", w.Name)
 	dashMsg := fmt.Sprintf("Website %s (%s) is unreachable (%s, HTTP %s).", w.Name, w.URL, reason, statusText)
 
 	// Save dashboard notification
@@ -364,6 +364,10 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 			"status_code":      res.statusCode,
 			"failure_kind":     res.failureKind,
 			"response_time_ms": res.responseTimeMS,
+			"failed_at":        nowStr,
+			"rule_name":        "Website Uptime Alert",
+			"server_name":      w.Name,
+			"target_name":      w.URL,
 		})
 		_, _ = j.db.Pool.Exec(ctx, `
 			INSERT INTO dashboard_notifications (user_id, kind, severity, title, message, metadata)
@@ -373,24 +377,20 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 
 	// Telegram
 	teleMsg := fmt.Sprintf(
-		"<b>[DATRIXOPS ALERT] WEBSITE DOWN</b>\n─────────────────────────────\n<b>Website:</b> <b>%s</b>\n<b>URL:</b> %s\n<b>Status Code:</b> <code>%s</code>\n<b>Error:</b> %s\n<b>Latency:</b> %dms\n<b>Time:</b> %s",
-		w.Name, w.URL, statusText, reason, res.responseTimeMS, nowStr,
+		"🔴 <b>%s down</b>\nRule: <i>Website Uptime Alert</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>URL:</b> %s\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		w.Name, w.Name, w.URL, nowStr,
 	)
 
 	// Discord
 	discord := notifier.DiscordEmbed{
-		Title:       "[DATRIXOPS ALERT] WEBSITE DOWN: " + w.Name,
-		Description: fmt.Sprintf("Website **%s** (%s) is unreachable or returned an error.", w.Name, w.URL),
+		Title:       fmt.Sprintf("%s down", w.Name),
+		Description: "Rule: Website Uptime Alert",
 		Color:       0xEF4444,
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Website", Value: w.Name, Inline: true},
-			{Name: "URL", Value: w.URL, Inline: true},
-			{Name: "Status Code", Value: statusText, Inline: true},
-			{Name: "Error", Value: reason, Inline: true},
-			{Name: "Latency", Value: fmt.Sprintf("%dms", res.responseTimeMS), Inline: true},
-			{Name: "Triggered At", Value: nowStr, Inline: true},
+			{Name: "Failed at", Value: nowStr, Inline: true},
 		},
-		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Website Uptime Monitoring"},
+		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 	}
 
 	// Email
@@ -409,15 +409,17 @@ func (j *WebsiteJob) notifyWebsiteUp(w website.Website, res websiteProbeResult, 
 	if err != nil {
 		loc = time.FixedZone("ICT", 7*3600)
 	}
-	nowStr := time.Now().In(loc).Format("2006-01-02 15:04:05 (GMT+7)")
-	downtimeStr := formatDuration(downtime)
+	now := time.Now().In(loc)
+	nowStr := now.Format("02/01/2006 15:04:05")
+	downtimeStr := formatDurationShort(downtime)
+	failedAtStr := now.Add(-downtime).Format("02/01/2006 15:04:05")
 
 	statusText := "200 OK"
 	if res.statusCode != nil {
 		statusText = fmt.Sprintf("%d", *res.statusCode)
 	}
 
-	title := fmt.Sprintf("Website online: %s", w.Name)
+	title := fmt.Sprintf("%s recovered", w.Name)
 	dashMsg := fmt.Sprintf("Website %s (%s) is back online. (Downtime: %s)", w.Name, w.URL, downtimeStr)
 
 	// Save dashboard notification
@@ -426,7 +428,12 @@ func (j *WebsiteJob) notifyWebsiteUp(w website.Website, res websiteProbeResult, 
 			"url":               w.URL,
 			"status_code":       res.statusCode,
 			"downtime_duration": downtimeStr,
+			"failed_at":         failedAtStr,
+			"recovered_at":      nowStr,
 			"response_time_ms":  res.responseTimeMS,
+			"rule_name":         "Website Uptime Alert",
+			"server_name":       w.Name,
+			"target_name":       w.URL,
 		})
 		_, _ = j.db.Pool.Exec(ctx, `
 			INSERT INTO dashboard_notifications (user_id, kind, severity, title, message, metadata)
@@ -436,24 +443,22 @@ func (j *WebsiteJob) notifyWebsiteUp(w website.Website, res websiteProbeResult, 
 
 	// Telegram
 	teleMsg := fmt.Sprintf(
-		"<b>[DATRIXOPS RESOLVED] WEBSITE BACK ONLINE</b>\n─────────────────────────────\n<b>Website:</b> <b>%s</b>\n<b>URL:</b> %s\n<b>Status:</b> <b>UP / Healthy</b>\n<b>Downtime Duration:</b> <code>%s</code>\n<b>Latency:</b> %dms\n<b>Recovered At:</b> %s",
-		w.Name, w.URL, downtimeStr, res.responseTimeMS, nowStr,
+		"🟢 <b>%s recovered</b>\nRule: <i>Website Uptime Alert</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		w.Name, w.Name, downtimeStr, failedAtStr, nowStr,
 	)
 
 	// Discord
 	discord := notifier.DiscordEmbed{
-		Title:       "[DATRIXOPS RESOLVED] WEBSITE BACK ONLINE: " + w.Name,
-		Description: fmt.Sprintf("Website **%s** has recovered and is responding normally.", w.Name),
+		Title:       fmt.Sprintf("%s recovered", w.Name),
+		Description: "Rule: Website Uptime Alert",
 		Color:       0x10B981,
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Website", Value: w.Name, Inline: true},
-			{Name: "URL", Value: w.URL, Inline: true},
-			{Name: "Status", Value: "Online / Healthy", Inline: true},
-			{Name: "Downtime Duration", Value: downtimeStr, Inline: true},
-			{Name: "Latency", Value: fmt.Sprintf("%dms", res.responseTimeMS), Inline: true},
-			{Name: "Recovered At", Value: nowStr, Inline: true},
+			{Name: "Downtime", Value: downtimeStr, Inline: true},
+			{Name: "Failed at", Value: failedAtStr, Inline: true},
+			{Name: "Recovered at", Value: nowStr, Inline: true},
 		},
-		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Website Uptime Monitoring"},
+		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 	}
 
 	// Email
