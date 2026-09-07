@@ -2,8 +2,11 @@ package scheduler
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
 )
 
 func TestFormatDuration(t *testing.T) {
@@ -161,3 +164,61 @@ func TestFailureLabel(t *testing.T) {
 		t.Errorf("expected 'SSL Certificate Expired', got %s", got)
 	}
 }
+
+func TestBuildAlertNotification_LayoutAndCustomFields(t *testing.T) {
+	started := time.Now().Add(-5 * time.Minute)
+
+	// 1. Metric Resolved: Failed at and Recovered at must be on the same row (in the same <tr>)
+	rule := alert.AlertRule{
+		Name:      "High CPU Alert (> 10%)",
+		Metric:    "cpu",
+		Operator:  ">",
+		Threshold: 10.0,
+	}
+	_, _, notif := buildAlertNotification(rule, "Control Plane", 2.53, false, 5*time.Minute, false, &started)
+
+	// Verify email contains RESOLVED badge
+	if !strings.Contains(notif.emailHTML, "RESOLVED") {
+		t.Errorf("expected emailHTML to contain RESOLVED, got %s", notif.emailHTML)
+	}
+	// Verify email contains same-row Failed at and Recovered at
+	expectedRow := `<td class="stat" width="50%"><div class="stat-label">Failed at</div>`
+	if !strings.Contains(notif.emailHTML, expectedRow) {
+		t.Errorf("expected emailHTML to contain %q", expectedRow)
+	}
+	expectedPair := `<td class="stat" width="50%"><div class="stat-label">Recovered at</div>`
+	if !strings.Contains(notif.emailHTML, expectedPair) {
+		t.Errorf("expected emailHTML to contain %q", expectedPair)
+	}
+
+	// 2. Container Firing: Should have Container custom field
+	target := "redis-cache"
+	containerRule := alert.AlertRule{
+		Name:       "Redis Down",
+		Metric:     "container",
+		TargetName: &target,
+	}
+	_, _, cNotif := buildAlertNotification(containerRule, "Prod-01", 0, true, 0, false, nil)
+	if !strings.Contains(cNotif.emailHTML, "redis-cache") {
+		t.Errorf("expected emailHTML to contain container name redis-cache")
+	}
+	if !strings.Contains(cNotif.discordEmbed.Fields[1].Name, "Container") {
+		t.Errorf("expected discord embed to have Container field")
+	}
+
+	// 3. Service Resolved: Should have Service custom field and Downtime
+	svcTarget := "apache2"
+	svcRule := alert.AlertRule{
+		Name:       "Apache2 Service",
+		Metric:     "service",
+		TargetName: &svcTarget,
+	}
+	_, _, sNotif := buildAlertNotification(svcRule, "Prod-01", 0, false, 3*time.Minute, false, &started)
+	if !strings.Contains(sNotif.emailHTML, "apache2") {
+		t.Errorf("expected emailHTML to contain service name apache2")
+	}
+	if !strings.Contains(sNotif.emailHTML, "Downtime") {
+		t.Errorf("expected emailHTML to contain Downtime")
+	}
+}
+

@@ -672,6 +672,13 @@ func formatDurationShort(d time.Duration) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
+type alertRow struct {
+	LeftLabel  string
+	LeftVal    string
+	RightLabel string
+	RightVal   string
+}
+
 func buildAlertNotification(rule alert.AlertRule, serverName string, currentValue float64, isFiring bool, downtimeDuration time.Duration, isReminder bool, startedAt *time.Time) (string, string, alertNotificationSet) {
 	metricName := metricLabel(rule.Metric)
 	loc, err := time.LoadLocation("Asia/Ho_Chi_Minh")
@@ -697,8 +704,9 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 			if isReminder {
 				title := fmt.Sprintf("%s offline (reminder)", serverName)
 				dashMsg := fmt.Sprintf("Server %s is still OFFLINE (active for %s).", serverName, downtimeStr)
+				summary := fmt.Sprintf("Server %s is still offline. Active duration: %s.", serverName, downtimeStr)
 				teleMsg := fmt.Sprintf(
-					"⚠️ <b>%s offline (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Duration Active:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+					"⚠️ <b>%s offline (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <code>Offline</code>\n<b>Duration Active:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
 					serverName, rule.Name, serverName, downtimeStr, failedAtStr,
 				)
 				discord := notifier.DiscordEmbed{
@@ -707,21 +715,30 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 					Color:       0xF59E0B,
 					Fields: []notifier.DiscordEmbedField{
 						{Name: "Server", Value: serverName, Inline: true},
+						{Name: "Status", Value: "`Offline`", Inline: true},
+						{Name: "\u200b", Value: "\u200b", Inline: true},
 						{Name: "Duration Active", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 						{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
+						{Name: "\u200b", Value: "\u200b", Inline: true},
 					},
 					Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 				}
 				emailSubj := fmt.Sprintf("[DATRIXOPS REMINDER] %s offline (%s)", serverName, downtimeStr)
-				emailHTML := renderAlertEmail(serverName, rule.Name, "Heartbeat Status", "Offline", fmt.Sprintf("No heartbeat > %dm", rule.DurationMinutes), failedAtStr, "", downtimeStr, true)
+				emailRows := []alertRow{
+					{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Status", RightVal: "Offline"},
+					{LeftLabel: "Duration Active", LeftVal: downtimeStr, RightLabel: "Condition", RightVal: fmt.Sprintf("No heartbeat > %dm", rule.DurationMinutes)},
+					{LeftLabel: "Failed at", LeftVal: failedAtStr, RightLabel: "Reminded at", RightVal: nowStr},
+				}
+				emailHTML := renderAlertEmail(rule.Name, summary, "REMINDER", "reminder", emailRows)
 				return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 			}
 
 			title := fmt.Sprintf("%s offline", serverName)
 			dashMsg := fmt.Sprintf("Server %s has stopped reporting heartbeat for > %dm.", serverName, rule.DurationMinutes)
+			summary := fmt.Sprintf("Server %s has stopped reporting heartbeat (> %dm timeout).", serverName, rule.DurationMinutes)
 			teleMsg := fmt.Sprintf(
-				"🔴 <b>%s offline</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				serverName, rule.Name, serverName, nowStr,
+				"🔴 <b>%s offline</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <code>Offline</code>\n<b>Condition:</b> <code>No heartbeat > %dm</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				serverName, rule.Name, serverName, rule.DurationMinutes, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🔴 %s offline", serverName),
@@ -729,18 +746,27 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0xEF4444,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Status", Value: "`Offline`", Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Condition", Value: fmt.Sprintf("`No heartbeat > %dm`", rule.DurationMinutes), Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", nowStr), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 				},
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s offline", serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Heartbeat Status", "Offline", fmt.Sprintf("No heartbeat > %dm", rule.DurationMinutes), nowStr, "", "", true)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Status", RightVal: "Offline"},
+				{LeftLabel: "Condition", LeftVal: fmt.Sprintf("No heartbeat > %dm", rule.DurationMinutes), RightLabel: "Failed at", RightVal: nowStr},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "OFFLINE", "firing", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		} else {
 			title := fmt.Sprintf("%s recovered", serverName)
 			dashMsg := fmt.Sprintf("Server %s is back online. (Downtime: %s)", serverName, downtimeStr)
+			summary := fmt.Sprintf("Server %s is back online and reporting telemetry normally.", serverName)
 			teleMsg := fmt.Sprintf(
-				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Status:</b> <code>Online</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
 				serverName, rule.Name, serverName, downtimeStr, failedAtStr, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
@@ -749,6 +775,9 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0x10B981,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Status", Value: "`Online`", Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Condition", Value: "`Heartbeat restored`", Inline: true},
 					{Name: "Downtime", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -758,7 +787,12 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s recovered", serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Heartbeat Status", "Online", "Reporting telemetry", failedAtStr, nowStr, downtimeStr, false)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Status", RightVal: "Online"},
+				{LeftLabel: "Condition", LeftVal: "Heartbeat restored", RightLabel: "Downtime", RightVal: downtimeStr},
+				{LeftLabel: "Failed at", LeftVal: failedAtStr, RightLabel: "Recovered at", RightVal: nowStr},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "RESOLVED", "resolved", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		}
 	}
@@ -772,9 +806,10 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		if isFiring {
 			title := fmt.Sprintf("%s failed", item)
 			dashMsg := fmt.Sprintf("Container %s is stopped or unhealthy on %s.", item, serverName)
+			summary := fmt.Sprintf("Container %s is stopped or unhealthy on server %s.", item, serverName)
 			teleMsg := fmt.Sprintf(
-				"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				item, rule.Name, serverName, nowStr,
+				"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Container:</b> <code>%s</code>\n<b>Status:</b> <code>Stopped / Unhealthy</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				item, rule.Name, serverName, item, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🔴 %s failed", item),
@@ -782,19 +817,30 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0xEF4444,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Container", Value: fmt.Sprintf("`%s`", item), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Status", Value: "`Stopped / Unhealthy`", Inline: true},
+					{Name: "Expected", Value: "`Running`", Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", nowStr), Inline: true},
 				},
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s failed on %s", item, serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Docker Container", "Stopped / Unhealthy", "Running", nowStr, "", "", true)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Container", RightVal: item},
+				{LeftLabel: "Status", LeftVal: "Stopped / Unhealthy", RightLabel: "Expected", RightVal: "Running"},
+				{LeftLabel: "Failed at", LeftVal: nowStr, RightLabel: "", RightVal: ""},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "FAILED", "firing", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		} else {
 			title := fmt.Sprintf("%s recovered", item)
 			dashMsg := fmt.Sprintf("Container %s is healthy and running on %s. (Downtime: %s)", item, serverName, downtimeStr)
+			summary := fmt.Sprintf("Container %s is healthy and running normally on server %s.", item, serverName)
 			teleMsg := fmt.Sprintf(
-				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				item, rule.Name, serverName, downtimeStr, failedAtStr, nowStr,
+				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Container:</b> <code>%s</code>\n<b>Status:</b> <code>Running (Healthy)</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				item, rule.Name, serverName, item, downtimeStr, failedAtStr, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🟢 %s recovered", item),
@@ -802,6 +848,9 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0x10B981,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Container", Value: fmt.Sprintf("`%s`", item), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Status", Value: "`Running (Healthy)`", Inline: true},
 					{Name: "Downtime", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -811,7 +860,12 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s recovered on %s", item, serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Docker Container", "Running", "Running", failedAtStr, nowStr, downtimeStr, false)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Container", RightVal: item},
+				{LeftLabel: "Status", LeftVal: "Running (Healthy)", RightLabel: "Downtime", RightVal: downtimeStr},
+				{LeftLabel: "Failed at", LeftVal: failedAtStr, RightLabel: "Recovered at", RightVal: nowStr},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "RESOLVED", "resolved", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		}
 	}
@@ -825,9 +879,10 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		if isFiring {
 			title := fmt.Sprintf("%s failed", item)
 			dashMsg := fmt.Sprintf("Service %s is inactive or failed on %s.", item, serverName)
+			summary := fmt.Sprintf("Systemd service %s is inactive or failed on server %s.", item, serverName)
 			teleMsg := fmt.Sprintf(
-				"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				item, rule.Name, serverName, nowStr,
+				"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Service:</b> <code>%s</code>\n<b>Status:</b> <code>Failed / Inactive</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				item, rule.Name, serverName, item, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🔴 %s failed", item),
@@ -835,19 +890,30 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0xEF4444,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Service", Value: fmt.Sprintf("`%s`", item), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Status", Value: "`Failed / Inactive`", Inline: true},
+					{Name: "Expected", Value: "`Active (running)`", Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", nowStr), Inline: true},
 				},
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s failed on %s", item, serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Systemd Service", "Failed / Inactive", "Active (running)", nowStr, "", "", true)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Service", RightVal: item},
+				{LeftLabel: "Status", LeftVal: "Failed / Inactive", RightLabel: "Expected", RightVal: "Active (running)"},
+				{LeftLabel: "Failed at", LeftVal: nowStr, RightLabel: "", RightVal: ""},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "FAILED", "firing", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		} else {
 			title := fmt.Sprintf("%s recovered", item)
 			dashMsg := fmt.Sprintf("Service %s is active and running on %s. (Downtime: %s)", item, serverName, downtimeStr)
+			summary := fmt.Sprintf("Systemd service %s is active and running normally on server %s.", item, serverName)
 			teleMsg := fmt.Sprintf(
-				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				item, rule.Name, serverName, downtimeStr, failedAtStr, nowStr,
+				"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Service:</b> <code>%s</code>\n<b>Status:</b> <code>Active (running)</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				item, rule.Name, serverName, item, downtimeStr, failedAtStr, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🟢 %s recovered", item),
@@ -855,6 +921,9 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0x10B981,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
+					{Name: "Service", Value: fmt.Sprintf("`%s`", item), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Status", Value: "`Active (running)`", Inline: true},
 					{Name: "Downtime", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -864,7 +933,12 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s recovered on %s", item, serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, "Systemd Service", "Active (running)", "Active (running)", failedAtStr, nowStr, downtimeStr, false)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Service", RightVal: item},
+				{LeftLabel: "Status", LeftVal: "Active (running)", RightLabel: "Downtime", RightVal: downtimeStr},
+				{LeftLabel: "Failed at", LeftVal: failedAtStr, RightLabel: "Recovered at", RightVal: nowStr},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "RESOLVED", "resolved", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		}
 	}
@@ -874,9 +948,10 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		if isReminder {
 			title := fmt.Sprintf("%s alert (reminder)", rule.Name)
 			dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%) - active for %s.", metricName, serverName, currentValue, rule.Operator, rule.Threshold, downtimeStr)
+			summary := fmt.Sprintf("%s on %s remains in violation at %.2f%% (Condition: %s %.2f%%) - active for %s.", metricName, serverName, currentValue, rule.Operator, rule.Threshold, downtimeStr)
 			teleMsg := fmt.Sprintf(
-				"⚠️ <b>%s alert (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%)\n<b>Duration Active:</b> <code>%s</code>\n<b>Time:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				rule.Name, rule.Name, serverName, currentValue, rule.Operator, rule.Threshold, downtimeStr, nowStr,
+				"⚠️ <b>%s alert (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%)\n<b>Duration Active:</b> <code>%s</code>\n<b>Time:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				rule.Name, rule.Name, serverName, metricName, currentValue, rule.Operator, rule.Threshold, downtimeStr, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("⚠️ %s alert (reminder)", rule.Name),
@@ -884,25 +959,33 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				Color:       0xF59E0B,
 				Fields: []notifier.DiscordEmbedField{
 					{Name: "Server", Value: serverName, Inline: true},
-					{Name: "Duration Active", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
+					{Name: "Metric", Value: metricName, Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
 					{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%%`", rule.Operator, rule.Threshold), Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
+					{Name: "Duration Active", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 					{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
+					{Name: "\u200b", Value: "\u200b", Inline: true},
 				},
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 			}
 			emailSubj := fmt.Sprintf("[DATRIXOPS REMINDER] Firing (%s): %s on %s", downtimeStr, rule.Name, serverName)
-			emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), failedAtStr, "", downtimeStr, true)
+			emailRows := []alertRow{
+				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
+				{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold)},
+				{LeftLabel: "Duration Active", LeftVal: downtimeStr, RightLabel: "Failed at", RightVal: failedAtStr},
+			}
+			emailHTML := renderAlertEmail(rule.Name, summary, "REMINDER", "reminder", emailRows)
 			return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 		}
 
 		title := fmt.Sprintf("%s failed", rule.Name)
 		dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
+		summary := fmt.Sprintf("%s on %s reached %.2f%% (Condition: %s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
 		teleMsg := fmt.Sprintf(
-			"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-			rule.Name, rule.Name, serverName, nowStr,
+			"🔴 <b>%s failed</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code> (Condition: %s %.2f%%)\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+			rule.Name, rule.Name, serverName, metricName, currentValue, rule.Operator, rule.Threshold, nowStr,
 		)
 		discord := notifier.DiscordEmbed{
 			Title:       fmt.Sprintf("🔴 %s failed", rule.Name),
@@ -910,21 +993,32 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 			Color:       0xEF4444,
 			Fields: []notifier.DiscordEmbedField{
 				{Name: "Server", Value: serverName, Inline: true},
+				{Name: "Metric", Value: metricName, Inline: true},
+				{Name: "\u200b", Value: "\u200b", Inline: true},
+				{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
+				{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%%`", rule.Operator, rule.Threshold), Inline: true},
+				{Name: "\u200b", Value: "\u200b", Inline: true},
 				{Name: "Failed at", Value: fmt.Sprintf("`%s`", nowStr), Inline: true},
 			},
 			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 		}
-		emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s failed on %s", rule.Name, serverName)
-		emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold), nowStr, "", "", true)
+		emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s on %s", rule.Name, serverName)
+		emailRows := []alertRow{
+			{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
+			{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold)},
+			{LeftLabel: "Failed at", LeftVal: nowStr, RightLabel: "", RightVal: ""},
+		}
+		emailHTML := renderAlertEmail(rule.Name, summary, "FIRING", "firing", emailRows)
 		return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 	}
 
 	// Resolved
 	title := fmt.Sprintf("%s recovered", rule.Name)
 	dashMsg := fmt.Sprintf("%s on %s returned to %.2f%%. (Duration: %s)", metricName, serverName, currentValue, downtimeStr)
+	summary := fmt.Sprintf("%s on %s returned to %.2f%% (within normal threshold).", metricName, serverName, currentValue)
 	teleMsg := fmt.Sprintf(
-		"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-		rule.Name, rule.Name, serverName, downtimeStr, failedAtStr, nowStr,
+		"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		rule.Name, rule.Name, serverName, metricName, currentValue, downtimeStr, failedAtStr, nowStr,
 	)
 	discord := notifier.DiscordEmbed{
 		Title:       fmt.Sprintf("🟢 %s recovered", rule.Name),
@@ -932,6 +1026,9 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		Color:       0x10B981,
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Server", Value: serverName, Inline: true},
+			{Name: "Metric", Value: metricName, Inline: true},
+			{Name: "\u200b", Value: "\u200b", Inline: true},
+			{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
 			{Name: "Downtime", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 			{Name: "\u200b", Value: "\u200b", Inline: true},
 			{Name: "Failed at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -941,54 +1038,59 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring"},
 	}
 	emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s on %s", rule.Name, serverName)
-	emailHTML := renderAlertEmail(serverName, rule.Name, metricName, fmt.Sprintf("%.2f%%", currentValue), "Normal", failedAtStr, nowStr, downtimeStr, false)
+	emailRows := []alertRow{
+		{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
+		{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Downtime", RightVal: downtimeStr},
+		{LeftLabel: "Failed at", LeftVal: failedAtStr, RightLabel: "Recovered at", RightVal: nowStr},
+	}
+	emailHTML := renderAlertEmail(rule.Name, summary, "RESOLVED", "resolved", emailRows)
 	return title, dashMsg, alertNotificationSet{teleMsg, discord, emailSubj, emailHTML}
 }
 
 // renderAlertEmail dựng email HTML dùng layout bảng (table-based) để tương thích
 // với Outlook/Gmail — không dùng flexbox/grid vì nhiều mail client bỏ qua CSS đó.
-// Cấu trúc bám theo đúng ngôn ngữ thiết kế của Discord embed: icon + badge trạng thái,
-// "Rule: x" làm phụ đề, lưới 2 cột cho các số liệu, và giá trị được tô đậm bằng monospace.
-func renderAlertEmail(server, ruleName, metric, value, condition, failedAt, recoveredAt, downtime string, isCritical bool) string {
+// Cấu trúc chuẩn alert: header có brand + title + summary + badge trạng thái,
+// và lưới 2 cột thẳng hàng với monospace cho các số liệu.
+func renderAlertEmail(ruleName, summary, statusText, statusType string, rows []alertRow) string {
 	accentColor := "#EF4444"
 	badgeBg := "#3a1a1a"
-	statusText := "FAILED"
+	badgeColor := "#EF4444"
 	icon := "🔴"
-	if !isCritical {
+
+	switch statusType {
+	case "resolved":
 		accentColor = "#10B981"
 		badgeBg = "#123326"
-		statusText = "ACTIVE"
+		badgeColor = "#10B981"
 		icon = "🟢"
+		if statusText == "" {
+			statusText = "RESOLVED"
+		}
+	case "reminder":
+		accentColor = "#F59E0B"
+		badgeBg = "#3d2c14"
+		badgeColor = "#F59E0B"
+		icon = "⚠️"
+		if statusText == "" {
+			statusText = "REMINDER"
+		}
+	default: // firing / failed
+		accentColor = "#EF4444"
+		badgeBg = "#3a1a1a"
+		badgeColor = "#EF4444"
+		icon = "🔴"
+		if statusText == "" {
+			statusText = "FIRING"
+		}
 	}
 
-	// Mỗi hàng luôn có đúng 2 ô "stat" để hai cột thẳng hàng dọc qua các hàng.
-	type stat struct{ label, val string }
-	stats := []stat{{"Server", server}, {"Metric", metric}}
-	if downtime != "" {
-		stats = append(stats, stat{"Downtime", downtime}, stat{"Current Value", value})
-	} else {
-		stats = append(stats, stat{"Current Value", value})
-	}
-	stats = append(stats, stat{"Condition", condition})
-	if failedAt != "" {
-		stats = append(stats, stat{"Failed at", failedAt})
-	}
-	if recoveredAt != "" {
-		stats = append(stats, stat{"Recovered at", recoveredAt})
-	}
-	// Số lẻ -> thêm 1 ô rỗng để hàng cuối vẫn chia đúng 2 cột bằng nhau.
-	if len(stats)%2 != 0 {
-		stats = append(stats, stat{"", ""})
-	}
-
-	var rows strings.Builder
-	for i := 0; i < len(stats); i += 2 {
-		left, right := stats[i], stats[i+1]
-		rows.WriteString(fmt.Sprintf(`
-      <tr>
+	var rowsHTML strings.Builder
+	for _, row := range rows {
+		rowsHTML.WriteString(fmt.Sprintf(`      <tr>
         <td class="stat" width="50%%">%s</td>
         <td class="stat" width="50%%">%s</td>
-      </tr>`, statCell(left.label, left.val), statCell(right.label, right.val)))
+      </tr>
+`, statCell(row.LeftLabel, row.LeftVal), statCell(row.RightLabel, row.RightVal)))
 	}
 
 	tmpl := `<!DOCTYPE html>
@@ -998,16 +1100,17 @@ func renderAlertEmail(server, ruleName, metric, value, condition, failedAt, reco
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { margin: 0; padding: 24px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-  .card { max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-left: 4px solid {{ACCENT}}; border-radius: 12px; overflow: hidden; }
-  .brand { padding: 16px 24px; background: #0e1526; border-bottom: 1px solid #232f48; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: #64748b; }
+  .card { max-width: 580px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-left: 4px solid {{ACCENT}}; border-radius: 12px; overflow: hidden; }
+  .brand { padding: 14px 24px; background: #0e1526; border-bottom: 1px solid #232f48; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #64748b; text-transform: uppercase; }
   .content { padding: 24px; }
-  .title-row { margin: 0 0 20px 0; overflow: hidden; }
-  .title { font-size: 19px; font-weight: 700; color: #ffffff; line-height: 28px; }
-  .badge { float: right; background: {{BADGE_BG}}; color: {{ACCENT}}; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.5px; }
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .title { font-size: 18px; font-weight: 700; color: #ffffff; line-height: 24px; margin: 0 0 6px 0; }
+  .summary { font-size: 13px; color: #94a3b8; line-height: 18px; margin: 0; }
+  .badge { display: inline-block; background: {{BADGE_BG}}; color: {{BADGE_COLOR}}; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 6px; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; }
   .stats-table { width: 100%; border-collapse: collapse; }
-  .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 3px; }
+  .stat { padding: 12px 12px 12px 0; border-bottom: 1px solid #1e293b; vertical-align: top; }
+  .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; font-weight: 600; }
   .stat-val { font-size: 14px; color: #f1f5f9; font-weight: 600; font-family: 'SFMono-Regular', Consolas, monospace; }
-  .stat { padding: 10px 12px 10px 0; border-bottom: 1px solid #1e293b; vertical-align: top; }
   .footer { padding: 14px 24px; background: #0e1526; border-top: 1px solid #1e293b; text-align: center; font-size: 11px; color: #64748b; }
 </style>
 </head>
@@ -1016,12 +1119,19 @@ func renderAlertEmail(server, ruleName, metric, value, condition, failedAt, reco
 <div class="card">
   <div class="brand">DATRIXOPS MONITORING</div>
   <div class="content">
-    <div class="title-row">
-      <span class="badge">{{ICON}} {{STATUS_TEXT}}</span>
-      <span class="title">{{RULE_NAME}}</span>
-    </div>
-    <table class="stats-table">{{ROWS}}
+    <table class="header-table" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align: top;">
+          <div class="title">{{RULE_NAME}}</div>
+          <div class="summary">{{SUMMARY}}</div>
+        </td>
+        <td style="vertical-align: top; text-align: right; width: 130px; padding-left: 12px;">
+          <span class="badge">{{ICON}} {{STATUS_TEXT}}</span>
+        </td>
+      </tr>
     </table>
+    <table class="stats-table" width="100%" cellpadding="0" cellspacing="0">
+{{ROWS}}    </table>
   </div>
   <div class="footer">Automated notification sent by DatrixOps Control Plane.</div>
 </div>
@@ -1032,10 +1142,12 @@ func renderAlertEmail(server, ruleName, metric, value, condition, failedAt, reco
 	r := strings.NewReplacer(
 		"{{ACCENT}}", accentColor,
 		"{{BADGE_BG}}", badgeBg,
+		"{{BADGE_COLOR}}", badgeColor,
 		"{{ICON}}", icon,
 		"{{STATUS_TEXT}}", statusText,
 		"{{RULE_NAME}}", ruleName,
-		"{{ROWS}}", rows.String(),
+		"{{SUMMARY}}", summary,
+		"{{ROWS}}", rowsHTML.String(),
 	)
 	return r.Replace(tmpl)
 }
