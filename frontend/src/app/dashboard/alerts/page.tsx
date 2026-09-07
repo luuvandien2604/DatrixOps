@@ -133,7 +133,7 @@ export default function AlertsPage() {
 
   // Create Alert Form State
   const [selectedCategory, setSelectedCategory] = useState<AlertCategory>('status');
-  const [ruleName, setRuleName] = useState('Cảnh báo Máy chủ Mất kết nối (Offline)');
+  const [ruleName, setRuleName] = useState('Server Offline Alert');
   const [ruleMetric, setRuleMetric] = useState('status');
   const [ruleTargetName, setRuleTargetName] = useState('');
   const [ruleRepeatInterval, setRuleRepeatInterval] = useState('0');
@@ -163,26 +163,26 @@ export default function AlertsPage() {
   }, []);
   const isViewer = userRole === 'viewer';
 
-  // Khi người dùng bấm chuyển danh mục cảnh báo trên form tạo rule
+  // Handle category change on create rule form
   const handleSelectCategory = (cat: AlertCategory) => {
     setSelectedCategory(cat);
     setErrorMessage('');
     if (cat === 'status') {
       setRuleMetric('status');
-      setRuleName('Cảnh báo Máy chủ Mất kết nối (Offline)');
+      setRuleName('Server Offline Alert');
       setRuleDuration('1');
       setRuleTargetName('');
     } else if (cat === 'container') {
       setRuleMetric('container');
-      setRuleName(ruleTargetName ? `Giám sát Docker: ${ruleTargetName}` : 'Giám sát Docker Container');
+      setRuleName(ruleTargetName ? `Docker: ${ruleTargetName}` : 'Docker Container Alert');
       setRuleDuration('1');
     } else if (cat === 'service') {
       setRuleMetric('service');
-      setRuleName(ruleTargetName ? `Giám sát Service: ${ruleTargetName}` : 'Giám sát Systemd Service');
+      setRuleName(ruleTargetName ? `Service: ${ruleTargetName}` : 'Systemd Service Alert');
       setRuleDuration('1');
     } else if (cat === 'metric') {
       setRuleMetric('cpu');
-      setRuleName('Cảnh báo CPU cao (> 90%)');
+      setRuleName('High CPU Usage (> 90%)');
       setRuleOperator('>');
       setRuleThreshold('90');
       setRuleDuration('1');
@@ -196,7 +196,7 @@ export default function AlertsPage() {
       setRules(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể tải danh sách quy tắc cảnh báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load alert rules.'));
     }
   }
 
@@ -206,7 +206,7 @@ export default function AlertsPage() {
       setChannels(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể tải danh sách kênh thông báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load notification channels.'));
     }
   }
 
@@ -216,7 +216,7 @@ export default function AlertsPage() {
       setServers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể tải danh sách máy chủ/agents.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to load servers.'));
     }
   }
 
@@ -287,24 +287,24 @@ export default function AlertsPage() {
     };
   };
 
-  // testNewChannel gửi thông báo thử nghiệm với cấu hình vừa nhập trước khi lưu
+  // testNewChannel sends a verification notification with current unsaved form values
   const testNewChannel = async () => {
     setErrorMessage('');
     setSuccessMessage('');
     if (channelType === 'discord') {
       const trimmed = channelWebhook.trim();
       if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
-        setErrorMessage('Vui lòng nhập đầy đủ Discord Webhook URL (bắt đầu bằng https://discord.com/api/webhooks/...).');
+        setErrorMessage('Please enter a valid Discord Webhook URL (starting with https://discord.com/api/webhooks/...).');
         return;
       }
     } else if (channelType === 'telegram') {
       if (!channelToken.trim() || !channelChatId.trim()) {
-        setErrorMessage('Vui lòng nhập đầy đủ Telegram Bot Token và Chat ID.');
+        setErrorMessage('Please enter both Telegram Bot Token and Chat ID.');
         return;
       }
     } else if (channelType === 'email') {
       if (!channelSMTPHost.trim() || !channelEmailFrom.trim() || !channelEmailTo.trim()) {
-        setErrorMessage('Vui lòng nhập đầy đủ thông tin SMTP host, From và Recipient.');
+        setErrorMessage('Please enter SMTP host, From, and Recipient addresses.');
         return;
       }
     }
@@ -314,79 +314,79 @@ export default function AlertsPage() {
       await apiClient('/alerts/channels/test', {
         method: 'POST',
         body: JSON.stringify({
-          name: channelName.trim() || 'Kênh thử nghiệm',
+          name: channelName.trim() || 'Test Channel',
           type: channelType,
           config: getChannelConfig(),
         }),
       });
-      setSuccessMessage('Đã gửi thông báo thử nghiệm thành công! Vui lòng kiểm tra ứng dụng nhận tin.');
+      setSuccessMessage('Test notification sent successfully! Please verify your notification channel.');
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể gửi thông báo thử nghiệm. Vui lòng kiểm tra lại cấu hình.'));
+      setErrorMessage(getApiErrorMessage(error, 'Failed to send test notification. Please verify channel configuration.'));
     } finally {
       setTestingNewChannel(false);
     }
   };
 
-  // testExistingChannel gửi thông báo thử nghiệm cho channel đã lưu trong danh sách
+  // testExistingChannel triggers a test notification for an existing saved channel
   const testExistingChannel = async (id: string, name: string) => {
     setErrorMessage('');
     setSuccessMessage('');
     setTestingChannelId(id);
     try {
       await apiClient(`/alerts/channels/${id}/test`, { method: 'POST' });
-      setSuccessMessage(`Đã gửi thông báo thử nghiệm đến kênh "${name}" thành công!`);
+      setSuccessMessage(`Test notification sent to channel "${name}" successfully!`);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, `Gửi thông báo thử nghiệm đến kênh "${name}" thất bại.`));
+      setErrorMessage(getApiErrorMessage(error, `Failed to send test notification to channel "${name}".`));
     } finally {
       setTestingChannelId(null);
     }
   };
 
-  // testAlertRule kích hoạt bắn cảnh báo mô phỏng cho một quy tắc cụ thể
+  // testAlertRule triggers a simulated alert for a specific rule
   const testAlertRule = async (id: string, name: string) => {
     setErrorMessage('');
     setSuccessMessage('');
     setTestingRuleId(id);
     try {
       const res = await apiClient(`/alerts/rules/${id}/test`, { method: 'POST' });
-      setSuccessMessage(res?.message || `Đã gửi thông báo cảnh báo thử nghiệm cho quy tắc "${name}" thành công!`);
+      setSuccessMessage(res?.message || `Test alert sent for rule "${name}" successfully!`);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, `Gửi cảnh báo thử nghiệm cho quy tắc "${name}" thất bại.`));
+      setErrorMessage(getApiErrorMessage(error, `Failed to send test alert for rule "${name}".`));
     } finally {
       setTestingRuleId(null);
     }
   };
 
-  // createRule tạo rule mới và tự động chuyển về Tab Rules
+  // createRule creates a new rule and navigates back to Rules tab
   const createRule = async (event: React.FormEvent) => {
     event.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
 
     if (selectedChannelIds.length === 0) {
-      setErrorMessage('Vui lòng chọn ít nhất một kênh nhận thông báo (Discord, Telegram, hoặc Email).');
+      setErrorMessage('Please select at least one notification channel (Discord, Telegram, or Email).');
       return;
     }
 
     const isSpecialMetric = ruleMetric === 'status' || ruleMetric === 'container' || ruleMetric === 'service';
     if (ruleMetric === 'container' || ruleMetric === 'service') {
       if (!ruleTargetName.trim()) {
-        setErrorMessage(`Vui lòng nhập tên ${ruleMetric === 'container' ? 'Container' : 'Service'} cần theo dõi.`);
+        setErrorMessage(`Please enter the ${ruleMetric === 'container' ? 'Container' : 'Service'} name to monitor.`);
         return;
       }
     }
 
     const threshold = Number.parseFloat(ruleThreshold);
     if (!isSpecialMetric && (!Number.isFinite(threshold) || threshold < 0 || threshold > 100)) {
-      setErrorMessage('Ngưỡng phần trăm phải nằm trong khoảng từ 0 đến 100%.');
+      setErrorMessage('Threshold percentage must be between 0 and 100%.');
       return;
     }
     const duration = Number.parseInt(ruleDuration, 10);
     if (!Number.isFinite(duration) || duration < 1 || duration > 1440) {
-      setErrorMessage('Thời gian duy trì điều kiện phải từ 1 đến 1440 phút.');
+      setErrorMessage('Duration must be between 1 and 1440 minutes.');
       return;
     }
 
@@ -408,11 +408,11 @@ export default function AlertsPage() {
       });
 
       setRules((current) => [createdRule, ...current]);
-      setSuccessMessage(`Đã tạo quy tắc cảnh báo "${createdRule.name}" thành công!`);
+      setSuccessMessage(`Alert rule "${createdRule.name}" created successfully!`);
       setActiveTab('rules');
 
       // Reset form
-      setRuleName('Cảnh báo Máy chủ Mất kết nối (Offline)');
+      setRuleName('Server Offline Alert');
       setSelectedCategory('status');
       setRuleMetric('status');
       setRuleTargetName('');
@@ -423,7 +423,7 @@ export default function AlertsPage() {
       setSelectedChannelIds([]);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể tạo quy tắc cảnh báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to create alert rule.'));
     } finally {
       setSavingRule(false);
     }
@@ -440,9 +440,9 @@ export default function AlertsPage() {
       setRules((current) =>
         current.map((r) => (r.id === ruleId ? { ...r, enabled: updated.enabled } : r))
       );
-      setSuccessMessage(updated.enabled ? 'Đã bật quy tắc cảnh báo.' : 'Đã tắt quy tắc cảnh báo.');
+      setSuccessMessage(updated.enabled ? 'Alert rule enabled.' : 'Alert rule disabled.');
     } catch (error) {
-      setErrorMessage(getApiErrorMessage(error, 'Không thể cập nhật trạng thái quy tắc cảnh báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to update alert rule status.'));
     }
   };
 
@@ -456,7 +456,7 @@ export default function AlertsPage() {
       if (channelType === 'discord') {
         const trimmed = channelWebhook.trim();
         if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
-          setErrorMessage('Vui lòng nhập đầy đủ Discord Webhook URL (bắt đầu bằng https://discord.com/api/webhooks/...).');
+          setErrorMessage('Please enter a valid Discord Webhook URL (starting with https://discord.com/api/webhooks/...).');
           setSavingChannel(false);
           return;
         }
@@ -487,10 +487,10 @@ export default function AlertsPage() {
       setChannelEmailFrom('');
       setChannelEmailTo('');
       setChannelUseTLS(false);
-      setSuccessMessage(`Đã tạo kênh thông báo "${createdChannel.name}" thành công!`);
+      setSuccessMessage(`Notification channel "${createdChannel.name}" created successfully!`);
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể tạo kênh thông báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to create notification channel.'));
     } finally {
       setSavingChannel(false);
     }
@@ -498,25 +498,25 @@ export default function AlertsPage() {
 
   const deleteRule = async (id: string) => {
     if (isViewer) {
-      setErrorMessage('Chỉ Admin hoặc Operator mới có quyền xóa quy tắc cảnh báo.');
+      setErrorMessage('Deleting alert rules requires Admin or Operator role.');
       return;
     }
-    if (!confirm('Bạn có chắc chắn muốn xóa quy tắc cảnh báo này?')) return;
+    if (!confirm('Are you sure you want to delete this alert rule?')) return;
     setErrorMessage('');
 
     try {
       await apiClient(`/alerts/rules/${id}`, { method: 'DELETE' });
       setRules((current) => current.filter((rule) => rule.id !== id));
-      setSuccessMessage('Đã xóa quy tắc cảnh báo.');
+      setSuccessMessage('Alert rule deleted.');
     } catch (error) {
       console.error(error);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể xóa quy tắc cảnh báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to delete alert rule.'));
     }
   };
 
   const deleteChannel = async (id: string) => {
     if (isViewer) {
-      setErrorMessage('Chỉ Admin hoặc Operator mới có quyền xóa kênh thông báo.');
+      setErrorMessage('Deleting notification channels requires Admin or Operator role.');
       return;
     }
     const channel = channels.find((item) => item.id === id);
@@ -525,12 +525,12 @@ export default function AlertsPage() {
     if ((channel.usage_count ?? 0) > 0) {
       setSuccessMessage('');
       setErrorMessage(
-        `Kênh này đang được sử dụng bởi ${channel.usage_count} quy tắc cảnh báo. Vui lòng gỡ liên kết hoặc xóa các quy tắc đó trước.`,
+        `This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`,
       );
       return;
     }
 
-    if (!confirm(`Bạn có chắc chắn muốn xóa kênh thông báo "${channel.name}"?`)) return;
+    if (!confirm(`Are you sure you want to delete notification channel "${channel.name}"?`)) return;
     setErrorMessage('');
     setSuccessMessage('');
 
@@ -538,11 +538,11 @@ export default function AlertsPage() {
       await apiClient(`/alerts/channels/${id}`, { method: 'DELETE' });
       setChannels((current) => current.filter((item) => item.id !== id));
       setSelectedChannelIds((current) => current.filter((channelId) => channelId !== id));
-      setSuccessMessage('Đã xóa kênh thông báo.');
+      setSuccessMessage('Notification channel deleted.');
     } catch (error) {
       console.error(error);
       await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
-      setErrorMessage(getApiErrorMessage(error, 'Không thể xóa kênh thông báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to delete notification channel.'));
     }
   };
 
@@ -553,19 +553,19 @@ export default function AlertsPage() {
         current.map((item) => ({ ...item, read_at: new Date().toISOString() })),
       );
       setUnreadIncidentsCount(0);
-      setSuccessMessage('Đã đánh dấu tất cả thông báo là đã xem.');
+      setSuccessMessage('All notifications marked as read.');
     } catch (error) {
-      setErrorMessage(getApiErrorMessage(error, 'Không thể cập nhật trạng thái thông báo.'));
+      setErrorMessage(getApiErrorMessage(error, 'Unable to update notification status.'));
     }
   };
 
-  // Thống kê số lượng rules theo từng loại
+  // Rule counts by category
   const offlineRules = rules.filter((r) => r.metric === 'status');
   const dockerRules = rules.filter((r) => r.metric === 'container');
   const serviceRules = rules.filter((r) => r.metric === 'service');
   const metricRules = rules.filter((r) => ['cpu', 'ram', 'disk'].includes(r.metric));
 
-  // Bộ lọc danh sách rules
+  // Filter rules list
   const filteredRules = rules.filter((rule) => {
     if (ruleCategoryFilter === 'status' && rule.metric !== 'status') return false;
     if (ruleCategoryFilter === 'container' && rule.metric !== 'container') return false;
@@ -593,10 +593,10 @@ export default function AlertsPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
-            Trung Tâm Cảnh Báo (Alerts)
+            Alert Center
           </h1>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Giám sát trạng thái máy chủ, Docker container, dịch vụ systemd, tài nguyên và website uptime.
+            Monitor server health, Docker containers, systemd services, resource thresholds, and website uptime.
           </p>
         </div>
 
@@ -610,7 +610,7 @@ export default function AlertsPage() {
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
           >
-            <Plus className="h-4 w-4" /> Tạo Cảnh Báo Mới
+            <Plus className="h-4 w-4" /> Create Alert Rule
           </button>
         </div>
       </div>
@@ -634,7 +634,7 @@ export default function AlertsPage() {
             onClick={() => { setErrorMessage(''); setSuccessMessage(''); }}
             className="text-xs font-semibold underline opacity-70 hover:opacity-100"
           >
-            Đóng
+            Dismiss
           </button>
         </div>
       )}
@@ -653,7 +653,7 @@ export default function AlertsPage() {
                 : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
             }`}
           >
-            <span>Quy tắc cảnh báo</span>
+            <span>Alert Rules</span>
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${
               activeTab === 'rules'
                 ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
@@ -678,7 +678,7 @@ export default function AlertsPage() {
             }`}
           >
             <Plus className="h-4 w-4" />
-            <span>Tạo Cảnh Báo Mới</span>
+            <span>Create Alert</span>
             {activeTab === 'create' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -696,7 +696,7 @@ export default function AlertsPage() {
             }`}
           >
             <Bell className="h-4 w-4" />
-            <span>Kênh thông báo</span>
+            <span>Notification Channels</span>
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${
               activeTab === 'channels'
                 ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
@@ -739,7 +739,7 @@ export default function AlertsPage() {
             }`}
           >
             <Flame className="h-4 w-4" />
-            <span>Lịch sử sự cố & Phục hồi</span>
+            <span>Incident History</span>
             {unreadIncidentsCount > 0 && (
               <span className="inline-flex items-center rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
                 {unreadIncidentsCount}
@@ -754,7 +754,7 @@ export default function AlertsPage() {
 
       {loading ? (
         <div className="flex min-h-64 items-center justify-center text-[var(--color-muted)]">
-          <Loader2 className="mr-2 h-6 w-6 animate-spin text-blue-500" /> Đang tải cấu hình cảnh báo…
+          <Loader2 className="mr-2 h-6 w-6 animate-spin text-blue-500" /> Loading alert configuration…
         </div>
       ) : activeTab === 'rules' ? (
         /* ========================================================================= */
@@ -777,15 +777,15 @@ export default function AlertsPage() {
                   <Server className="h-5 w-5" />
                 </div>
                 <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs font-bold text-cyan-600 dark:text-cyan-400">
-                  {offlineRules.length} quy tắc
+                  {offlineRules.length} {offlineRules.length === 1 ? 'rule' : 'rules'}
                 </span>
               </div>
               <h3 className="mt-3 font-semibold text-[var(--foreground)]">Server Offline</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Phát hiện máy chủ mất heartbeat (1m, 2m, 5m).
+                Detect lost server heartbeats (1m, 2m, 5m).
               </p>
               <div className="mt-3 flex items-center justify-between text-xs font-medium text-cyan-600 dark:text-cyan-400">
-                <span>{ruleCategoryFilter === 'status' ? '✓ Đang lọc' : 'Click để lọc'}</span>
+                <span>{ruleCategoryFilter === 'status' ? '✓ Filter active' : 'Click to filter'}</span>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -795,7 +795,7 @@ export default function AlertsPage() {
                   }}
                   className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-cyan-500"
                 >
-                  + Thêm
+                  + Add
                 </button>
               </div>
             </div>
@@ -814,15 +814,15 @@ export default function AlertsPage() {
                   <Box className="h-5 w-5" />
                 </div>
                 <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-bold text-blue-600 dark:text-blue-400">
-                  {dockerRules.length} quy tắc
+                  {dockerRules.length} {dockerRules.length === 1 ? 'rule' : 'rules'}
                 </span>
               </div>
               <h3 className="mt-3 font-semibold text-[var(--foreground)]">Docker Container</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Bắt lỗi container Exited, Dead hoặc Unhealthy.
+                Alert on container Exited, Dead or Unhealthy states.
               </p>
               <div className="mt-3 flex items-center justify-between text-xs font-medium text-blue-600 dark:text-blue-400">
-                <span>{ruleCategoryFilter === 'container' ? '✓ Đang lọc' : 'Click để lọc'}</span>
+                <span>{ruleCategoryFilter === 'container' ? '✓ Filter active' : 'Click to filter'}</span>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -832,7 +832,7 @@ export default function AlertsPage() {
                   }}
                   className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-blue-500"
                 >
-                  + Thêm
+                  + Add
                 </button>
               </div>
             </div>
@@ -851,15 +851,15 @@ export default function AlertsPage() {
                   <Layers className="h-5 w-5" />
                 </div>
                 <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-bold text-purple-600 dark:text-purple-400">
-                  {serviceRules.length} quy tắc
+                  {serviceRules.length} {serviceRules.length === 1 ? 'rule' : 'rules'}
                 </span>
               </div>
               <h3 className="mt-3 font-semibold text-[var(--foreground)]">Systemd Service</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Cảnh báo dịch vụ hệ thống dừng hoặc failed.
+                Alert when system services stop or fail.
               </p>
               <div className="mt-3 flex items-center justify-between text-xs font-medium text-purple-600 dark:text-purple-400">
-                <span>{ruleCategoryFilter === 'service' ? '✓ Đang lọc' : 'Click để lọc'}</span>
+                <span>{ruleCategoryFilter === 'service' ? '✓ Filter active' : 'Click to filter'}</span>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -869,7 +869,7 @@ export default function AlertsPage() {
                   }}
                   className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-purple-500"
                 >
-                  + Thêm
+                  + Add
                 </button>
               </div>
             </div>
@@ -888,15 +888,15 @@ export default function AlertsPage() {
                   <Activity className="h-5 w-5" />
                 </div>
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                  {metricRules.length} quy tắc
+                  {metricRules.length} {metricRules.length === 1 ? 'rule' : 'rules'}
                 </span>
               </div>
               <h3 className="mt-3 font-semibold text-[var(--foreground)]">CPU / RAM / Disk</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Cảnh báo ngưỡng quá tải tài nguyên phần cứng.
+                Alert on hardware resource threshold overutilization.
               </p>
               <div className="mt-3 flex items-center justify-between text-xs font-medium text-amber-600 dark:text-amber-400">
-                <span>{ruleCategoryFilter === 'metric' ? '✓ Đang lọc' : 'Click để lọc'}</span>
+                <span>{ruleCategoryFilter === 'metric' ? '✓ Filter active' : 'Click to filter'}</span>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -906,7 +906,7 @@ export default function AlertsPage() {
                   }}
                   className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-amber-500"
                 >
-                  + Thêm
+                  + Add
                 </button>
               </div>
             </div>
@@ -925,7 +925,7 @@ export default function AlertsPage() {
                     : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
-                Tất cả ({rules.length})
+                All ({rules.length})
               </button>
               <button
                 type="button"
@@ -981,7 +981,7 @@ export default function AlertsPage() {
                   type="text"
                   value={ruleSearchQuery}
                   onChange={(e) => setRuleSearchQuery(e.target.value)}
-                  placeholder="Tìm kiếm theo tên quy tắc..."
+                  placeholder="Search by rule name, target, or server..."
                   className="w-full rounded-lg border border-[var(--border-color)] bg-transparent py-1.5 pl-8 pr-3 text-xs text-[var(--foreground)] placeholder-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -991,9 +991,9 @@ export default function AlertsPage() {
                 onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
                 className="rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-2.5 py-1.5 text-xs text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <option value="all">Trạng thái: Tất cả</option>
-                <option value="active">Đang bật (Active)</option>
-                <option value="disabled">Đang tắt (Disabled)</option>
+                <option value="all">All Statuses</option>
+                <option value="active">Active only</option>
+                <option value="disabled">Disabled only</option>
               </select>
             </div>
           </div>
@@ -1066,25 +1066,25 @@ export default function AlertsPage() {
                       {/* Rule Trigger Description */}
                       <p className="mt-1 text-xs text-[var(--color-muted)]">
                         {isOffline
-                          ? `Kích hoạt cảnh báo khi máy chủ ngừng gửi heartbeat quá ${rule.duration_minutes} phút`
+                          ? `Trigger alert when server stops reporting heartbeats for more than ${rule.duration_minutes} min`
                           : isDocker
-                            ? `Cảnh báo khi Docker container "${rule.target_name || '*'}" bị dừng (exited/dead) hoặc unhealthy`
+                            ? `Alert when Docker container "${rule.target_name || '*'}" is stopped (exited/dead) or unhealthy`
                             : isService
-                              ? `Cảnh báo khi systemd service "${rule.target_name || '*'}" không ở trạng thái active (running)`
-                              : `Cảnh báo khi ${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% liên tục quá ${rule.duration_minutes} phút`}
+                              ? `Alert when systemd service "${rule.target_name || '*'}" is not active (running)`
+                              : `Alert when ${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% continuously for ${rule.duration_minutes} min`}
                       </p>
 
                       {/* Meta Tags */}
                       <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs">
                         <span className="flex items-center gap-1 font-medium text-[var(--foreground)]">
                           <Server className="h-3.5 w-3.5 text-blue-500" />
-                          {rule.server_name ? `Máy chủ: ${rule.server_name}` : 'Áp dụng: Toàn bộ máy chủ'}
+                          {rule.server_name ? `Server: ${rule.server_name}` : 'Applies to: All servers'}
                         </span>
 
                         {rule.repeat_interval_minutes && rule.repeat_interval_minutes > 0 ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[11px] font-semibold text-purple-400">
                             <Clock className="h-3 w-3" />
-                            Nhắc lại mỗi {rule.repeat_interval_minutes}m
+                            Repeat every {rule.repeat_interval_minutes}m
                           </span>
                         ) : null}
 
@@ -1102,7 +1102,7 @@ export default function AlertsPage() {
                             ))
                           ) : (
                             <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-500">
-                              Chỉ hiển thị Dashboard
+                              Dashboard only
                             </span>
                           )}
                         </div>
@@ -1117,7 +1117,7 @@ export default function AlertsPage() {
                       type="button"
                       disabled={testingRuleId === rule.id || !rule.channels || rule.channels.length === 0}
                       onClick={() => void testAlertRule(rule.id, rule.name)}
-                      title="Gửi ngay một thông báo thử nghiệm của quy tắc này tới Discord/Telegram/Email"
+                      title="Send a simulated test alert for this rule to linked channels"
                       className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-500 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {testingRuleId === rule.id ? (
@@ -1134,7 +1134,7 @@ export default function AlertsPage() {
                       role="switch"
                       aria-checked={rule.enabled}
                       onClick={() => toggleRule(rule.id, rule.enabled)}
-                      title={rule.enabled ? 'Click để tắt cảnh báo' : 'Click để bật cảnh báo'}
+                      title={rule.enabled ? 'Click to disable alert' : 'Click to enable alert'}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                         rule.enabled ? 'bg-emerald-500' : 'bg-slate-700'
                       }`}
@@ -1164,16 +1164,16 @@ export default function AlertsPage() {
             {filteredRules.length === 0 && (
               <div className="rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center">
                 <Bell className="mx-auto h-8 w-8 text-[var(--color-muted)]" />
-                <h3 className="mt-3 font-semibold text-[var(--foreground)]">Không tìm thấy quy tắc cảnh báo nào</h3>
+                <h3 className="mt-3 font-semibold text-[var(--foreground)]">No alert rules found</h3>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  Hãy thử thay đổi bộ lọc hoặc bấm nút bên dưới để tạo quy tắc mới.
+                  Try adjusting your search or filters, or click below to create a new alert rule.
                 </p>
                 <button
                   type="button"
                   onClick={() => { setActiveTab('create'); }}
                   className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                 >
-                  <Plus className="h-4 w-4" /> Tạo Cảnh Báo Ngay
+                  <Plus className="h-4 w-4" /> Create Alert Rule
                 </button>
               </div>
             )}
@@ -1186,9 +1186,9 @@ export default function AlertsPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Chọn Loại Cảnh Báo Cần Thiết Lập</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Select Alert Category</h2>
               <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Bấm vào 1 trong 4 loại bên dưới. Giao diện cấu hình sẽ tự động thay đổi tương ứng.
+                Choose one of the 4 categories below. Configuration options adapt automatically.
               </p>
             </div>
 
@@ -1197,7 +1197,7 @@ export default function AlertsPage() {
               onClick={() => setActiveTab('rules')}
               className="text-xs font-semibold text-blue-500 hover:text-blue-400"
             >
-              ← Quay lại danh sách Rules
+              ← Back to Alert Rules
             </button>
           </div>
 
@@ -1219,15 +1219,15 @@ export default function AlertsPage() {
                   <Server className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                  Khuyến nghị
+                  Recommended
                 </span>
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Server Offline</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                Kích hoạt ngay khi máy chủ ngừng gửi heartbeat quá thời gian quy định (1m, 2m, 5m).
+                Trigger immediately when a server stops reporting heartbeats beyond the configured threshold (1m, 2m, 5m).
               </p>
               <div className="mt-4 flex items-center text-xs font-semibold text-cyan-600 dark:text-cyan-400">
-                {selectedCategory === 'status' ? '✓ Đang chọn' : 'Chọn loại này →'}
+                {selectedCategory === 'status' ? '✓ Selected' : 'Select category →'}
               </div>
             </div>
 
@@ -1247,15 +1247,15 @@ export default function AlertsPage() {
                   <Box className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                  Mới
+                  New
                 </span>
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Docker Container</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                Tự động bắt lỗi khi container chỉ định bị dừng (exited/dead) hoặc unhealthy.
+                Automatically detect when a specified container stops (exited/dead) or becomes unhealthy.
               </p>
               <div className="mt-4 flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400">
-                {selectedCategory === 'container' ? '✓ Đang chọn' : 'Chọn loại này →'}
+                {selectedCategory === 'container' ? '✓ Selected' : 'Select category →'}
               </div>
             </div>
 
@@ -1275,15 +1275,15 @@ export default function AlertsPage() {
                   <Layers className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  Mới
+                  New
                 </span>
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Systemd Service</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                Cảnh báo khi dịch vụ hệ điều hành (Nginx, MariaDB, Docker...) không ở trạng thái active.
+                Alert when operating system services (Nginx, MariaDB, Docker...) stop or enter a failed state.
               </p>
               <div className="mt-4 flex items-center text-xs font-semibold text-purple-600 dark:text-purple-400">
-                {selectedCategory === 'service' ? '✓ Đang chọn' : 'Chọn loại này →'}
+                {selectedCategory === 'service' ? '✓ Selected' : 'Select category →'}
               </div>
             </div>
 
@@ -1303,15 +1303,15 @@ export default function AlertsPage() {
                   <Activity className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                  Ngưỡng tải
+                  Metrics
                 </span>
               </div>
-              <h3 className="mt-4 font-bold text-[var(--foreground)]">Tài Nguyên Phần Cứng</h3>
+              <h3 className="mt-4 font-bold text-[var(--foreground)]">Resource Thresholds</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                Cảnh báo khi mức tiêu thụ CPU, RAM hoặc ổ đĩa Disk vượt ngưỡng quá tải.
+                Alert when CPU, RAM or Disk storage utilization exceeds safety thresholds.
               </p>
               <div className="mt-4 flex items-center text-xs font-semibold text-amber-600 dark:text-amber-400">
-                {selectedCategory === 'metric' ? '✓ Đang chọn' : 'Chọn loại này →'}
+                {selectedCategory === 'metric' ? '✓ Selected' : 'Select category →'}
               </div>
             </div>
           </div>
@@ -1320,7 +1320,7 @@ export default function AlertsPage() {
           <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-6 shadow-sm">
             <h3 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-blue-500" />
-              Thiết Lập Thông Số Cảnh Báo
+              Alert Rule Parameters
             </h3>
 
             <form onSubmit={createRule} className="mt-6 space-y-6">
@@ -1328,7 +1328,7 @@ export default function AlertsPage() {
                 {/* Rule Name */}
                 <div>
                   <label htmlFor="rule-name" className="mb-1.5 block text-sm font-semibold text-[var(--foreground)]">
-                    Tên quy tắc cảnh báo
+                    Alert Rule Name
                   </label>
                   <input
                     id="rule-name"
@@ -1337,20 +1337,20 @@ export default function AlertsPage() {
                     onChange={(e) => setRuleName(e.target.value)}
                     type="text"
                     className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                    placeholder="Ví dụ: Cảnh báo Server sập nguồn"
+                    placeholder="e.g. Production Server Offline Alert"
                   />
                 </div>
 
                 {/* Target Agent */}
                 <div>
                   <label htmlFor="rule-server" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                    <Server className="h-4 w-4 text-blue-500" /> Máy chủ áp dụng
+                    <Server className="h-4 w-4 text-blue-500" /> Target Server
                   </label>
                   <CustomSelect
                     value={selectedServerId}
                     onChange={setSelectedServerId}
                     options={[
-                      { value: 'all', label: 'Tất cả máy chủ (Toàn bộ Agent Fleet)' },
+                      { value: 'all', label: 'All servers (Entire Agent Fleet)' },
                       ...servers.map((server) => ({
                         value: server.id,
                         label: server.name,
@@ -1360,7 +1360,7 @@ export default function AlertsPage() {
                     className="w-full"
                   />
                   <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                    Chọn máy chủ cụ thể hoặc áp dụng tự động cho toàn bộ hệ thống.
+                    Select a specific server or apply universally across all connected servers.
                   </p>
                 </div>
               </div>
@@ -1372,19 +1372,19 @@ export default function AlertsPage() {
                     <Server className="h-5 w-5 text-cyan-500 shrink-0 mt-0.5" />
                     <div className="flex-1 space-y-3">
                       <div>
-                        <h4 className="font-semibold text-[var(--foreground)]">Ngưỡng phát hiện Offline (Phút)</h4>
+                        <h4 className="font-semibold text-[var(--foreground)]">Heartbeat Loss Threshold (Minutes)</h4>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          Hệ thống đã loại bỏ double-waiting: Khi Agent không gửi tín hiệu quá mốc thời gian này, cảnh báo sẽ kích hoạt ngay!
+                          Zero double-waiting: alerts fire immediately once an agent has not reported for this duration.
                         </p>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                         {[
-                          { val: '1', label: '1 phút', desc: 'Nhanh nhất (Khuyên dùng)' },
-                          { val: '2', label: '2 phút', desc: 'Ổn định mạng chập chờn' },
-                          { val: '5', label: '5 phút', desc: 'Dung thứ cao' },
-                          { val: '10', label: '10 phút', desc: 'Server phụ' },
-                          { val: '15', label: '15 phút', desc: 'Bảo trì dài' },
+                          { val: '1', label: '1 min', desc: 'Fastest (Recommended)' },
+                          { val: '2', label: '2 min', desc: 'Flaky network tolerance' },
+                          { val: '5', label: '5 min', desc: 'High tolerance' },
+                          { val: '10', label: '10 min', desc: 'Secondary servers' },
+                          { val: '15', label: '15 min', desc: 'Maintenance windows' },
                         ].map((opt) => (
                           <button
                             key={opt.val}
@@ -1410,7 +1410,7 @@ export default function AlertsPage() {
                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-4">
                   <div>
                     <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Box className="h-4 w-4 text-blue-500" /> Tên Docker Container cần giám sát
+                      <Box className="h-4 w-4 text-blue-500" /> Docker Container Name
                     </label>
                     <input
                       id="rule-target-name"
@@ -1418,20 +1418,20 @@ export default function AlertsPage() {
                       value={ruleTargetName}
                       onChange={(e) => {
                         setRuleTargetName(e.target.value);
-                        setRuleName(e.target.value ? `Giám sát Docker: ${e.target.value}` : 'Giám sát Docker Container');
+                        setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
                       }}
                       type="text"
                       className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                      placeholder="Ví dụ: nginx, web_app, postgres, redis, api_gateway"
+                      placeholder="e.g. nginx, web_app, postgres, redis, api_gateway"
                     />
                     <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Nhập chính xác tên container đang chạy trên Docker (xem từ lệnh <code className="font-mono text-blue-400">docker ps</code>).
+                      Enter the exact container name as listed in <code className="font-mono text-blue-400">docker ps</code>.
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
                     <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                    Điều kiện kích hoạt: Container bị dừng (Exited), Unhealthy hoặc Crash (Exit code != 0).
+                    Trigger condition: Container is stopped (Exited), Dead, Unhealthy, or Crashed (Exit code != 0).
                   </div>
                 </div>
               )}
@@ -1440,7 +1440,7 @@ export default function AlertsPage() {
                 <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-4">
                   <div>
                     <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Layers className="h-4 w-4 text-purple-500" /> Tên Systemd Service cần giám sát
+                      <Layers className="h-4 w-4 text-purple-500" /> Systemd Service Name
                     </label>
                     <input
                       id="rule-target-name"
@@ -1448,20 +1448,20 @@ export default function AlertsPage() {
                       value={ruleTargetName}
                       onChange={(e) => {
                         setRuleTargetName(e.target.value);
-                        setRuleName(e.target.value ? `Giám sát Service: ${e.target.value}` : 'Giám sát Systemd Service');
+                        setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
                       }}
                       type="text"
                       className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500"
-                      placeholder="Ví dụ: nginx, mariadb, docker, ssh, redis-server"
+                      placeholder="e.g. nginx, mariadb, docker, ssh, redis-server"
                     />
                     <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Nhập tên dịch vụ hệ thống (ví dụ: <code className="font-mono text-purple-400">nginx</code> hoặc <code className="font-mono text-purple-400">nginx.service</code>).
+                      Enter the systemd service name (e.g. <code className="font-mono text-purple-400">nginx</code> or <code className="font-mono text-purple-400">nginx.service</code>).
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400">
                     <span className="inline-flex h-2 w-2 rounded-full bg-purple-500" />
-                    Điều kiện kích hoạt: Dịch vụ không ở trạng thái active (running) hoặc failed.
+                    Trigger condition: Service is inactive (stopped) or in failed state.
                   </div>
                 </div>
               )}
@@ -1471,18 +1471,18 @@ export default function AlertsPage() {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                        Chỉ số tài nguyên
+                        Resource Metric
                       </label>
                       <CustomSelect
                         value={ruleMetric}
                         onChange={(val) => {
                           setRuleMetric(val);
-                          setRuleName(`Cảnh báo ${val.toUpperCase()} cao (> ${ruleThreshold}%)`);
+                          setRuleName(`High ${val.toUpperCase()} Alert (> ${ruleThreshold}%)`);
                         }}
                         options={[
                           { value: 'cpu', label: 'CPU Usage (%)' },
                           { value: 'ram', label: 'RAM Memory (%)' },
-                          { value: 'disk', label: 'Ổ đĩa Disk (%)' },
+                          { value: 'disk', label: 'Disk Storage (%)' },
                         ]}
                         className="w-full"
                       />
@@ -1490,14 +1490,14 @@ export default function AlertsPage() {
 
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                        Điều kiện so sánh
+                        Comparison Operator
                       </label>
                       <CustomSelect
                         value={ruleOperator}
                         onChange={setRuleOperator}
                         options={[
-                          { value: '>', label: 'Lớn hơn (>)' },
-                          { value: '<', label: 'Nhỏ hơn (<)' },
+                          { value: '>', label: 'Greater than (>)' },
+                          { value: '<', label: 'Less than (<)' },
                         ]}
                         className="w-full"
                       />
@@ -1505,7 +1505,7 @@ export default function AlertsPage() {
 
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                        Ngưỡng cảnh báo (%)
+                        Threshold (%)
                       </label>
                       <input
                         required
@@ -1514,7 +1514,7 @@ export default function AlertsPage() {
                         value={ruleThreshold}
                         onChange={(e) => {
                           setRuleThreshold(e.target.value);
-                          setRuleName(`Cảnh báo ${ruleMetric.toUpperCase()} cao (> ${e.target.value}%)`);
+                          setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
                         }}
                         type="number"
                         className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-amber-500"
@@ -1524,7 +1524,7 @@ export default function AlertsPage() {
 
                   <div>
                     <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1 text-xs font-semibold text-[var(--foreground)]">
-                      <Clock className="h-3.5 w-3.5" /> Thời gian vi phạm liên tục trước khi báo (Phút)
+                      <Clock className="h-3.5 w-3.5" /> Continuous duration before alerting (Minutes)
                     </label>
                     <input
                       id="metric-duration"
@@ -1537,7 +1537,7 @@ export default function AlertsPage() {
                       className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
                     />
                     <p className="mt-1 text-xs text-[var(--color-muted)]">
-                      Chỉ số phải liên tục vượt ngưỡng trong suốt số phút này mới gửi thông báo (tránh cảnh báo ảo khi CPU tăng đột biến ngắn).
+                      Metric must exceed the threshold continuously for this duration before alerting (prevents false alarms from temporary spikes).
                     </p>
                   </div>
                 </div>
@@ -1547,32 +1547,32 @@ export default function AlertsPage() {
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 pt-2">
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-[var(--foreground)]">
-                    <Clock className="h-4 w-4 text-purple-500" /> Nhắc lại cảnh báo (Re-notification)
+                    <Clock className="h-4 w-4 text-purple-500" /> Re-notification Interval
                   </label>
                   <CustomSelect
                     value={ruleRepeatInterval}
                     onChange={setRuleRepeatInterval}
                     options={[
-                      { value: '0', label: 'Chỉ gửi 1 lần (Không nhắc lại)' },
-                      { value: '15', label: 'Mỗi 15 phút nếu sự cố tiếp diễn' },
-                      { value: '30', label: 'Mỗi 30 phút nếu sự cố tiếp diễn' },
-                      { value: '60', label: 'Mỗi 1 giờ nếu sự cố tiếp diễn' },
-                      { value: '120', label: 'Mỗi 2 giờ nếu sự cố tiếp diễn' },
+                      { value: '0', label: 'Send once (Do not repeat)' },
+                      { value: '15', label: 'Every 15 minutes while ongoing' },
+                      { value: '30', label: 'Every 30 minutes while ongoing' },
+                      { value: '60', label: 'Every 1 hour while ongoing' },
+                      { value: '120', label: 'Every 2 hours while ongoing' },
                     ]}
                     className="w-full"
                   />
                   <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                    Hệ thống sẽ định kỳ gửi lại cảnh báo kèm nhãn [REMINDER] cho đến khi sự cố được khắc phục.
+                    Periodically resends alerts labeled with [REMINDER] until the incident is resolved.
                   </p>
                 </div>
 
                 <div className="flex flex-col justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
                   <div className="flex items-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-4 w-4" />
-                    Thông báo khôi phục (Resolved Notification)
+                    Resolved Notification
                   </div>
                   <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                    Tự động gửi thông báo xanh <code className="font-mono text-emerald-400">[RESOLVED]</code> kèm <strong>tổng thời gian downtime thực tế</strong> (ví dụ: 2m 15s) ngay khi máy chủ/dịch vụ hồi phục bình thường!
+                    Automatically sends a green <code className="font-mono text-emerald-400">[RESOLVED]</code> notification with <strong>exact downtime duration</strong> (e.g. 2m 15s) when the service recovers!
                   </p>
                 </div>
               </div>
@@ -1582,10 +1582,10 @@ export default function AlertsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-1.5">
-                      <Bell className="h-4 w-4 text-blue-500" /> Chọn Kênh Nhận Thông Báo
+                      <Bell className="h-4 w-4 text-blue-500" /> Select Notification Channels
                     </label>
                     <p className="text-xs text-[var(--color-muted)]">
-                      Chọn ít nhất 1 kênh để nhận cảnh báo tức thời. Có thể bấm &quot;Test&quot; thử ngay tại đây.
+                      Select at least 1 channel for instant incident delivery. You can test each channel directly.
                     </p>
                   </div>
 
@@ -1594,19 +1594,19 @@ export default function AlertsPage() {
                     onClick={() => setActiveTab('channels')}
                     className="text-xs font-semibold text-blue-500 hover:text-blue-400"
                   >
-                    + Thêm Kênh Mới
+                    + Add New Channel
                   </button>
                 </div>
 
                 {enabledChannels.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[var(--border-color)] p-6 text-center">
-                    <p className="text-sm text-[var(--color-muted)]">Chưa có kênh thông báo nào.</p>
+                    <p className="text-sm text-[var(--color-muted)]">No notification channels configured.</p>
                     <button
                       type="button"
                       onClick={() => setActiveTab('channels')}
                       className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 underline"
                     >
-                      Bấm vào đây để cấu hình Discord / Telegram / Email →
+                      Click here to configure Discord / Telegram / Email →
                     </button>
                   </div>
                 ) : (
@@ -1642,7 +1642,7 @@ export default function AlertsPage() {
                             type="button"
                             disabled={testingChannelId === channel.id}
                             onClick={() => void testExistingChannel(channel.id, channel.name)}
-                            title="Bấm để bắn thông báo thử nghiệm tới kênh này"
+                            title="Send test notification to this channel"
                             className="shrink-0 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[11px] font-semibold text-blue-500 hover:bg-blue-500/10"
                           >
                             {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
@@ -1661,7 +1661,7 @@ export default function AlertsPage() {
                   onClick={() => setActiveTab('rules')}
                   className="rounded-xl border border-[var(--border-color)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
                 >
-                  Hủy / Quay lại
+                  Cancel
                 </button>
 
                 <button
@@ -1670,7 +1670,7 @@ export default function AlertsPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {savingRule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Tạo Quy Tắc Cảnh Báo
+                  Create Alert Rule
                 </button>
               </div>
             </form>
@@ -1684,16 +1684,16 @@ export default function AlertsPage() {
           {/* Add Channel Form */}
           <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 lg:col-span-1">
             <h3 className="flex items-center gap-2 font-bold text-[var(--foreground)] text-base">
-              <Plus className="h-4 w-4 text-blue-500" /> Thêm Kênh Nhận Thông Báo
+              <Plus className="h-4 w-4 text-blue-500" /> Add Notification Channel
             </h3>
             <p className="mt-1 text-xs text-[var(--color-muted)]">
-              Kết nối Discord Webhook, Telegram Bot hoặc Email SMTP để nhận cảnh báo tức thời.
+              Connect Discord Webhook, Telegram Bot, or SMTP Email for real-time alerting.
             </p>
 
             <form onSubmit={createChannel} className="mt-4 space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--foreground)]">
-                  Tên kênh hiển thị
+                  Channel Display Name
                 </label>
                 <input
                   required
@@ -1701,13 +1701,13 @@ export default function AlertsPage() {
                   onChange={(e) => setChannelName(e.target.value)}
                   type="text"
                   className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                  placeholder="Ví dụ: Discord IT Alerts"
+                  placeholder="e.g. Discord IT Alerts"
                 />
               </div>
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--foreground)]">
-                  Loại nền tảng
+                  Channel Type
                 </label>
                 <CustomSelect
                   value={channelType}
@@ -1736,7 +1736,7 @@ export default function AlertsPage() {
                       placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
                     />
                     <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                      Tạo từ <code className="font-mono text-blue-400">@BotFather</code> trên Telegram.
+                      Generated via <code className="font-mono text-blue-400">@BotFather</code> on Telegram.
                     </p>
                   </div>
 
@@ -1750,7 +1750,7 @@ export default function AlertsPage() {
                       onChange={(e) => setChannelChatId(e.target.value)}
                       type="text"
                       className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)]"
-                      placeholder="Ví dụ: -1001234567890 hoặc ID cá nhân"
+                      placeholder="e.g. -1001234567890 or personal Chat ID"
                     />
                   </div>
                 </>
@@ -1768,7 +1768,7 @@ export default function AlertsPage() {
                     placeholder="https://discord.com/api/webhooks/..."
                   />
                   <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                    Lấy trong: Discord → Channel Settings → Integrations → Webhooks.
+                    In Discord: Channel Settings → Integrations → Webhooks → Copy Webhook URL.
                   </p>
                 </div>
               ) : (
@@ -1849,7 +1849,7 @@ export default function AlertsPage() {
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/20"
                 >
                   {testingNewChannel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  Gửi Thử Nghiệm
+                  Send Test
                 </button>
 
                 <button
@@ -1858,7 +1858,7 @@ export default function AlertsPage() {
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
                 >
                   {savingChannel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  Lưu Kênh
+                  Save Channel
                 </button>
               </div>
             </form>
@@ -1867,9 +1867,9 @@ export default function AlertsPage() {
           {/* Channels List */}
           <div className="space-y-4 lg:col-span-2">
             <div>
-              <h3 className="font-bold text-[var(--foreground)] text-base">Danh Sách Kênh Đã Cấu Hình ({channels.length})</h3>
+              <h3 className="font-bold text-[var(--foreground)] text-base">Configured Channels ({channels.length})</h3>
               <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                Các kênh thông báo đang hoạt động sẽ nhận tin cảnh báo từ các rule tương ứng.
+                Active notification channels receiving alerts from configured rules.
               </p>
             </div>
 
@@ -1894,7 +1894,7 @@ export default function AlertsPage() {
                     </div>
 
                     <p className="mt-3 text-xs text-[var(--color-muted)]">
-                      Đang được sử dụng bởi <strong>{channel.usage_count}</strong> quy tắc cảnh báo.
+                      Used by <strong>{channel.usage_count}</strong> alert rule{channel.usage_count === 1 ? '' : 's'}.
                     </p>
                   </div>
 
@@ -1906,14 +1906,14 @@ export default function AlertsPage() {
                       className="inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:text-blue-400"
                     >
                       {testingChannelId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                      Gửi thử nghiệm (Test)
+                      Send Test
                     </button>
 
                     <button
                       type="button"
                       onClick={() => deleteChannel(channel.id)}
                       className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"
-                      title="Xóa kênh"
+                      title="Delete channel"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -1923,7 +1923,7 @@ export default function AlertsPage() {
 
               {channels.length === 0 && (
                 <div className="col-span-2 rounded-xl border border-dashed border-[var(--border-color)] p-8 text-center text-xs text-[var(--color-muted)]">
-                  Chưa có kênh thông báo nào. Vui lòng thêm Telegram, Discord hoặc Email ở bên trái.
+                  No notification channels configured yet. Add Telegram, Discord, or Email on the left.
                 </div>
               )}
             </div>
@@ -1936,9 +1936,9 @@ export default function AlertsPage() {
         <div className="space-y-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Cảnh Báo Giám Sát Website & Chứng Chỉ SSL</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Website & SSL Certificate Monitoring</h2>
               <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Tự động gửi cảnh báo đỏ khi website DOWN, cảnh báo xanh [RESOLVED] khi phục hồi, và cảnh báo cam khi SSL còn dưới 14 ngày.
+                Automated downtime alerts, [RESOLVED] recovery notifications, and SSL certificate expiration warnings.
               </p>
             </div>
 
@@ -1946,13 +1946,13 @@ export default function AlertsPage() {
               href="/dashboard/websites"
               className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-500 hover:underline"
             >
-              Quản lý chi tiết tại trang Uptime <ArrowRight className="h-3.5 w-3.5" />
+              Manage websites in Uptime <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
           {loadingWebsites ? (
             <div className="flex min-h-48 items-center justify-center text-[var(--color-muted)]">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Đang tải danh sách Website…
+              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Loading website monitoring data…
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -2000,17 +2000,17 @@ export default function AlertsPage() {
                             ) : (
                               <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
                             )}
-                            Chứng chỉ SSL
+                            SSL Certificate
                           </span>
                           <span className={`font-bold ${
                             isSslCritical ? 'text-rose-500' : isSslWarning ? 'text-amber-500' : 'text-emerald-500'
                           }`}>
-                            {isSslCritical ? 'Đã hết hạn' : isSslWarning ? `Còn ${sslDays} ngày (Cảnh báo)` : `Còn ${sslDays} ngày`}
+                            {isSslCritical ? 'Expired' : isSslWarning ? `${sslDays} days left (Warning)` : `${sslDays} days left`}
                           </span>
                         </div>
                         {site.ssl_valid_to && (
                           <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                            Hạn dùng: {new Date(site.ssl_valid_to).toLocaleDateString('vi-VN')}
+                            Expires: {new Date(site.ssl_valid_to).toLocaleDateString('en-US')}
                           </p>
                         )}
                       </div>
@@ -2018,14 +2018,14 @@ export default function AlertsPage() {
 
                     <div className="mt-4 flex items-center justify-between border-t border-[var(--border-color)] pt-3 text-xs">
                       <span className="text-[var(--color-muted)]">
-                        Độ trễ: <strong>{site.response_time_ms || 0}ms</strong>
+                        Latency: <strong>{site.response_time_ms || 0}ms</strong>
                       </span>
 
                       <Link
                         href="/dashboard/websites"
                         className="font-bold text-blue-500 hover:underline"
                       >
-                        Chỉnh sửa kênh nhận tin →
+                        Configure channels →
                       </Link>
                     </div>
                   </div>
@@ -2034,13 +2034,13 @@ export default function AlertsPage() {
 
               {websites.length === 0 && (
                 <div className="col-span-3 rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center text-xs text-[var(--color-muted)]">
-                  Chưa có website nào trong hệ thống giám sát Uptime.
+                  No websites registered in Uptime monitoring.
                   <div className="mt-3">
                     <Link
                       href="/dashboard/websites"
                       className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
                     >
-                      + Thêm Website Giám Sát Ngay
+                      + Add Monitored Website
                     </Link>
                   </div>
                 </div>
@@ -2055,9 +2055,9 @@ export default function AlertsPage() {
         <div className="space-y-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Lịch Sử Sự Cố & Phục Hồi (Incidents Timeline)</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)]">Incident & Recovery Timeline</h2>
               <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Dòng thời gian ghi nhận thực tế các sự cố FIRING và RESOLVED kèm tổng thời gian gián đoạn (Downtime).
+                Historical timeline of FIRING and RESOLVED events with precise downtime durations.
               </p>
             </div>
 
@@ -2067,7 +2067,7 @@ export default function AlertsPage() {
                 onClick={() => void fetchIncidents()}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Làm mới
+                <RefreshCw className="h-3.5 w-3.5" /> Refresh
               </button>
 
               {unreadIncidentsCount > 0 && (
@@ -2076,7 +2076,7 @@ export default function AlertsPage() {
                   onClick={() => void markAllIncidentsRead()}
                   className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500"
                 >
-                  Đánh dấu đã đọc tất cả
+                  Mark all as read
                 </button>
               )}
             </div>
@@ -2084,7 +2084,7 @@ export default function AlertsPage() {
 
           {loadingIncidents ? (
             <div className="flex min-h-48 items-center justify-center text-[var(--color-muted)]">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Đang tải lịch sử sự cố…
+              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Loading incident timeline…
             </div>
           ) : (
             <div className="space-y-3">
@@ -2130,7 +2130,7 @@ export default function AlertsPage() {
                               ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
                               : 'bg-purple-500/15 text-purple-500 border border-purple-500/30'
                         }`}>
-                          {isFiring ? 'SỰ CỐ ĐANG DIỄN RA' : isResolved ? 'ĐÃ KHÔI PHỤC' : isReminder ? 'NHẮC LẠI' : 'THỬ NGHIỆM'}
+                          {isFiring ? 'FIRING' : isResolved ? 'RESOLVED' : isReminder ? 'REMINDER' : 'TEST'}
                         </span>
 
                         <h4 className="font-semibold text-[var(--foreground)]">{item.title}</h4>
@@ -2146,7 +2146,7 @@ export default function AlertsPage() {
                             <Server className="h-3 w-3" /> {item.server_name}
                           </span>
                         )}
-                        <span>{new Date(item.created_at).toLocaleString('vi-VN')}</span>
+                        <span>{new Date(item.created_at).toLocaleString('en-US')}</span>
                       </div>
                     </div>
                   </div>
@@ -2155,7 +2155,7 @@ export default function AlertsPage() {
 
               {incidents.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center text-xs text-[var(--color-muted)]">
-                  Chưa có sự cố nào được ghi nhận. Hệ thống đang vận hành hoàn toàn an toàn và ổn định.
+                  No incidents recorded yet. All systems operating normally.
                 </div>
               )}
             </div>

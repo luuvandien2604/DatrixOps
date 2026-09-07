@@ -809,7 +809,7 @@ function ExpandedCpuChartCard({
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Phân tách chi tiết mức chiếm dụng CPU theo từng tiến trình thực tế · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              Breakdown of CPU utilization by active processes · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
             </p>
           </div>
         </div>
@@ -818,10 +818,10 @@ function ExpandedCpuChartCard({
           type="button"
           onClick={onCollapse}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Thu nhỏ về lưới"
+          title="Collapse to grid"
         >
           <Minimize2 className="w-4 h-4 text-violet-400" />
-          Thu nhỏ lưới
+          Collapse
         </button>
       </div>
 
@@ -916,7 +916,7 @@ function ExpandedCpuChartCard({
       {/* Interactive Legend Badges */}
       <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
         <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Active Process Layers (Bấm để ẩn/hiện từng tiến trình):
+          Active Process Layers (Click to toggle process):
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
           {cpuProcesses.map((proc, idx) => {
@@ -1011,7 +1011,7 @@ function ExpandedRamChartCard({
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Phân tách chi tiết mức chiếm dụng RAM theo từng tiến trình thực tế · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              Breakdown of RAM consumption by active processes · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
             </p>
           </div>
         </div>
@@ -1020,10 +1020,10 @@ function ExpandedRamChartCard({
           type="button"
           onClick={onCollapse}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Thu nhỏ về lưới"
+          title="Collapse to grid"
         >
           <Minimize2 className="w-4 h-4 text-emerald-400" />
-          Thu nhỏ lưới
+          Collapse
         </button>
       </div>
 
@@ -1116,7 +1116,7 @@ function ExpandedRamChartCard({
       {/* Interactive Legend Badges */}
       <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
         <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Active Process Layers (Bấm để ẩn/hiện từng tiến trình):
+          Active Process Layers (Click to toggle process):
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
           {ramProcesses.map((proc, idx) => {
@@ -1208,7 +1208,7 @@ function ExpandedNetworkChartCard({
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Phân tách lưu lượng mạng Inbound (RX) và Outbound (TX) · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              Breakdown of Inbound (RX) and Outbound (TX) network throughput · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
             </p>
           </div>
         </div>
@@ -1217,10 +1217,10 @@ function ExpandedNetworkChartCard({
           type="button"
           onClick={onCollapse}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Thu nhỏ về lưới"
+          title="Collapse to grid"
         >
           <Minimize2 className="w-4 h-4 text-sky-400" />
-          Thu nhỏ lưới
+          Collapse
         </button>
       </div>
 
@@ -1288,7 +1288,7 @@ function ExpandedNetworkChartCard({
 
       <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
         <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Network Streams (Bấm để ẩn/hiện chiều lưu lượng):
+          Network Streams (Click to toggle stream):
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
           <LegendBadge label="Inbound (RX Ingress)" color="#8b5cf6" active={activeSeries.netIn} onClick={() => onToggleSeries('netIn')} />
@@ -1357,7 +1357,7 @@ function ExpandedDiskChartCard({
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Phân tách băng thông đọc và ghi đĩa dữ liệu · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              Breakdown of disk Read and Write I/O bandwidth · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
             </p>
           </div>
         </div>
@@ -1366,10 +1366,10 @@ function ExpandedDiskChartCard({
           type="button"
           onClick={onCollapse}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Thu nhỏ về lưới"
+          title="Collapse to grid"
         >
           <Minimize2 className="w-4 h-4 text-amber-400" />
-          Thu nhỏ lưới
+          Collapse
         </button>
       </div>
 
@@ -1428,7 +1428,7 @@ function ExpandedDiskChartCard({
 
       <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
         <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Disk Channels (Bấm để ẩn/hiện kênh Read / Write):
+          Disk Channels (Click to toggle channel):
         </p>
         <div className="flex flex-wrap items-center gap-2.5">
           <LegendBadge label="Read Bandwidth" color="#f59e0b" active={activeSeries.diskRead} onClick={() => onToggleSeries('diskRead')} />

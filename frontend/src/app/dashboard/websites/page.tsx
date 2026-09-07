@@ -156,7 +156,7 @@ export default function WebsitesPage() {
     const diffMs = currentTimestamp - new Date(startedAt).getTime();
     if (diffMs < 0) return null;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return 'vừa down (< 1m)';
+    if (mins < 1) return 'just down (< 1m)';
     if (mins < 60) return `down ${mins}m`;
     const hours = Math.floor(mins / 60);
     return `down ${hours}h ${mins % 60}m`;
@@ -367,17 +367,17 @@ export default function WebsitesPage() {
                 <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Bell className="w-3.5 h-3.5 text-blue-400" />
-                    Kênh nhận cảnh báo (Alert Channels)
+                    Alert Notification Channels
                   </span>
                   {channels.length > 0 && (
                     <span className="text-[11px] text-blue-400 font-normal">
-                      {selectedChannelIds.length}/{channels.length} đã chọn
+                      {selectedChannelIds.length}/{channels.length} selected
                     </span>
                   )}
                 </label>
                 {channels.length === 0 ? (
                   <p className="text-xs text-[var(--color-muted)] bg-white/5 p-2.5 rounded-lg border border-white/5">
-                    Chưa có kênh nào được kích hoạt. Cảnh báo sẽ lưu trên bảng điều khiển.
+                    No notification channels configured. Alerts will be recorded in the dashboard only.
                   </p>
                 ) : (
                   <div className="space-y-1.5 max-h-36 overflow-y-auto rounded-lg border border-white/10 p-2 bg-black/20">
@@ -413,7 +413,7 @@ export default function WebsitesPage() {
                   </div>
                 )}
                 <p className="text-[11px] text-[var(--color-muted)] mt-1.5">
-                  Tự động gửi cảnh báo khi website bị DOWN, thông báo RESOLVED khi phục hồi, và cảnh báo chứng chỉ SSL sắp hết hạn (&le; 14 ngày).
+                  Automatically dispatches alerts when website is DOWN, sends RESOLVED notifications when recovered, and warns before SSL certificate expires (&le; 14 days).
                 </p>
               </div>
 

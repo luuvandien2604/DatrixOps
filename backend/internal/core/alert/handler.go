@@ -17,17 +17,17 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
-// Handler triển khai HTTP API cho alert rules, channels và dashboard notifications.
+// Handler implements HTTP APIs for alert rules, channels, and dashboard notifications.
 type Handler struct {
 	repo *Repository
 }
 
-// NewHandler tạo HTTP handler dùng alert repository hiện tại.
+// NewHandler creates an HTTP handler with the provided alert repository.
 func NewHandler(repo *Repository) *Handler {
 	return &Handler{repo: repo}
 }
 
-// ListRules trả các alert rule cùng agent mục tiêu và channel đã chọn.
+// ListRules returns alert rules with their target servers and channels.
 func (h *Handler) ListRules(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -42,8 +42,8 @@ func (h *Handler) ListRules(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, rules)
 }
 
-// CreateRule tạo rule mới cho toàn bộ agent hoặc một agent cụ thể.
-// Channel và agent đều được repository xác thực thuộc đúng user hiện tại.
+// CreateRule creates a new alert rule for all servers or a specific server.
+// Channels and servers are verified against the current authenticated user.
 func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -109,7 +109,7 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, rule)
 }
 
-// ToggleRule chuyển đổi bật/tắt alert rule.
+// ToggleRule toggles enable/disable status for an alert rule.
 func (h *Handler) ToggleRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -135,7 +135,7 @@ func (h *Handler) ToggleRule(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, rule)
 }
 
-// DeleteRule xóa một rule thuộc user hiện tại.
+// DeleteRule deletes an alert rule belonging to the current user.
 func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -155,7 +155,7 @@ func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ListChannels trả các notification channel và số rule đang sử dụng từng channel.
+// ListChannels returns notification channels and rule usage counts.
 func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -173,7 +173,7 @@ func (h *Handler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, channels)
 }
 
-// CreateChannel tạo Telegram, Discord hoặc Email channel mới.
+// CreateChannel creates a new Telegram, Discord, or Email notification channel.
 func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -206,7 +206,7 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, channel)
 }
 
-// DeleteChannel xóa channel nếu channel chưa được alert rule nào sử dụng.
+// DeleteChannel deletes a notification channel if not referenced by active rules.
 func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -229,7 +229,7 @@ func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// TestChannelConfig kiểm tra gửi thông báo mẫu trực tiếp bằng cấu hình chưa lưu.
+// TestChannelConfig tests sending a sample notification using unsaved configuration.
 func (h *Handler) TestChannelConfig(w http.ResponseWriter, r *http.Request) {
 	_, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -267,7 +267,7 @@ func (h *Handler) TestChannelConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TestExistingChannel kiểm tra gửi thông báo mẫu dùng channel đã lưu trong cơ sở dữ liệu.
+// TestExistingChannel tests sending a sample notification using a saved channel.
 func (h *Handler) TestExistingChannel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -296,7 +296,7 @@ func (h *Handler) TestExistingChannel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TestAlertRule mô phỏng kích hoạt một rule và gửi cảnh báo mẫu tới tất cả các channel đã liên kết.
+// TestAlertRule simulates triggering an alert rule and dispatches sample alerts to linked channels.
 func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -315,11 +315,11 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(channels) == 0 {
-		response.Error(w, http.StatusBadRequest, "NO_CHANNELS", "Quy tắc này chưa liên kết kênh thông báo nào. Vui lòng chỉnh sửa rule và thêm ít nhất 1 kênh.")
+		response.Error(w, http.StatusBadRequest, "NO_CHANNELS", "This alert rule is not linked to any notification channels. Please edit the rule to add at least one channel.")
 		return
 	}
 
-	serverName := "Toàn bộ máy chủ (All agents)"
+	serverName := "All servers"
 	if rule.ServerName != nil && *rule.ServerName != "" {
 		serverName = *rule.ServerName
 	}
@@ -327,21 +327,21 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 	metricLabel := rule.Metric
 	switch rule.Metric {
 	case "status":
-		metricLabel = fmt.Sprintf("Mất kết nối máy chủ (Offline > %dm)", rule.DurationMinutes)
+		metricLabel = fmt.Sprintf("Server Offline (heartbeat lost > %dm)", rule.DurationMinutes)
 	case "container":
 		target := "*"
 		if rule.TargetName != nil && *rule.TargetName != "" {
 			target = *rule.TargetName
 		}
-		metricLabel = fmt.Sprintf("Docker Container \"%s\" bị dừng/unhealthy", target)
+		metricLabel = fmt.Sprintf("Docker Container \"%s\" stopped/unhealthy", target)
 	case "service":
 		target := "*"
 		if rule.TargetName != nil && *rule.TargetName != "" {
 			target = *rule.TargetName
 		}
-		metricLabel = fmt.Sprintf("Systemd Service \"%s\" không active", target)
+		metricLabel = fmt.Sprintf("Systemd Service \"%s\" inactive/failed", target)
 	default:
-		metricLabel = fmt.Sprintf("%s %s %.1f%% (Duy trì > %dm)", strings.ToUpper(rule.Metric), rule.Operator, rule.Threshold, rule.DurationMinutes)
+		metricLabel = fmt.Sprintf("%s %s %.1f%% (sustained > %dm)", strings.ToUpper(rule.Metric), rule.Operator, rule.Threshold, rule.DurationMinutes)
 	}
 
 	nowStr := time.Now().Format("2006-01-02 15:04:05")
@@ -354,12 +354,12 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 			chatID, _ := ch.Config["chat_id"].(string)
 			botToken, _ := ch.Config["bot_token"].(string)
 			msg := fmt.Sprintf("🚨 <b>[DATRIXOPS TEST ALERT]</b>\n\n"+
-				"📌 <b>Quy tắc:</b> %s\n"+
-				"🖥 <b>Máy chủ:</b> %s\n"+
-				"⚙️ <b>Điều kiện:</b> %s\n"+
-				"⚡ <b>Trạng thái:</b> Mô phỏng cảnh báo sự cố (Test Alert)\n"+
-				"🕒 <b>Thời gian:</b> %s\n\n"+
-				"<i>Đây là thông báo thử nghiệm để xác nhận quy tắc cảnh báo hoạt động chính xác.</i>",
+				"📌 <b>Rule:</b> %s\n"+
+				"🖥 <b>Server:</b> %s\n"+
+				"⚙️ <b>Condition:</b> %s\n"+
+				"⚡ <b>Status:</b> Simulated Test Alert\n"+
+				"🕒 <b>Time:</b> %s\n\n"+
+				"<i>This is a simulated test notification confirming that this alert rule is functioning properly.</i>",
 				html.EscapeString(rule.Name),
 				html.EscapeString(serverName),
 				html.EscapeString(metricLabel),
@@ -370,13 +370,13 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 			webhookURL, _ := ch.Config["webhook_url"].(string)
 			embed := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("🚨 [DATRIXOPS TEST ALERT] %s", rule.Name),
-				Description: "Đây là thông báo thử nghiệm mô phỏng sự cố cho quy tắc này.",
+				Description: "This is a simulated test notification for this alert rule.",
 				Color:       0xEF4444,
 				Fields: []notifier.DiscordEmbedField{
-					{Name: "Máy chủ mục tiêu", Value: serverName, Inline: true},
-					{Name: "Điều kiện cảnh báo", Value: metricLabel, Inline: true},
-					{Name: "Trạng thái", Value: "Mô phỏng kích hoạt (Test Trigger)", Inline: true},
-					{Name: "Thời gian", Value: nowStr, Inline: true},
+					{Name: "Target Server", Value: serverName, Inline: true},
+					{Name: "Alert Condition", Value: metricLabel, Inline: true},
+					{Name: "Status", Value: "Simulated Trigger (Test Alert)", Inline: true},
+					{Name: "Time", Value: nowStr, Inline: true},
 				},
 				Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Alert Rule Test"},
 			}
@@ -388,11 +388,11 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px;">
 <div style="max-width: 500px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; padding: 24px;">
   <h2 style="color: #EF4444; margin-top: 0;">[DATRIXOPS TEST ALERT] %s</h2>
-  <p>Đây là thông báo thử nghiệm mô phỏng sự cố của quy tắc <strong>%s</strong>.</p>
+  <p>This is a simulated test notification for alert rule <strong>%s</strong>.</p>
   <ul style="color: #cbd5e1; line-height: 1.8;">
-    <li><strong>Máy chủ:</strong> %s</li>
-    <li><strong>Điều kiện:</strong> %s</li>
-    <li><strong>Thời gian:</strong> %s</li>
+    <li><strong>Target Server:</strong> %s</li>
+    <li><strong>Condition:</strong> %s</li>
+    <li><strong>Timestamp:</strong> %s</li>
   </ul>
 </div>
 </body>
@@ -405,9 +405,9 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Ghi notification vào dashboard_notifications
+	// Record notification to dashboard_notifications
 	dashTitle := fmt.Sprintf("[TEST ALERT] %s", rule.Name)
-	dashMsg := fmt.Sprintf("Mô phỏng cảnh báo cho máy chủ %s (%s). Đã gửi tới %d kênh.", serverName, metricLabel, len(channels))
+	dashMsg := fmt.Sprintf("Simulated alert for %s (%s). Delivered to %d channel(s).", serverName, metricLabel, len(channels))
 	_ = h.repo.CreateNotification(r.Context(), userID, rule.ID, rule.ServerID, "test_alert", "warning", dashTitle, dashMsg, map[string]any{
 		"metric":      rule.Metric,
 		"rule_name":   rule.Name,
@@ -415,7 +415,7 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if len(sendErrors) > 0 && len(sendErrors) == len(channels) {
-		response.Error(w, http.StatusBadRequest, "TEST_FAILED", fmt.Sprintf("Gửi thông báo thử nghiệm thất bại: %s", strings.Join(sendErrors, "; ")))
+		response.Error(w, http.StatusBadRequest, "TEST_FAILED", fmt.Sprintf("Failed to send test alert: %s", strings.Join(sendErrors, "; ")))
 		return
 	}
 
@@ -426,11 +426,11 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 
 	response.Success(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"message": fmt.Sprintf("Đã gửi cảnh báo thử nghiệm tới %d kênh nhận tin.", len(channels)),
+		"message": fmt.Sprintf("Simulated test alert delivered to %d notification channel(s).", len(channels)),
 	})
 }
 
-// ListNotifications trả danh sách notification mới nhất và unread_count cho badge.
+// ListNotifications returns recent dashboard notifications and unread count.
 func (h *Handler) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -455,7 +455,7 @@ func (h *Handler) ListNotifications(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, notifications)
 }
 
-// MarkNotificationRead đánh dấu một notification cụ thể là đã xem.
+// MarkNotificationRead marks a specific notification as read.
 func (h *Handler) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -473,7 +473,7 @@ func (h *Handler) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{"status": "read"})
 }
 
-// MarkAllNotificationsRead đánh dấu toàn bộ notification chưa xem của user.
+// MarkAllNotificationsRead marks all unread notifications as read.
 func (h *Handler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)
 	if !ok {
@@ -488,7 +488,7 @@ func (h *Handler) MarkAllNotificationsRead(w http.ResponseWriter, r *http.Reques
 	response.Success(w, http.StatusOK, map[string]int64{"updated": updated})
 }
 
-// userIDFromRequest lấy user ID do authentication middleware đưa vào context.
+// userIDFromRequest extracts the user ID injected into context by auth middleware.
 func userIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -498,7 +498,7 @@ func userIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return userID, true
 }
 
-// validateRule kiểm tra điều kiện cảnh báo trước khi truy cập database.
+// validateRule validates alert rule parameters before database persistence.
 func validateRule(rule AlertRule) string {
 	if rule.Name == "" {
 		return "Alert name is required"
@@ -529,7 +529,7 @@ func validateRule(rule AlertRule) string {
 	return ""
 }
 
-// validateChannel kiểm tra loại channel và các secret bắt buộc theo từng nền tảng.
+// validateChannel validates channel type and required secrets per provider.
 func validateChannel(channel AlertChannel) string {
 	if channel.Name == "" {
 		return "Channel name is required"
@@ -622,19 +622,19 @@ func sendTestNotification(channelType string, cfg map[string]interface{}) error 
 		botToken, _ := cfg["bot_token"].(string)
 		chatID, _ := cfg["chat_id"].(string)
 		msg := fmt.Sprintf(
-			"<b>[DATRIXOPS TEST] THÔNG BÁO KIỂM TRA</b>\n─────────────────────────────\nKênh nhận thông báo Telegram đã được kết nối thành công!\n<b>Trạng thái:</b> Sẵn sàng nhận cảnh báo\n<b>Thời gian:</b> <code>%s</code>",
+			"<b>[DATRIXOPS TEST] NOTIFICATION VERIFICATION</b>\n─────────────────────────────\nTelegram notification channel connected successfully!\n<b>Status:</b> Ready to receive alerts\n<b>Timestamp:</b> <code>%s</code>",
 			nowStr,
 		)
 		return notifier.SendTelegram(botToken, chatID, msg)
 	case "discord":
 		webhookURL, _ := cfg["webhook_url"].(string)
 		embed := notifier.DiscordEmbed{
-			Title:       "[DATRIXOPS TEST] THÔNG BÁO KIỂM TRA",
-			Description: "Kênh nhận cảnh báo Discord đã được thiết lập thành công từ DatrixOps.",
+			Title:       "[DATRIXOPS TEST] NOTIFICATION VERIFICATION",
+			Description: "Discord alert notification channel has been successfully configured from DatrixOps.",
 			Color:       0x10B981,
 			Fields: []notifier.DiscordEmbedField{
-				{Name: "Trạng thái", Value: "Sẵn sàng nhận cảnh báo", Inline: true},
-				{Name: "Thời gian", Value: nowStr, Inline: true},
+				{Name: "Status", Value: "Ready to receive alerts", Inline: true},
+				{Name: "Timestamp", Value: nowStr, Inline: true},
 			},
 			Footer: &notifier.DiscordEmbedFooter{Text: "DatrixOps Monitoring Test"},
 		}
@@ -645,13 +645,13 @@ func sendTestNotification(channelType string, cfg map[string]interface{}) error 
 <html>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 24px;">
 <div style="max-width: 500px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-radius: 12px; padding: 24px;">
-  <h2 style="color: #10B981; margin-top: 0;">[DATRIXOPS TEST] Xác nhận cấu hình Email</h2>
-  <p>Hệ thống giám sát DatrixOps đã kết nối thành công tới máy chủ SMTP của bạn.</p>
-  <p style="color: #94a3b8; font-size: 13px;">Thời gian kiểm tra: %s</p>
+  <h2 style="color: #10B981; margin-top: 0;">[DATRIXOPS TEST] Email Channel Verified</h2>
+  <p>DatrixOps monitoring has successfully connected to your SMTP email server.</p>
+  <p style="color: #94a3b8; font-size: 13px;">Timestamp: %s</p>
 </div>
 </body>
 </html>`, nowStr)
-		return notifier.SendHTMLEmail(emailCfg, "[DATRIXOPS TEST] Xác nhận cấu hình kênh Email", body)
+		return notifier.SendHTMLEmail(emailCfg, "[DATRIXOPS TEST] Email Notification Channel Verified", body)
 	default:
 		return errors.New("unsupported channel type")
 	}
