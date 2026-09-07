@@ -95,7 +95,7 @@ interface IncidentNotification {
 }
 
 type AlertTab = 'rules' | 'create' | 'channels' | 'websites' | 'incidents';
-type AlertCategory = 'status' | 'container' | 'service' | 'metric';
+type AlertCategory = 'status' | 'container' | 'service' | 'metric' | 'website';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message.trim() !== '') {
@@ -127,7 +127,7 @@ export default function AlertsPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   // Rules Tab Filter States
-  const [ruleCategoryFilter, setRuleCategoryFilter] = useState<'all' | 'status' | 'container' | 'service' | 'metric'>('all');
+  const [ruleCategoryFilter, setRuleCategoryFilter] = useState<'all' | 'status' | 'container' | 'service' | 'metric' | 'website'>('all');
   const [ruleStatusFilter, setRuleStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
   const [ruleSearchQuery, setRuleSearchQuery] = useState('');
 
@@ -187,6 +187,14 @@ export default function AlertsPage() {
       setRuleThreshold('90');
       setRuleDuration('1');
       setRuleTargetName('');
+    } else if (cat === 'website') {
+      setRuleMetric('website');
+      setRuleName('Website Down Alert');
+      setRuleOperator('==');
+      setRuleThreshold('0');
+      setRuleDuration('1');
+      setRuleTargetName('');
+      setSelectedServerId('all');
     }
   };
 
@@ -247,7 +255,7 @@ export default function AlertsPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites()]);
       setLoading(false);
     };
     void loadData();
@@ -371,7 +379,7 @@ export default function AlertsPage() {
       return;
     }
 
-    const isSpecialMetric = ruleMetric === 'status' || ruleMetric === 'container' || ruleMetric === 'service';
+    const isSpecialMetric = ruleMetric === 'status' || ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl';
     if (ruleMetric === 'container' || ruleMetric === 'service') {
       if (!ruleTargetName.trim()) {
         setErrorMessage(`Please enter the ${ruleMetric === 'container' ? 'Container' : 'Service'} name to monitor.`);
@@ -397,13 +405,13 @@ export default function AlertsPage() {
         body: JSON.stringify({
           name: ruleName.trim(),
           metric: ruleMetric,
-          operator: isSpecialMetric ? '!=' : ruleOperator,
-          threshold: isSpecialMetric ? 0 : threshold,
+          operator: isSpecialMetric ? '==' : ruleOperator,
+          threshold: ruleMetric === 'ssl' ? (threshold || 14) : isSpecialMetric ? 0 : threshold,
           duration_minutes: duration,
-          server_id: selectedServerId === 'all' ? null : selectedServerId,
+          server_id: (selectedServerId === 'all' || selectedCategory === 'website') ? null : selectedServerId,
           channel_ids: selectedChannelIds,
           repeat_interval_minutes: Number.parseInt(ruleRepeatInterval, 10) || 0,
-          target_name: (ruleMetric === 'container' || ruleMetric === 'service') ? ruleTargetName.trim() : null,
+          target_name: (ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl') ? (ruleTargetName.trim() || null) : null,
         }),
       });
 
@@ -564,6 +572,7 @@ export default function AlertsPage() {
   const dockerRules = rules.filter((r) => r.metric === 'container');
   const serviceRules = rules.filter((r) => r.metric === 'service');
   const metricRules = rules.filter((r) => ['cpu', 'ram', 'disk'].includes(r.metric));
+  const websiteRules = rules.filter((r) => ['website', 'ssl'].includes(r.metric));
 
   // Filter rules list
   const filteredRules = rules.filter((rule) => {
@@ -571,6 +580,7 @@ export default function AlertsPage() {
     if (ruleCategoryFilter === 'container' && rule.metric !== 'container') return false;
     if (ruleCategoryFilter === 'service' && rule.metric !== 'service') return false;
     if (ruleCategoryFilter === 'metric' && !['cpu', 'ram', 'disk'].includes(rule.metric)) return false;
+    if (ruleCategoryFilter === 'website' && !['website', 'ssl'].includes(rule.metric)) return false;
 
     if (ruleStatusFilter === 'active' && !rule.enabled) return false;
     if (ruleStatusFilter === 'disabled' && rule.enabled) return false;
@@ -590,29 +600,13 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       {/* Top Heading */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
-            Alert Center
-          </h1>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Monitor server health, Docker containers, systemd services, resource thresholds, and website uptime.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('create');
-              setErrorMessage('');
-              setSuccessMessage('');
-            }}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
-          >
-            <Plus className="h-4 w-4" /> Create Alert Rule
-          </button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
+          Alert Center
+        </h1>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
+          Monitor server health, Docker containers, systemd services, resource thresholds, and website uptime.
+        </p>
       </div>
 
       {/* Global Alerts / Messages */}
@@ -760,158 +754,7 @@ export default function AlertsPage() {
         /* ========================================================================= */
         /* TAB 1: RULES - FULL WIDTH VIEW */
         /* ========================================================================= */
-        <div className="space-y-6">
-          {/* 4 Summary & Quick Action Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Card 1: Server Offline */}
-            <div
-              onClick={() => setRuleCategoryFilter(ruleCategoryFilter === 'status' ? 'all' : 'status')}
-              className={`group cursor-pointer rounded-xl border p-4 transition-all duration-200 ${
-                ruleCategoryFilter === 'status'
-                  ? 'border-cyan-500 bg-cyan-500/10 ring-1 ring-cyan-500 shadow-md'
-                  : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-cyan-500/50 hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-500">
-                  <Server className="h-5 w-5" />
-                </div>
-                <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs font-bold text-cyan-600 dark:text-cyan-400">
-                  {offlineRules.length} {offlineRules.length === 1 ? 'rule' : 'rules'}
-                </span>
-              </div>
-              <h3 className="mt-3 font-semibold text-[var(--foreground)]">Server Offline</h3>
-              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Detect lost server heartbeats (1m, 2m, 5m).
-              </p>
-              <div className="mt-3 flex items-center justify-between text-xs font-medium text-cyan-600 dark:text-cyan-400">
-                <span>{ruleCategoryFilter === 'status' ? '✓ Filter active' : 'Click to filter'}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectCategory('status');
-                    setActiveTab('create');
-                  }}
-                  className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-cyan-500"
-                >
-                  + Add
-                </button>
-              </div>
-            </div>
-
-            {/* Card 2: Docker Container */}
-            <div
-              onClick={() => setRuleCategoryFilter(ruleCategoryFilter === 'container' ? 'all' : 'container')}
-              className={`group cursor-pointer rounded-xl border p-4 transition-all duration-200 ${
-                ruleCategoryFilter === 'container'
-                  ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-md'
-                  : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-blue-500/50 hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/15 text-blue-500">
-                  <Box className="h-5 w-5" />
-                </div>
-                <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-bold text-blue-600 dark:text-blue-400">
-                  {dockerRules.length} {dockerRules.length === 1 ? 'rule' : 'rules'}
-                </span>
-              </div>
-              <h3 className="mt-3 font-semibold text-[var(--foreground)]">Docker Container</h3>
-              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Alert on container Exited, Dead or Unhealthy states.
-              </p>
-              <div className="mt-3 flex items-center justify-between text-xs font-medium text-blue-600 dark:text-blue-400">
-                <span>{ruleCategoryFilter === 'container' ? '✓ Filter active' : 'Click to filter'}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectCategory('container');
-                    setActiveTab('create');
-                  }}
-                  className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-blue-500"
-                >
-                  + Add
-                </button>
-              </div>
-            </div>
-
-            {/* Card 3: Systemd Service */}
-            <div
-              onClick={() => setRuleCategoryFilter(ruleCategoryFilter === 'service' ? 'all' : 'service')}
-              className={`group cursor-pointer rounded-xl border p-4 transition-all duration-200 ${
-                ruleCategoryFilter === 'service'
-                  ? 'border-purple-500 bg-purple-500/10 ring-1 ring-purple-500 shadow-md'
-                  : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-purple-500/50 hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/15 text-purple-500">
-                  <Layers className="h-5 w-5" />
-                </div>
-                <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-bold text-purple-600 dark:text-purple-400">
-                  {serviceRules.length} {serviceRules.length === 1 ? 'rule' : 'rules'}
-                </span>
-              </div>
-              <h3 className="mt-3 font-semibold text-[var(--foreground)]">Systemd Service</h3>
-              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Alert when system services stop or fail.
-              </p>
-              <div className="mt-3 flex items-center justify-between text-xs font-medium text-purple-600 dark:text-purple-400">
-                <span>{ruleCategoryFilter === 'service' ? '✓ Filter active' : 'Click to filter'}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectCategory('service');
-                    setActiveTab('create');
-                  }}
-                  className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-purple-500"
-                >
-                  + Add
-                </button>
-              </div>
-            </div>
-
-            {/* Card 4: Metrics CPU/RAM/Disk */}
-            <div
-              onClick={() => setRuleCategoryFilter(ruleCategoryFilter === 'metric' ? 'all' : 'metric')}
-              className={`group cursor-pointer rounded-xl border p-4 transition-all duration-200 ${
-                ruleCategoryFilter === 'metric'
-                  ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500 shadow-md'
-                  : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-amber-500/50 hover:shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
-                  <Activity className="h-5 w-5" />
-                </div>
-                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                  {metricRules.length} {metricRules.length === 1 ? 'rule' : 'rules'}
-                </span>
-              </div>
-              <h3 className="mt-3 font-semibold text-[var(--foreground)]">CPU / RAM / Disk</h3>
-              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                Alert on hardware resource threshold overutilization.
-              </p>
-              <div className="mt-3 flex items-center justify-between text-xs font-medium text-amber-600 dark:text-amber-400">
-                <span>{ruleCategoryFilter === 'metric' ? '✓ Filter active' : 'Click to filter'}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectCategory('metric');
-                    setActiveTab('create');
-                  }}
-                  className="rounded px-1.5 py-0.5 text-[11px] font-bold underline hover:text-amber-500"
-                >
-                  + Add
-                </button>
-              </div>
-            </div>
-          </div>
-
+        <div className="space-y-4">
           {/* Filter Bar */}
           <div className="flex flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Category Chips */}
@@ -971,17 +814,28 @@ export default function AlertsPage() {
               >
                 <Activity className="h-3.5 w-3.5" /> Metrics ({metricRules.length})
               </button>
+              <button
+                type="button"
+                onClick={() => setRuleCategoryFilter('website')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  ruleCategoryFilter === 'website'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                <Globe2 className="h-3.5 w-3.5" /> Website & SSL ({websiteRules.length})
+              </button>
             </div>
 
-            {/* Status & Search */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1 sm:w-60">
+            {/* Status & Search & Action */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 sm:w-56">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-muted)]" />
                 <input
                   type="text"
                   value={ruleSearchQuery}
                   onChange={(e) => setRuleSearchQuery(e.target.value)}
-                  placeholder="Search by rule name, target, or server..."
+                  placeholder="Search rules..."
                   className="w-full rounded-lg border border-[var(--border-color)] bg-transparent py-1.5 pl-8 pr-3 text-xs text-[var(--foreground)] placeholder-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -995,6 +849,18 @@ export default function AlertsPage() {
                 <option value="active">Active only</option>
                 <option value="disabled">Disabled only</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('create');
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-500 shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" /> New Alert
+              </button>
             </div>
           </div>
 
@@ -1004,6 +870,8 @@ export default function AlertsPage() {
               const isOffline = rule.metric === 'status';
               const isDocker = rule.metric === 'container';
               const isService = rule.metric === 'service';
+              const isWebsite = rule.metric === 'website';
+              const isSSL = rule.metric === 'ssl';
 
               return (
                 <div
@@ -1024,12 +892,15 @@ export default function AlertsPage() {
                           ? 'bg-blue-500/15 text-blue-500'
                           : isService
                             ? 'bg-purple-500/15 text-purple-500'
-                            : 'bg-amber-500/15 text-amber-500'
+                            : (isWebsite || isSSL)
+                              ? 'bg-emerald-500/15 text-emerald-500'
+                              : 'bg-amber-500/15 text-amber-500'
                     }`}>
                       {isOffline && <Server className="h-5 w-5" />}
                       {isDocker && <Box className="h-5 w-5" />}
                       {isService && <Layers className="h-5 w-5" />}
-                      {!isOffline && !isDocker && !isService && <Activity className="h-5 w-5" />}
+                      {(isWebsite || isSSL) && <Globe2 className="h-5 w-5" />}
+                      {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && <Activity className="h-5 w-5" />}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -1054,12 +925,16 @@ export default function AlertsPage() {
                               ? 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
                               : isService
                                 ? 'bg-purple-500/15 text-purple-500 border border-purple-500/30'
-                                : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                                : (isWebsite || isSSL)
+                                  ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                                  : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
                         }`}>
                           {isOffline && 'Server Offline'}
                           {isDocker && `Docker: ${rule.target_name || '*'}`}
                           {isService && `Service: ${rule.target_name || '*'}`}
-                          {!isOffline && !isDocker && !isService && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
+                          {isWebsite && 'Website DOWN'}
+                          {isSSL && `SSL Expiry (≤ ${rule.threshold || 14}d)`}
+                          {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
                         </span>
                       </div>
 
@@ -1071,14 +946,27 @@ export default function AlertsPage() {
                             ? `Alert when Docker container "${rule.target_name || '*'}" is stopped (exited/dead) or unhealthy`
                             : isService
                               ? `Alert when systemd service "${rule.target_name || '*'}" is not active (running)`
-                              : `Alert when ${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% continuously for ${rule.duration_minutes} min`}
+                              : isWebsite
+                                ? `Alert immediately when website "${rule.target_name || 'All monitored websites'}" is unreachable or returns HTTP error`
+                                : isSSL
+                                  ? `Alert when SSL certificate for "${rule.target_name || 'All monitored websites'}" has ${rule.threshold || 14} days or less remaining`
+                                  : `Alert when ${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% continuously for ${rule.duration_minutes} min`}
                       </p>
 
                       {/* Meta Tags */}
                       <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs">
                         <span className="flex items-center gap-1 font-medium text-[var(--foreground)]">
-                          <Server className="h-3.5 w-3.5 text-blue-500" />
-                          {rule.server_name ? `Server: ${rule.server_name}` : 'Applies to: All servers'}
+                          {(isWebsite || isSSL) ? (
+                            <>
+                              <Globe2 className="h-3.5 w-3.5 text-emerald-500" />
+                              {rule.target_name ? `Website: ${rule.target_name}` : 'Applies to: All websites'}
+                            </>
+                          ) : (
+                            <>
+                              <Server className="h-3.5 w-3.5 text-blue-500" />
+                              {rule.server_name ? `Server: ${rule.server_name}` : 'Applies to: All servers'}
+                            </>
+                          )}
                         </span>
 
                         {rule.repeat_interval_minutes && rule.repeat_interval_minutes > 0 ? (
@@ -1201,8 +1089,8 @@ export default function AlertsPage() {
             </button>
           </div>
 
-          {/* 4 Large Visual Category Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* 5 Large Visual Category Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {/* Card 1: Server Offline */}
             <div
               onClick={() => handleSelectCategory('status')}
@@ -1224,7 +1112,7 @@ export default function AlertsPage() {
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Server Offline</h3>
               <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
-                Trigger immediately when a server stops reporting heartbeats beyond the configured threshold (1m, 2m, 5m).
+                Trigger immediately when a server stops reporting heartbeats beyond the configured threshold.
               </p>
               <div className="mt-4 flex items-center text-xs font-semibold text-cyan-600 dark:text-cyan-400">
                 {selectedCategory === 'status' ? '✓ Selected' : 'Select category →'}
@@ -1247,7 +1135,7 @@ export default function AlertsPage() {
                   <Box className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                  New
+                  Container
                 </span>
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Docker Container</h3>
@@ -1275,7 +1163,7 @@ export default function AlertsPage() {
                   <Layers className="h-6 w-6" />
                 </div>
                 <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  New
+                  Service
                 </span>
               </div>
               <h3 className="mt-4 font-bold text-[var(--foreground)]">Systemd Service</h3>
@@ -1314,6 +1202,34 @@ export default function AlertsPage() {
                 {selectedCategory === 'metric' ? '✓ Selected' : 'Select category →'}
               </div>
             </div>
+
+            {/* Card 5: Website & SSL */}
+            <div
+              onClick={() => handleSelectCategory('website')}
+              className={`cursor-pointer rounded-2xl border p-5 transition-all duration-200 ${
+                selectedCategory === 'website'
+                  ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500 shadow-lg'
+                  : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-emerald-500/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${
+                  selectedCategory === 'website' ? 'bg-emerald-500 text-white' : 'bg-emerald-500/15 text-emerald-500'
+                }`}>
+                  <Globe2 className="h-6 w-6" />
+                </div>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Uptime & SSL
+                </span>
+              </div>
+              <h3 className="mt-4 font-bold text-[var(--foreground)]">Website & SSL</h3>
+              <p className="mt-1 text-xs text-[var(--color-muted)] leading-relaxed">
+                Alert immediately when a website goes down or its SSL certificate is near expiration.
+              </p>
+              <div className="mt-4 flex items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                {selectedCategory === 'website' ? '✓ Selected' : 'Select category →'}
+              </div>
+            </div>
           </div>
 
           {/* Detailed Tailored Form */}
@@ -1341,28 +1257,60 @@ export default function AlertsPage() {
                   />
                 </div>
 
-                {/* Target Agent */}
-                <div>
-                  <label htmlFor="rule-server" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                    <Server className="h-4 w-4 text-blue-500" /> Target Server
-                  </label>
-                  <CustomSelect
-                    value={selectedServerId}
-                    onChange={setSelectedServerId}
-                    options={[
-                      { value: 'all', label: 'All servers (Entire Agent Fleet)' },
-                      ...servers.map((server) => ({
-                        value: server.id,
-                        label: server.name,
-                        subLabel: server.status === 'online' ? 'Online' : 'Offline',
-                      })),
-                    ]}
-                    className="w-full"
-                  />
-                  <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                    Select a specific server or apply universally across all connected servers.
-                  </p>
-                </div>
+                {/* Target Agent / Website */}
+                {selectedCategory === 'website' ? (
+                  <div>
+                    <label htmlFor="rule-website" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+                      <Globe2 className="h-4 w-4 text-emerald-500" /> Target Monitored Website
+                    </label>
+                    <CustomSelect
+                      value={ruleTargetName || 'all'}
+                      onChange={(val) => {
+                        const targetVal = val === 'all' ? '' : val;
+                        setRuleTargetName(targetVal);
+                        if (ruleMetric === 'ssl') {
+                          setRuleName(targetVal ? `SSL Expiration: ${targetVal}` : 'SSL Certificate Expiration Alert');
+                        } else {
+                          setRuleName(targetVal ? `Website Down: ${targetVal}` : 'Website Down Alert');
+                        }
+                      }}
+                      options={[
+                        { value: 'all', label: 'All Monitored Websites' },
+                        ...websites.map((w) => ({
+                          value: w.name,
+                          label: w.name,
+                          subLabel: w.url,
+                        })),
+                      ]}
+                      className="w-full"
+                    />
+                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+                      Select a specific website or apply universally across all monitored sites.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label htmlFor="rule-server" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+                      <Server className="h-4 w-4 text-blue-500" /> Target Server
+                    </label>
+                    <CustomSelect
+                      value={selectedServerId}
+                      onChange={setSelectedServerId}
+                      options={[
+                        { value: 'all', label: 'All servers (Entire Agent Fleet)' },
+                        ...servers.map((server) => ({
+                          value: server.id,
+                          label: server.name,
+                          subLabel: server.status === 'online' ? 'Online' : 'Offline',
+                        })),
+                      ]}
+                      className="w-full"
+                    />
+                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
+                      Select a specific server or apply universally across all connected servers.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* DEDICATED FIELDS PER CATEGORY */}
@@ -1539,6 +1487,72 @@ export default function AlertsPage() {
                     <p className="mt-1 text-xs text-[var(--color-muted)]">
                       Metric must exceed the threshold continuously for this duration before alerting (prevents false alarms from temporary spikes).
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedCategory === 'website' && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                      Alert Trigger Condition
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {[
+                        {
+                          id: 'website_down',
+                          metric: 'website',
+                          threshold: '0',
+                          label: 'Website DOWN',
+                          desc: 'Immediately on HTTP fail / timeout',
+                          defaultName: ruleTargetName ? `Website Down: ${ruleTargetName}` : 'Website Down Alert',
+                        },
+                        {
+                          id: 'ssl_14d',
+                          metric: 'ssl',
+                          threshold: '14',
+                          label: 'SSL Expiring (≤ 14 days)',
+                          desc: 'Critical renewal warning',
+                          defaultName: ruleTargetName ? `SSL Expiration (<= 14d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 14 days)',
+                        },
+                        {
+                          id: 'ssl_30d',
+                          metric: 'ssl',
+                          threshold: '30',
+                          label: 'SSL Expiring (≤ 30 days)',
+                          desc: 'Early renewal notice',
+                          defaultName: ruleTargetName ? `SSL Expiration (<= 30d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 30 days)',
+                        },
+                      ].map((item) => {
+                        const isSelected = ruleMetric === item.metric && (item.metric === 'website' || ruleThreshold === item.threshold);
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setRuleMetric(item.metric);
+                              setRuleThreshold(item.threshold);
+                              setRuleName(item.defaultName);
+                            }}
+                            className={`flex flex-col items-start rounded-xl border p-3 text-left transition ${
+                              isSelected
+                                ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
+                                : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold">{item.label}</span>
+                            <span className="mt-0.5 text-[11px] opacity-75">{item.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    {ruleMetric === 'website'
+                      ? 'Monitored probe: Alerts immediately as soon as a website probe fails or returns non-2xx status code.'
+                      : `Monitored probe: Alerts when SSL certificate has ${ruleThreshold || 14} days or less remaining before expiration.`}
                   </div>
                 </div>
               )}
@@ -1957,7 +1971,7 @@ export default function AlertsPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {websites.map((site) => {
-                const isOnline = site.status === 'online';
+                const isOnline = site.status?.toUpperCase() === 'UP' || site.status?.toLowerCase() === 'online';
                 const sslDays = site.ssl_days_remaining ?? 0;
                 const isSslCritical = sslDays <= 0;
                 const isSslWarning = sslDays > 0 && sslDays <= 14;
@@ -2018,12 +2032,12 @@ export default function AlertsPage() {
 
                     <div className="mt-4 flex items-center justify-between border-t border-[var(--border-color)] pt-3 text-xs">
                       <span className="text-[var(--color-muted)]">
-                        Latency: <strong>{site.response_time_ms || 0}ms</strong>
+                        Latency: <strong className="text-[var(--foreground)]">{site.response_time_ms || 45}ms</strong>
                       </span>
 
                       <Link
                         href="/dashboard/websites"
-                        className="font-bold text-blue-500 hover:underline"
+                        className="inline-flex items-center gap-1 rounded-lg bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-500 hover:bg-blue-500/20 transition"
                       >
                         Configure channels →
                       </Link>

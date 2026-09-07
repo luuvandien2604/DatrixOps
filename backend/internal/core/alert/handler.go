@@ -340,6 +340,24 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 			target = *rule.TargetName
 		}
 		metricLabel = fmt.Sprintf("Systemd Service \"%s\" inactive/failed", target)
+	case "website":
+		target := "All monitored websites"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		serverName = "Website Uptime Probe"
+		metricLabel = fmt.Sprintf("Website \"%s\" is DOWN", target)
+	case "ssl":
+		target := "All monitored websites"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		threshold := int(rule.Threshold)
+		if threshold <= 0 {
+			threshold = 14
+		}
+		serverName = "SSL Certificate Monitor"
+		metricLabel = fmt.Sprintf("Website \"%s\" SSL Certificate expiring soon (≤ %d days)", target, threshold)
 	default:
 		metricLabel = fmt.Sprintf("%s %s %.1f%% (sustained > %dm)", strings.ToUpper(rule.Metric), rule.Operator, rule.Threshold, rule.DurationMinutes)
 	}
@@ -521,7 +539,7 @@ func validateRule(rule AlertRule) string {
 		if rule.Threshold < 0 || rule.Threshold > 100 {
 			return "Threshold must be between 0 and 100"
 		}
-	case "status", "container", "service":
+	case "status", "container", "service", "website", "ssl":
 		rule.Operator = "=="
 	default:
 		return "Unsupported alert metric"
