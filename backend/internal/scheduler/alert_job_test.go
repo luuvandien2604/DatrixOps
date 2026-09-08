@@ -181,14 +181,17 @@ func TestBuildAlertNotification_LayoutAndCustomFields(t *testing.T) {
 	if !strings.Contains(notif.emailHTML, "RESOLVED") {
 		t.Errorf("expected emailHTML to contain RESOLVED, got %s", notif.emailHTML)
 	}
-	// Verify email contains same-row Failed at and Recovered at
-	expectedRow := `<td class="stat" width="50%"><div class="stat-label">Failed at</div>`
+	// Verify email contains same-row Triggered at and Resolved at
+	expectedRow := `<td class="stat" width="50%"><div class="stat-label">Triggered at</div>`
 	if !strings.Contains(notif.emailHTML, expectedRow) {
 		t.Errorf("expected emailHTML to contain %q", expectedRow)
 	}
-	expectedPair := `<td class="stat" width="50%"><div class="stat-label">Recovered at</div>`
+	expectedPair := `<td class="stat" width="50%"><div class="stat-label">Resolved at</div>`
 	if !strings.Contains(notif.emailHTML, expectedPair) {
 		t.Errorf("expected emailHTML to contain %q", expectedPair)
+	}
+	if !strings.Contains(notif.emailHTML, `<div class="stat-label">Duration</div>`) {
+		t.Errorf("expected emailHTML to contain Duration")
 	}
 
 	// 2. Container Firing: Should have Container custom field
