@@ -18,6 +18,7 @@ import {
   Globe2,
   Layers,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -125,7 +126,7 @@ function formatIncidentDate(dateStr?: string | null) {
   }
 }
 
-type AlertTab = 'rules' | 'create' | 'channels' | 'websites' | 'incidents';
+type AlertTab = 'rules' | 'create' | 'channels' | 'incidents';
 type AlertCategory = 'status' | 'container' | 'service' | 'metric' | 'website';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
@@ -153,6 +154,19 @@ export default function AlertsPage() {
   const [testingNewChannel, setTestingNewChannel] = useState(false);
   const [testingChannelId, setTestingChannelId] = useState<string | null>(null);
   const [testingRuleId, setTestingRuleId] = useState<string | null>(null);
+
+  // Edit Rule modal state
+  const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editMetric, setEditMetric] = useState('cpu');
+  const [editOperator, setEditOperator] = useState('>');
+  const [editThreshold, setEditThreshold] = useState(80);
+  const [editDuration, setEditDuration] = useState(5);
+  const [editRepeat, setEditRepeat] = useState(60);
+  const [editServerId, setEditServerId] = useState('');
+  const [editTargetName, setEditTargetName] = useState('');
+  const [editChannelIds, setEditChannelIds] = useState<string[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -293,9 +307,7 @@ export default function AlertsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'websites') {
-      void fetchWebsites();
-    } else if (activeTab === 'incidents') {
+    if (activeTab === 'incidents') {
       void fetchIncidents();
     }
   }, [activeTab]);
@@ -466,6 +478,66 @@ export default function AlertsPage() {
     } finally {
       setSavingRule(false);
     }
+  };
+
+  const openEditModal = (rule: AlertRule) => {
+    setEditingRule(rule);
+    setEditName(rule.name);
+    setEditMetric(rule.metric);
+    setEditOperator(rule.operator || '>');
+    setEditThreshold(rule.threshold ?? 0);
+    setEditDuration(rule.duration_minutes || 1);
+    setEditRepeat(rule.repeat_interval_minutes || 0);
+    setEditServerId(rule.server_id || '');
+    setEditTargetName(rule.target_name || '');
+    setEditChannelIds(rule.channels && rule.channels.length > 0 ? rule.channels.map((c) => c.id) : rule.channel_ids || []);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRule) return;
+    if (!editName.trim()) {
+      setErrorMessage('Rule name is required.');
+      return;
+    }
+    if (editChannelIds.length === 0) {
+      setErrorMessage('Please select at least one notification channel.');
+      return;
+    }
+    setSavingEdit(true);
+    setErrorMessage('');
+    try {
+      const payload = {
+        name: editName.trim(),
+        metric: editMetric,
+        operator: (editMetric === 'status' || editMetric === 'container' || editMetric === 'service') ? '==' : editOperator,
+        threshold: (editMetric === 'status' || editMetric === 'container' || editMetric === 'service') ? 0 : Number(editThreshold),
+        duration_minutes: Number(editDuration),
+        repeat_interval_minutes: Number(editRepeat),
+        server_id: editServerId && editServerId !== 'all' ? editServerId : null,
+        target_name: (editMetric === 'container' || editMetric === 'service') ? (editTargetName.trim() || null) : null,
+        channel_ids: editChannelIds,
+      };
+      await apiClient(`/alerts/rules/${editingRule.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      setSuccessMessage(`Alert rule "${editName.trim()}" updated successfully!`);
+      setEditingRule(null);
+      await fetchRules();
+    } catch (err: unknown) {
+      setErrorMessage(getApiErrorMessage(err, 'Failed to update alert rule.'));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const toggleEditChannel = (channelId: string) => {
+    setEditChannelIds((current) =>
+      current.includes(channelId)
+        ? current.filter((id) => id !== channelId)
+        : [...current, channelId]
+    );
   };
 
   const toggleRule = async (ruleId: string, currentEnabled: boolean) => {
@@ -723,24 +795,6 @@ export default function AlertsPage() {
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'websites'}
-            onClick={() => { setActiveTab('websites'); setErrorMessage(''); setSuccessMessage(''); }}
-            className={`relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all ${
-              activeTab === 'websites'
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            <Globe2 className="h-4 w-4" />
-            <span>Website & SSL</span>
-            {activeTab === 'websites' && (
-              <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            role="tab"
             aria-selected={activeTab === 'incidents'}
             onClick={() => { setActiveTab('incidents'); setErrorMessage(''); setSuccessMessage(''); }}
             className={`relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all ${
@@ -943,6 +997,18 @@ export default function AlertsPage() {
 
                   {/* Right: Actions */}
                   <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    {/* EDIT RULE BUTTON */}
+                    <button
+                      type="button"
+                      disabled={isViewer}
+                      onClick={() => openEditModal(rule)}
+                      title={isViewer ? 'Editing rules requires Operator or Admin role' : 'Edit alert rule'}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border-color)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-blue-400" />
+                      Edit
+                    </button>
+
                     {/* TEST ALERT BUTTON */}
                     <button
                       type="button"
@@ -1764,128 +1830,9 @@ export default function AlertsPage() {
             </div>
           </div>
         </div>
-      ) : activeTab === 'websites' ? (
-        /* ========================================================================= */
-        /* TAB 4: WEBSITES & SSL MONITORING */
-        /* ========================================================================= */
-        <div className="space-y-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Website & SSL Certificate Monitoring</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Automated downtime alerts, [RESOLVED] recovery notifications, and SSL certificate expiration warnings.
-              </p>
-            </div>
-
-            <Link
-              href="/dashboard/websites"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-500 hover:underline"
-            >
-              Manage websites in Uptime <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          {loadingWebsites ? (
-            <div className="flex min-h-48 items-center justify-center text-[var(--color-muted)]">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Loading website monitoring data…
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {websites.map((site) => {
-                const isOnline = site.status?.toUpperCase() === 'UP' || site.status?.toLowerCase() === 'online';
-                const sslDays = site.ssl_days_remaining ?? 0;
-                const isSslCritical = sslDays <= 0;
-                const isSslWarning = sslDays > 0 && sslDays <= 14;
-
-                return (
-                  <div
-                    key={site.id}
-                    className="flex flex-col justify-between rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 shadow-sm"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-[var(--foreground)] truncate">{site.name}</h4>
-                          <a
-                            href={site.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-0.5 inline-flex items-center gap-1 text-xs text-blue-500 hover:underline truncate max-w-full"
-                          >
-                            {site.url} <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </div>
-
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
-                          isOnline ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
-                        }`}>
-                          {isOnline ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-                          {isOnline ? 'ONLINE' : 'DOWN'}
-                        </span>
-                      </div>
-
-                      {/* SSL Status */}
-                      <div className="mt-4 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-[var(--foreground)] flex items-center gap-1">
-                            {isSslCritical ? (
-                              <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
-                            ) : isSslWarning ? (
-                              <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
-                            ) : (
-                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                            )}
-                            SSL Certificate
-                          </span>
-                          <span className={`font-bold ${
-                            isSslCritical ? 'text-rose-500' : isSslWarning ? 'text-amber-500' : 'text-emerald-500'
-                          }`}>
-                            {isSslCritical ? 'Expired' : isSslWarning ? `${sslDays} days left (Warning)` : `${sslDays} days left`}
-                          </span>
-                        </div>
-                        {site.ssl_valid_to && (
-                          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                            Expires: {new Date(site.ssl_valid_to).toLocaleDateString('en-US')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-[var(--border-color)] pt-3 text-xs">
-                      <span className="text-[var(--color-muted)]">
-                        Latency: <strong className="text-[var(--foreground)]">{site.response_time_ms || 45}ms</strong>
-                      </span>
-
-                      <Link
-                        href="/dashboard/websites"
-                        className="inline-flex items-center gap-1 rounded-lg bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-500 hover:bg-blue-500/20 transition"
-                      >
-                        Configure channels →
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {websites.length === 0 && (
-                <div className="col-span-3 rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center text-xs text-[var(--color-muted)]">
-                  No websites registered in Uptime monitoring.
-                  <div className="mt-3">
-                    <Link
-                      href="/dashboard/websites"
-                      className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
-                    >
-                      + Add Monitored Website
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       ) : (
         /* ========================================================================= */
-        /* TAB 5: INCIDENTS HISTORY */
+        /* TAB 4: INCIDENTS HISTORY */
         /* ========================================================================= */
         <div className="space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2105,6 +2052,214 @@ export default function AlertsPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Alert Rule Modal */}
+      {editingRule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-rule-dialog-title"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl"
+          >
+            <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center">
+              <h3 id="edit-rule-dialog-title" className="font-bold text-lg text-[var(--foreground)] flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-blue-400" />
+                Edit Alert Rule
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingRule(null)}
+                aria-label="Close dialog"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                  Rule Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                  placeholder="e.g. High CPU Usage Alert"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                  Target Server
+                </label>
+                <CustomSelect
+                  value={editServerId || 'all'}
+                  onChange={(val) => setEditServerId(val === 'all' ? '' : val)}
+                  options={[
+                    { value: 'all', label: 'All servers (Entire Agent Fleet)' },
+                    ...servers.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      subLabel: s.status === 'online' ? 'Online' : 'Offline',
+                    })),
+                  ]}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Threshold & condition for metrics */}
+              {['cpu', 'ram', 'disk'].includes(editMetric) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                      Operator
+                    </label>
+                    <CustomSelect
+                      value={editOperator}
+                      onChange={(val) => setEditOperator(val)}
+                      options={[
+                        { value: '>', label: '> (Greater than)' },
+                        { value: '>=', label: '>= (Greater or equal)' },
+                        { value: '<', label: '< (Less than)' },
+                        { value: '<=', label: '<= (Less or equal)' },
+                      ]}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                      Threshold (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      required
+                      value={editThreshold}
+                      onChange={(e) => setEditThreshold(Number(e.target.value))}
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Target Name for Container / Service */}
+              {editMetric === 'container' && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                    Docker Container Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTargetName}
+                    onChange={(e) => setEditTargetName(e.target.value)}
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. nginx, redis, postgres"
+                  />
+                </div>
+              )}
+
+              {editMetric === 'service' && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                    Systemd Service Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTargetName}
+                    onChange={(e) => setEditTargetName(e.target.value)}
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. apache2, nginx, docker"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                    Duration (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    required
+                    value={editDuration}
+                    onChange={(e) => setEditDuration(Number(e.target.value))}
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                    Repeat Interval (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1440"
+                    value={editRepeat}
+                    onChange={(e) => setEditRepeat(Number(e.target.value))}
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    placeholder="0 = Don't repeat"
+                  />
+                </div>
+              </div>
+
+              {/* Channel selection */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
+                  Notification Channels
+                </label>
+                <div className="space-y-2 max-h-36 overflow-y-auto p-1 border border-[var(--border-color)] rounded-xl">
+                  {channels.map((ch) => (
+                    <label
+                      key={ch.id}
+                      className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-[var(--surface-subtle)] cursor-pointer text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editChannelIds.includes(ch.id)}
+                        onChange={() => toggleEditChannel(ch.id)}
+                        className="rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="font-semibold text-[var(--foreground)]">{ch.name}</span>
+                      <span className="text-[10px] text-[var(--color-muted)] uppercase">({ch.type})</span>
+                    </label>
+                  ))}
+                  {channels.length === 0 && (
+                    <p className="p-2 text-xs text-[var(--color-muted)] text-center">
+                      No notification channels configured.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-[var(--border-color)] flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingRule(null)}
+                  className="h-9 px-4 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-xs font-semibold text-[var(--foreground)] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition inline-flex items-center gap-2 disabled:opacity-50"
+                >
+                  {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

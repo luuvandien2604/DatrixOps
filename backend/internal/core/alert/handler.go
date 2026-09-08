@@ -109,6 +109,80 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, rule)
 }
 
+// UpdateRule cập nhật alert rule thuộc về user hiện tại.
+func (h *Handler) UpdateRule(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Rule ID is required")
+		return
+	}
+
+	var rule AlertRule
+	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request payload")
+		return
+	}
+
+	rule.ID = id
+	rule.UserID = userID
+	rule.Name = strings.TrimSpace(rule.Name)
+	if rule.ServerID != nil {
+		normalizedServerID := strings.TrimSpace(*rule.ServerID)
+		if normalizedServerID == "" {
+			rule.ServerID = nil
+		} else {
+			rule.ServerID = &normalizedServerID
+		}
+	}
+	if rule.Metric == "status" || rule.Metric == "container" || rule.Metric == "service" {
+		rule.Operator = "=="
+		rule.Threshold = 0
+	}
+	if rule.TargetName != nil {
+		normalizedTarget := strings.TrimSpace(*rule.TargetName)
+		if normalizedTarget == "" {
+			rule.TargetName = nil
+		} else {
+			rule.TargetName = &normalizedTarget
+		}
+	}
+	if validationMessage := validateRule(rule); validationMessage != "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", validationMessage)
+		return
+	}
+
+	if err := h.repo.UpdateRule(r.Context(), &rule); err != nil {
+		switch {
+		case errors.Is(err, ErrRuleNotFound):
+			response.Error(w, http.StatusNotFound, "ALERT_RULE_NOT_FOUND", "Alert rule not found")
+		case errors.Is(err, ErrInvalidChannelSelection):
+			response.Error(w, http.StatusBadRequest, "INVALID_CHANNEL_SELECTION", "One or more notification channels are invalid, disabled, or unavailable")
+		case errors.Is(err, ErrInvalidServerSelection):
+			response.Error(w, http.StatusBadRequest, "INVALID_AGENT_SELECTION", "The selected agent is invalid or unavailable")
+		default:
+			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update alert rule")
+		}
+		return
+	}
+	auditlog.Record(r.Context(), h.repo.db, userID, "UPDATE_ALERT_RULE", "ALERT_RULE", rule.ID, map[string]any{
+		"name":                    rule.Name,
+		"metric":                  rule.Metric,
+		"operator":                rule.Operator,
+		"threshold":               rule.Threshold,
+		"duration_minutes":        rule.DurationMinutes,
+		"repeat_interval_minutes": rule.RepeatIntervalMinutes,
+		"target_name":             rule.TargetName,
+		"server_id":               rule.ServerID,
+		"channel_ids":             rule.ChannelIDs,
+	})
+	response.Success(w, http.StatusOK, rule)
+}
+
 // ToggleRule toggles enable/disable status for an alert rule.
 func (h *Handler) ToggleRule(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)

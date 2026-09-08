@@ -186,7 +186,7 @@ func TestBuildAlertNotification_LayoutAndCustomFields(t *testing.T) {
 	if !strings.Contains(notif.emailHTML, expectedRow) {
 		t.Errorf("expected emailHTML to contain %q", expectedRow)
 	}
-	expectedPair := `<td class="stat" width="50%"><div class="stat-label">Resolved at</div>`
+	expectedPair := `<td class="stat stat-right" width="50%"><div class="stat-label">Resolved at</div>`
 	if !strings.Contains(notif.emailHTML, expectedPair) {
 		t.Errorf("expected emailHTML to contain %q", expectedPair)
 	}

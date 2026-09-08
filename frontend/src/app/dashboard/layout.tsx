@@ -294,13 +294,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {!collapsed && (
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center">
                   <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
                     DATRIX<span className="text-[var(--violet)]">OPS</span>
                   </p>
-                  <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    v{systemVersion}
-                  </span>
                 </div>
 
                 {/* Dòng phụ sáng hơn để không bị chìm trên nền tối. */}
@@ -463,9 +460,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {/* Breadcrumb tăng độ rõ và weight. */}
           <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
             <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              v{systemVersion}
-            </span>
             <span className="text-[var(--color-muted)]">/</span>
             <span className="text-[var(--color-muted)]">Production</span>
           </div>

@@ -1049,48 +1049,49 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 
 // renderAlertEmail dựng email HTML dùng layout bảng (table-based) để tương thích
 // với Outlook/Gmail — không dùng flexbox/grid vì nhiều mail client bỏ qua CSS đó.
-// Cấu trúc chuẩn alert: header có brand + title + summary + badge trạng thái,
-// và lưới 2 cột thẳng hàng với monospace cho các số liệu.
+// Theme sáng (nền trắng) theo phong cách Datadog/PagerDuty: an toàn hơn dark theme
+// vì nhiều client tự áp dark-mode riêng và có thể làm vỡ màu chữ trên nền tối.
 func renderAlertEmail(ruleName, summary, statusText, statusType string, rows []alertRow) string {
-	accentColor := "#EF4444"
-	badgeBg := "#3a1a1a"
-	badgeColor := "#EF4444"
-	icon := "🔴"
+	accentColor := "#DC2626"
+	badgeBg := "#FEE2E2"
+	badgeText := "#B91C1C"
 
 	switch statusType {
 	case "resolved":
-		accentColor = "#10B981"
-		badgeBg = "#123326"
-		badgeColor = "#10B981"
-		icon = "🟢"
+		accentColor = "#16A34A"
+		badgeBg = "#DCFCE7"
+		badgeText = "#15803D"
 		if statusText == "" {
 			statusText = "RESOLVED"
 		}
 	case "reminder":
 		accentColor = "#F59E0B"
-		badgeBg = "#3d2c14"
-		badgeColor = "#F59E0B"
-		icon = "⚠️"
+		badgeBg = "#FEF3C7"
+		badgeText = "#B45309"
 		if statusText == "" {
 			statusText = "REMINDER"
 		}
-	default: // firing / failed
-		accentColor = "#EF4444"
-		badgeBg = "#3a1a1a"
-		badgeColor = "#EF4444"
-		icon = "🔴"
+	default: // firing / failed / offline
+		accentColor = "#DC2626"
+		badgeBg = "#FEE2E2"
+		badgeText = "#B91C1C"
 		if statusText == "" {
-			statusText = "FIRING"
+			statusText = "FAILED"
 		}
 	}
 
 	var rowsHTML strings.Builder
 	for _, row := range rows {
-		rowsHTML.WriteString(fmt.Sprintf(`      <tr>
+		rowsHTML.WriteString(fmt.Sprintf(`
+      <tr>
         <td class="stat" width="50%%">%s</td>
-        <td class="stat" width="50%%">%s</td>
-      </tr>
-`, statCell(row.LeftLabel, row.LeftVal), statCell(row.RightLabel, row.RightVal)))
+        <td class="stat stat-right" width="50%%">%s</td>
+      </tr>`, statCell(row.LeftLabel, row.LeftVal), statCell(row.RightLabel, row.RightVal)))
+	}
+
+	preheader := summary
+	if preheader == "" {
+		preheader = fmt.Sprintf("%s – %s", ruleName, statusText)
 	}
 
 	tmpl := `<!DOCTYPE html>
@@ -1098,40 +1099,39 @@ func renderAlertEmail(ruleName, summary, statusText, statusType string, rows []a
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <style>
-  body { margin: 0; padding: 24px; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-  .card { max-width: 580px; margin: 0 auto; background: #131b2e; border: 1px solid #232f48; border-left: 4px solid {{ACCENT}}; border-radius: 12px; overflow: hidden; }
-  .brand { padding: 14px 24px; background: #0e1526; border-bottom: 1px solid #232f48; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #64748b; text-transform: uppercase; }
+  body { margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  .preheader { display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; overflow: hidden; mso-hide: all; }
+  .card { max-width: 560px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06); }
+  .accent-bar { height: 4px; background: {{ACCENT}}; }
+  .brand { padding: 14px 24px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #94a3b8; }
   .content { padding: 24px; }
-  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  .title { font-size: 18px; font-weight: 700; color: #ffffff; line-height: 24px; margin: 0 0 6px 0; }
-  .summary { font-size: 13px; color: #94a3b8; line-height: 18px; margin: 0; }
-  .badge { display: inline-block; background: {{BADGE_BG}}; color: {{BADGE_COLOR}}; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 6px; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; }
+  .title-row { margin: 0 0 20px 0; overflow: hidden; }
+  .title { font-size: 19px; font-weight: 700; color: #0f172a; line-height: 28px; }
+  .badge { float: right; background: {{BADGE_BG}}; color: {{BADGE_TEXT}}; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; letter-spacing: 0.5px; }
   .stats-table { width: 100%; border-collapse: collapse; }
-  .stat { padding: 12px 12px 12px 0; border-bottom: 1px solid #1e293b; vertical-align: top; }
-  .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; font-weight: 600; }
-  .stat-val { font-size: 14px; color: #f1f5f9; font-weight: 600; font-family: 'SFMono-Regular', Consolas, monospace; }
-  .footer { padding: 14px 24px; background: #0e1526; border-top: 1px solid #1e293b; text-align: center; font-size: 11px; color: #64748b; }
+  .stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; }
+  .stat-val { font-size: 14px; color: #1e293b; font-weight: 600; font-family: 'SFMono-Regular', Consolas, monospace; }
+  .stat { padding: 12px 12px 12px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .stat-right { padding-left: 12px; padding-right: 0; }
+  .footer { padding: 14px 24px; background: #f8fafc; border-top: 1px solid #f1f5f9; text-align: center; font-size: 11px; color: #94a3b8; }
 </style>
 </head>
 <body>
+<div class="preheader">{{PREHEADER}}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td>
 <div class="card">
+  <div class="accent-bar"></div>
   <div class="brand">DATRIXOPS MONITORING</div>
   <div class="content">
-    <table class="header-table" role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="vertical-align: top;">
-          <div class="title">{{RULE_NAME}}</div>
-          <div class="summary">{{SUMMARY}}</div>
-        </td>
-        <td style="vertical-align: top; text-align: right; width: 130px; padding-left: 12px;">
-          <span class="badge">{{ICON}} {{STATUS_TEXT}}</span>
-        </td>
-      </tr>
+    <div class="title-row">
+      <span class="badge">● {{STATUS_TEXT}}</span>
+      <span class="title">{{RULE_NAME}}</span>
+    </div>
+    <table class="stats-table">{{ROWS}}
     </table>
-    <table class="stats-table" width="100%" cellpadding="0" cellspacing="0">
-{{ROWS}}    </table>
   </div>
   <div class="footer">Automated notification sent by DatrixOps Control Plane.</div>
 </div>
@@ -1142,18 +1142,17 @@ func renderAlertEmail(ruleName, summary, statusText, statusType string, rows []a
 	r := strings.NewReplacer(
 		"{{ACCENT}}", accentColor,
 		"{{BADGE_BG}}", badgeBg,
-		"{{BADGE_COLOR}}", badgeColor,
-		"{{ICON}}", icon,
+		"{{BADGE_TEXT}}", badgeText,
 		"{{STATUS_TEXT}}", statusText,
 		"{{RULE_NAME}}", ruleName,
-		"{{SUMMARY}}", summary,
 		"{{ROWS}}", rowsHTML.String(),
+		"{{PREHEADER}}", preheader,
 	)
 	return r.Replace(tmpl)
 }
 
 // statCell render một ô nhãn+giá trị trong lưới 2 cột của email; ô rỗng dùng để
-// cân bằng hàng cuối khi số liệu là số lẻ, giữ 2 cột luôn thẳng hàng dọc.
+// cân bằng hàng khi số liệu là số lẻ, giữ 2 cột luôn thẳng hàng dọc.
 func statCell(label, val string) string {
 	if label == "" {
 		return `&nbsp;`

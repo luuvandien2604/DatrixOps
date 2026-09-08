@@ -423,154 +423,120 @@ export default function WebsitesPage() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {websites.map(w => {
-                const isUp = w.status?.toUpperCase() === 'UP' || w.status?.toLowerCase() === 'online';
-                const daysLeft = w.ssl_days_remaining;
-                const sslStatusClass = daysLeft !== undefined
-                  ? daysLeft > 30
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                    : daysLeft > 15
-                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                  : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+            <div className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                      <th className="py-3.5 px-4">Endpoint / Website</th>
+                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4">Uptime (24h)</th>
+                      <th className="py-3.5 px-4">Latency</th>
+                      <th className="py-3.5 px-4">SSL Certificate</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-color)]">
+                    {websites.map(w => {
+                      const isUp = w.status?.toUpperCase() === 'UP' || w.status?.toLowerCase() === 'online';
+                      const daysLeft = w.ssl_days_remaining;
+                      const sslStatusClass = daysLeft !== undefined
+                        ? daysLeft > 30
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : daysLeft > 15
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                        : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
 
-                return (
-                  <div key={w.id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 hover:border-blue-500/40 transition-all flex flex-col justify-between shadow-sm">
-                    <div>
-                      {/* Top row */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2.5 rounded-xl border shrink-0 ${
-                            isUp
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                          }`}>
-                            <Globe className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-[var(--foreground)] text-base flex items-center gap-2 truncate">
-                              <span className="truncate">{w.name}</span>
-                              {isUp ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-500 shrink-0">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> OPERATIONAL
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-rose-500 shrink-0">
-                                  <XCircle className="w-3.5 h-3.5" /> DOWN
-                                  {formatDowntime(w.down_started_at) && (
-                                    <span className="opacity-80">({formatDowntime(w.down_started_at)})</span>
-                                  )}
-                                </span>
-                              )}
-                            </h3>
-                            <a
-                              href={w.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-0.5 truncate"
-                            >
-                              {w.url} <ExternalLink className="w-3 h-3 shrink-0" />
-                            </a>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                          <button
-                            type="button"
-                            onClick={() => handleManualCheck(w.id, w.name)}
-                            disabled={checkingId === w.id}
-                            className="h-8 w-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition"
-                            title="Check health now"
-                          >
-                            <RefreshCw className={`w-3.5 h-3.5 ${checkingId === w.id ? 'animate-spin text-blue-400' : ''}`} />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isViewer}
-                            onClick={() => {
-                              if (isViewer) return;
-                              handleDelete(w.id, w.name);
-                            }}
-                            className="h-8 w-8 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={isViewer ? 'Deleting websites requires Operator or Admin role' : 'Delete'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Uptime and Health KPIs */}
-                      <div className="grid grid-cols-3 gap-2 mb-4">
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-center">
-                          <span className="text-[10px] uppercase font-bold text-[var(--color-muted)] block">Uptime (24h)</span>
-                          <span className="text-sm font-extrabold text-emerald-400">{isUp ? '100.0%' : '98.5%'}</span>
-                        </div>
-
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-center">
-                          <span className="text-[10px] uppercase font-bold text-[var(--color-muted)] block">Latency</span>
-                          <span className="text-sm font-extrabold text-[var(--foreground)]">{w.response_time_ms || 45}ms</span>
-                        </div>
-
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-center">
-                          <span className="text-[10px] uppercase font-bold text-[var(--color-muted)] block">Status Duration</span>
-                          <span className="text-xs font-extrabold text-blue-400 truncate block mt-0.5">
-                            {isUp ? 'Continuous UP' : formatDowntime(w.down_started_at) || 'DOWN'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 24h Response Latency Sparkline */}
-                      <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 mb-4">
-                        <div className="flex items-center justify-between text-xs mb-2">
-                          <span className="text-[var(--color-muted)] font-medium flex items-center gap-1.5">
-                            <Activity className="w-3.5 h-3.5 text-blue-400" /> 24h Response Latency
-                          </span>
-                          <span className="font-mono text-emerald-400 font-semibold">{w.response_time_ms || 45}ms avg</span>
-                        </div>
-
-                        <div className="flex items-end gap-1 h-10 pt-2">
-                          {w.history_24h?.map((val, i) => (
-                            <div
-                              key={i}
-                              title={`Hour ${i + 1}: ${val}ms`}
-                              className="flex-1 bg-blue-500/30 hover:bg-blue-400 rounded-t transition-all"
-                              style={{ height: `${Math.min(100, Math.max(15, (val / 120) * 100))}%` }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SSL Footer Info */}
-                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[var(--border-color)] text-xs">
-                      <div>
-                        <span className="text-[var(--color-muted)] block mb-1">SSL Issuer</span>
-                        <span className="font-medium text-[var(--foreground)] truncate block" title={w.ssl_issuer || 'Unknown'}>
-                          {w.ssl_issuer || 'No SSL Info'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-[var(--color-muted)] block mb-1">Certificate Validity</span>
-                        <div className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${sslStatusClass}`}>
-                          {daysLeft !== undefined ? (
-                            daysLeft > 30 ? (
-                              <><ShieldCheck className="w-3.5 h-3.5" /> {daysLeft} days valid</>
-                            ) : daysLeft > 0 ? (
-                              <><ShieldAlert className="w-3.5 h-3.5" /> Expiring in {daysLeft}d</>
+                      return (
+                        <tr key={w.id} className="hover:bg-[var(--surface-subtle)] transition">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-xl border shrink-0 ${
+                                isUp
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              }`}>
+                                <Globe className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-sm text-[var(--foreground)] block truncate">{w.name}</span>
+                                <a
+                                  href={w.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1 truncate max-w-xs"
+                                >
+                                  {w.url} <ExternalLink className="w-3 h-3 shrink-0" />
+                                </a>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {isUp ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-500">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> OPERATIONAL
+                              </span>
                             ) : (
-                              <><Shield className="w-3.5 h-3.5" /> Expired</>
-                            )
-                          ) : (
-                            <span>—</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-500">
+                                <XCircle className="w-3.5 h-3.5" /> DOWN
+                                {formatDowntime(w.down_started_at) && (
+                                  <span className="opacity-80 font-normal">({formatDowntime(w.down_started_at)})</span>
+                                )}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-400">
+                            {isUp ? '100.0%' : '98.5%'}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-[var(--foreground)] font-semibold">
+                            {w.response_time_ms || 45}ms
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${sslStatusClass}`}>
+                              {daysLeft !== undefined && daysLeft > 15 ? (
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              ) : (
+                                <ShieldAlert className="w-3.5 h-3.5" />
+                              )}
+                              {daysLeft !== undefined
+                                ? daysLeft > 0
+                                  ? `${daysLeft}d left`
+                                  : 'Expired'
+                                : 'No SSL info'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleManualCheck(w.id, w.name)}
+                                disabled={checkingId === w.id}
+                                className="h-8 w-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition"
+                                title="Check health now"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${checkingId === w.id ? 'animate-spin text-blue-400' : ''}`} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isViewer}
+                                onClick={() => {
+                                  if (isViewer) return;
+                                  handleDelete(w.id, w.name);
+                                }}
+                                className="h-8 w-8 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={isViewer ? 'Deleting websites requires Operator or Admin role' : 'Delete'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>
@@ -596,113 +562,79 @@ export default function WebsitesPage() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {servers.map(server => {
-                const isOnline = server.status?.toLowerCase() === 'online';
-                const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
-                const osInfo = parseJSON<{ os_name?: string; version?: string; uptime?: number; cpu_cores?: number; cpu_usage?: number }>(server.os_info);
+            <div className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                      <th className="py-3.5 px-4">Server / Host</th>
+                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4">Host System Uptime</th>
+                      <th className="py-3.5 px-4">Agent Heartbeat</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-color)]">
+                    {servers.map(server => {
+                      const isOnline = server.status?.toLowerCase() === 'online';
+                      const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
+                      const osInfo = parseJSON<{ os_name?: string; version?: string; uptime?: number; cpu_cores?: number; cpu_usage?: number }>(server.os_info);
 
-                const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
-                const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
-                const osName = snapshot?.system_info?.os_name || osInfo?.os_name || 'Linux';
-                const kernel = snapshot?.system_info?.kernel || 'Standard';
-                const cpuCores = snapshot?.system_info?.cpu_cores || osInfo?.cpu_cores || 2;
-                const cpuUsage = snapshot?.system_info?.cpu_usage ?? osInfo?.cpu_usage ?? 0;
-                const memUsed = snapshot?.system_info?.memory_used || 0;
-                const memTotal = snapshot?.system_info?.memory_total || 0;
-                const memPct = memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0;
+                      const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
+                      const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
+                      const osName = snapshot?.system_info?.os_name || osInfo?.os_name || 'Linux';
+                      const kernel = snapshot?.system_info?.kernel || 'Standard';
 
-                return (
-                  <div key={server.id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 hover:border-blue-500/40 transition-all flex flex-col justify-between shadow-sm">
-                    <div>
-                      {/* Top row */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2.5 rounded-xl border shrink-0 ${
-                            isOnline
-                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                          }`}>
-                            <Server className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-[var(--foreground)] text-base flex items-center gap-2 truncate">
-                              <span className="truncate">{server.name}</span>
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold shrink-0 ${
-                                isOnline ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                      return (
+                        <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-xl border shrink-0 ${
+                                isOnline
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                               }`}>
-                                {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                {isOnline ? 'ONLINE' : 'OFFLINE'}
-                              </span>
-                            </h3>
-                            <p className="text-xs text-[var(--color-muted)] font-mono mt-0.5 truncate">
-                              IP: {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'} · {osName} ({kernel})
-                            </p>
-                          </div>
-                        </div>
-
-                        <Link
-                          href={`/dashboard/servers/${server.id}`}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold flex items-center gap-1 transition shrink-0 ml-2"
-                        >
-                          View Details <ArrowRight className="w-3 h-3 text-blue-400" />
-                        </Link>
-                      </div>
-
-                      {/* Host Uptime Highlight Card */}
-                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3.5 mb-4">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-blue-400 flex items-center gap-1.5">
-                            <Clock className="w-4 h-4" /> Host System Uptime
-                          </span>
-                          <span className="text-xs text-[var(--color-muted)]">
-                            Agent Heartbeat: <strong className="text-[var(--foreground)]">{formatRelativeHeartbeat(server.last_seen_at)}</strong>
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xl font-black tracking-tight text-[var(--foreground)] font-mono">
-                          {isOnline ? formattedHostUptime : 'Offline (Host stopped reporting)'}
-                        </div>
-                      </div>
-
-                      {/* Resource Utilization mini-summary */}
-                      <div className="grid grid-cols-2 gap-3 mb-2 text-xs">
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[var(--color-muted)] flex items-center gap-1">
-                              <Cpu className="w-3.5 h-3.5 text-blue-400" /> CPU ({cpuCores} cores)
+                                <Server className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-bold text-sm text-[var(--foreground)] block truncate">{server.name}</span>
+                                <span className="text-xs text-[var(--color-muted)] font-mono">
+                                  {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'} · {osName} ({kernel})
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                              isOnline ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                            }`}>
+                              {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                              {isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
-                            <span className="font-bold text-[var(--foreground)] font-mono">{cpuUsage.toFixed(1)}%</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, cpuUsage)}%` }} />
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[var(--color-muted)]">RAM Memory</span>
-                            <span className="font-bold text-[var(--foreground)] font-mono">{memPct}%</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                            <div className="h-full bg-purple-500 rounded-full" style={{ width: `${Math.min(100, memPct)}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer with quick action */}
-                    <div className="flex items-center justify-between pt-3 border-t border-[var(--border-color)] text-xs text-[var(--color-muted)]">
-                      <span>Server ID: <code className="font-mono text-[11px] text-[var(--foreground)]">{server.id.substring(0, 8)}…</code></span>
-                      <Link
-                        href="/dashboard/alerts?tab=create"
-                        className="text-xs font-semibold text-blue-400 hover:underline inline-flex items-center gap-1"
-                      >
-                        + Create Host Alert
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-mono font-bold text-sm text-[var(--foreground)] inline-flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-blue-400" />
+                              {isOnline ? formattedHostUptime : 'Offline'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-xs text-[var(--color-muted)]">
+                            <strong className="text-[var(--foreground)]">{formatRelativeHeartbeat(server.last_seen_at)}</strong>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <Link
+                              href={`/dashboard/servers/${server.id}`}
+                              className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                            >
+                              View Details <ArrowRight className="w-3 h-3 text-blue-400" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

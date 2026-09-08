@@ -27,6 +27,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 
 	mux.HandleFunc("GET /api/v1/alerts/rules", withAuth(handler.ListRules))
 	mux.HandleFunc("POST /api/v1/alerts/rules", withAdmin(handler.CreateRule))
+	mux.HandleFunc("PUT /api/v1/alerts/rules/{id}", withAdmin(handler.UpdateRule))
 	mux.HandleFunc("POST /api/v1/alerts/rules/{id}/test", withAdmin(handler.TestAlertRule))
 	mux.HandleFunc("PATCH /api/v1/alerts/rules/{id}/toggle", withAdmin(handler.ToggleRule))
 	mux.HandleFunc("DELETE /api/v1/alerts/rules/{id}", withAdmin(handler.DeleteRule))

@@ -56,7 +56,7 @@ func Load() (*Config, error) {
 		AgentReleaseURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_RELEASE_BASE_URL")), "/"),
 		Edition:                  strings.ToLower(strings.TrimSpace(getEnv("DATRIXOPS_EDITION", "community"))),
 		DeploymentMode:           strings.ToLower(strings.TrimSpace(getEnv("DEPLOYMENT_MODE", "self-hosted"))),
-		DatrixopsVersion:         strings.TrimSpace(getEnv("DATRIXOPS_VERSION", "1.8.5")),
+		DatrixopsVersion:         strings.TrimSpace(getEnv("DATRIXOPS_VERSION", "1.8.43")),
 		PublicRegistration:       envBool("ENABLE_PUBLIC_REGISTRATION"),
 		EnableWebTerminal:        envBoolDefault("ENABLE_WEB_TERMINAL", true),
 		EnableRemoteScripts:      envBoolDefault("ENABLE_REMOTE_SCRIPTS", true),

@@ -252,6 +252,110 @@ func (r *Repository) CreateRule(ctx context.Context, rule *AlertRule) error {
 	return nil
 }
 
+// UpdateRule cập nhật thông tin của alert rule và đồng bộ lại danh sách channels.
+func (r *Repository) UpdateRule(ctx context.Context, rule *AlertRule) error {
+	channelIDs := uniqueStrings(rule.ChannelIDs)
+	if len(channelIDs) == 0 {
+		return ErrInvalidChannelSelection
+	}
+
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin update alert rule transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Chỉ cho phép chọn agent thuộc chính user đang cập nhật rule.
+	if rule.ServerID != nil {
+		var serverName string
+		if err := tx.QueryRow(ctx, `
+			SELECT name
+			FROM servers
+			WHERE user_id = $1
+			  AND id::text = $2
+		`, rule.UserID, *rule.ServerID).Scan(&serverName); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrInvalidServerSelection
+			}
+			return fmt.Errorf("validate alert server: %w", err)
+		}
+		rule.ServerName = &serverName
+	}
+
+	var validChannelCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT id)
+		FROM alert_channels
+		WHERE user_id = $1
+		  AND enabled = true
+		  AND id::text = ANY($2::text[])
+	`, rule.UserID, channelIDs).Scan(&validChannelCount); err != nil {
+		return fmt.Errorf("validate alert channels: %w", err)
+	}
+	if validChannelCount != len(channelIDs) {
+		return ErrInvalidChannelSelection
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE alert_rules
+		SET name = $1,
+			metric = $2,
+			operator = $3,
+			threshold = $4,
+			duration_minutes = $5,
+			repeat_interval_minutes = $6,
+			target_name = $7,
+			server_id = $8,
+			updated_at = NOW()
+		WHERE id = $9 AND user_id = $10
+	`,
+		rule.Name,
+		rule.Metric,
+		rule.Operator,
+		rule.Threshold,
+		rule.DurationMinutes,
+		rule.RepeatIntervalMinutes,
+		rule.TargetName,
+		rule.ServerID,
+		rule.ID,
+		rule.UserID,
+	)
+	if err != nil {
+		return fmt.Errorf("update alert rule: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRuleNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM alert_rule_channels
+		WHERE alert_rule_id = $1
+	`, rule.ID); err != nil {
+		return fmt.Errorf("clear alert rule channels: %w", err)
+	}
+
+	for _, channelID := range channelIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO alert_rule_channels (alert_rule_id, alert_channel_id)
+			VALUES ($1, $2)
+		`, rule.ID, channelID); err != nil {
+			return fmt.Errorf("link alert rule to channel: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit update alert rule: %w", err)
+	}
+
+	rule.ChannelIDs = channelIDs
+	channels, err := r.listRuleChannels(ctx, rule.ID, rule.UserID)
+	if err != nil {
+		return err
+	}
+	rule.Channels = channels
+	return nil
+}
+
 // DeleteRule xóa rule và dọn dẹp các alert_state & notifications thuộc rule đó.
 func (r *Repository) DeleteRule(ctx context.Context, id, userID string) error {
 	tx, err := r.db.Pool.Begin(ctx)

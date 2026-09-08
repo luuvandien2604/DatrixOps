@@ -100,8 +100,17 @@ type MetricsTooltipProps = {
 
 type MetricType = 'cpu' | 'ram' | 'network' | 'disk';
 
-const POLL_INTERVAL_MS = 5_000;
-const TIMELINE_TICK_MS = 1_000;
+type RefreshInterval = 'off' | '5s' | '10s' | '30s' | '1m' | '5m';
+
+const REFRESH_INTERVAL_OPTIONS: { value: RefreshInterval; label: string; ms: number }[] = [
+  { value: 'off', label: 'Off', ms: 0 },
+  { value: '5s', label: '5s', ms: 5_000 },
+  { value: '10s', label: '10s', ms: 10_000 },
+  { value: '30s', label: '30s', ms: 30_000 },
+  { value: '1m', label: '1m', ms: 60_000 },
+  { value: '5m', label: '5m', ms: 300_000 },
+];
+
 const MISSING_DATA_GRACE_MS = 25_000;
 
 const RANGE_OPTIONS: RangeOption[] = [
@@ -155,6 +164,7 @@ export default function MonitoringPage() {
   const [metricsError, setMetricsError] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>('10s');
 
   // Order-preserving in-place expanded metrics list
   const [expandedOrder, setExpandedOrder] = useState<MetricType[]>([]);
@@ -237,10 +247,7 @@ export default function MonitoringPage() {
     }
   }, [servers]);
 
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), TIMELINE_TICK_MS);
-    return () => window.clearInterval(interval);
-  }, []);
+
 
   const fetchMetrics = useCallback(async (background = false, replaceActiveRequest = false) => {
     if (!selectedServerId) return;
@@ -298,16 +305,28 @@ export default function MonitoringPage() {
     }
   }, [router, selectedServerId, timeRange]);
 
+  const currentIntervalMs = useMemo(() => {
+    return REFRESH_INTERVAL_OPTIONS.find((opt) => opt.value === refreshInterval)?.ms ?? 10_000;
+  }, [refreshInterval]);
+
   useEffect(() => {
     if (!selectedServerId) return;
     setRawMetrics([]);
     setMetricsLoaded(false);
     setMetricsError('');
+    setNow(Date.now());
     void fetchMetrics(false, true);
+
+    if (currentIntervalMs <= 0) {
+      return () => {
+        activeMetricsRequest.current?.abort();
+        activeMetricsRequest.current = null;
+      };
+    }
 
     const interval = window.setInterval(
       () => void fetchMetrics(true),
-      POLL_INTERVAL_MS,
+      currentIntervalMs,
     );
 
     return () => {
@@ -315,7 +334,7 @@ export default function MonitoringPage() {
       activeMetricsRequest.current?.abort();
       activeMetricsRequest.current = null;
     };
-  }, [fetchMetrics, selectedServerId]);
+  }, [fetchMetrics, selectedServerId, currentIntervalMs]);
 
   // Derived Top 5 CPU & RAM processes from real agent telemetry
   const cpuProcesses = useMemo(() => {
@@ -604,7 +623,7 @@ export default function MonitoringPage() {
             Click the expand icon on any chart to view live process breakdown. Expanded charts stay full-width at the top, while collapsed charts remain in a neat grid below.
           </p>
           <p className="mt-2 font-mono text-xs text-[var(--text-tertiary)]">
-            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · Polling every {POLL_INTERVAL_MS / 1_000}s
+            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · {refreshInterval === 'off' ? 'Auto-refresh: Off' : `Auto-refresh: ${refreshInterval}`}
           </p>
         </div>
 
@@ -631,6 +650,14 @@ export default function MonitoringPage() {
             icon={<Clock3 className="w-4 h-4 text-slate-400" />}
             options={RANGE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
             className="w-48"
+          />
+
+          <CustomSelect
+            value={refreshInterval}
+            onChange={(val) => setRefreshInterval(val as RefreshInterval)}
+            icon={<RefreshCw className={`w-4 h-4 text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />}
+            options={REFRESH_INTERVAL_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+            className="w-28"
           />
 
           <button
