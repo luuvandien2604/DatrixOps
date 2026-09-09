@@ -1320,7 +1320,7 @@ html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hove
   color: var(--text-primary) !important;
 }
 
-.dashboard-stage main :is(input, select, textarea) {
+.dashboard-stage main :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
   width: 100%;
   min-height: var(--control-height);
   border: 1px solid var(--border-default) !important;
@@ -1332,6 +1332,16 @@ html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hove
   box-shadow: none;
   outline: none;
   transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.dashboard-stage main input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  padding: 0 !important;
+  margin: 0;
+  accent-color: #3b82f6;
+  cursor: pointer;
 }
 
 .dashboard-stage main input.fleet-checkbox {

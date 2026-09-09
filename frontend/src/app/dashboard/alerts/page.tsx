@@ -2217,28 +2217,40 @@ export default function AlertsPage() {
                 <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
                   Notification Channels
                 </label>
-                <div className="space-y-2 max-h-36 overflow-y-auto p-1 border border-[var(--border-color)] rounded-xl">
-                  {channels.map((ch) => (
-                    <label
-                      key={ch.id}
-                      className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-[var(--surface-subtle)] cursor-pointer text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={editChannelIds.includes(ch.id)}
-                        onChange={() => toggleEditChannel(ch.id)}
-                        className="rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="font-semibold text-[var(--foreground)]">{ch.name}</span>
-                      <span className="text-[10px] text-[var(--color-muted)] uppercase">({ch.type})</span>
-                    </label>
-                  ))}
-                  {channels.length === 0 && (
-                    <p className="p-2 text-xs text-[var(--color-muted)] text-center">
-                      No notification channels configured.
-                    </p>
-                  )}
-                </div>
+                {channels.length === 0 ? (
+                  <p className="p-3 text-xs text-[var(--color-muted)] text-center border border-[var(--border-color)] rounded-xl">
+                    No notification channels configured.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-0.5">
+                    {channels.map((ch) => {
+                      const selected = editChannelIds.includes(ch.id);
+                      return (
+                        <div
+                          key={ch.id}
+                          onClick={() => toggleEditChannel(ch.id)}
+                          className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
+                            selected
+                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500'
+                              : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-blue-500/30'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                              selected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
+                            }`}
+                          >
+                            {selected && <Check className="h-3 w-3" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-[var(--foreground)] truncate">{ch.name}</p>
+                            <p className="text-[10px] uppercase font-bold text-[var(--color-muted)]">{ch.type}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 border-t border-[var(--border-color)] flex justify-end gap-2">

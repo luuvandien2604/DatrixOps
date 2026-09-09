@@ -196,6 +196,12 @@ export default function ServerDetailsPage() {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (['inventory', 'cron', 'scripts'].includes(activeTab)) {
+      setActiveTab('overview');
+    }
+  }, [activeTab]);
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
@@ -727,9 +733,6 @@ export default function ServerDetailsPage() {
   const terminalTabLabel = terminalEnvironmentUnsupported ? 'Terminal · Not supported' : 'Terminal';
   const tabs: Array<[string, string]> = [
     ['overview', 'Overview'],
-    ['inventory', 'Inventory'],
-    ...(osFamily === 'windows' ? [] : [['cron', osFamily === 'macos' ? 'Cron Jobs' : 'Cron Monitoring'] as [string, string]]),
-    ['scripts', 'Script Library'],
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
@@ -744,7 +747,10 @@ export default function ServerDetailsPage() {
       || service.source === serviceManager)
     && service.status !== 'not_installed',
   );
-  const hasIncompatibleLegacyServices = reportedServices.length > services.length;
+  const hasIncompatibleLegacyServices =
+    osFamily !== 'linux' &&
+    osFamily !== 'unknown' &&
+    reportedServices.some(service => !service.source || service.source !== serviceManager);
   // Heartbeat version is authoritative for the binary that is running now.
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
