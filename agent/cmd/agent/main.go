@@ -737,11 +737,23 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 		if unit := strings.TrimSpace(payload["unit"]); unit != "" {
 			args = append([]string{"-u", unit}, args...)
 		}
-		return combinedOutput(ctx, "journalctl", args...)
+		out, err := combinedOutput(ctx, "journalctl", args...)
+		if err != nil && strings.TrimSpace(out) == "" {
+			return fmt.Sprintf("journalctl notice: %v", err), nil
+		}
+		return out, nil
 	case "nginx_access":
-		return combinedOutput(ctx, "tail", "-n", lines, "/var/log/nginx/access.log")
+		path := firstExistingLogPath("/var/log/nginx/access.log", "/var/log/nginx-access.log")
+		if path == "" {
+			return "Notice: Nginx access log (/var/log/nginx/access.log) not found on this server. Nginx may not be installed or is logging to a custom path.", nil
+		}
+		return combinedOutput(ctx, "tail", "-n", lines, path)
 	case "nginx_error":
-		return combinedOutput(ctx, "tail", "-n", lines, "/var/log/nginx/error.log")
+		path := firstExistingLogPath("/var/log/nginx/error.log", "/var/log/nginx-error.log")
+		if path == "" {
+			return "Notice: Nginx error log (/var/log/nginx/error.log) not found on this server. Nginx may not be installed or is logging to a custom path.", nil
+		}
+		return combinedOutput(ctx, "tail", "-n", lines, path)
 	case "mysql_error":
 		path := firstExistingLogPath(
 			"/var/log/mysql/error.log",
@@ -749,7 +761,7 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 			"/var/log/mariadb/mariadb.log",
 		)
 		if path == "" {
-			return "", fmt.Errorf("no supported MySQL or MariaDB error log path was found")
+			return "Notice: No MySQL or MariaDB error log found in standard paths (/var/log/mysql/error.log, /var/log/mysqld.log, /var/log/mariadb/mariadb.log).", nil
 		}
 		return combinedOutput(ctx, "tail", "-n", lines, path)
 	case "docker":

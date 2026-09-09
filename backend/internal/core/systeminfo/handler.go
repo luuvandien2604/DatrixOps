@@ -47,7 +47,7 @@ func (h *Handler) Info(w http.ResponseWriter, r *http.Request) {
 		if h.cfg.DatrixopsVersion != "" {
 			cpVersion = h.cfg.DatrixopsVersion
 		} else {
-			cpVersion = "1.8.44"
+			cpVersion = "1.8.45"
 		}
 	}
 

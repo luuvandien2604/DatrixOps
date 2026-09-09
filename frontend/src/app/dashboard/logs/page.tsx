@@ -297,7 +297,7 @@ export default function LogsPage() {
     && selectedServerSupportsLogRead;
   const remoteLogReadiness = (() => {
     if (fetchingRemoteLogs) return 'Fetching log snapshot…';
-    if (selectedServerId === 'all') return 'Select one Linux server first';
+    if (selectedServerId === 'all') return 'Select a server to fetch logs';
     if (!selectedServer) return 'Selected server is unavailable';
     if (selectedServer.status !== 'online') return 'Selected server is offline';
     if (!selectedServerIsLinux) return 'Only online Linux agents are supported';
@@ -306,7 +306,7 @@ export default function LogsPage() {
     }
     return 'Ready to fetch read-only logs';
   })();
-  const fetchLogsLabel = canFetchRemoteLogs ? 'Fetch logs' : selectedServerSupportsLogRead ? 'Select server' : 'Update agent';
+  const fetchLogsLabel = 'Fetch logs';
 
   const copyAllLogs = async () => {
     const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
@@ -585,10 +585,10 @@ export default function LogsPage() {
                 className="w-full text-xs"
               />
             </div>
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-md border ${
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
               canFetchRemoteLogs
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                : 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
             }`}>
               {remoteLogReadiness}
             </span>

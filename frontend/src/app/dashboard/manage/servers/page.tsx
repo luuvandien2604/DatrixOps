@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CircleAlert, RefreshCw, RotateCcw, ServerCog, UploadCloud, Zap } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
+import ConfirmModal from '@/components/ConfirmModal';
 
 type FleetServer = { id: string; name: string; status: string; group_name?: string; tags?: string[]; owner_email: string };
 type FleetAction = 'agent_update' | 'agent_restart' | 'vps_reboot';
@@ -19,6 +20,7 @@ export default function ManageServersPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [runningAction, setRunningAction] = useState<FleetAction | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<FleetAction | null>(null);
   const [message, setMessage] = useState('');
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
 
@@ -63,16 +65,24 @@ export default function ManageServersPage() {
     return next;
   });
 
-  const runFleetAction = async (action: FleetAction) => {
-    if (selectedServers.length === 0) return;
-    if (action === 'vps_reboot' && !confirm(`Reboot ${selectedServers.length} selected hosts?`)) return;
+  const executeFleetAction = async (action: FleetAction) => {
     setRunningAction(action);
+    setConfirmingAction(null);
     const results = await Promise.allSettled(selectedServers.map((server) =>
       apiClient(`/admin/servers/${server.id}/tasks`, { data: { type: action } }),
     ));
     const succeeded = results.filter((result) => result.status === 'fulfilled').length;
     setMessage(`${ACTIONS[action].label}: ${succeeded}/${results.length} tasks queued successfully.`);
     setRunningAction(null);
+  };
+
+  const runFleetAction = (action: FleetAction) => {
+    if (selectedServers.length === 0) return;
+    if (action === 'vps_reboot') {
+      setConfirmingAction(action);
+      return;
+    }
+    void executeFleetAction(action);
   };
 
   if (isSuperadmin == null) return <div className="ops-panel p-10 text-center text-[var(--color-muted)]">Checking access…</div>;
@@ -109,6 +119,18 @@ export default function ManageServersPage() {
           </table>
         </div>
       </section>
+
+      {/* Confirm Modal for reboot */}
+      <ConfirmModal
+        isOpen={Boolean(confirmingAction)}
+        title="Reboot Selected Hosts"
+        message={`Are you sure you want to reboot ${selectedServers.length} selected host(s)? This will temporarily disrupt running services on those machines.`}
+        confirmText="Reboot Hosts"
+        variant="danger"
+        loading={runningAction === 'vps_reboot'}
+        onConfirm={() => void executeFleetAction('vps_reboot')}
+        onCancel={() => setConfirmingAction(null)}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/apiClient';
 import { dataOwnershipLabel, deploymentLabel, DatrixOpsEdition, DeploymentMode } from '@/lib/edition';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { Activity, Check, Copy, Database, ExternalLink, Play, Plus, RotateCcw, ServerCog, Settings2, ShieldCheck, Trash2, Webhook } from 'lucide-react';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface DeploymentInfo {
   edition: DatrixOpsEdition;
@@ -80,6 +81,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('');
   const [copiedSecretId, setCopiedSecretId] = useState<string | null>(null);
   const [copiedPublicURL, setCopiedPublicURL] = useState(false);
+  const [pendingDeleteWebhook, setPendingDeleteWebhook] = useState<WebhookEndpoint | null>(null);
   const [form, setForm] = useState({
     name: '',
     url: '',
@@ -163,12 +165,13 @@ export default function SettingsPage() {
     }
   };
 
-  const deleteWebhook = async (webhook: WebhookEndpoint) => {
-    if (!confirm(`Delete webhook "${webhook.name}"? Delivery history for this endpoint will also be removed.`)) return;
+  const confirmDeleteWebhook = async () => {
+    if (!pendingDeleteWebhook) return;
     try {
-      setBusyId(webhook.id);
-      await apiClient(`/webhooks/${webhook.id}`, { method: 'DELETE' });
-      setWebhooks((current) => current.filter((item) => item.id !== webhook.id));
+      setBusyId(pendingDeleteWebhook.id);
+      await apiClient(`/webhooks/${pendingDeleteWebhook.id}`, { method: 'DELETE' });
+      setWebhooks((current) => current.filter((item) => item.id !== pendingDeleteWebhook.id));
+      setPendingDeleteWebhook(null);
       await refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to delete webhook');
@@ -244,7 +247,7 @@ export default function SettingsPage() {
       </section>
 
       {message && (
-        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-primary)]">
+        <div className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-950 dark:border-blue-700/60 dark:bg-blue-950/50 dark:text-blue-100">
           {message}
         </div>
       )}
@@ -502,12 +505,12 @@ export default function SettingsPage() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setPendingDeleteWebhook(webhook)}
                           disabled={busyId === webhook.id}
-                          onClick={() => void deleteWebhook(webhook)}
-                          className="ops-button secondary text-[var(--status-critical)]"
-                          title="Delete webhook"
+                          className="ops-button secondary text-rose-600 hover:text-rose-700 dark:text-rose-400"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
                         </button>
                       </div>
                     </td>
@@ -571,6 +574,18 @@ export default function SettingsPage() {
           </table>
         </div>
       </section>
+
+      {/* Delete Webhook Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteWebhook)}
+        title="Delete Webhook"
+        message={`Are you sure you want to delete webhook "${pendingDeleteWebhook?.name}"? Delivery history for this endpoint will also be removed.`}
+        confirmText="Delete Webhook"
+        variant="danger"
+        loading={busyId === pendingDeleteWebhook?.id}
+        onConfirm={() => void confirmDeleteWebhook()}
+        onCancel={() => setPendingDeleteWebhook(null)}
+      />
     </div>
   );
 }

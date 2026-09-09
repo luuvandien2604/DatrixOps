@@ -8,7 +8,7 @@ import {
   Activity, Bell, BookOpen, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
   CircleUserRound, Command, DatabaseBackup, FileText, Gauge, Globe2, KeyRound,
   Loader2, LogOut, Menu, ScrollText, Search, Server, ServerCog, Settings2,
-  ShieldAlert, ShieldCheck, SlidersHorizontal, Users, X, Zap,
+  ShieldAlert, Users, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -48,11 +48,6 @@ const primaryNav: NavDefinition[] = [
   { label: 'Logs', href: '/dashboard/logs', icon: FileText },
 ];
 
-const observeNav: NavDefinition[] = [
-  { label: 'Performance', href: '/dashboard/performance', icon: Zap },
-  { label: 'Network', href: '/dashboard/network', icon: SlidersHorizontal },
-  { label: 'Security', href: '/dashboard/security', icon: ShieldCheck },
-];
 
 const adminNav: NavDefinition[] = [
   { label: 'Fleet admin', href: '/dashboard/manage/servers', icon: ServerCog },
@@ -361,20 +356,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="space-y-1">
             {primaryNav.map((item) => (
-              <NavItem item={item} key={item.href} />
-            ))}
-          </div>
-
-          <p
-            className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
-              collapsed ? 'text-center' : ''
-            }`}
-          >
-            {collapsed ? '•' : 'Observe'}
-          </p>
-
-          <div className="space-y-1">
-            {observeNav.map((item) => (
               <NavItem item={item} key={item.href} />
             ))}
           </div>

@@ -9,6 +9,7 @@ import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface TopProcess {
   pid: number;
@@ -211,6 +212,7 @@ export default function ServerDetailsPage() {
   const [scriptLibrary, setScriptLibrary] = useState<ScriptPolicy[]>([]);
   const [scriptRuns, setScriptRuns] = useState<Record<string, ScriptRunState>>({});
   const [scriptLibraryError, setScriptLibraryError] = useState<string | null>(null);
+  const [pendingRunScript, setPendingRunScript] = useState<{ script: ScriptPolicy; idempotencyKey: string } | null>(null);
 
   const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
@@ -299,7 +301,7 @@ export default function ServerDetailsPage() {
       if (action === 'docker_logs') {
         setLogsModal({isOpen: true, containerId, logs: 'Requesting container logs...', loading: true});
       } else {
-        alert(`${action} command sent to container ${containerId}. Execution may take about 15 seconds.`);
+        toast.success(`${action} command sent to container ${containerId}. Execution may take about 15 seconds.`);
       }
 
       const task = await apiClient(`/servers/${params.id}/tasks`, {
@@ -330,7 +332,7 @@ export default function ServerDetailsPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred while sending the command.');
+      toast.error('An error occurred while sending the command.');
       if (action === 'docker_logs') {
         setLogsModal(prev => ({...prev, loading: false, logs: 'The API request failed.'}));
       }
@@ -470,10 +472,16 @@ export default function ServerDetailsPage() {
       toast.error(`Script Library requires Agent ${MIN_SCRIPT_LIBRARY_AGENT_VERSION} or newer${reportedAgentVersion ? ` (current ${reportedAgentVersion})` : ''}`);
       return;
     }
-    if (script.requires_confirmation && !window.confirm(`Run "${script.name}" on ${server.name}? This action is audited and limited to the allowlisted command.`)) {
+    if (script.requires_confirmation) {
+      setPendingRunScript({ script, idempotencyKey });
       return;
     }
+    void executeRunScript(script, idempotencyKey);
+  };
 
+  const executeRunScript = async (script: ScriptPolicy, idempotencyKey: string) => {
+    if (!server) return;
+    setPendingRunScript(null);
     setScriptRuns(current => ({
       ...current,
       [script.id]: { status: 'pending', result: 'Queued. Waiting for the agent to claim the task…' },
@@ -1788,6 +1796,19 @@ export default function ServerDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* Run Script Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(pendingRunScript)}
+        title="Confirm Script Execution"
+        message={`Run "${pendingRunScript?.script.name}" on ${server?.name}? This action is audited and will execute the pre-allowlisted command on the target host.`}
+        confirmText="Run Script"
+        variant="warning"
+        onConfirm={() => {
+          if (pendingRunScript) void executeRunScript(pendingRunScript.script, pendingRunScript.idempotencyKey);
+        }}
+        onCancel={() => setPendingRunScript(null)}
+      />
     </div>
   );
 }

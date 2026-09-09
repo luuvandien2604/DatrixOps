@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface RuleChannel {
   id: string;
@@ -170,6 +171,12 @@ export default function AlertsPage() {
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Delete Confirm Modal states
+  const [deleteRuleTarget, setDeleteRuleTarget] = useState<AlertRule | null>(null);
+  const [deleteChannelTarget, setDeleteChannelTarget] = useState<AlertChannel | null>(null);
+  const [deletingRule, setDeletingRule] = useState(false);
+  const [deletingChannel, setDeletingChannel] = useState(false);
 
   // Rules Tab Filter States
   const [ruleStatusFilter, setRuleStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
@@ -607,53 +614,52 @@ export default function AlertsPage() {
     }
   };
 
-  const deleteRule = async (id: string) => {
+  const confirmDeleteRule = async () => {
+    if (!deleteRuleTarget) return;
     if (isViewer) {
       setErrorMessage('Deleting alert rules requires Admin or Operator role.');
+      setDeleteRuleTarget(null);
       return;
     }
-    if (!confirm('Are you sure you want to delete this alert rule?')) return;
+    setDeletingRule(true);
     setErrorMessage('');
 
     try {
-      await apiClient(`/alerts/rules/${id}`, { method: 'DELETE' });
-      setRules((current) => current.filter((rule) => rule.id !== id));
-      setSuccessMessage('Alert rule deleted.');
+      await apiClient(`/alerts/rules/${deleteRuleTarget.id}`, { method: 'DELETE' });
+      setRules((current) => current.filter((rule) => rule.id !== deleteRuleTarget.id));
+      setSuccessMessage(`Alert rule "${deleteRuleTarget.name}" deleted.`);
+      setDeleteRuleTarget(null);
     } catch (error) {
       console.error(error);
       setErrorMessage(getApiErrorMessage(error, 'Unable to delete alert rule.'));
+    } finally {
+      setDeletingRule(false);
     }
   };
 
-  const deleteChannel = async (id: string) => {
+  const confirmDeleteChannel = async () => {
+    if (!deleteChannelTarget) return;
     if (isViewer) {
       setErrorMessage('Deleting notification channels requires Admin or Operator role.');
+      setDeleteChannelTarget(null);
       return;
     }
-    const channel = channels.find((item) => item.id === id);
-    if (!channel) return;
-
-    if ((channel.usage_count ?? 0) > 0) {
-      setSuccessMessage('');
-      setErrorMessage(
-        `This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`,
-      );
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to delete notification channel "${channel.name}"?`)) return;
+    setDeletingChannel(true);
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
-      await apiClient(`/alerts/channels/${id}`, { method: 'DELETE' });
-      setChannels((current) => current.filter((item) => item.id !== id));
-      setSelectedChannelIds((current) => current.filter((channelId) => channelId !== id));
-      setSuccessMessage('Notification channel deleted.');
+      await apiClient(`/alerts/channels/${deleteChannelTarget.id}`, { method: 'DELETE' });
+      setChannels((current) => current.filter((item) => item.id !== deleteChannelTarget.id));
+      setSelectedChannelIds((current) => current.filter((channelId) => channelId !== deleteChannelTarget.id));
+      setSuccessMessage(`Notification channel "${deleteChannelTarget.name}" deleted.`);
+      setDeleteChannelTarget(null);
     } catch (error) {
       console.error(error);
       await Promise.all([fetchRules(), fetchChannels(), fetchServers()]);
       setErrorMessage(getApiErrorMessage(error, 'Unable to delete notification channel.'));
+    } finally {
+      setDeletingChannel(false);
     }
   };
 
@@ -716,20 +722,24 @@ export default function AlertsPage() {
       {(errorMessage || successMessage) && (
         <div
           role="status"
-          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium shadow-sm transition-all animate-in fade-in ${
+          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm transition-all animate-in fade-in ${
             errorMessage
-              ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-700/60 dark:bg-rose-950/50 dark:text-rose-100'
+              : 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-100'
           }`}
         >
           <div className="flex items-center gap-2.5">
-            {errorMessage ? <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />}
+            {errorMessage ? (
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-700 dark:text-rose-400" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+            )}
             <span>{errorMessage || successMessage}</span>
           </div>
           <button
             type="button"
             onClick={() => { setErrorMessage(''); setSuccessMessage(''); }}
-            className="text-xs font-semibold underline opacity-70 hover:opacity-100"
+            className="text-xs font-bold underline text-slate-700 hover:text-black dark:text-slate-300 dark:hover:text-white"
           >
             Dismiss
           </button>
@@ -859,9 +869,7 @@ export default function AlertsPage() {
                 <option value="disabled">Disabled only ({rules.filter((r) => !r.enabled).length})</option>
               </select>
             </div>
-          </div>
-
-          {/* Rules Full-Width List */}
+          </div>          {/* Rules Full-Width List */}
           <div className="space-y-3">
             {filteredRules.map((rule) => {
               const isOffline = rule.metric === 'status';
@@ -873,25 +881,25 @@ export default function AlertsPage() {
               return (
                 <div
                   key={rule.id}
-                  className={`flex flex-col gap-4 rounded-xl border p-4 transition-all sm:flex-row sm:items-center sm:justify-between ${
+                  className={`flex flex-col gap-3 rounded-xl border p-4 transition-all sm:flex-row sm:items-center sm:justify-between ${
                     rule.enabled
                       ? 'border-[var(--border-color)] bg-[var(--background-card)] hover:shadow-sm'
                       : 'border-[var(--border-color)]/50 bg-[var(--background-card)]/50 opacity-75'
                   }`}
                 >
-                  {/* Left: Icon & Info */}
-                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                  {/* Left: Icon & Streamlined Info */}
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     {/* Themed Icon */}
-                    <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                       isOffline
-                        ? 'bg-cyan-500/15 text-cyan-500'
+                        ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300'
                         : isDocker
-                          ? 'bg-blue-500/15 text-blue-500'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
                           : isService
-                            ? 'bg-purple-500/15 text-purple-500'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
                             : (isWebsite || isSSL)
-                              ? 'bg-emerald-500/15 text-emerald-500'
-                              : 'bg-amber-500/15 text-amber-500'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                     }`}>
                       {isOffline && <Server className="h-5 w-5" />}
                       {isDocker && <Box className="h-5 w-5" />}
@@ -901,92 +909,78 @@ export default function AlertsPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      {/* Name & Badges */}
+                      {/* Row 1: Name & Badges */}
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-semibold text-[var(--foreground)] truncate">{rule.name}</h4>
+                        <h4 className="font-bold text-[var(--foreground)] truncate text-sm">{rule.name}</h4>
+
+                        {/* Status Badge */}
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
                             rule.enabled
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                              ? 'bg-emerald-100/90 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                              : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                           }`}
                         >
                           {rule.enabled ? 'Active' : 'Disabled'}
                         </span>
 
-                        {/* Category Badge */}
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        {/* Category / Condition Badge */}
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
                           isOffline
-                            ? 'bg-cyan-500/15 text-cyan-500 border border-cyan-500/30'
+                            ? 'bg-cyan-100/80 text-cyan-900 border-cyan-300 dark:bg-cyan-950/60 dark:text-cyan-200 dark:border-cyan-800'
                             : isDocker
-                              ? 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
+                              ? 'bg-blue-100/80 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800'
                               : isService
-                                ? 'bg-purple-500/15 text-purple-500 border border-purple-500/30'
+                                ? 'bg-purple-100/80 text-purple-900 border-purple-300 dark:bg-purple-950/60 dark:text-purple-200 dark:border-purple-800'
                                 : (isWebsite || isSSL)
-                                  ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                                  : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                                  ? 'bg-emerald-100/80 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                                  : 'bg-amber-100/80 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
                         }`}>
-                          {isOffline && 'Server Offline'}
+                          {isOffline && `Server Offline (${rule.duration_minutes}m)`}
                           {isDocker && `Docker: ${rule.target_name || '*'}`}
                           {isService && `Service: ${rule.target_name || '*'}`}
                           {isWebsite && 'Website DOWN'}
                           {isSSL && `SSL Expiry (≤ ${rule.threshold || 14}d)`}
-                          {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}%`}
+                          {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m)`}
                         </span>
                       </div>
 
-                      {/* Rule Trigger Description */}
-                      <p className="mt-1 text-xs text-[var(--color-muted)]">
-                        {isOffline
-                          ? `Trigger alert when server stops reporting heartbeats for more than ${rule.duration_minutes} min`
-                          : isDocker
-                            ? `Alert when Docker container "${rule.target_name || '*'}" is stopped (exited/dead) or unhealthy`
-                            : isService
-                              ? `Alert when systemd service "${rule.target_name || '*'}" is not active (running)`
-                              : isWebsite
-                                ? `Alert immediately when website "${rule.target_name || 'All monitored websites'}" is unreachable or returns HTTP error`
-                                : isSSL
-                                  ? `Alert when SSL certificate for "${rule.target_name || 'All monitored websites'}" has ${rule.threshold || 14} days or less remaining`
-                                  : `Alert when ${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% continuously for ${rule.duration_minutes} min`}
-                      </p>
-
-                      {/* Meta Tags */}
-                      <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs">
-                        <span className="flex items-center gap-1 font-medium text-[var(--foreground)]">
+                      {/* Row 2: Target, Repeat & Channel Chips */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs">
+                        <span className="flex items-center gap-1 font-semibold text-[var(--foreground)] opacity-90">
                           {(isWebsite || isSSL) ? (
                             <>
-                              <Globe2 className="h-3.5 w-3.5 text-emerald-500" />
-                              {rule.target_name ? `Website: ${rule.target_name}` : 'Applies to: All websites'}
+                              <Globe2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              {rule.target_name ? rule.target_name : 'All websites'}
                             </>
                           ) : (
                             <>
-                              <Server className="h-3.5 w-3.5 text-blue-500" />
-                              {rule.server_name ? `Server: ${rule.server_name}` : 'Applies to: All servers'}
+                              <Server className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              {rule.server_name ? rule.server_name : 'All servers'}
                             </>
                           )}
                         </span>
 
                         {rule.repeat_interval_minutes && rule.repeat_interval_minutes > 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[11px] font-semibold text-purple-400">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-300 bg-indigo-100/80 px-2 py-0.5 text-[10px] font-bold text-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-200 dark:border-indigo-800">
                             <Clock className="h-3 w-3" />
-                            Repeat every {rule.repeat_interval_minutes}m
+                            Repeat {rule.repeat_interval_minutes}m
                           </span>
                         ) : null}
 
                         {/* Linked Channels */}
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1">
                           {(rule.channels ?? []).length > 0 ? (
                             rule.channels.map((channel) => (
                               <span
                                 key={channel.id}
-                                className="inline-flex items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-500 uppercase"
+                                className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-100/80 px-2 py-0.5 text-[10px] font-bold text-sky-900 uppercase dark:bg-sky-950/60 dark:text-sky-200 dark:border-sky-800"
                               >
-                                <CheckCircle2 className="h-3 w-3" />
                                 {channel.name} ({channel.type})
                               </span>
                             ))
                           ) : (
-                            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-500">
+                            <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
                               Dashboard only
                             </span>
                           )}
@@ -996,16 +990,16 @@ export default function AlertsPage() {
                   </div>
 
                   {/* Right: Actions */}
-                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
                     {/* EDIT RULE BUTTON */}
                     <button
                       type="button"
                       disabled={isViewer}
                       onClick={() => openEditModal(rule)}
                       title={isViewer ? 'Editing rules requires Operator or Admin role' : 'Edit alert rule'}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--border-color)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs font-bold text-[var(--foreground)] transition hover:bg-[var(--border-color)] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Pencil className="h-3.5 w-3.5 text-blue-400" />
+                      <Pencil className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
                       Edit
                     </button>
 
@@ -1015,14 +1009,14 @@ export default function AlertsPage() {
                       disabled={testingRuleId === rule.id || !rule.channels || rule.channels.length === 0}
                       onClick={() => void testAlertRule(rule.id, rule.name)}
                       title="Send a simulated test alert for this rule to linked channels"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-500 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-400/50 bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-700/60 px-3 py-1.5 text-xs font-bold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {testingRuleId === rule.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Send className="h-3.5 w-3.5" />
                       )}
-                      Test Alert
+                      Test
                     </button>
 
                     {/* SWITCH TOGGLE */}
@@ -1033,7 +1027,7 @@ export default function AlertsPage() {
                       onClick={() => toggleRule(rule.id, rule.enabled)}
                       title={rule.enabled ? 'Click to disable alert' : 'Click to enable alert'}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        rule.enabled ? 'bg-emerald-500' : 'bg-slate-700'
+                        rule.enabled ? 'bg-emerald-600' : 'bg-slate-400 dark:bg-slate-700'
                       }`}
                     >
                       <span
@@ -1048,8 +1042,9 @@ export default function AlertsPage() {
                     <button
                       type="button"
                       aria-label={`Delete rule ${rule.name}`}
-                      onClick={() => deleteRule(rule.id)}
-                      className="p-1.5 text-rose-500 transition hover:bg-rose-500/10 rounded-lg"
+                      onClick={() => setDeleteRuleTarget(rule)}
+                      className="p-1.5 text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/40 rounded-lg transition"
+                      title="Delete rule"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -1812,8 +1807,14 @@ export default function AlertsPage() {
 
                     <button
                       type="button"
-                      onClick={() => deleteChannel(channel.id)}
-                      className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"
+                      onClick={() => {
+                        if (channel.usage_count && channel.usage_count > 0) {
+                          setErrorMessage(`This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`);
+                          return;
+                        }
+                        setDeleteChannelTarget(channel);
+                      }}
+                      className="p-1.5 text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/40 rounded-lg transition"
                       title="Delete channel"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1973,14 +1974,14 @@ export default function AlertsPage() {
                               Unread
                             </span>
                           )}
-                          <span className={`rounded-full px-3.5 py-1 text-xs font-semibold tracking-wide ${
+                          <span className={`rounded-full px-3.5 py-1 text-xs font-bold tracking-wide border ${
                             isFiring
-                              ? 'bg-rose-500/10 text-rose-600 dark:bg-[#3f191f] dark:text-[#f87171] border border-rose-500/30 dark:border-rose-900/60'
+                              ? 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-[#3f191f] dark:text-[#f87171] dark:border-rose-900/60'
                               : isResolved
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:bg-[#133827] dark:text-[#34d399] border border-emerald-500/30 dark:border-emerald-900/60'
+                                ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-[#133827] dark:text-[#34d399] dark:border-emerald-900/60'
                                 : isReminder
-                                  ? 'bg-amber-500/10 text-amber-600 dark:bg-[#3c2a10] dark:text-[#fbbf24] border border-amber-500/30 dark:border-amber-900/60'
-                                  : 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-500/30 dark:border-blue-500/40'
+                                  ? 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-[#3c2a10] dark:text-[#fbbf24] dark:border-amber-900/60'
+                                  : 'bg-blue-100/90 text-blue-900 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40'
                           }`}>
                             {isFiring ? 'Failed' : isResolved ? 'Active' : isReminder ? 'Reminder' : 'Test'}
                           </span>
@@ -2274,6 +2275,30 @@ export default function AlertsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Rule Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteRuleTarget)}
+        title="Delete Alert Rule"
+        message={`Are you sure you want to delete alert rule "${deleteRuleTarget?.name}"? You will no longer receive notifications for this rule.`}
+        confirmText="Delete Rule"
+        variant="danger"
+        loading={deletingRule}
+        onConfirm={() => void confirmDeleteRule()}
+        onCancel={() => setDeleteRuleTarget(null)}
+      />
+
+      {/* Delete Channel Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteChannelTarget)}
+        title="Delete Notification Channel"
+        message={`Are you sure you want to delete notification channel "${deleteChannelTarget?.name}"? Any rules using it will no longer send notifications here.`}
+        confirmText="Delete Channel"
+        variant="danger"
+        loading={deletingChannel}
+        onConfirm={() => void confirmDeleteChannel()}
+        onCancel={() => setDeleteChannelTarget(null)}
+      />
     </div>
   );
 }

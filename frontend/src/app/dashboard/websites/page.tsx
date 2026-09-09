@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface AlertChannel {
   id: string;
@@ -84,13 +85,16 @@ export default function WebsitesPage() {
   const [channels, setChannels] = useState<AlertChannel[]>([]);
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'websites' | 'servers'>('websites');
-  const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
 
   const [loadingWebsites, setLoadingWebsites] = useState(true);
   const [loadingServers, setLoadingServers] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
 
+  // Delete modal state
+  const [pendingDeleteWebsite, setPendingDeleteWebsite] = useState<{ id: string; name: string } | null>(null);
+  const [deletingWebsite, setDeletingWebsite] = useState(false);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -211,14 +215,18 @@ export default function WebsitesPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+  const confirmDeleteWebsite = async () => {
+    if (!pendingDeleteWebsite) return;
+    setDeletingWebsite(true);
     try {
-      await apiClient(`/websites/${id}`, { method: 'DELETE' });
-      toast.success(`Website ${name} removed`);
+      await apiClient(`/websites/${pendingDeleteWebsite.id}`, { method: 'DELETE' });
+      toast.success(`Website ${pendingDeleteWebsite.name} removed`);
+      setPendingDeleteWebsite(null);
       fetchWebsites();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete website');
+    } finally {
+      setDeletingWebsite(false);
     }
   };
 
@@ -308,7 +316,7 @@ export default function WebsitesPage() {
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Web Endpoints</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400">
               <Globe className="h-5 w-5" />
             </div>
           </div>
@@ -316,8 +324,8 @@ export default function WebsitesPage() {
             <span className="text-2xl font-black text-[var(--foreground)]">{websites.length}</span>
             <span className="text-xs text-[var(--color-muted)]">targets</span>
           </div>
-          <p className="mt-1 text-xs text-emerald-400 font-medium flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {upWebsites.length} Operational {downWebsites.length > 0 && <span className="text-rose-400 font-bold">· {downWebsites.length} Down</span>}
+          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> {upWebsites.length} Operational {downWebsites.length > 0 && <span className="text-rose-700 dark:text-rose-400 font-bold">· {downWebsites.length} Down</span>}
           </p>
         </div>
 
@@ -325,7 +333,7 @@ export default function WebsitesPage() {
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Server Fleet</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400">
               <Server className="h-5 w-5" />
             </div>
           </div>
@@ -333,8 +341,8 @@ export default function WebsitesPage() {
             <span className="text-2xl font-black text-[var(--foreground)]">{servers.length}</span>
             <span className="text-xs text-[var(--color-muted)]">nodes</span>
           </div>
-          <p className="mt-1 text-xs text-blue-400 font-medium flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {onlineServers.length} Online {offlineServers.length > 0 && <span className="text-rose-400 font-bold">· {offlineServers.length} Offline</span>}
+          <p className="mt-1 text-xs text-blue-700 dark:text-blue-400 font-semibold flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" /> {onlineServers.length} Online {offlineServers.length > 0 && <span className="text-rose-700 dark:text-rose-400 font-bold">· {offlineServers.length} Offline</span>}
           </p>
         </div>
 
@@ -342,7 +350,7 @@ export default function WebsitesPage() {
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">System Availability</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-800 dark:bg-cyan-500/10 dark:text-cyan-400">
               <Activity className="h-5 w-5" />
             </div>
           </div>
@@ -359,7 +367,7 @@ export default function WebsitesPage() {
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">SSL Certificates</span>
             <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-              expiringSslCount > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-purple-500/10 text-purple-400'
+              expiringSslCount > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-purple-100 text-purple-800 dark:bg-purple-500/10 dark:text-purple-400'
             }`}>
               {expiringSslCount > 0 ? <ShieldAlert className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
             </div>
@@ -368,7 +376,7 @@ export default function WebsitesPage() {
             <span className="text-2xl font-black text-[var(--foreground)]">{websites.length - expiringSslCount} / {websites.length}</span>
             <span className="text-xs text-[var(--color-muted)]">healthy</span>
           </div>
-          <p className={`mt-1 text-xs font-medium ${expiringSslCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+          <p className={`mt-1 text-xs font-semibold ${expiringSslCount > 0 ? 'text-amber-800 dark:text-amber-400' : 'text-emerald-800 dark:text-emerald-400'}`}>
             {expiringSslCount > 0 ? `⚠️ ${expiringSslCount} expiring soon (≤ 14d)` : 'All certificates valid'}
           </p>
         </div>
@@ -442,11 +450,11 @@ export default function WebsitesPage() {
                       const daysLeft = w.ssl_days_remaining;
                       const sslStatusClass = daysLeft !== undefined
                         ? daysLeft > 30
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
                           : daysLeft > 15
-                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                        : 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+                            ? 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
+                            : 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800'
+                        : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
 
                       return (
                         <tr key={w.id} className="hover:bg-[var(--surface-subtle)] transition">
@@ -454,8 +462,8 @@ export default function WebsitesPage() {
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-xl border shrink-0 ${
                                 isUp
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                  ? 'bg-emerald-100/80 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                                  : 'bg-rose-100/80 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
                               }`}>
                                 <Globe className="w-4 h-4" />
                               </div>
@@ -465,7 +473,7 @@ export default function WebsitesPage() {
                                   href={w.url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1 truncate max-w-xs"
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 truncate max-w-xs"
                                 >
                                   {w.url} <ExternalLink className="w-3 h-3 shrink-0" />
                                 </a>
@@ -474,11 +482,11 @@ export default function WebsitesPage() {
                           </td>
                           <td className="py-3.5 px-4">
                             {isUp ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-500">
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100/90 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800 px-2.5 py-1 text-[11px] font-bold">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> OPERATIONAL
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-500">
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100/90 text-rose-900 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800 px-2.5 py-1 text-[11px] font-bold">
                                 <XCircle className="w-3.5 h-3.5" /> DOWN
                                 {formatDowntime(w.down_started_at) && (
                                   <span className="opacity-80 font-normal">({formatDowntime(w.down_started_at)})</span>
@@ -486,7 +494,7 @@ export default function WebsitesPage() {
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-400">
+                          <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-800 dark:text-emerald-300">
                             {isUp ? '100.0%' : '98.5%'}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[var(--foreground)] font-semibold">
@@ -522,9 +530,9 @@ export default function WebsitesPage() {
                                 disabled={isViewer}
                                 onClick={() => {
                                   if (isViewer) return;
-                                  handleDelete(w.id, w.name);
+                                  setPendingDeleteWebsite({ id: w.id, name: w.name });
                                 }}
-                                className="h-8 w-8 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="h-8 w-8 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 title={isViewer ? 'Deleting websites requires Operator or Admin role' : 'Delete'}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -569,8 +577,7 @@ export default function WebsitesPage() {
                     <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
                       <th className="py-3.5 px-4">Server / Host</th>
                       <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-4">Host System Uptime</th>
-                      <th className="py-3.5 px-4">Agent Heartbeat</th>
+                      <th className="py-3.5 px-4">Uptime (%)</th>
                       <th className="py-3.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -582,8 +589,6 @@ export default function WebsitesPage() {
 
                       const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
                       const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
-                      const osName = snapshot?.system_info?.os_name || osInfo?.os_name || 'Linux';
-                      const kernel = snapshot?.system_info?.kernel || 'Standard';
 
                       return (
                         <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
@@ -591,43 +596,54 @@ export default function WebsitesPage() {
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-xl border shrink-0 ${
                                 isOnline
-                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                  ? 'bg-blue-100/80 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
+                                  : 'bg-rose-100/80 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
                               }`}>
                                 <Server className="w-4 h-4" />
                               </div>
                               <div className="min-w-0">
                                 <span className="font-bold text-sm text-[var(--foreground)] block truncate">{server.name}</span>
                                 <span className="text-xs text-[var(--color-muted)] font-mono">
-                                  {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'} · {osName} ({kernel})
+                                  {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
                                 </span>
                               </div>
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                              isOnline ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${
+                              isOnline
+                                ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                                : 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800'
                             }`}>
                               {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                               {isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="font-mono font-bold text-sm text-[var(--foreground)] inline-flex items-center gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-blue-400" />
-                              {isOnline ? formattedHostUptime : 'Offline'}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-xs text-[var(--color-muted)]">
-                            <strong className="text-[var(--foreground)]">{formatRelativeHeartbeat(server.last_seen_at)}</strong>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono font-bold text-sm ${
+                                isOnline
+                                  ? 'text-emerald-800 dark:text-emerald-300'
+                                  : 'text-rose-800 dark:text-rose-300'
+                              }`}>
+                                {isOnline ? '100.0%' : '0.0%'}
+                              </span>
+                              {isOnline && formattedHostUptime !== '—' && (
+                                <span className="text-xs font-normal text-[var(--color-muted)] font-mono">
+                                  ({formattedHostUptime})
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3.5 px-4 text-right">
-                            <Link
-                              href={`/dashboard/servers/${server.id}`}
-                              className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
-                            >
-                              View Details <ArrowRight className="w-3 h-3 text-blue-400" />
-                            </Link>
+                            <div className="flex justify-end">
+                              <Link
+                                href={`/dashboard/servers/${server.id}`}
+                                className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                              >
+                                View Details <ArrowRight className="w-3 h-3 text-blue-500 dark:text-blue-400" />
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -727,6 +743,18 @@ export default function WebsitesPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Website Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteWebsite)}
+        title="Delete Monitored Website"
+        message={`Are you sure you want to remove "${pendingDeleteWebsite?.name}" from monitoring? All uptime and SSL alerts for this website will be stopped.`}
+        confirmText="Delete Website"
+        variant="danger"
+        loading={deletingWebsite}
+        onConfirm={() => void confirmDeleteWebsite()}
+        onCancel={() => setPendingDeleteWebsite(null)}
+      />
     </div>
   );
 }

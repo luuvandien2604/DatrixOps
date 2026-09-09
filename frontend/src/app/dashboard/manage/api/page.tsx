@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { Key, Plus, Trash2, Copy, Check } from 'lucide-react';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface APIKey {
   id: string;
@@ -19,6 +20,8 @@ export default function APIKeyPage() {
   const [newKeyName, setNewKeyName] = useState('');
   const [generatedKey, setGeneratedKey] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pendingRevokeKey, setPendingRevokeKey] = useState<APIKey | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
   async function fetchKeys() {
     try {
@@ -50,13 +53,17 @@ export default function APIKeyPage() {
     }
   };
 
-  const deleteKey = async (id: string) => {
-    if (!confirm('Are you sure you want to revoke this API Key?')) return;
+  const confirmRevokeKey = async () => {
+    if (!pendingRevokeKey) return;
+    setRevoking(true);
     try {
-      await apiClient(`/apikeys/${id}`, { method: 'DELETE' });
+      await apiClient(`/apikeys/${pendingRevokeKey.id}`, { method: 'DELETE' });
+      setPendingRevokeKey(null);
       void fetchKeys();
     } catch (err) {
       console.error(err);
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -119,12 +126,10 @@ export default function APIKeyPage() {
                     {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'Never'}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      type="button"
-                      onClick={() => deleteKey(k.id)}
-                      className="text-rose-400 hover:text-rose-300 p-2 hover:bg-white/5 rounded-lg transition-colors"
+                    <button
+                      onClick={() => setPendingRevokeKey(k)}
+                      className="p-1.5 hover:bg-rose-500/10 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 rounded transition-colors"
                       title="Revoke Key"
-                      aria-label={`Revoke ${k.name}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -205,6 +210,18 @@ export default function APIKeyPage() {
           </div>
         </div>
       )}
+
+      {/* Revoke API Key Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(pendingRevokeKey)}
+        title="Revoke API Key"
+        message={`Are you sure you want to revoke API key "${pendingRevokeKey?.name}"? Any applications or CI/CD pipelines using this key will immediately lose access.`}
+        confirmText="Revoke Key"
+        variant="danger"
+        loading={revoking}
+        onConfirm={() => void confirmRevokeKey()}
+        onCancel={() => setPendingRevokeKey(null)}
+      />
     </div>
   );
 }
