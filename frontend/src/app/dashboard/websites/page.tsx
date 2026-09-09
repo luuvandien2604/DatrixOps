@@ -441,7 +441,7 @@ export default function WebsitesPage() {
                       <th className="py-3.5 px-4">Uptime (24h)</th>
                       <th className="py-3.5 px-4">Latency</th>
                       <th className="py-3.5 px-4">SSL Certificate</th>
-                      <th className="py-3.5 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
@@ -450,11 +450,11 @@ export default function WebsitesPage() {
                       const daysLeft = w.ssl_days_remaining;
                       const sslStatusClass = daysLeft !== undefined
                         ? daysLeft > 30
-                          ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
                           : daysLeft > 15
-                            ? 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
-                            : 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800'
-                        : 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+                            ? 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
+                            : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
+                        : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
 
                       return (
                         <tr key={w.id} className="hover:bg-[var(--surface-subtle)] transition">
@@ -462,8 +462,8 @@ export default function WebsitesPage() {
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-xl border shrink-0 ${
                                 isUp
-                                  ? 'bg-emerald-100/80 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-                                  : 'bg-rose-100/80 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60'
+                                  : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
                               }`}>
                                 <Globe className="w-4 h-4" />
                               </div>
@@ -482,11 +482,11 @@ export default function WebsitesPage() {
                           </td>
                           <td className="py-3.5 px-4">
                             {isUp ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100/90 text-emerald-900 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800 px-2.5 py-1 text-[11px] font-bold">
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 px-2.5 py-1 text-[11px] font-semibold">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> OPERATIONAL
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100/90 text-rose-900 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800 px-2.5 py-1 text-[11px] font-bold">
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60 px-2.5 py-1 text-[11px] font-semibold">
                                 <XCircle className="w-3.5 h-3.5" /> DOWN
                                 {formatDowntime(w.down_started_at) && (
                                   <span className="opacity-80 font-normal">({formatDowntime(w.down_started_at)})</span>
@@ -494,7 +494,7 @@ export default function WebsitesPage() {
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-800 dark:text-emerald-300">
+                          <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-700 dark:text-emerald-400">
                             {isUp ? '100.0%' : '98.5%'}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[var(--foreground)] font-semibold">
@@ -578,7 +578,7 @@ export default function WebsitesPage() {
                       <th className="py-3.5 px-4">Server / Host</th>
                       <th className="py-3.5 px-4">Status</th>
                       <th className="py-3.5 px-4">Uptime (%)</th>
-                      <th className="py-3.5 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-color)]">
@@ -596,8 +596,8 @@ export default function WebsitesPage() {
                             <div className="flex items-center gap-3">
                               <div className={`p-2 rounded-xl border shrink-0 ${
                                 isOnline
-                                  ? 'bg-blue-100/80 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800'
-                                  : 'bg-rose-100/80 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                                  ? 'bg-blue-50 text-blue-600 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
+                                  : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
                               }`}>
                                 <Server className="w-4 h-4" />
                               </div>
@@ -610,10 +610,10 @@ export default function WebsitesPage() {
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
                               isOnline
-                                ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
-                                : 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                                : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
                             }`}>
                               {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
                               {isOnline ? 'ONLINE' : 'OFFLINE'}
@@ -623,8 +623,8 @@ export default function WebsitesPage() {
                             <div className="flex items-center gap-2">
                               <span className={`font-mono font-bold text-sm ${
                                 isOnline
-                                  ? 'text-emerald-800 dark:text-emerald-300'
-                                  : 'text-rose-800 dark:text-rose-300'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
+                                  : 'text-rose-700 dark:text-rose-400'
                               }`}>
                                 {isOnline ? '100.0%' : '0.0%'}
                               </span>

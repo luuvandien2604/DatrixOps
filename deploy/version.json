@@ -1,5 +1,6 @@
 {
-  "version": "1.8.45",
+  "version": "1.8.46",
+  "channel": "stable",
   "agent_version": "1.5.16",
   "agent_release_tag": "agent-v1.5.16",
   "minimum_agent_version": "1.5.2",
