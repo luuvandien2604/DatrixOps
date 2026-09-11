@@ -236,7 +236,14 @@ auto_self_enroll_host() {
     install -d -m 0755 /etc/datrixops
     chmod 0755 /etc/datrixops
     printf 'DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n' "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-    chmod 0644 /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
+
+    # Sync token to .env for backend container
+    if grep -q "^DATRIXOPS_SELF_MONITOR_TOKEN=" "$ENV_FILE"; then
+        sed -i "s|^DATRIXOPS_SELF_MONITOR_TOKEN=.*|DATRIXOPS_SELF_MONITOR_TOKEN=${raw_credential}|" "$ENV_FILE"
+    else
+        printf 'DATRIXOPS_SELF_MONITOR_TOKEN=%s\n' "$raw_credential" >> "$ENV_FILE"
+    fi
 
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
         psql -U datrixops -d datrixops -c "
@@ -400,7 +407,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.46"
+    target_app_ver="1.8.47"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \

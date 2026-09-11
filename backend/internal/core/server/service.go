@@ -112,6 +112,7 @@ func (s *Service) ListServers(ctx context.Context, userID string) ([]*Server, er
 	if err != nil {
 		return nil, err
 	}
+	s.repo.PopulateAvailability30d(ctx, servers)
 	for _, server := range servers {
 		s.decorateAgentRelease(server)
 	}
@@ -182,11 +183,6 @@ func (s *Service) GetServer(ctx context.Context, id, userID string) (*Server, er
 // ListMetrics returns historical metrics for one user-owned server.
 func (s *Service) ListMetrics(ctx context.Context, serverID, userID, timeRange string) ([]*ServerMetric, error) {
 	return s.repo.ListMetrics(ctx, serverID, userID, timeRange)
-}
-
-// ListCronJobs returns Agent-discovered cron jobs for one server.
-func (s *Service) ListCronJobs(ctx context.Context, serverID, userID string) ([]CronJob, error) {
-	return s.repo.ListCronJobs(ctx, serverID, userID)
 }
 
 // GetDashboardOverview returns the aggregated dashboard payload.

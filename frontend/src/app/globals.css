@@ -1351,9 +1351,12 @@ html.light .dashboard-stage main .log-console [class*="hover:bg-slate-900"]:hove
   width: 16px !important;
   height: 16px !important;
   min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  flex-shrink: 0 !important;
   padding: 0 !important;
-  margin: 0;
-  accent-color: #3b82f6;
+  margin: 0 !important;
+  accent-color: #3b82f6 !important;
   cursor: pointer;
 }
 

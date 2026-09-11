@@ -130,16 +130,12 @@ func startSchedulers(db *database.DB, log *slog.Logger, cfg *config.Config) func
 	alertJob := scheduler.NewAlertJob(db, log)
 	alertJob.Start()
 
-	webhookRetryJob := scheduler.NewWebhookRetryJob(db, log)
-	webhookRetryJob.Start()
-
 	retentionJob := scheduler.NewRetentionJob(db, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
 	retentionJob.Start()
 
 	return func() {
 		websiteJob.Stop()
 		alertJob.Stop()
-		webhookRetryJob.Stop()
 		retentionJob.Stop()
 	}
 }

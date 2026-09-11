@@ -59,6 +59,8 @@ interface ServerRecord {
   ip_address?: string;
   last_seen_at?: string;
   created_at: string;
+  availability_30d?: number;
+  downtime_seconds_30d?: number;
   snapshot?: string | ServerSnapshot;
   os_info?: string | {
     os_name?: string;
@@ -266,6 +268,17 @@ export default function WebsitesPage() {
     return `down ${hours}h ${mins % 60}m`;
   };
 
+  const formatDowntimeDuration = (seconds?: number) => {
+    if (!seconds || seconds <= 0) return '0m downtime';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h downtime`;
+    if (h > 0) return `${h}h ${m}m downtime`;
+    if (m > 0) return `${m}m downtime`;
+    return '< 1m downtime';
+  };
+
   // Aggregated KPI numbers
   const upWebsites = websites.filter(w => w.status?.toUpperCase() === 'UP' || w.status?.toLowerCase() === 'online');
   const downWebsites = websites.filter(w => !upWebsites.includes(w));
@@ -273,8 +286,12 @@ export default function WebsitesPage() {
   const offlineServers = servers.filter(s => s.status?.toLowerCase() !== 'online');
 
   const totalMonitored = websites.length + servers.length;
-  const totalOperational = upWebsites.length + onlineServers.length;
-  const overallAvailability = totalMonitored > 0 ? ((totalOperational / totalMonitored) * 100).toFixed(1) : '100.0';
+  const avgServerAvailability = servers.length > 0
+    ? (servers.reduce((acc, s) => acc + (s.availability_30d ?? (s.status?.toLowerCase() === 'online' ? 100 : 0)), 0) / servers.length)
+    : 100;
+  const overallAvailability = totalMonitored > 0
+    ? (((upWebsites.length * 100) + (avgServerAvailability * servers.length)) / (totalMonitored * 100) * 100).toFixed(1)
+    : '100.0';
 
   const expiringSslCount = websites.filter(w => (w.ssl_days_remaining ?? 999) <= 14).length;
 
@@ -577,7 +594,8 @@ export default function WebsitesPage() {
                     <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
                       <th className="py-3.5 px-4">Server / Host</th>
                       <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-4">Uptime (%)</th>
+                      <th className="py-3.5 px-4">Availability (30d)</th>
+                      <th className="py-3.5 px-4">Host Uptime</th>
                       <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
@@ -589,6 +607,10 @@ export default function WebsitesPage() {
 
                       const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
                       const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
+                      const availability = server.availability_30d != null
+                        ? server.availability_30d
+                        : (isOnline ? 100.0 : 0.0);
+                      const downtimeSecs = server.downtime_seconds_30d ?? 0;
 
                       return (
                         <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
@@ -620,19 +642,36 @@ export default function WebsitesPage() {
                             </span>
                           </td>
                           <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className={`font-mono font-bold text-sm ${
-                                isOnline
-                                  ? 'text-emerald-700 dark:text-emerald-400'
-                                  : 'text-rose-700 dark:text-rose-400'
-                              }`}>
-                                {isOnline ? '100.0%' : '0.0%'}
-                              </span>
-                              {isOnline && formattedHostUptime !== '—' && (
-                                <span className="text-xs font-normal text-[var(--color-muted)] font-mono">
-                                  ({formattedHostUptime})
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`font-mono font-bold text-sm ${
+                                  availability >= 99.0
+                                    ? 'text-emerald-700 dark:text-emerald-400'
+                                    : availability >= 95.0
+                                      ? 'text-amber-700 dark:text-amber-400'
+                                      : 'text-rose-700 dark:text-rose-400'
+                                }`}>
+                                  {availability.toFixed(1)}%
                                 </span>
-                              )}
+                              </div>
+                              <span className="text-[11px] text-[var(--color-muted)]">
+                                {downtimeSecs > 0 ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-medium">{formatDowntimeDuration(downtimeSecs)}</span>
+                                ) : (
+                                  <span>100% SLA target</span>
+                                )}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1.5 font-mono text-sm font-semibold text-[var(--foreground)]">
+                                <Clock className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                                {isOnline ? formattedHostUptime : '—'}
+                              </div>
+                              <span className="text-[11px] text-[var(--color-muted)]">
+                                {isOnline ? 'Since last boot' : 'Offline / down'}
+                              </span>
                             </div>
                           </td>
                           <td className="py-3.5 px-4 text-right">

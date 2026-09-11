@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -53,12 +54,12 @@ func CheckSelfMonitorToken(providedToken string) bool {
 	}
 
 	rawToken, _, exists := ReadSelfMonitorToken()
-	if exists && rawToken != "" && providedToken == rawToken {
+	if exists && rawToken != "" && subtle.ConstantTimeCompare([]byte(providedToken), []byte(rawToken)) == 1 {
 		return true
 	}
 
 	if envToken := strings.TrimSpace(os.Getenv("DATRIXOPS_SELF_MONITOR_TOKEN")); envToken != "" {
-		if providedToken == envToken {
+		if subtle.ConstantTimeCompare([]byte(providedToken), []byte(envToken)) == 1 {
 			return true
 		}
 	}

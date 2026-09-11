@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -136,7 +137,25 @@ func ValidateDiscordWebhookURL(rawURL string) error {
 	return nil
 }
 
+var telegramBotTokenPattern = regexp.MustCompile(`^[0-9]{8,12}:[A-Za-z0-9_-]{35}$`)
+
+// ValidateTelegramBotToken verifies standard Telegram bot token syntax.
+func ValidateTelegramBotToken(token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("bot token is required")
+	}
+	if !telegramBotTokenPattern.MatchString(token) {
+		return fmt.Errorf("invalid bot token format")
+	}
+	return nil
+}
+
 func SendTelegram(token, chatID, message string) error {
+	token = strings.TrimSpace(token)
+	if err := ValidateTelegramBotToken(token); err != nil {
+		return fmt.Errorf("validate telegram bot token: %w", err)
+	}
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
 	payload, _ := json.Marshal(map[string]string{
 		"chat_id":    chatID,
@@ -144,10 +163,13 @@ func SendTelegram(token, chatID, message string) error {
 		"parse_mode": "HTML",
 	})
 
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := webhookClient.Do(req)
 	if err != nil {
 		return err
 	}

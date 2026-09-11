@@ -23,7 +23,7 @@ type Container interface {
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	repo := NewRepository(db)
 	svc := NewService(repo, cfg.JWTSecret)
-	h := NewHandler(svc)
+	h := NewHandler(svc, db)
 
 	// Login is deliberately tighter because each bcrypt comparison is costly.
 	loginLimiter := middleware.NewRateLimiter(rate.Limit(1), 5)

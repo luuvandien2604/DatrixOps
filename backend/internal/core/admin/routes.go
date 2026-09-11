@@ -17,7 +17,4 @@ func RegisterRoutes(mux *http.ServeMux, handler *Handler, db *database.DB, jwtSe
 	mux.Handle("PUT /api/v1/admin/users/{id}/role", withAdmin(handler.UpdateUserRole))
 	mux.Handle("PUT /api/v1/admin/users/{id}/password", withAdmin(handler.UpdateUserPassword))
 	mux.Handle("DELETE /api/v1/admin/users/{id}", withAdmin(handler.DeleteUser))
-
-	mux.Handle("GET /api/v1/admin/servers", withAdmin(handler.ListFleetServers))
-	mux.Handle("POST /api/v1/admin/servers/{id}/tasks", withAdmin(handler.QueueFleetTask))
 }

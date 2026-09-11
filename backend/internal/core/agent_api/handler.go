@@ -8,15 +8,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
@@ -32,29 +31,15 @@ type Handler struct {
 	desiredAgentVersion string
 	agentReleaseURL     string
 	agentReleaseLayout  string
-	dispatcher          *webhook.Dispatcher
-	webhookQueue        chan queuedWebhook
-}
-
-type queuedWebhook struct {
-	userID    string
-	eventType string
-	payload   webhook.EventPayload
 }
 
 func NewHandler(db *database.DB, desiredAgentVersion, agentReleaseURL, agentReleaseLayout string) *Handler {
-	handler := &Handler{
+	return &Handler{
 		db:                  db,
 		desiredAgentVersion: desiredAgentVersion,
 		agentReleaseURL:     strings.TrimRight(strings.TrimSpace(agentReleaseURL), "/"),
 		agentReleaseLayout:  strings.TrimSpace(agentReleaseLayout),
-		dispatcher:          webhook.NewDispatcher(db),
-		webhookQueue:        make(chan queuedWebhook, 256),
 	}
-	for range 4 {
-		go handler.runWebhookWorker()
-	}
-	return handler
 }
 
 func (h *Handler) GetDesiredAgentVersion() string {
@@ -153,15 +138,6 @@ type ServerTask struct {
 	Type           string `json:"type"`
 	Payload        string `json:"payload"` // JSON string
 	TimeoutSeconds int    `json:"timeout_seconds"`
-}
-
-type CronExecutionReportRequest struct {
-	ExternalID  string     `json:"external_id"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Status      string     `json:"status"`
-	ExitCode    *int       `json:"exit_code,omitempty"`
-	Output      string     `json:"output,omitempty"`
 }
 
 type EnrollmentRequest struct {
@@ -534,13 +510,6 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Snapshot != nil && req.Snapshot.CronDiscoveryComplete {
-		_ = h.persistCronJobs(ctx, serverID, req.Snapshot.CronJobs)
-	}
-	if req.Snapshot != nil {
-		h.dispatchServiceStateChanges(ctx, userID, serverID, serverName, req.Snapshot.Services)
-	}
-
 	// Insert into server_metrics
 	_, err = h.db.Pool.Exec(ctx,
 		`INSERT INTO server_metrics (server_id, cpu_usage, memory_used, memory_total, net_in, net_out, disk_read, disk_write)
@@ -560,7 +529,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	if req.Version != "" &&
 		desiredVer != "" &&
 		compareAgentVersions(req.Version, desiredVer) == 0 {
-		rows, _ := h.db.Pool.Query(ctx,
+		_, _ = h.db.Pool.Exec(ctx,
 			`UPDATE server_tasks
 			 SET status = 'completed',
 			     result = jsonb_build_object('output', $2::text),
@@ -568,19 +537,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			     updated_at = NOW()
 			 WHERE server_id = $1
 			   AND type = 'agent_update'
-			   AND status = 'processing'
-			 RETURNING id`,
+			   AND status = 'processing'`,
 			serverID, "Agent heartbeat confirmed the new version: "+req.Version,
 		)
-		if rows != nil {
-			for rows.Next() {
-				var taskID string
-				if err := rows.Scan(&taskID); err == nil {
-					h.dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, "agent.update_resolved", req.Version, "")
-				}
-			}
-			rows.Close()
-		}
 	}
 
 	// Auto-update remains a normal signed agent_update task. The Agent never
@@ -771,258 +730,10 @@ func servicesForOS(osName, osFamily string, services []ServiceStatus) []ServiceS
 	return filtered
 }
 
-func (h *Handler) persistCronJobs(ctx context.Context, serverID string, jobs []CronJob) error {
-	tx, err := h.db.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	if _, err := tx.Exec(ctx,
-		`UPDATE cron_jobs SET enabled = FALSE, updated_at = NOW() WHERE server_id = $1`,
-		serverID,
-	); err != nil {
-		return err
-	}
-	for _, job := range jobs {
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO cron_jobs
-				(server_id, external_id, source, owner, schedule, command, enabled,
-				 last_run_at, next_run_at, last_status, discovered_at, updated_at)
-			 VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, NULLIF($10, ''), NOW(), NOW())
-			 ON CONFLICT (server_id, external_id) DO UPDATE SET
-				source = EXCLUDED.source,
-				owner = EXCLUDED.owner,
-				schedule = EXCLUDED.schedule,
-				command = EXCLUDED.command,
-				enabled = EXCLUDED.enabled,
-				last_run_at = COALESCE(EXCLUDED.last_run_at, cron_jobs.last_run_at),
-				next_run_at = EXCLUDED.next_run_at,
-				last_status = COALESCE(EXCLUDED.last_status, cron_jobs.last_status),
-				discovered_at = NOW(),
-				updated_at = NOW()`,
-			serverID, job.ID, job.Source, job.Owner, job.Schedule, job.Command, job.Enabled,
-			job.LastRunAt, job.NextRunAt, job.LastStatus,
-		); err != nil {
-			return err
-		}
-	}
-	return tx.Commit(ctx)
-}
-
-func (h *Handler) ReportCronExecution(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	agentToken, ok := agentTokenFromRequest(r)
-	if !ok {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid Authorization header format")
-		return
-	}
-
-	var req CronExecutionReportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
-		return
-	}
-
-	req.ExternalID = strings.TrimSpace(req.ExternalID)
-	if len(req.ExternalID) != 64 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "external_id must be a 64-character cron job identifier")
-		return
-	}
-	if _, err := hex.DecodeString(req.ExternalID); err != nil {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "external_id must be hexadecimal")
-		return
-	}
-	if req.StartedAt.IsZero() {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "started_at is required")
-		return
-	}
-	req.Status = strings.ToLower(strings.TrimSpace(req.Status))
-	switch req.Status {
-	case "completed", "failed", "timed_out":
-	default:
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "status must be completed, failed, or timed_out")
-		return
-	}
-	if req.CompletedAt != nil && req.CompletedAt.Before(req.StartedAt) {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "completed_at must be after started_at")
-		return
-	}
-	if len(req.Output) > 8192 {
-		req.Output = req.Output[:8192]
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	agentTokenHash := hashAgentCredential(agentToken)
-
-	var executionID, cronJobID, serverID, userID, serverName, command, source string
-	err := h.db.Pool.QueryRow(ctx,
-		`WITH server_scope AS (
-		    SELECT id, user_id, name
-		    FROM servers
-		    WHERE agent_token = $1 OR agent_token_hash = $8
-		 ),
-		 target_job AS (
-		    SELECT cron_jobs.id, cron_jobs.command, cron_jobs.source
-		    FROM cron_jobs
-		    JOIN server_scope ON server_scope.id = cron_jobs.server_id
-		    WHERE cron_jobs.external_id = $2
-		 ),
-		 inserted AS (
-		    INSERT INTO cron_executions
-		        (cron_job_id, started_at, completed_at, status, exit_code, output)
-		    SELECT target_job.id, $3, $4, $5, $6, NULLIF($7, '')
-		    FROM target_job
-		    RETURNING id, cron_job_id
-		 ),
-		 updated_job AS (
-		    UPDATE cron_jobs
-		    SET last_run_at = $3,
-		        last_status = $5,
-		        updated_at = NOW()
-		    WHERE id IN (SELECT cron_job_id FROM inserted)
-		    RETURNING id
-		 )
-		 SELECT inserted.id, inserted.cron_job_id, server_scope.id, server_scope.user_id,
-		        server_scope.name, target_job.command, target_job.source
-		 FROM inserted
-		 JOIN updated_job ON updated_job.id = inserted.cron_job_id
-		 JOIN server_scope ON true
-		 JOIN target_job ON target_job.id = inserted.cron_job_id`,
-		agentToken, req.ExternalID, req.StartedAt, req.CompletedAt, req.Status, req.ExitCode, req.Output, agentTokenHash,
-	).Scan(&executionID, &cronJobID, &serverID, &userID, &serverName, &command, &source)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			response.Error(w, http.StatusNotFound, "NOT_FOUND", "Cron job was not found for this agent token")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to record cron execution")
-		return
-	}
-	h.dispatchCronExecutionWebhook(ctx, userID, serverID, serverName, cronJobID, req.ExternalID, source, command, req)
-
-	response.Success(w, http.StatusCreated, map[string]string{"id": executionID})
-}
-
 type ReportTaskRequest struct {
 	TaskID string `json:"task_id"`
 	Status string `json:"status"` // completed, failed
 	Result string `json:"result"`
-}
-
-func (h *Handler) dispatchServiceStateChanges(ctx context.Context, userID, serverID, serverName string, services []ServiceStatus) {
-	for _, service := range services {
-		serviceName := strings.TrimSpace(service.Name)
-		if serviceName == "" || strings.EqualFold(service.Status, "not_installed") {
-			continue
-		}
-
-		state := "up"
-		normalizedStatus := strings.ToLower(strings.TrimSpace(service.Status))
-		switch normalizedStatus {
-		case "running", "active", "ok":
-			state = "up"
-		default:
-			state = "down"
-		}
-
-		changed, err := h.dispatcher.TransitionEventState(ctx, userID, serverID, "service.down", "service:"+service.Source+":"+serviceName, state)
-		if err != nil || !changed || state != "down" {
-			continue
-		}
-
-		payload := webhook.EventPayload{
-			Test: false,
-			Resource: map[string]any{
-				"type":         "service",
-				"server_id":    serverID,
-				"server_name":  serverName,
-				"name":         serviceName,
-				"display_name": service.DisplayName,
-				"manager":      service.Source,
-			},
-			Metadata: map[string]any{
-				"status":     service.Status,
-				"sub_status": service.SubStatus,
-				"startup":    service.StartupType,
-			},
-		}
-		h.enqueueWebhookEvent(userID, "service.down", payload)
-	}
-}
-
-func (h *Handler) dispatchCronExecutionWebhook(ctx context.Context, userID, serverID, serverName, cronJobID, externalID, source, command string, req CronExecutionReportRequest) {
-	state := "ok"
-	if req.Status == "failed" || req.Status == "timed_out" {
-		state = req.Status
-	}
-	changed, err := h.dispatcher.TransitionEventState(ctx, userID, serverID, "cron.failed", "cron:"+externalID, state)
-	if err != nil || !changed || state == "ok" {
-		return
-	}
-
-	payload := webhook.EventPayload{
-		Test: false,
-		Resource: map[string]any{
-			"type":        "cron_job",
-			"id":          cronJobID,
-			"external_id": externalID,
-			"server_id":   serverID,
-			"server_name": serverName,
-			"source":      source,
-		},
-		Metadata: map[string]any{
-			"status":     req.Status,
-			"exit_code":  req.ExitCode,
-			"started_at": req.StartedAt,
-			"command":    command,
-		},
-	}
-	h.enqueueWebhookEvent(userID, "cron.failed", payload)
-}
-
-func (h *Handler) dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, eventType, version, result string) {
-	payload := webhook.EventPayload{
-		Test: false,
-		Resource: map[string]any{
-			"type":        "agent_update",
-			"server_id":   serverID,
-			"server_name": serverName,
-			"task_id":     taskID,
-		},
-		Metadata: map[string]any{
-			"version": version,
-			"result":  truncateForWebhook(result, 512),
-		},
-	}
-	h.enqueueWebhookEvent(userID, eventType, payload)
-}
-
-func (h *Handler) enqueueWebhookEvent(userID, eventType string, payload webhook.EventPayload) {
-	select {
-	case h.webhookQueue <- queuedWebhook{userID: userID, eventType: eventType, payload: payload}:
-	default:
-		slog.Warn("dropping webhook event because the bounded delivery queue is full", "event_type", eventType)
-	}
-}
-
-func (h *Handler) runWebhookWorker() {
-	for job := range h.webhookQueue {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		if err := h.dispatcher.Dispatch(ctx, job.userID, job.eventType, job.payload); err != nil {
-			slog.Warn("webhook delivery failed", "event_type", job.eventType, "error", err)
-		}
-		cancel()
-	}
-}
-
-func truncateForWebhook(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if len(value) <= limit {
-		return value
-	}
-	return value[:limit] + "…"
 }
 
 // ReportTaskResult records an Agent task result. Agent updates remain in
@@ -1119,15 +830,8 @@ func (h *Handler) ReportTaskResult(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to commit task result")
 		return
 	}
-	if taskType == "agent_update" && req.Status == "failed" {
-		h.dispatchAgentUpdateWebhook(userID, serverID, serverName, taskID, "agent.update_failed", h.desiredAgentVersion, req.Result)
-	}
-	if taskType == "script_run" || taskType == "log_read" {
-		action := "COMPLETE_SCRIPT_RUN"
-		if taskType == "log_read" {
-			action = "COMPLETE_LOG_READ"
-		}
-		auditlog.Record(r.Context(), h.db, userID, action, "SERVER", serverID, map[string]any{
+	if taskType == "log_read" {
+		auditlog.Record(r.Context(), h.db, userID, "COMPLETE_LOG_READ", "SERVER", serverID, map[string]any{
 			"task_id":      taskID,
 			"task_type":    taskType,
 			"status":       req.Status,
@@ -1233,6 +937,8 @@ func (h *Handler) ConfirmUninstall(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, map[string]string{"status": req.Status})
 }
 
+var releaseFilenamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+
 // ServeAgentRelease chuyển tiếp các yêu cầu tải manifest, chữ ký và binary của agent
 // tới GitHub Releases tương ứng, đảm bảo tương thích 100% với agent mọi phiên bản.
 func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
@@ -1244,6 +950,11 @@ func (h *Handler) ServeAgentRelease(w http.ResponseWriter, r *http.Request) {
 
 	parts := strings.Split(path, "/")
 	filename := parts[len(parts)-1]
+	if !releaseFilenamePattern.MatchString(filename) || filename == "." || filename == ".." {
+		http.NotFound(w, r)
+		return
+	}
+
 	version := h.GetDesiredAgentVersion()
 	if version == "" {
 		version = "1.5.10"

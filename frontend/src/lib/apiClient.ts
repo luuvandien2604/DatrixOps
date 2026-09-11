@@ -81,19 +81,19 @@ export async function apiClient(endpoint: string, options: ApiOptions = {}) {
 }
 
 export function getUserRole(): string {
-  if (typeof window === 'undefined') return 'admin';
+  if (typeof window === 'undefined') return 'viewer';
   const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-  if (!token) return 'admin';
+  if (!token) return 'viewer';
   
   try {
     const payloadPart = token.split('.')[1];
-    if (!payloadPart) return 'admin';
+    if (!payloadPart) return 'viewer';
     const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
     const json = atob(padded);
     const payload = JSON.parse(json);
-    return payload.role || 'admin';
+    return payload.role || 'viewer';
   } catch {
-    return 'admin';
+    return 'viewer';
   }
 }

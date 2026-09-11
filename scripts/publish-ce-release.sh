@@ -91,8 +91,8 @@ if [[ "$AUTO_YES" != "--yes" ]]; then
     [[ "$answer" =~ ^[Yy]$ ]] || die "release cancelled"
 fi
 
-git add backend/ deploy/ frontend/ .env.example docker-compose.yml docker-compose.prod.yml scripts/
-git commit -m "chore(release): release CE Server v${VERSION} with full features enabled and self-monitor isolation" || info "Nothing new to commit"
+git add agent/ backend/ deploy/ frontend/ .env.example docker-compose.yml docker-compose.prod.yml scripts/
+git commit -m "chore(release): release CE Server v${VERSION} with security hardening and improvements" || info "Nothing new to commit"
 git push origin main
 
 if [[ "$FORCE" == "true" ]]; then

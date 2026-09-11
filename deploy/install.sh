@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.46}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.47}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -727,7 +727,14 @@ auto_self_enroll_host() {
 DATRIXOPS_SERVER_URL=${pub_url}/api/v1
 DATRIXOPS_AGENT_TOKEN=${raw_credential}
 AGENT_ENV
-    chmod 0644 /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
+
+    # Sync token to .env for backend container
+    if grep -q "^DATRIXOPS_SELF_MONITOR_TOKEN=" "$ENV_FILE"; then
+        sed -i "s|^DATRIXOPS_SELF_MONITOR_TOKEN=.*|DATRIXOPS_SELF_MONITOR_TOKEN=${raw_credential}|" "$ENV_FILE"
+    else
+        printf 'DATRIXOPS_SELF_MONITOR_TOKEN=%s\n' "$raw_credential" >> "$ENV_FILE"
+    fi
 
     # Create dedicated self-monitor systemd service
     cat > /etc/systemd/system/datrixops-self-monitor.service <<SERVICE_EOF

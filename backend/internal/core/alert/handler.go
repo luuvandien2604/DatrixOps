@@ -637,6 +637,9 @@ func validateChannel(channel AlertChannel) string {
 		if strings.TrimSpace(botToken) == "" || strings.TrimSpace(chatID) == "" {
 			return "Telegram bot token and chat ID are required"
 		}
+		if err := notifier.ValidateTelegramBotToken(botToken); err != nil {
+			return "Telegram " + err.Error()
+		}
 	case "discord":
 		webhookURL, _ := channel.Config["webhook_url"].(string)
 		if strings.TrimSpace(webhookURL) == "" {

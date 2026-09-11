@@ -226,7 +226,14 @@ repair_self_monitor() {
     mkdir -p /etc/datrixops
     chmod 0755 /etc/datrixops
     printf "DATRIXOPS_SERVER_URL=%s/api/v1\nDATRIXOPS_AGENT_TOKEN=%s\n" "$pub_url" "$raw_credential" > /etc/datrixops/self-monitor.env
-    chmod 0644 /etc/datrixops/self-monitor.env
+    chmod 0600 /etc/datrixops/self-monitor.env
+
+    # Sync token to .env for backend container
+    if grep -q "^DATRIXOPS_SELF_MONITOR_TOKEN=" "$ENV_FILE"; then
+        sed -i "s|^DATRIXOPS_SELF_MONITOR_TOKEN=.*|DATRIXOPS_SELF_MONITOR_TOKEN=${raw_credential}|" "$ENV_FILE"
+    else
+        printf "DATRIXOPS_SELF_MONITOR_TOKEN=%s\n" "$raw_credential" >> "$ENV_FILE"
+    fi
 
     compose exec -T database \
         psql -U datrixops -d datrixops -c "

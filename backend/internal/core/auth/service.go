@@ -81,6 +81,7 @@ type AuthResult struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"` // seconds
+	UserID       string `json:"user_id,omitempty"`
 }
 
 // Login verifies credentials and issues tokens.
@@ -156,5 +157,6 @@ func (s *Service) issueTokens(ctx context.Context, userID, role string) (*AuthRe
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenStr,
 		ExpiresIn:    15 * 60, // 15 minutes in seconds
+		UserID:       userID,
 	}, nil
 }

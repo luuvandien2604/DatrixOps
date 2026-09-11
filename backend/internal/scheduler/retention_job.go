@@ -55,7 +55,6 @@ func (j *RetentionJob) run() {
 	j.deleteBatches(ctx, "server_metrics", "created_at", j.metricsDays)
 	j.deleteBatches(ctx, "website_checks", "checked_at", j.metricsDays)
 	j.deleteBatches(ctx, "dashboard_notifications", "created_at", j.operationalDays)
-	j.deleteBatches(ctx, "system_webhook_deliveries", "created_at", j.operationalDays)
 	j.deleteBatches(ctx, "terminal_sessions", "started_at", j.operationalDays)
 }
 

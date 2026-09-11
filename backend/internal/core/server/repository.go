@@ -5,19 +5,32 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 )
 
+type availabilityEntry struct {
+	availabilityPct float64
+	downtimeSeconds int64
+	cachedAt        time.Time
+}
+
 type Repository struct {
-	db *database.DB
+	db                *database.DB
+	availMu           sync.RWMutex
+	availabilityCache map[string]availabilityEntry
 }
 
 func NewRepository(db *database.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{
+		db:                db,
+		availabilityCache: make(map[string]availabilityEntry),
+	}
 }
 
 type Server struct {
@@ -43,6 +56,8 @@ type Server struct {
 	Region                *string          `json:"region,omitempty"`
 	Environment           *string          `json:"environment,omitempty"`
 	LastSeenAt            *time.Time       `json:"last_seen_at,omitempty"`
+	Availability30d       float64          `json:"availability_30d"`
+	DowntimeSeconds30d    int64            `json:"downtime_seconds_30d"`
 	DeletionStatus        string           `json:"deletion_status"`
 	DeletionRequestedAt   *time.Time       `json:"deletion_requested_at,omitempty"`
 	DeletionError         *string          `json:"deletion_error,omitempty"`
@@ -57,45 +72,6 @@ type AgentUpdateTask struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
-}
-
-type CronJob struct {
-	ID           string          `json:"id"`
-	ExternalID   string          `json:"external_id"`
-	Source       string          `json:"source"`
-	Owner        *string         `json:"owner,omitempty"`
-	Schedule     string          `json:"schedule"`
-	Command      string          `json:"command"`
-	Enabled      bool            `json:"enabled"`
-	LastRunAt    *time.Time      `json:"last_run_at,omitempty"`
-	NextRunAt    *time.Time      `json:"next_run_at,omitempty"`
-	LastStatus   *string         `json:"last_status,omitempty"`
-	DiscoveredAt time.Time       `json:"discovered_at"`
-	Executions   []CronExecution `json:"executions"`
-}
-
-type CronExecution struct {
-	ID          string     `json:"id"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Status      string     `json:"status"`
-	ExitCode    *int       `json:"exit_code,omitempty"`
-	Output      *string    `json:"output,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-}
-
-type ScriptPolicy struct {
-	ID                   string    `json:"id"`
-	Name                 string    `json:"name"`
-	Description          string    `json:"description"`
-	OSFamily             string    `json:"os_family"`
-	Category             string    `json:"category"`
-	RequiresConfirmation bool      `json:"requires_confirmation"`
-	TimeoutSeconds       int       `json:"timeout_seconds"`
-	OutputLimitBytes     int       `json:"output_limit_bytes"`
-	Enabled              bool      `json:"enabled"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type ServerMetric struct {
@@ -490,145 +466,6 @@ func assignAgentUpdateTask(server *Server, raw *string) error {
 	}
 	server.ActiveAgentUpdateTask = &task
 	return nil
-}
-
-// ListCronJobs returns discovered cron jobs for a user-owned server.
-func (r *Repository) ListCronJobs(ctx context.Context, serverID, userID string) ([]CronJob, error) {
-	rows, err := r.db.Pool.Query(ctx,
-		`SELECT job.id, job.external_id, job.source, job.owner, job.schedule,
-		        job.command, job.enabled, job.last_run_at, job.next_run_at,
-		        job.last_status, job.discovered_at,
-		        COALESCE((
-		            SELECT jsonb_agg(
-		                jsonb_build_object(
-		                    'id', recent.id,
-		                    'started_at', recent.started_at,
-		                    'completed_at', recent.completed_at,
-		                    'status', recent.status,
-		                    'exit_code', recent.exit_code,
-		                    'output', recent.output,
-		                    'created_at', recent.created_at
-		                )
-		                ORDER BY recent.started_at DESC
-		            )
-		            FROM (
-		                SELECT execution.id, execution.started_at, execution.completed_at,
-		                       execution.status, execution.exit_code, execution.output, execution.created_at
-		                FROM cron_executions execution
-		                WHERE execution.cron_job_id = job.id
-		                ORDER BY execution.started_at DESC
-		                LIMIT 5
-		            ) recent
-		        ), '[]'::jsonb) AS executions
-		 FROM cron_jobs job
-		 JOIN servers server ON server.id = job.server_id
-		 WHERE job.server_id = $1
-		   AND server.user_id = $2
-		 ORDER BY job.enabled DESC, job.source, job.schedule, job.command`,
-		serverID, userID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list cron jobs: %w", err)
-	}
-	defer rows.Close()
-
-	jobs := make([]CronJob, 0)
-	for rows.Next() {
-		var job CronJob
-		var executionsRaw []byte
-		if err := rows.Scan(
-			&job.ID, &job.ExternalID, &job.Source, &job.Owner, &job.Schedule,
-			&job.Command, &job.Enabled, &job.LastRunAt, &job.NextRunAt,
-			&job.LastStatus, &job.DiscoveredAt, &executionsRaw,
-		); err != nil {
-			return nil, fmt.Errorf("scan cron job: %w", err)
-		}
-		if len(executionsRaw) > 0 {
-			if err := json.Unmarshal(executionsRaw, &job.Executions); err != nil {
-				return nil, fmt.Errorf("decode cron executions: %w", err)
-			}
-		}
-		if job.Executions == nil {
-			job.Executions = make([]CronExecution, 0)
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, rows.Err()
-}
-
-func (r *Repository) ListScripts(ctx context.Context, osFamily string) ([]ScriptPolicy, error) {
-	rows, err := r.db.Pool.Query(ctx, `
-		SELECT id, name, description, os_family, category, requires_confirmation,
-		       timeout_seconds, output_limit_bytes, enabled, created_at, updated_at
-		FROM script_library
-		WHERE enabled = true
-		  AND os_family = $1
-		ORDER BY category, name
-	`, osFamily)
-	if err != nil {
-		return nil, fmt.Errorf("list script library: %w", err)
-	}
-	defer rows.Close()
-
-	scripts := make([]ScriptPolicy, 0)
-	for rows.Next() {
-		var script ScriptPolicy
-		if err := rows.Scan(
-			&script.ID,
-			&script.Name,
-			&script.Description,
-			&script.OSFamily,
-			&script.Category,
-			&script.RequiresConfirmation,
-			&script.TimeoutSeconds,
-			&script.OutputLimitBytes,
-			&script.Enabled,
-			&script.CreatedAt,
-			&script.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan script library: %w", err)
-		}
-		scripts = append(scripts, script)
-	}
-	return scripts, rows.Err()
-}
-
-func (r *Repository) ScriptPolicy(ctx context.Context, rawPayload string) (ScriptPolicy, error) {
-	var payload scriptTaskPayload
-	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
-		return ScriptPolicy{}, fmt.Errorf("invalid script task payload")
-	}
-	payload.ScriptID = strings.TrimSpace(payload.ScriptID)
-	if payload.ScriptID == "" {
-		return ScriptPolicy{}, fmt.Errorf("script_id is required")
-	}
-
-	var script ScriptPolicy
-	err := r.db.Pool.QueryRow(ctx, `
-		SELECT id, name, description, os_family, category, requires_confirmation,
-		       timeout_seconds, output_limit_bytes, enabled, created_at, updated_at
-		FROM script_library
-		WHERE id = $1 AND enabled = true
-	`, payload.ScriptID).Scan(
-		&script.ID,
-		&script.Name,
-		&script.Description,
-		&script.OSFamily,
-		&script.Category,
-		&script.RequiresConfirmation,
-		&script.TimeoutSeconds,
-		&script.OutputLimitBytes,
-		&script.Enabled,
-		&script.CreatedAt,
-		&script.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ScriptPolicy{}, fmt.Errorf("script is not allowlisted")
-	}
-	if err != nil {
-		return ScriptPolicy{}, fmt.Errorf("load script policy: %w", err)
-	}
-	return script, nil
 }
 
 // RequestAgentUninstall atomically validates server ownership, online state,
@@ -1033,3 +870,134 @@ func (r *Repository) GetDashboardOverview(ctx context.Context, userID, timeRange
 
 	return overview, nil
 }
+
+// PopulateAvailability30d calculates the 30-day availability percentage and downtime duration
+// for each server based on metric gaps and ongoing offline status, with in-memory caching.
+func (r *Repository) PopulateAvailability30d(ctx context.Context, servers []*Server) {
+	if len(servers) == 0 {
+		return
+	}
+
+	now := time.Now()
+	cacheTTL := 60 * time.Second
+
+	var toFetch []*Server
+	for _, s := range servers {
+		r.availMu.RLock()
+		entry, found := r.availabilityCache[s.ID]
+		r.availMu.RUnlock()
+
+		if found && now.Sub(entry.cachedAt) < cacheTTL {
+			s.Availability30d = entry.availabilityPct
+			s.DowntimeSeconds30d = entry.downtimeSeconds
+		} else {
+			toFetch = append(toFetch, s)
+		}
+	}
+
+	if len(toFetch) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	type fetchResult struct {
+		serverID string
+		availPct float64
+		downtime int64
+	}
+	results := make(chan fetchResult, len(toFetch))
+
+	for _, s := range toFetch {
+		wg.Add(1)
+		go func(srv *Server) {
+			defer wg.Done()
+			avail, down := r.calculateSingleServerAvailability30d(ctx, srv, now)
+			results <- fetchResult{
+				serverID: srv.ID,
+				availPct: avail,
+				downtime: down,
+			}
+		}(s)
+	}
+
+	wg.Wait()
+	close(results)
+
+	r.availMu.Lock()
+	defer r.availMu.Unlock()
+
+	for res := range results {
+		r.availabilityCache[res.serverID] = availabilityEntry{
+			availabilityPct: res.availPct,
+			downtimeSeconds: res.downtime,
+			cachedAt:        now,
+		}
+		for _, s := range servers {
+			if s.ID == res.serverID {
+				s.Availability30d = res.availPct
+				s.DowntimeSeconds30d = res.downtime
+				break
+			}
+		}
+	}
+}
+
+func (r *Repository) calculateSingleServerAvailability30d(ctx context.Context, srv *Server, now time.Time) (float64, int64) {
+	windowDuration := 30 * 24 * time.Hour
+	if now.Sub(srv.CreatedAt) < windowDuration {
+		windowDuration = now.Sub(srv.CreatedAt)
+	}
+	windowSeconds := int64(windowDuration.Seconds())
+	if windowSeconds < 60 {
+		windowSeconds = 60
+	}
+
+	query := `
+		SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (created_at - prev_time))), 0) AS downtime_seconds
+		FROM (
+			SELECT created_at, LAG(created_at) OVER (ORDER BY created_at) AS prev_time
+			FROM server_metrics
+			WHERE server_id = $1
+			  AND created_at >= NOW() - INTERVAL '30 days'
+		) sub
+		WHERE prev_time IS NOT NULL AND created_at - prev_time > INTERVAL '2 minutes';
+	`
+	var metricDowntime float64
+	err := r.db.Pool.QueryRow(ctx, query, srv.ID).Scan(&metricDowntime)
+	if err != nil {
+		metricDowntime = 0
+	}
+
+	totalDowntime := int64(metricDowntime)
+
+	isOffline := srv.Status == "offline" || (srv.LastSeenAt != nil && srv.LastSeenAt.Before(now.Add(-1*time.Minute)))
+	if isOffline && srv.LastSeenAt != nil {
+		ongoingSeconds := int64(now.Sub(*srv.LastSeenAt).Seconds())
+		if ongoingSeconds > 0 {
+			totalDowntime += ongoingSeconds
+		}
+	}
+
+	if totalDowntime > windowSeconds {
+		totalDowntime = windowSeconds
+	}
+	if totalDowntime < 0 {
+		totalDowntime = 0
+	}
+
+	uptimeSeconds := windowSeconds - totalDowntime
+	if uptimeSeconds < 0 {
+		uptimeSeconds = 0
+	}
+
+	availPct := float64(uptimeSeconds) / float64(windowSeconds) * 100.0
+	availPct = math.Round(availPct*10) / 10
+	if availPct > 100.0 {
+		availPct = 100.0
+	} else if availPct < 0.0 {
+		availPct = 0.0
+	}
+
+	return availPct, totalDowntime
+}
+

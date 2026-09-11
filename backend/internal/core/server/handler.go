@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	minimumScriptAgentVersion  = "1.5.2"
 	minimumLogReadAgentVersion = "1.5.2"
 )
 
@@ -39,7 +38,6 @@ var allowedTaskTypes = map[string]struct{}{
 	"agent_update":    {},
 	"agent_restart":   {},
 	"vps_reboot":      {},
-	"script_run":      {},
 	"log_read":        {},
 }
 
@@ -234,21 +232,6 @@ func (h *Handler) ListMetrics(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, metrics)
 }
 
-func (h *Handler) ListCronJobs(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
-	if !ok || userID == "" {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
-		return
-	}
-
-	jobs, err := h.svc.ListCronJobs(r.Context(), r.PathValue("id"), userID)
-	if err != nil {
-		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found or cron jobs unavailable")
-		return
-	}
-	response.Success(w, http.StatusOK, jobs)
-}
-
 type CreateTaskRequest struct {
 	Type           string `json:"type"`
 	Payload        string `json:"payload"`
@@ -392,10 +375,6 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Service controls are disabled by the system administrator")
 		return
 	}
-	if req.Type == "script_run" && !h.enableRemoteScripts {
-		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Remote scripts are disabled by the system administrator")
-		return
-	}
 	if req.Type == "log_read" && !h.enableReadOnlyLogs {
 		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Read-only agent logs are disabled by the system administrator")
 		return
@@ -433,27 +412,6 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			return
 		}
-	}
-	if req.Type == "script_run" {
-		if err := validateAgentFeatureVersion(ownedServer, minimumScriptAgentVersion, "Script Library"); err != nil {
-			response.Error(w, http.StatusConflict, "AGENT_UPDATE_REQUIRED", err.Error())
-			return
-		}
-		policy, err := h.svc.repo.ScriptPolicy(r.Context(), req.Payload)
-		if err != nil {
-			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
-			return
-		}
-		if err := validateScriptTask(ownedServer, policy, req.Payload); err != nil {
-			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
-			return
-		}
-		req.Payload, err = normalizedScriptTaskPayload(req.Payload, policy)
-		if err != nil {
-			response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to prepare script policy payload")
-			return
-		}
-		req.TimeoutSeconds = policy.TimeoutSeconds
 	}
 	if req.Type == "log_read" {
 		if err := validateAgentFeatureVersion(ownedServer, minimumLogReadAgentVersion, "Read-only Log Viewer"); err != nil {
@@ -506,13 +464,6 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		"task_id": taskID,
 		"type":    req.Type,
 	}
-	if req.Type == "script_run" {
-		var payload scriptTaskPayload
-		if err := json.Unmarshal([]byte(req.Payload), &payload); err == nil {
-			auditDetails["script_id"] = payload.ScriptID
-			auditDetails["confirmed"] = payload.Confirmed
-		}
-	}
 	if req.Type == "log_read" {
 		var payload logReadTaskPayload
 		if err := json.Unmarshal([]byte(req.Payload), &payload); err == nil {
@@ -535,30 +486,6 @@ func validateAgentFeatureVersion(server *Server, minimumVersion string, featureN
 		return fmt.Errorf("%s requires Agent %s or newer. This agent reports version %s", featureName, minimumVersion, currentVersion)
 	}
 	return nil
-}
-
-func (h *Handler) ListScripts(w http.ResponseWriter, r *http.Request) {
-	if !h.enableRemoteScripts {
-		response.Error(w, http.StatusForbidden, "FEATURE_DISABLED", "Remote scripts are disabled by the system administrator")
-		return
-	}
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
-	if !ok || userID == "" {
-		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
-		return
-	}
-
-	server, err := h.svc.GetServer(r.Context(), r.PathValue("id"), userID)
-	if err != nil {
-		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
-		return
-	}
-	scripts, err := h.svc.repo.ListScripts(r.Context(), osFamilyFromServer(server))
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list scripts")
-		return
-	}
-	response.Success(w, http.StatusOK, scripts)
 }
 
 type serviceTaskPayload struct {
@@ -608,43 +535,6 @@ func validateServiceTask(server *Server, taskType, rawPayload string) error {
 		return nil
 	}
 	return fmt.Errorf("service is not present in the agent-reported inventory")
-}
-
-type scriptTaskPayload struct {
-	ScriptID         string `json:"script_id"`
-	Confirmed        bool   `json:"confirmed"`
-	OutputLimitBytes string `json:"output_limit_bytes,omitempty"`
-}
-
-func validateScriptTask(server *Server, policy ScriptPolicy, rawPayload string) error {
-	var payload scriptTaskPayload
-	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
-		return fmt.Errorf("invalid script task payload")
-	}
-	if strings.TrimSpace(payload.ScriptID) == "" {
-		return fmt.Errorf("script_id is required")
-	}
-	if policy.RequiresConfirmation && !payload.Confirmed {
-		return fmt.Errorf("script requires explicit confirmation")
-	}
-	if osFamilyFromServer(server) != policy.OSFamily {
-		return fmt.Errorf("script is not available for this operating system")
-	}
-	return nil
-}
-
-func normalizedScriptTaskPayload(rawPayload string, policy ScriptPolicy) (string, error) {
-	var payload scriptTaskPayload
-	if err := json.Unmarshal([]byte(rawPayload), &payload); err != nil {
-		return "", fmt.Errorf("invalid script task payload")
-	}
-	payload.ScriptID = strings.TrimSpace(payload.ScriptID)
-	payload.OutputLimitBytes = strconv.Itoa(policy.OutputLimitBytes)
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("encode script task payload: %w", err)
-	}
-	return string(payloadBytes), nil
 }
 
 type logReadTaskPayload struct {

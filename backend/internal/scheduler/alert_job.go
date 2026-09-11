@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/alert"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
@@ -20,19 +19,17 @@ import (
 // AlertJob định kỳ đánh giá alert rule, ghi notification lên Dashboard
 // và gửi thông báo ra đúng channel được liên kết với từng rule.
 type AlertJob struct {
-	db         *database.DB
-	logger     *slog.Logger
-	stop       chan struct{}
-	dispatcher *webhook.Dispatcher
+	db     *database.DB
+	logger *slog.Logger
+	stop   chan struct{}
 }
 
 // NewAlertJob tạo scheduler đánh giá alert dùng database và logger hiện tại.
 func NewAlertJob(db *database.DB, logger *slog.Logger) *AlertJob {
 	return &AlertJob{
-		db:         db,
-		logger:     logger.With("component", "AlertJob"),
-		stop:       make(chan struct{}),
-		dispatcher: webhook.NewDispatcher(db),
+		db:     db,
+		logger: logger.With("component", "AlertJob"),
+		stop:   make(chan struct{}),
 	}
 }
 
@@ -450,7 +447,6 @@ func (j *AlertJob) handleFiring(ctx context.Context, rule alert.AlertRule, serve
 
 	j.logger.Info("Alert firing", "rule", rule.Name, "server", serverName, "channels", len(channels))
 	j.sendNotifications(channels, notifSet)
-	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "firing")
 }
 
 // handleResolved chỉ chạy khi state trước đó là firing, sau đó ghi notification phục hồi.
@@ -555,52 +551,6 @@ func (j *AlertJob) handleResolved(ctx context.Context, rule alert.AlertRule, ser
 	j.logger.Info("Alert resolved", "rule", rule.Name, "server", serverName, "channels", len(channels), "downtime", formatDuration(downtimeDuration))
 	// Send resolved notifications to external channels (Telegram, Discord, Email)
 	j.sendNotifications(channels, notifSet)
-	j.dispatchAlertWebhook(rule, serverID, serverName, currentValue, "resolved")
-}
-
-func (j *AlertJob) dispatchAlertWebhook(rule alert.AlertRule, serverID, serverName string, currentValue float64, transition string) {
-	eventType := ""
-	switch {
-	case rule.Metric == "status" && transition == "firing":
-		eventType = "server.offline"
-	case rule.Metric == "status" && transition == "resolved":
-		eventType = "server.online"
-	case (rule.Metric == "cpu" || rule.Metric == "ram") && transition == "firing":
-		eventType = "server.degraded"
-	default:
-		return
-	}
-
-	payload := webhook.EventPayload{
-		Test: false,
-		Resource: map[string]any{
-			"type":      "server",
-			"id":        serverID,
-			"name":      serverName,
-			"workspace": rule.UserID,
-		},
-		Alert: map[string]any{
-			"rule_id":          rule.ID,
-			"rule_name":        rule.Name,
-			"metric":           rule.Metric,
-			"operator":         rule.Operator,
-			"threshold":        rule.Threshold,
-			"duration_minutes": rule.DurationMinutes,
-			"transition":       transition,
-		},
-		Metrics: map[string]any{
-			"current_value": currentValue,
-			"unit":          "%",
-		},
-	}
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := j.dispatcher.Dispatch(ctx, rule.UserID, eventType, payload); err != nil {
-			j.logger.Warn("failed to dispatch system webhook", "event", eventType, "rule_id", rule.ID, "server_id", serverID, "error", err)
-		}
-	}()
 }
 
 type alertNotificationSet struct {

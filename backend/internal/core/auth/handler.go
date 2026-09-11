@@ -3,19 +3,23 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
 )
 
 type Handler struct {
 	svc *Service
+	db  *database.DB
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, db *database.DB) *Handler {
+	return &Handler{svc: svc, db: db}
 }
 
 type RegisterRequest struct {
@@ -99,6 +103,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.svc.Login(r.Context(), identifier, req.Password)
 	if err != nil {
+		auditlog.Record(r.Context(), h.db, "", "LOGIN_FAILED", "AUTH", identifier, map[string]any{
+			"identifier": identifier,
+			"ip":         clientIP(r),
+		})
 		if errors.Is(err, ErrInvalidCredentials) {
 			response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid username or password")
 			return
@@ -106,6 +114,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Something went wrong")
 		return
 	}
+
+	auditlog.Record(r.Context(), h.db, res.UserID, "LOGIN_SUCCESS", "AUTH", res.UserID, map[string]any{
+		"identifier": identifier,
+		"ip":         clientIP(r),
+	})
 
 	setRefreshCookie(w, r, res.RefreshToken, 7*24*3600)
 	response.Success(w, http.StatusOK, res)
@@ -175,9 +188,29 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		_ = h.svc.Logout(r.Context(), refreshToken)
 	}
 
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	auditlog.Record(r.Context(), h.db, userID, "LOGOUT", "AUTH", userID, map[string]any{
+		"ip": clientIP(r),
+	})
+
 	setRefreshCookie(w, r, "", -1)
 	// Always return 200 OK for logout even if token was invalid/missing
 	response.Success(w, http.StatusOK, nil)
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		candidate := strings.TrimSpace(parts[len(parts)-1])
+		if parsed := net.ParseIP(candidate); parsed != nil {
+			return parsed.String()
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {

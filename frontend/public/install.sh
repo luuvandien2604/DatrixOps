@@ -320,9 +320,9 @@ chmod 0755 "$CONFIG_DIR" 2>/dev/null || true
 install -d -m 0755 "$INSTALL_DIR"
 install -d -m 0755 "$(dirname "$SERVICE_FILE")"
 
-# Preserve DatrixOps CE self-monitor credential readability for Docker backend
+# Ensure DatrixOps CE self-monitor credential is secure (mode 0600)
 if [[ -f "${CONFIG_DIR}/self-monitor.env" ]]; then
-    chmod 0644 "${CONFIG_DIR}/self-monitor.env" 2>/dev/null || true
+    chmod 0600 "${CONFIG_DIR}/self-monitor.env" 2>/dev/null || true
 fi
 
 {

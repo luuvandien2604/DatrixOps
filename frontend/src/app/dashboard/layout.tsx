@@ -5,10 +5,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Activity, Bell, BookOpen, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
-  CircleUserRound, Command, DatabaseBackup, FileText, Gauge, Globe2, KeyRound,
-  Loader2, LogOut, Menu, ScrollText, Search, Server, ServerCog, Settings2,
-  ShieldAlert, Users, X,
+  Activity, Bell, BookOpen, Bot, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
+  Command, FileText, Gauge, Globe2, KeyRound,
+  Loader2, LogOut, Menu, ScrollText, Search, Server,
+  ShieldAlert, Sparkles, Users, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -39,6 +39,15 @@ type NotificationResponse = {
   unread_count: number;
 };
 
+type UpdateCheckInfo = {
+  current_version?: string;
+  latest_version?: string;
+  latest_agent_version?: string;
+  update_available?: boolean;
+  agent_update_available?: boolean;
+  managed?: boolean;
+};
+
 const primaryNav: NavDefinition[] = [
   { label: 'Overview', href: '/dashboard', icon: Gauge },
   { label: 'Servers', href: '/dashboard/servers', icon: Server },
@@ -48,12 +57,8 @@ const primaryNav: NavDefinition[] = [
   { label: 'Logs', href: '/dashboard/logs', icon: FileText },
 ];
 
-
 const adminNav: NavDefinition[] = [
-  { label: 'Fleet admin', href: '/dashboard/manage/servers', icon: ServerCog },
   { label: 'Team access', href: '/dashboard/manage/users', icon: Users },
-  { label: 'System config', href: '/dashboard/manage/config', icon: Settings2 },
-  { label: 'Backups', href: '/dashboard/manage/backup', icon: DatabaseBackup },
   { label: 'Audit trail', href: '/dashboard/manage/audit', icon: ScrollText },
   { label: 'API keys', href: '/dashboard/manage/api', icon: KeyRound },
 ];
@@ -82,6 +87,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notificationError, setNotificationError] = useState('');
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckInfo | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -94,12 +103,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
+    if (!userMenuOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUserMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [userMenuOpen]);
+
+  useEffect(() => {
     setRole(getUserRole());
     apiClient('/system/info')
       .then((info) => {
         if (typeof info?.edition === 'string') setWorkspaceEdition(info.edition);
         const ver = info?.control_plane?.version || info?.version;
         if (ver && ver !== 'dev') setSystemVersion(ver);
+        if (info?.update_check) {
+          setUpdateCheck(info.update_check);
+        }
       })
       .catch(() => {});
     apiClient('/auth/me')
@@ -229,7 +261,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavItem = ({ item }: { item: NavDefinition }) => {
     const active = item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href);
     const Icon = item.icon;
-    const count = item.href === '/dashboard/alerts' ? fleetSummary?.open_incidents : item.count;
     return (
       <Link
         href={item.href}
@@ -250,7 +281,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           }`}
         />
         {!collapsed && <span>{item.label}</span>}
-        {!collapsed && Boolean(count) && <span className="nav-alert-count">{count}</span>}
       </Link>
     );
   };
@@ -380,39 +410,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="border-t border-[var(--border-color)] p-3">
-          <Link
-            href="/docs"
-            className={`sidebar-nav-item font-medium text-[var(--color-muted)] ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <BookOpen className="h-[18px] w-[18px] text-[var(--color-muted)]" />
-            {!collapsed && <span>Documentation</span>}
-          </Link>
-
-          <Link
-            href="/dashboard/settings"
-            className={`sidebar-nav-item font-medium text-[var(--color-muted)] ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <CircleUserRound className="h-[18px] w-[18px] text-[var(--color-muted)]" />
-            {!collapsed && <span>Instance settings</span>}
-          </Link>
-
-          <button
-            type="button"
-            onClick={logout}
-            className={`sidebar-nav-item w-full font-medium text-[var(--color-muted)] ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <LogOut className="h-[18px] w-[18px] text-[var(--color-muted)]" />
-            {!collapsed && <span>Sign out</span>}
-          </button>
-
           {!collapsed && (
-            <div className="mt-3 pt-3 border-t border-[var(--border-color)] px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
+            <div className="px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
               <span className="truncate">DatrixOps CE</span>
               <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-blue-400 border border-white/10 font-bold">
                 v{systemVersion}
@@ -446,170 +445,270 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCommandPaletteOpen(true)}
-              className="ops-control group hidden w-64 items-center justify-between rounded-xl px-3.5 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--foreground)] sm:flex md:w-80"
-              aria-label="Search dashboard"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Search className="h-4 w-4 text-[var(--color-muted)] group-hover:text-blue-400 transition-colors shrink-0" />
-                <span className="truncate">Search commands, servers, logs...</span>
-              </div>
-              <kbd className="font-mono text-[10px] font-semibold px-2 py-0.5 rounded bg-white/10 text-[var(--color-muted)] group-hover:text-white border border-white/10 shrink-0 ml-2">⌘ K</kbd>
-            </button>
-
             <ThemeToggle />
 
-            <div ref={notificationMenuRef} className="relative">
+            {(() => {
+              const serverUpdateAvailable = Boolean(updateCheck?.update_available);
+              const agentUpdateAvailable = Boolean(updateCheck?.agent_update_available);
+              const hasUpdateNotification = serverUpdateAvailable || agentUpdateAvailable;
+              const updateCount = (serverUpdateAvailable ? 1 : 0) + (agentUpdateAvailable ? 1 : 0);
+              const totalUnreadBadge = unreadNotificationCount + updateCount;
+
+              return (
+                <div ref={notificationMenuRef} className="relative">
+                  <button
+                    type="button"
+                    aria-label={
+                      totalUnreadBadge > 0
+                        ? `Open notifications, ${totalUnreadBadge} unread`
+                        : 'Open notifications'
+                    }
+                    aria-expanded={notificationsOpen}
+                    onClick={() => {
+                      setNotificationsOpen((current) => !current);
+                      if (!notificationsOpen) void fetchNotifications();
+                    }}
+                    className="topbar-icon relative text-[var(--color-muted)]"
+                  >
+                    <Bell className="h-4 w-4" />
+                    {totalUnreadBadge > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
+                        {totalUnreadBadge > 99 ? '99+' : totalUnreadBadge}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
+                        <div>
+                          <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
+                          <p className="text-[11px] font-medium text-[var(--color-muted)]">
+                            {totalUnreadBadge} unread
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void markAllNotificationsRead()}
+                          disabled={unreadNotificationCount === 0}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          Mark all as read
+                        </button>
+                      </div>
+
+                      <div className="custom-scrollbar max-h-[26rem] overflow-y-auto">
+                        {/* Server Update notification (no action buttons) */}
+                        {serverUpdateAvailable && (
+                          <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-blue-500/[0.08]">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400">
+                              <Sparkles className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Server v{updateCheck?.latest_version}
+                                </p>
+                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-blue-400 uppercase tracking-wide">
+                                  Server
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản DatrixOps Server mới (bản hiện tại v{systemVersion || updateCheck?.current_version}).
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Agent Update notification (no action buttons) */}
+                        {agentUpdateAvailable && (
+                          <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-indigo-500/[0.08]">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400">
+                              <Bot className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Agent v{updateCheck?.latest_agent_version}
+                                </p>
+                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-400 uppercase tracking-wide">
+                                  Agent
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản Datrix Agent mới để nâng cấp cho các máy chủ giám sát.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {notificationsLoading ? (
+                          <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
+                          </div>
+                        ) : notificationError && notifications.length === 0 && !hasUpdateNotification ? (
+                          <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
+                            Unable to load notifications.
+                          </div>
+                        ) : notifications.length === 0 && !hasUpdateNotification ? (
+                          <div className="px-4 py-10 text-center">
+                            <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
+                            <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
+                            <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
+                          </div>
+                        ) : (
+                          notifications.map((notification) => {
+                            const unread = !notification.read_at;
+                            const resolved = notification.severity === 'resolved';
+                            return (
+                              <div
+                                key={notification.id}
+                                className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
+                                  unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
+                                }`}
+                              >
+                                <div
+                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                                  style={{
+                                    background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
+                                    color: resolved ? 'var(--mint)' : 'var(--rose)',
+                                  }}
+                                >
+                                  {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                                </div>
+
+                                <Link
+                                  href="/dashboard/alerts"
+                                  onClick={() => {
+                                    setNotificationsOpen(false);
+                                    if (unread) void markNotificationRead(notification.id);
+                                  }}
+                                  className="min-w-0 flex-1"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
+                                      {notification.title}
+                                    </p>
+                                    {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
+                                  </div>
+                                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
+                                    {notification.message}
+                                  </p>
+                                  <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
+                                    {formatNotificationTime(notification.created_at)}
+                                  </p>
+                                </Link>
+
+                                {unread && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      void markNotificationRead(notification.id);
+                                    }}
+                                    title="Mark as read"
+                                    aria-label={`Mark ${notification.title} as read`}
+                                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
+                                  >
+                                    <CircleCheck className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      <Link
+                        href="/dashboard/alerts"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
+                      >
+                        Open alert settings
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* User Profile Avatar with Grafana-style Popover Menu */}
+            <div ref={userMenuRef} className="relative ml-1">
               <button
                 type="button"
-                aria-label={
-                  unreadNotificationCount > 0
-                    ? `Open notifications, ${unreadNotificationCount} unread`
-                    : 'Open notifications'
-                }
-                aria-expanded={notificationsOpen}
-                onClick={() => {
-                  setNotificationsOpen((current) => !current);
-                  if (!notificationsOpen) void fetchNotifications();
-                }}
-                className="topbar-icon relative text-[var(--color-muted)]"
+                aria-label="User profile menu"
+                aria-expanded={userMenuOpen}
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold transition-all hover:ring-2 hover:ring-blue-400/50 hover:opacity-95 active:scale-95 shadow-sm focus:outline-none"
+                title={userEmail || 'User profile'}
               >
-                <Bell className="h-4 w-4" />
-                {unreadNotificationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
-                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
-                  </span>
-                )}
+                {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
               </button>
 
-              {notificationsOpen && (
-                <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
-                    <div>
-                      <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
-                      <p className="text-[11px] font-medium text-[var(--color-muted)]">
-                        {unreadNotificationCount} unread
-                      </p>
+              {userMenuOpen && (
+                <div className="absolute right-0 top-full mt-2.5 z-50 w-64 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-1.5 text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                  {/* User Profile Header (Grafana style) */}
+                  <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--border-color)] mb-1">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold">
+                      {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void markAllNotificationsRead()}
-                      disabled={unreadNotificationCount === 0}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" />
-                      Mark all as read
-                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-[var(--foreground)] truncate" title={userEmail}>
+                        {userEmail || (role === 'admin' || role === 'superadmin' ? 'Administrator' : 'Operator')}
+                      </p>
+                      <div className="mt-0.5 flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-[var(--color-muted)] truncate">
+                          {userEmail?.includes('@') ? userEmail.split('@')[0] : (userEmail || 'admin')}
+                        </span>
+                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-400 capitalize">
+                          {role || 'admin'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="custom-scrollbar max-h-[26rem] overflow-y-auto">
-                    {notificationsLoading ? (
-                      <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
-                      </div>
-                    ) : notificationError && notifications.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
-                        Unable to load notifications.
-                      </div>
-                    ) : notifications.length === 0 ? (
-                      <div className="px-4 py-10 text-center">
-                        <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
-                        <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
-                        <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
-                      </div>
-                    ) : (
-                      notifications.map((notification) => {
-                        const unread = !notification.read_at;
-                        const resolved = notification.severity === 'resolved';
-                        return (
-                          <div
-                            key={notification.id}
-                            className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
-                              unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
-                            }`}
-                          >
-                            <div
-                              className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                              style={{
-                                background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
-                                color: resolved ? 'var(--mint)' : 'var(--rose)',
-                              }}
-                            >
-                              {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
-                            </div>
-
-                            <Link
-                              href="/dashboard/alerts"
-                              onClick={() => {
-                                setNotificationsOpen(false);
-                                if (unread) void markNotificationRead(notification.id);
-                              }}
-                              className="min-w-0 flex-1"
-                            >
-                              <div className="flex items-start gap-2">
-                                <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
-                                  {notification.title}
-                                </p>
-                                {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
-                              </div>
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
-                                {notification.message}
-                              </p>
-                              <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
-                                {formatNotificationTime(notification.created_at)}
-                              </p>
-                            </Link>
-
-                            {unread && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  void markNotificationRead(notification.id);
-                                }}
-                                title="Mark as read"
-                                aria-label={`Mark ${notification.title} as read`}
-                                className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
-                              >
-                                <CircleCheck className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
+                  {/* Menu Items */}
                   <Link
-                    href="/dashboard/alerts"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
+                    href="/docs"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
                   >
-                    Open alert settings
+                    <BookOpen className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                    <span>Documentation</span>
                   </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setCommandPaletteOpen(true);
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Search className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                      <span>Quick search</span>
+                    </div>
+                    <kbd className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-[var(--color-muted)] border border-white/10">⌘ K</kbd>
+                  </button>
+
+                  <div className="my-1 border-t border-[var(--border-color)]" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4 shrink-0 text-[var(--rose)]" />
+                    <span>Sign out</span>
+                  </button>
                 </div>
               )}
-            </div>
-
-            <div className="ops-control ml-1 flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3">
-              <div className="operator-avatar">
-                {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
-              </div>
-
-              <div className="hidden sm:block">
-                {/* Tên / Email người dùng */}
-                <p className="text-[11px] font-semibold text-[var(--foreground)] max-w-[140px] truncate" title={userEmail}>
-                  {userEmail || (role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator')}
-                </p>
-
-                {/* Vai trò người dùng (Đã bỏ Authenticated) */}
-                <p className="text-[10px] font-medium text-[var(--color-muted)]">
-                  {role === 'admin' || role === 'superadmin' ? 'Admin' : role === 'viewer' ? 'Viewer' : 'Operator'}
-                </p>
-              </div>
             </div>
           </div>
         </header>

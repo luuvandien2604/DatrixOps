@@ -3,13 +3,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, TerminalSquare, CalendarClock, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
-import ConfirmModal from '@/components/ConfirmModal';
 
 interface TopProcess {
   pid: number;
@@ -72,31 +71,6 @@ interface Inventory {
   collected_at: string;
 }
 
-interface CronJob {
-  id: string;
-  external_id?: string;
-  source: string;
-  owner?: string;
-  schedule: string;
-  command: string;
-  enabled: boolean;
-  last_run_at?: string;
-  next_run_at?: string;
-  last_status?: string;
-  discovered_at: string;
-  executions?: CronExecution[];
-}
-
-interface CronExecution {
-  id: string;
-  started_at: string;
-  completed_at?: string;
-  status: string;
-  exit_code?: number;
-  output?: string;
-  created_at: string;
-}
-
 interface Snapshot {
   os_family?: string;
   system_info?: SystemInfo;
@@ -149,28 +123,10 @@ interface AgentUpdateTask {
   completed_at?: string;
 }
 
-interface ScriptPolicy {
-  id: string;
-  name: string;
-  description: string;
-  os_family: string;
-  category: string;
-  requires_confirmation: boolean;
-  timeout_seconds: number;
-  output_limit_bytes: number;
-}
-
-interface ScriptRunState {
-  taskId?: string;
-  status: 'idle' | 'pending' | 'processing' | 'completed' | 'failed' | 'expired' | 'timed_out';
-  result?: string;
-}
-
 type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';
 
 const MIN_SERVICE_CONTROL_AGENT_VERSION = '1.3.0';
 const MIN_TERMINAL_AGENT_VERSION = '1.4.1';
-const MIN_SCRIPT_LIBRARY_AGENT_VERSION = '1.5.2';
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
@@ -192,27 +148,16 @@ export default function ServerDetailsPage() {
   const [server, setServer] = useState<ServerDetails | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [inventory, setInventory] = useState<Inventory | null>(null);
-  const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [serviceSearch, setServiceSearch] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
 
-  useEffect(() => {
-    if (['inventory', 'cron', 'scripts'].includes(activeTab)) {
-      setActiveTab('overview');
-    }
-  }, [activeTab]);
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
-  const [copiedCronCommandId, setCopiedCronCommandId] = useState<string | null>(null);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
-  const [scriptLibrary, setScriptLibrary] = useState<ScriptPolicy[]>([]);
-  const [scriptRuns, setScriptRuns] = useState<Record<string, ScriptRunState>>({});
-  const [scriptLibraryError, setScriptLibraryError] = useState<string | null>(null);
-  const [pendingRunScript, setPendingRunScript] = useState<{ script: ScriptPolicy; idempotencyKey: string } | null>(null);
 
   const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
@@ -232,21 +177,6 @@ export default function ServerDetailsPage() {
       }
       if (data.inventory && data.inventory !== '{}') {
         setInventory(JSON.parse(data.inventory) as Inventory);
-      }
-      try {
-        const jobs = await apiClient(`/servers/${params.id}/cron-jobs`);
-        setCronJobs(Array.isArray(jobs) ? jobs : []);
-      } catch (cronError) {
-        console.error('Unable to load cron jobs', cronError);
-      }
-      try {
-        const scripts = await apiClient(`/servers/${params.id}/scripts`);
-        setScriptLibrary(Array.isArray(scripts) ? scripts : []);
-        setScriptLibraryError(null);
-      } catch (scriptError: unknown) {
-        console.error('Unable to load script library', scriptError);
-        setScriptLibrary([]);
-        setScriptLibraryError(errorMessage(scriptError, 'Unable to load script library'));
       }
     } catch (err) {
       console.error(err);
@@ -394,31 +324,6 @@ export default function ServerDetailsPage() {
     }
   };
 
-  const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
-
-  const cronWrapperCommand = (job: CronJob) => {
-    if (!job.external_id) {
-      return '';
-    }
-    return `datrixops-agent cron-run --external-id ${job.external_id} -- /bin/sh -lc ${shellQuote(job.command)}`;
-  };
-
-  const copyCronWrapperCommand = async (job: CronJob) => {
-    const command = cronWrapperCommand(job);
-    if (!command) {
-      toast.error('Telemetry ID is unavailable for this cron job');
-      return;
-    }
-    try {
-      await copyTextToClipboard(command);
-      setCopiedCronCommandId(job.id);
-      window.setTimeout(() => setCopiedCronCommandId(current => current === job.id ? null : current), 2000);
-      toast.success('Cron telemetry wrapper copied');
-    } catch {
-      toast.error('Unable to copy the cron wrapper command');
-    }
-  };
-
   const queueAgentUpdate = async () => {
     if (!server) return;
     if (isViewer) {
@@ -458,95 +363,6 @@ export default function ServerDetailsPage() {
     }
   };
 
-  const runAllowlistedScript = async (script: ScriptPolicy, idempotencyKey: string) => {
-    if (!server) return;
-    if (server.status !== 'online') {
-      toast.error('The agent must be online before a script can run');
-      return;
-    }
-    if (script.os_family !== osFamily) {
-      toast.error('This script is not available for this operating system');
-      return;
-    }
-    if (!supportsScriptLibrary) {
-      toast.error(`Script Library requires Agent ${MIN_SCRIPT_LIBRARY_AGENT_VERSION} or newer${reportedAgentVersion ? ` (current ${reportedAgentVersion})` : ''}`);
-      return;
-    }
-    if (script.requires_confirmation) {
-      setPendingRunScript({ script, idempotencyKey });
-      return;
-    }
-    void executeRunScript(script, idempotencyKey);
-  };
-
-  const executeRunScript = async (script: ScriptPolicy, idempotencyKey: string) => {
-    if (!server) return;
-    setPendingRunScript(null);
-    setScriptRuns(current => ({
-      ...current,
-      [script.id]: { status: 'pending', result: 'Queued. Waiting for the agent to claim the task…' },
-    }));
-
-    try {
-      const task = await apiClient(`/servers/${server.id}/tasks`, {
-        method: 'POST',
-        data: {
-          type: 'script_run',
-          payload: JSON.stringify({
-            script_id: script.id,
-            confirmed: script.requires_confirmation,
-          }),
-          timeout_seconds: script.timeout_seconds,
-          idempotency_key: idempotencyKey,
-        },
-      });
-      setScriptRuns(current => ({
-        ...current,
-        [script.id]: { taskId: task.id, status: task.status || 'pending', result: 'Task queued. Waiting for output…' },
-      }));
-
-      const maxAttempts = Math.max(8, Math.ceil((script.timeout_seconds + 10) / 2));
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        await new Promise(resolve => window.setTimeout(resolve, 2000));
-        const result = await apiClient(`/servers/${server.id}/tasks/${task.id}`);
-        const status = result.status as ScriptRunState['status'];
-        setScriptRuns(current => ({
-          ...current,
-          [script.id]: {
-            taskId: task.id,
-            status,
-            result: result.result || (status === 'processing' ? 'Running on agent…' : 'Waiting for agent…'),
-          },
-        }));
-        if (status === 'completed') {
-          toast.success(`${script.name} completed`);
-          return;
-        }
-        if (['failed', 'expired', 'timed_out'].includes(status)) {
-          toast.error(`${script.name}: ${status}`);
-          return;
-        }
-      }
-
-      setScriptRuns(current => ({
-        ...current,
-        [script.id]: {
-          taskId: task.id,
-          status: 'timed_out',
-          result: 'Timed out waiting for the task result. The backend timeout policy still applies.',
-        },
-      }));
-      toast.error(`${script.name}: timed out waiting for result`);
-    } catch (error: unknown) {
-      const message = errorMessage(error, 'Unable to queue script task');
-      setScriptRuns(current => ({
-        ...current,
-        [script.id]: { status: 'failed', result: message },
-      }));
-      toast.error(message);
-    }
-  };
-
   if (loading) {
     return <div className="p-12 text-center text-[var(--color-muted)]">Loading server information...</div>;
   }
@@ -572,67 +388,6 @@ export default function ServerDetailsPage() {
   const formatTimestamp = (value?: string) => value
     ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
     : 'Unknown';
-
-  const cronStatusMeta = (job: CronJob) => {
-    if (!job.enabled) {
-      return {
-        label: 'Disabled',
-        className: 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]',
-      };
-    }
-    if (!job.last_status) {
-      return {
-        label: 'Not instrumented',
-        className: 'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-      };
-    }
-    const normalized = job.last_status.toLowerCase();
-    if (normalized.includes('success') || normalized.includes('ok') || normalized.includes('completed')) {
-      return {
-        label: job.last_status,
-        className: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-      };
-    }
-    if (normalized.includes('fail') || normalized.includes('error')) {
-      return {
-        label: job.last_status,
-        className: 'border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-300',
-      };
-    }
-    return {
-      label: job.last_status,
-      className: 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--foreground)]',
-    };
-  };
-
-  const cronExecutionStatusClass = (status: string) => {
-    const normalized = status.toLowerCase();
-    if (normalized === 'completed') {
-      return 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-    }
-    if (normalized === 'failed' || normalized === 'timed_out') {
-      return 'border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-300';
-    }
-    return 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]';
-  };
-
-  const formatExecutionDuration = (execution: CronExecution) => {
-    if (!execution.started_at || !execution.completed_at) {
-      return 'Duration unknown';
-    }
-    const started = new Date(execution.started_at).getTime();
-    const completed = new Date(execution.completed_at).getTime();
-    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
-      return 'Duration unknown';
-    }
-    const seconds = Math.max(0, Math.round((completed - started) / 1000));
-    if (seconds < 60) {
-      return `${seconds}s`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainder = seconds % 60;
-    return `${minutes}m ${remainder}s`;
-  };
 
   const reportedServices = snapshot?.services || [];
   const reportedServiceManager = reportedServices.find(service => service.source)?.source;
@@ -763,7 +518,6 @@ export default function ServerDetailsPage() {
   // Inventory is only a fallback because it refreshes less frequently.
   const reportedAgentVersion = parsedOSInfo.version || inventory?.agent_version;
   const supportsServiceControls = versionAtLeast(reportedAgentVersion, MIN_SERVICE_CONTROL_AGENT_VERSION);
-  const supportsScriptLibrary = versionAtLeast(reportedAgentVersion, MIN_SCRIPT_LIBRARY_AGENT_VERSION);
   const latestAgentVersion = typeof server.latest_agent_version === 'string' ? server.latest_agent_version : '';
   const updateAvailable = Boolean(server.update_available && latestAgentVersion);
   const agentUpdateInProgress = Boolean(agentUpdateTask && ['pending', 'processing'].includes(agentUpdateTask.status));
@@ -821,21 +575,6 @@ export default function ServerDetailsPage() {
     counts[service.status] = (counts[service.status] || 0) + 1;
     return counts;
   }, {});
-  const scriptRunStatusClass = (status?: ScriptRunState['status']) => {
-    switch (status) {
-    case 'completed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300';
-    case 'failed':
-    case 'expired':
-    case 'timed_out':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300';
-    case 'pending':
-    case 'processing':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
-    default:
-      return 'border-[var(--border-color)] bg-[var(--surface-2)] text-[var(--color-muted)]';
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -1101,290 +840,6 @@ export default function ServerDetailsPage() {
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {activeTab === 'inventory' && (
-        <div className="space-y-6">
-          {!inventory ? (
-            <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-12 text-center text-[var(--color-muted)]">
-              Inventory has not been reported by this agent yet.
-            </div>
-          ) : (
-            <>
-              {/* 4 Clean System Overview Cards */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
-                    <ServerIcon className="h-4 w-4 text-[var(--accent-primary)]" /> System & Hostname
-                  </div>
-                  <p className="truncate text-base font-bold text-[var(--foreground)]">{inventory.hostname || server.name || 'Unknown'}</p>
-                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate">
-                    {[inventory.platform, inventory.platform_version].filter(Boolean).join(' ') || 'Linux'} · {inventory.kernel_version || 'Kernel N/A'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
-                    <Cpu className="h-4 w-4 text-emerald-400" /> CPU & Architecture
-                  </div>
-                  <p className="text-base font-bold text-[var(--foreground)]">
-                    {inventory.physical_cores || '—'} Cores ({inventory.logical_cores || '—'} Threads)
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate" title={inventory.cpu_model}>
-                    {inventory.cpu_model || 'Unknown CPU'} ({inventory.architecture || 'amd64'})
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
-                    <HardDrive className="h-4 w-4 text-blue-400" /> Installed Memory
-                  </div>
-                  <p className="text-base font-bold text-[var(--foreground)]">{formatBytes(inventory.memory_total)}</p>
-                  <p className="mt-1 text-xs text-[var(--color-muted)]">System RAM installed</p>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--color-muted)]">
-                    <ShieldCheck className="h-4 w-4 text-violet-400" /> DatrixOps Agent
-                  </div>
-                  <p className="text-base font-bold text-[var(--foreground)]">v{reportedAgentVersion || 'Unknown'}</p>
-                  <p className="mt-1 text-xs text-[var(--color-muted)] truncate">
-                    {inventory.collected_at ? `Collected ${formatTimestamp(inventory.collected_at)}` : 'Active'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Optional tags bar if custom environment or private IPs exist */}
-              {((server.provider && server.provider !== 'Unassigned') || (server.environment && server.environment !== 'Unassigned') || (inventory.private_ips && inventory.private_ips.length > 0)) && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] px-4 py-3 text-xs">
-                  {server.provider && server.provider !== 'Unassigned' && (
-                    <span className="rounded-md border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-[var(--color-muted)]">
-                      Provider: <strong className="text-[var(--foreground)]">{server.provider}</strong>
-                    </span>
-                  )}
-                  {server.environment && server.environment !== 'Unassigned' && (
-                    <span className="rounded-md border border-[var(--border-color)] bg-[var(--background)] px-2.5 py-1 text-[var(--color-muted)]">
-                      Env: <strong className="text-[var(--foreground)]">{server.environment}</strong>
-                    </span>
-                  )}
-                  {inventory.private_ips && inventory.private_ips.length > 0 && (
-                    <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
-                      <Network className="h-3.5 w-3.5" /> IPs:
-                      {inventory.private_ips.slice(0, 4).map(ip => (
-                        <code key={ip} className="rounded bg-[var(--background)] px-1.5 py-0.5 text-[11px] text-[var(--foreground)]">{ip}</code>
-                      ))}
-                      {inventory.private_ips.length > 4 && <span className="text-[10px] text-[var(--color-muted)]">+{inventory.private_ips.length - 4} more</span>}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Filesystems Table */}
-              <div className="overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
-                <div className="border-b border-[var(--border-color)] p-4">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                    <HardDrive className="h-4 w-4 text-[var(--accent-primary)]" /> Filesystems & Storage
-                  </h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                      <tr>
-                        <th className="px-6 py-3 font-medium">Device</th>
-                        <th className="px-6 py-3 font-medium">Mountpoint</th>
-                        <th className="px-6 py-3 font-medium">Type</th>
-                        <th className="px-6 py-3 font-medium">Capacity</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
-                      {inventory.disks?.map(disk => (
-                        <tr key={`${disk.device}-${disk.mountpoint}`} className="hover:bg-[var(--background)]/50 transition-colors">
-                          <td className="px-6 py-3 font-medium text-[var(--foreground)]">{disk.device}</td>
-                          <td className="px-6 py-3 font-mono text-xs text-[var(--foreground)]">{disk.mountpoint}</td>
-                          <td className="px-6 py-3 text-xs text-[var(--color-muted)]">{disk.file_system || 'ext4'}</td>
-                          <td className="px-6 py-3 font-semibold text-[var(--foreground)]">{formatBytes(disk.total_bytes)}</td>
-                        </tr>
-                      ))}
-                      {!inventory.disks?.length && (
-                        <tr>
-                          <td colSpan={4} className="px-6 py-8 text-center text-[var(--color-muted)]">No filesystem inventory reported.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'cron' && (
-        <div className="overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
-          <div className="border-b border-[var(--border-color)] p-5">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]"><CalendarClock className="h-4 w-4" /> DISCOVERED CRON JOBS</h3>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">
-              Schedules are reported by the agent. Copy a wrapper command into crontab to report real last-run time and exit status.
-              {' '}<Link href="/docs/server-management/cron-telemetry" className="font-semibold text-[var(--accent-primary)] underline-offset-4 hover:underline">Read the migration guide</Link>.
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                <tr><th className="px-6 py-3">Schedule</th><th className="px-6 py-3">Command</th><th className="px-6 py-3">Source</th><th className="px-6 py-3">Owner</th><th className="px-6 py-3">Last run</th><th className="px-6 py-3">Next run</th><th className="px-6 py-3">Status</th></tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border-color)]">
-                {cronJobs.map(job => {
-                  const statusMeta = cronStatusMeta(job);
-                  const executions = job.executions || [];
-                  return (
-                    <React.Fragment key={job.id}>
-                      <tr>
-                        <td className="px-6 py-4"><code className="rounded bg-[var(--background)] px-2 py-1 font-semibold text-[var(--foreground)]">{job.schedule}</code></td>
-                        <td className="max-w-md break-all px-6 py-4 font-mono text-xs text-[var(--foreground)]">
-                          {job.command}
-                          {job.external_id && (
-                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-[var(--color-muted)]">
-                              <span>Telemetry ID <code className="rounded bg-[var(--background)] px-1.5 py-0.5">{job.external_id.slice(0, 12)}</code></span>
-                              <button
-                                type="button"
-                                onClick={() => copyCronWrapperCommand(job)}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-color)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-semibold text-[var(--foreground)] transition hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-                                aria-label={`Copy cron telemetry wrapper for ${job.schedule}`}
-                              >
-                                <Copy className="h-3 w-3" />
-                                {copiedCronCommandId === job.id ? 'Copied' : 'Copy wrapper'}
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-[var(--color-muted)]">{job.source}</td>
-                        <td className="px-6 py-4 text-[var(--color-muted)]">{job.owner || 'Unknown'}</td>
-                        <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.last_run_at)}</td>
-                        <td className="px-6 py-4 text-[var(--color-muted)]">{formatTimestamp(job.next_run_at)}</td>
-                        <td className="px-6 py-4">
-                          <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
-                        </td>
-                      </tr>
-                      {executions.length > 0 && (
-                        <tr className="bg-[var(--background)]/45">
-                          <td className="px-6 pb-4 pt-0 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]">Recent runs</td>
-                          <td colSpan={6} className="px-6 pb-4 pt-0">
-                            <div className="grid gap-2">
-                              {executions.slice(0, 3).map(execution => (
-                                <div key={execution.id} className="grid gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-2 text-xs md:grid-cols-[160px_120px_90px_1fr]">
-                                  <span className="font-mono text-[var(--color-muted)]">{formatTimestamp(execution.started_at)}</span>
-                                  <span className={`w-fit rounded-full border px-2 py-0.5 font-semibold ${cronExecutionStatusClass(execution.status)}`}>{execution.status}</span>
-                                  <span className="font-mono text-[var(--foreground)]">exit {execution.exit_code ?? '—'}</span>
-                                  <span className="truncate font-mono text-[var(--color-muted)]">{formatExecutionDuration(execution)}{execution.output ? ` · ${execution.output}` : ''}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-                {!cronJobs.length && <tr><td colSpan={7} className="px-6 py-10 text-center text-[var(--color-muted)]">No cron jobs have been reported by this server.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'scripts' && (
-        <div className="space-y-5">
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
-            <div className="flex flex-col gap-3 border-b border-[var(--border-color)] p-5 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h3 className="flex items-center gap-2 text-base font-semibold text-[var(--foreground)]">
-                  <TerminalSquare className="h-4 w-4 text-[var(--accent-primary)]" />
-                  Allowlisted Script Library
-                </h3>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--color-muted)]">
-                  Scripts are predefined by the control plane, validated by backend policy, executed with a per-script timeout and output cap, and audited as server tasks.
-                </p>
-              </div>
-              <span className="w-fit rounded-md border border-[var(--border-color)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
-                {scriptLibrary.length} allowlisted
-              </span>
-            </div>
-
-            {osFamily === 'linux' && !supportsScriptLibrary && (
-              <div className="border-b border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-medium text-amber-700 dark:text-amber-300">
-                Script Library requires Agent {MIN_SCRIPT_LIBRARY_AGENT_VERSION} or newer. This server reports Agent {reportedAgentVersion || 'Unknown'}.
-              </div>
-            )}
-
-            {osFamily !== 'linux' ? (
-              <div className="p-8 text-sm leading-6 text-[var(--color-muted)]">
-                Script Library is currently enabled only for Linux agents. {osFamily === 'windows' ? 'Windows' : osFamily === 'macos' ? 'macOS' : 'Unknown OS'} agents stay read-only until a native allowlist is defined for that platform.
-              </div>
-            ) : scriptLibraryError ? (
-              <div className="p-8 text-sm font-medium text-rose-500">{scriptLibraryError}</div>
-            ) : scriptLibrary.length === 0 ? (
-              <div className="p-8 text-sm text-[var(--color-muted)]">No scripts are allowlisted for this server OS.</div>
-            ) : (
-              <div className="grid gap-4 p-5 xl:grid-cols-2">
-                {scriptLibrary.map(script => {
-                  const runState = scriptRuns[script.id] || { status: 'idle' as const };
-                  const running = runState.status === 'pending' || runState.status === 'processing';
-                  const disabled = running || server.status !== 'online' || !supportsScriptLibrary;
-                  return (
-                    <article key={script.id} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-5">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-[var(--foreground)]">{script.name}</h4>
-                            <span className="rounded border border-[var(--border-color)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-muted)]">
-                              {script.category}
-                            </span>
-                            {script.requires_confirmation && (
-                              <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                                Confirmation required
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{script.description}</p>
-                          <div className="mt-3 flex flex-wrap gap-2 font-mono text-[11px] text-[var(--color-muted)]">
-                            <span>timeout={script.timeout_seconds}s</span>
-                            <span>output_limit={script.output_limit_bytes}B</span>
-                            <span>id={script.id}</span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => void runAllowlistedScript(script, `script-${script.id}-${Date.now()}`)}
-                          title={!supportsScriptLibrary ? `Update Agent to ${MIN_SCRIPT_LIBRARY_AGENT_VERSION}+ first` : server.status !== 'online' ? 'The agent must be online' : `Run ${script.name}`}
-                          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          {running ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                          {running ? 'Running' : supportsScriptLibrary ? 'Run' : 'Update agent'}
-                        </button>
-                      </div>
-
-                      {runState.status !== 'idle' && (
-                        <div className="mt-4 overflow-hidden rounded-lg border border-[var(--border-color)]">
-                          <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--surface-2)] px-3 py-2">
-                            <span className={`rounded border px-2 py-0.5 text-[11px] font-semibold uppercase ${scriptRunStatusClass(runState.status)}`}>
-                              {runState.status}
-                            </span>
-                            {runState.taskId && <code className="text-[11px] text-[var(--color-muted)]">task {runState.taskId.slice(0, 8)}</code>}
-                          </div>
-                          <pre className="max-h-72 overflow-auto whitespace-pre-wrap bg-[var(--background)] p-3 font-mono text-xs leading-5 text-[var(--foreground)]">
-                            {runState.result || 'Waiting for output…'}
-                          </pre>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         </div>
       )}
 
@@ -1797,18 +1252,6 @@ export default function ServerDetailsPage() {
         </div>
       )}
 
-      {/* Run Script Confirmation Modal */}
-      <ConfirmModal
-        isOpen={Boolean(pendingRunScript)}
-        title="Confirm Script Execution"
-        message={`Run "${pendingRunScript?.script.name}" on ${server?.name}? This action is audited and will execute the pre-allowlisted command on the target host.`}
-        confirmText="Run Script"
-        variant="warning"
-        onConfirm={() => {
-          if (pendingRunScript) void executeRunScript(pendingRunScript.script, pendingRunScript.idempotencyKey);
-        }}
-        onCancel={() => setPendingRunScript(null)}
-      />
     </div>
   );
 }

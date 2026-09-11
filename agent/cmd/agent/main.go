@@ -727,14 +727,23 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 	if runtime.GOOS != "linux" {
 		return "", fmt.Errorf("read-only log viewer is currently supported only on Linux")
 	}
-	lines := payload["lines"]
-	if lines == "" {
-		lines = "200"
+	linesNum := 200
+	if rawLines := strings.TrimSpace(payload["lines"]); rawLines != "" {
+		parsed, err := strconv.Atoi(rawLines)
+		if err != nil || parsed < 1 || parsed > 1000 {
+			return "", fmt.Errorf("invalid lines parameter")
+		}
+		linesNum = parsed
 	}
+	lines := strconv.Itoa(linesNum)
+
 	switch payload["source"] {
 	case "journal":
 		args := []string{"-n", lines, "--no-pager", "-o", "short-iso"}
 		if unit := strings.TrimSpace(payload["unit"]); unit != "" {
+			if !serviceIdentifierPattern.MatchString(unit) {
+				return "", fmt.Errorf("invalid journal unit")
+			}
 			args = append([]string{"-u", unit}, args...)
 		}
 		out, err := combinedOutput(ctx, "journalctl", args...)

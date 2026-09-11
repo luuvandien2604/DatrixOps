@@ -20,7 +20,6 @@ import (
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/setup"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/systeminfo"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/terminal"
-	"github.com/luuvandien2604/DatrixOps/backend/internal/core/webhook"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -119,10 +118,6 @@ func main() {
 	apiKeyHandler := apikey.NewHandler(apiKeyRepo)
 	apikey.RegisterRoutes(mux, apiKeyHandler, c.DB, []byte(c.Config.JWTSecret))
 
-	webhookRepo := webhook.NewRepository(c.DB)
-	webhookHandler := webhook.NewHandler(webhookRepo)
-	webhook.RegisterRoutes(mux, webhookHandler, c.DB, []byte(c.Config.JWTSecret))
-
 	// --- Scheduler ---
 	if envBool("DATRIXOPS_RUN_SCHEDULERS") {
 		websiteRepo := website.NewRepository(c.DB)
@@ -133,10 +128,6 @@ func main() {
 		alertJob := scheduler.NewAlertJob(c.DB, log)
 		alertJob.Start()
 		defer alertJob.Stop()
-
-		webhookRetryJob := scheduler.NewWebhookRetryJob(c.DB, log)
-		webhookRetryJob.Start()
-		defer webhookRetryJob.Stop()
 
 		retentionJob := scheduler.NewRetentionJob(c.DB, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
 		retentionJob.Start()

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 type DashboardRange = '1H' | '2H' | '12H' | '24H';
 
@@ -263,7 +263,12 @@ export default function OverviewDashboard() {
                     <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".16" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
                     <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".12" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
                   </defs>
-                  <Tooltip contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }} />
+                  <XAxis dataKey="t" hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }}
+                    labelFormatter={(label) => label}
+                    formatter={(value: any, name: any) => [`${value}%`, name]}
+                  />
                   <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
                   <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
                 </AreaChart>

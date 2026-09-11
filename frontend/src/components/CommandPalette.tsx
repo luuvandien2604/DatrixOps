@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/apiClient';
 import {
-  Search, Server, Globe2, Activity, Bell, FileText, Settings2,
+  Search, Server, Globe2, Activity, Bell, FileText,
   Command, CornerDownLeft
 } from 'lucide-react';
 
@@ -78,6 +78,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       action: () => { router.push('/dashboard/websites'); closePalette(); }
     },
     {
+      id: 'nav-monitoring',
+      title: 'Metrics & Telemetry',
+      subtitle: 'Interactive host metrics and monitoring dashboards',
+      category: 'Navigation',
+      icon: Activity,
+      action: () => { router.push('/dashboard/monitoring'); closePalette(); }
+    },
+    {
       id: 'nav-logs',
       title: 'Unified System & Container Logs',
       subtitle: 'Real-time log viewer for agents and docker containers',
@@ -92,14 +100,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       category: 'Navigation',
       icon: Bell,
       action: () => { router.push('/dashboard/alerts'); closePalette(); }
-    },
-    {
-      id: 'nav-settings',
-      title: 'Instance Settings',
-      subtitle: 'Configure account and API keys',
-      category: 'Navigation',
-      icon: Settings2,
-      action: () => { router.push('/dashboard/settings'); closePalette(); }
     },
   ];
 
