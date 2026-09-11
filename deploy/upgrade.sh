@@ -1,6 +1,37 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Self-exec from a temporary copy to prevent script buffer corruption
+# when updating the codebase in-place.
+if [[ -z "${DATRIXOPS_UPGRADE_IS_COPY:-}" ]]; then
+    ORIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ "$(basename "$ORIG_DIR")" == "deploy" ]]; then
+        export DATRIXOPS_ORIGINAL_ROOT="$(cd "${ORIG_DIR}/.." && pwd)"
+    else
+        export DATRIXOPS_ORIGINAL_ROOT="$ORIG_DIR"
+    fi
+    SELF_TEMP="$(mktemp /tmp/datrixops-upgrade.XXXXXX.sh)"
+    cp -f "$0" "$SELF_TEMP"
+    chmod 0700 "$SELF_TEMP"
+    export DATRIXOPS_UPGRADE_IS_COPY=1
+    exec /usr/bin/env bash "$SELF_TEMP" "$@"
+fi
+
+TMP_DIR=""
+cleanup_upgrade() {
+    if [[ -n "${TMP_DIR:-}" && -d "${TMP_DIR:-}" ]]; then
+        rm -rf -- "$TMP_DIR"
+    fi
+    if [[ "${DATRIXOPS_UPGRADE_IS_COPY:-}" == "1" && -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+        case "${BASH_SOURCE[0]}" in
+            /tmp/datrixops-upgrade.*)
+                rm -f -- "${BASH_SOURCE[0]}"
+                ;;
+        esac
+    fi
+}
+trap cleanup_upgrade EXIT
+
 # ANSI color codes for English log messages
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,7 +61,9 @@ set_env_value() {
 
 find_environment() {
     local start_dir=""
-    if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
+    if [[ -n "${DATRIXOPS_ORIGINAL_ROOT:-}" && -d "${DATRIXOPS_ORIGINAL_ROOT}" ]]; then
+        start_dir="${DATRIXOPS_ORIGINAL_ROOT}/deploy"
+    elif [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]:-}" ]]; then
         start_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     else
         start_dir="$(pwd)"
@@ -351,7 +384,6 @@ log_step "Step 2/4: Updating DatrixOps codebase"
 
 log_info "Downloading published CE Server v${remote_release_ver} package from ${RELEASE_TARBALL_URL}..."
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$TMP_DIR"' EXIT
 
 if curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 600 \
     "$RELEASE_TARBALL_URL" -o "${TMP_DIR}/release.tar.gz" < /dev/null; then
@@ -407,7 +439,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.47"
+    target_app_ver="1.8.48"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \

@@ -150,7 +150,16 @@ follow_logs() {
 
 upgrade_server() {
     require_root
-    "${PROJECT_ROOT}/deploy/upgrade.sh"
+    local temp_script
+    temp_script="$(mktemp /tmp/datrixops-upgrade.XXXXXX.sh)"
+    cp -f "${PROJECT_ROOT}/deploy/upgrade.sh" "$temp_script"
+    chmod 0700 "$temp_script"
+    export DATRIXOPS_ORIGINAL_ROOT="$PROJECT_ROOT"
+    export DATRIXOPS_UPGRADE_IS_COPY=1
+    bash "$temp_script"
+    local exit_code=$?
+    rm -f "$temp_script"
+    return $exit_code
 }
 
 create_backup() {
