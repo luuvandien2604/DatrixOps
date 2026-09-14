@@ -374,11 +374,73 @@ if [[ "$installed_release_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     fi
 fi
 
+PREV_APP_VERSION="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+PREV_AGENT_VERSION="$(sed -n 's/^[[:space:]]*AGENT_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+PREV_APP_VERSION="${PREV_APP_VERSION:-1.8.48}"
+PREV_AGENT_VERSION="${PREV_AGENT_VERSION:-1.5.16}"
+
+BACKUP_FILE=""
+
+perform_rollback() {
+    local reason="$1"
+    log_warn "============================================================"
+    log_warn "🚨 UPGRADE FAILED: ${reason}"
+    log_warn "Initiating automated rollback to previous stable v${PREV_APP_VERSION}..."
+    log_warn "============================================================"
+
+    # 1. Restore previous version in .env
+    for env_target in "$ENV_FILE" "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"; do
+        [[ -f "$env_target" ]] || continue
+        set_env_value "$env_target" "DATRIXOPS_VERSION" "$PREV_APP_VERSION"
+        set_env_value "$env_target" "AGENT_VERSION" "$PREV_AGENT_VERSION"
+    done
+
+    # 2. Restore database from pre-upgrade backup if available
+    if [[ -n "${BACKUP_FILE:-}" && -f "$BACKUP_FILE" && -x "${SCRIPT_DIR}/restore.sh" ]]; then
+        log_info "Restoring database from pre-upgrade backup: ${BACKUP_FILE}..."
+        "${SCRIPT_DIR}/restore.sh" "$BACKUP_FILE" --yes < /dev/null || log_error "Failed to restore database during rollback."
+    fi
+
+    # 3. Bring previous containers back online
+    log_info "Restarting services with previous container image v${PREV_APP_VERSION}..."
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --remove-orphans < /dev/null || true
+
+    # 4. Verify rollback health
+    log_info "Verifying rollback service health..."
+    for _ in $(seq 1 12); do
+        if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
+            wget -qO- http://127.0.0.1:8080/health/ready < /dev/null >/dev/null 2>&1; then
+            log_success "✔ Automated rollback successful. Previous version v${PREV_APP_VERSION} is safely running."
+            exit 1
+        fi
+        sleep 5
+    done
+
+    log_error "Critical: Rollback completed but healthcheck did not respond. Check: docker compose logs backend"
+    exit 1
+}
+
+check_image_availability() {
+    local image_ref="$1"
+    log_info "Verifying image availability on registry: ${image_ref}..."
+    if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
+        return 0
+    fi
+    if docker pull -q "$image_ref" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
 log_step "Step 1/4: Creating automated pre-upgrade backup"
 if [[ -x "${SCRIPT_DIR}/backup.sh" ]]; then
-    BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh" < /dev/null)"
-    log_success "Backup created successfully: ${BACKUP_FILE}"
+    BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh" < /dev/null)" || true
 fi
+if [[ -z "$BACKUP_FILE" || ! -f "$BACKUP_FILE" || ! -s "$BACKUP_FILE" ]]; then
+    log_error "Automated pre-upgrade backup failed! Aborting upgrade to protect your data."
+    exit 1
+fi
+log_success "Backup created successfully: ${BACKUP_FILE}"
 
 log_step "Step 2/4: Updating DatrixOps codebase"
 
@@ -439,7 +501,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.48"
+    target_app_ver="1.8.49"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -491,28 +553,56 @@ log_info "Fetching independently released Agent version ${agent_ver}..."
 "${SCRIPT_DIR}/fetch-agent-release.sh" "$agent_ver" < /dev/null
 
 log_step "Step 4/4: Pulling latest pre-built container images & updating services"
-log_info "Pulling pre-built container images from registry..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null || true
 
-log_info "Running database migrations..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
-
-log_info "Applying updated container services..."
-if [[ "${DATRIXOPS_FORCE_UPDATE:-0}" == "1" ]]; then
-    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate < /dev/null
-else
-    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d < /dev/null
+# Check image readiness on GHCR before touching any running containers
+backend_image="ghcr.io/luuvandien2604/datrixops-backend:${target_app_ver}"
+if ! check_image_availability "$backend_image"; then
+    log_warn "Docker image for CE Server v${target_app_ver} is not yet available on GHCR."
+    log_warn "GitHub Actions may still be building the release. Please try again in 3-5 minutes."
+    log_info "Existing production installation remains online with zero interruption."
+    exit 1
 fi
 
-log_info "Performing health checks..."
+log_info "Pre-pulling all container images from registry..."
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null; then
+    perform_rollback "Failed to pull new container images."
+fi
+
+log_info "Running database migrations..."
+if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null; then
+    perform_rollback "Database migration failed."
+fi
+
+log_info "Applying updated container services with zero/minimal downtime..."
+if [[ "${DATRIXOPS_FORCE_UPDATE:-0}" == "1" ]]; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans < /dev/null
+else
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --remove-orphans < /dev/null
+fi
+
+log_info "Performing comprehensive multi-tier health checks (up to 90s)..."
 healthy=false
-for _ in $(seq 1 24); do
-    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
-        wget -qO- http://127.0.0.1:8080/health/ready < /dev/null >/dev/null 2>&1; then
-        healthy=true
-        break
+for _ in $(seq 1 18); do
+    # Check 1: Database ready
+    if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database \
+        pg_isready -U datrixops -d datrixops >/dev/null 2>&1; then
+        sleep 5
+        continue
     fi
-    sleep 5
+    # Check 2: Backend ready
+    if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
+        wget -qO- http://127.0.0.1:8080/health/ready < /dev/null >/dev/null 2>&1; then
+        sleep 5
+        continue
+    fi
+    # Check 3: Worker live
+    if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T worker \
+        wget -qO- http://127.0.0.1:8081/health/live < /dev/null >/dev/null 2>&1; then
+        sleep 5
+        continue
+    fi
+    healthy=true
+    break
 done
 
 if [[ "$healthy" == "true" ]]; then
@@ -539,6 +629,5 @@ if [[ "$healthy" == "true" ]]; then
     printf "${GREEN}============================================================${NC}\n\n"
     exit 0
 else
-    log_error "Health check failed after upgrade. Check container logs: docker compose logs backend"
-    exit 1
+    perform_rollback "Health checks failed after 90 seconds."
 fi
