@@ -86,4 +86,30 @@ chmod 0600 "${STAGING_DIR}/environment.env"
 
 tar -C "$STAGING_DIR" -czf "$OUTPUT" database.dump environment.env manifest.txt
 chmod 0600 "$OUTPUT"
+
+# Automated backup rotation / retention: keep newest N backups (default: 5)
+env_keep=""
+if [[ -f "$ENV_FILE" ]]; then
+    env_keep="$(sed -n 's/^[[:space:]]*BACKUP_RETENTION_COUNT=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    if [[ -z "$env_keep" ]]; then
+        env_keep="$(sed -n 's/^[[:space:]]*DATRIXOPS_BACKUP_KEEP=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    fi
+fi
+KEEP_BACKUPS="${DATRIXOPS_BACKUP_KEEP:-${env_keep:-5}}"
+if [[ "$KEEP_BACKUPS" =~ ^[0-9]+$ ]] && [[ "$KEEP_BACKUPS" -gt 0 ]]; then
+    backup_files=()
+    while IFS= read -r f; do
+        [[ -n "$f" ]] && backup_files+=("$f")
+    done < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "datrixops-backup-*.tar.gz" 2>/dev/null | sort -r)
+    total_backups="${#backup_files[@]}"
+    if [[ "$total_backups" -gt "$KEEP_BACKUPS" ]]; then
+        pruned_count=0
+        for (( i=KEEP_BACKUPS; i<total_backups; i++ )); do
+            rm -f -- "${backup_files[$i]}"
+            pruned_count=$((pruned_count + 1))
+        done
+        echo "[INFO] Backup retention: pruned ${pruned_count} older archive(s), retaining newest ${KEEP_BACKUPS}." >&2
+    fi
+fi
+
 echo "$OUTPUT"
