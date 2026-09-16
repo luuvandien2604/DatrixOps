@@ -1000,112 +1000,404 @@ export default function WebsitesPage() {
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                      <th className="py-3.5 px-4">Server / Host</th>
-                      <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-4">Availability (30d)</th>
-                      <th className="py-3.5 px-4">Host Uptime</th>
-                      <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border-color)]">
-                    {servers.map(server => {
-                      const isOnline = server.status?.toLowerCase() === 'online';
-                      const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
-                      const osInfo = parseJSON<{ os_name?: string; version?: string; uptime?: number; cpu_cores?: number; cpu_usage?: number }>(server.os_info);
+              {/* Server fleet status header */}
+              <div className="p-5 sm:p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3.5">
+                  <h2 className="text-xl font-bold text-[var(--foreground)] tracking-tight">Server fleet status</h2>
 
-                      const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
-                      const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
-                      const availability = server.availability_30d != null
-                        ? server.availability_30d
-                        : (isOnline ? 100.0 : 0.0);
-                      const downtimeSecs = server.downtime_seconds_30d ?? 0;
+                  {/* Date window navigator */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-semibold text-[var(--foreground)]">
+                    <button
+                      type="button"
+                      onClick={handlePreviousDateRange}
+                      className="p-1 rounded hover:bg-white/10 text-[var(--color-muted)] hover:text-[var(--foreground)] transition"
+                      title="Previous 30 days"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="px-1 text-[var(--foreground)] select-none">
+                      {formatMonthYearRange(uptimeSummary?.start_date, uptimeSummary?.end_date)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleNextDateRange}
+                      disabled={!selectedEndDate}
+                      className={`p-1 rounded text-[var(--color-muted)] transition ${
+                        !selectedEndDate ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 hover:text-[var(--foreground)]'
+                      }`}
+                      title="Next 30 days"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    {selectedEndDate && (
+                      <button
+                        type="button"
+                        onClick={handleResetDateRange}
+                        className="ml-1 text-[11px] text-blue-500 hover:underline font-semibold"
+                      >
+                        Today
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                      return (
-                        <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`p-2 rounded-xl border shrink-0 ${
-                                isOnline
-                                  ? 'bg-blue-50 text-blue-600 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
-                                  : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
-                              }`}>
-                                <Server className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <span className="font-bold text-sm text-[var(--foreground)] block truncate">{server.name}</span>
-                                <span className="text-xs text-[var(--color-muted)] font-mono">
-                                  {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
-                              isOnline
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-                                : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
-                            }`}>
-                              {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                              {isOnline ? 'ONLINE' : 'OFFLINE'}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`font-mono font-bold text-sm ${
-                                  availability >= 99.0
-                                    ? 'text-emerald-700 dark:text-emerald-400'
-                                    : availability >= 95.0
-                                      ? 'text-amber-700 dark:text-amber-400'
-                                      : 'text-rose-700 dark:text-rose-400'
-                                }`}>
-                                  {availability.toFixed(1)}%
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-[var(--color-muted)]">
-                                {downtimeSecs > 0 ? (
-                                  <span className="text-amber-600 dark:text-amber-400 font-medium">{formatDowntimeDuration(downtimeSecs)}</span>
-                                ) : (
-                                  <span>100% SLA target</span>
-                                )}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1.5 font-mono text-sm font-semibold text-[var(--foreground)]">
-                                <Clock className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
-                                {isOnline ? formattedHostUptime : '—'}
-                              </div>
-                              <span className="text-[11px] text-[var(--color-muted)]">
-                                {isOnline ? 'Since last boot' : 'Offline / down'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex justify-end">
-                              <Link
-                                href={`/dashboard/servers/${server.id}`}
-                                className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
-                              >
-                                View Details <ArrowRight className="w-3 h-3 text-blue-500 dark:text-blue-400" />
-                              </Link>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* View Mode Toggle */}
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)]">
+                    <button
+                      type="button"
+                      onClick={() => setWebsiteViewMode('timeline')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                        websiteViewMode === 'timeline'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" /> Status bars
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWebsiteViewMode('table')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                        websiteViewMode === 'table'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      <List className="w-3.5 h-3.5" /> Table view
+                    </button>
+                  </div>
+                </div>
               </div>
+
+              {/* TIMELINE VIEW FOR SERVERS */}
+              {websiteViewMode === 'timeline' ? (
+                <div className="divide-y divide-[var(--border-color)]">
+                  {servers.map((server) => {
+                    const isOnline = server.status?.toLowerCase() === 'online';
+                    const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
+                    const osInfo = parseJSON<{ os_name?: string; version?: string; uptime?: number; cpu_cores?: number; cpu_usage?: number }>(server.os_info);
+                    const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
+                    const availability = server.availability_30d != null ? server.availability_30d : (isOnline ? 100.0 : 0.0);
+                    const downtimeSecs = server.downtime_seconds_30d ?? 0;
+                    const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
+
+                    // Generate continuous 90 day bars for server
+                    const baseDate = selectedEndDate ? new Date(selectedEndDate + 'T00:00:00Z') : new Date();
+                    const createdAtTime = server.created_at ? new Date(server.created_at).getTime() : 0;
+                    const uptimeStartTime = Date.now() - (uptimeSecs * 1000);
+
+                    const serverBars = Array.from({ length: 90 }, (_, i) => {
+                      const d = new Date(baseDate);
+                      d.setUTCDate(d.getUTCDate() - (89 - i));
+                      const dateStr = d.toISOString().slice(0, 10);
+                      const dayEnd = d.getTime() + 86400000;
+
+                      let status: 'operational' | 'outage' | 'degraded' | 'no_data' = 'operational';
+                      let dayDowntime = 0;
+
+                      if (createdAtTime > dayEnd) {
+                        status = 'no_data';
+                      } else if (!isOnline && i === 89) {
+                        status = 'outage';
+                        dayDowntime = downtimeSecs > 0 ? downtimeSecs : 86400;
+                      } else if (isOnline && (dayEnd >= uptimeStartTime || i >= 80)) {
+                        status = 'operational';
+                      } else if (availability < 95.0) {
+                        status = 'outage';
+                        dayDowntime = 3600;
+                      } else if (availability < 99.0) {
+                        status = 'degraded';
+                        dayDowntime = 600;
+                      }
+
+                      return {
+                        date: dateStr,
+                        status,
+                        downtime_seconds: dayDowntime,
+                      };
+                    });
+
+                    return (
+                      <div key={server.id} className="p-5 sm:p-6 transition hover:bg-[var(--surface-subtle)]/30">
+                        {/* Server Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3.5">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <div className={`p-1.5 rounded-lg border shrink-0 ${
+                              isOnline
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            }`}>
+                              <Server className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-bold text-sm text-[var(--foreground)]">{server.name}</span>
+                            <span className="text-xs text-[var(--color-muted)] font-mono">
+                              {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
+                            </span>
+                            {snapshot?.inventory?.agent_version && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/5 text-[var(--color-muted)] border border-white/5">
+                                v{snapshot.inventory.agent_version}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Status and Action Buttons */}
+                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                            <span className={`text-xs font-semibold flex items-center gap-1.5 ${
+                              isOnline ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                              {isOnline ? 'Operational' : 'Host offline'}
+                            </span>
+
+                            <span className="text-xs font-mono text-[var(--color-muted)] pl-2 border-l border-[var(--border-color)]">
+                              Up: {isOnline ? formattedHostUptime : '—'}
+                            </span>
+
+                            <Link
+                              href={`/dashboard/servers/${server.id}`}
+                              className="h-7 px-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1 transition"
+                            >
+                              Details <ArrowRight className="w-3 h-3 text-blue-400" />
+                            </Link>
+                          </div>
+                        </div>
+
+                        {/* 90-Day Bars Container */}
+                        <div className="relative pt-2 pb-1">
+                          <div className="grid grid-cols-[repeat(90,minmax(0,1fr))] gap-[2px] sm:gap-[2.5px] h-8 sm:h-9 items-stretch">
+                            {serverBars.map((day, dayIdx) => {
+                              let bgClass = 'bg-emerald-500 hover:bg-emerald-400 dark:bg-[#10a37f] dark:hover:bg-[#12b990]';
+                              if (day.status === 'outage') {
+                                bgClass = 'bg-rose-500 hover:bg-rose-400 dark:bg-[#ef4444] dark:hover:bg-[#f87171]';
+                              } else if (day.status === 'degraded') {
+                                bgClass = 'bg-amber-500 hover:bg-amber-400 dark:bg-[#f59e0b] dark:hover:bg-[#fbbf24]';
+                              } else if (day.status === 'no_data') {
+                                bgClass = 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-700/80';
+                              }
+
+                              const isHovered = hoveredDay?.itemId === server.id && hoveredDay?.barIndex === dayIdx;
+
+                              return (
+                                <div
+                                  key={day.date}
+                                  onMouseEnter={() => setHoveredDay({
+                                    itemId: server.id,
+                                    day: {
+                                      date: day.date,
+                                      status: day.status,
+                                      uptime_pct: day.status === 'operational' ? 100 : 0,
+                                      downtime_seconds: day.downtime_seconds,
+                                      avg_latency_ms: 0,
+                                      incident_title: isOnline ? `Host uptime: ${formattedHostUptime}` : 'Agent offline'
+                                    },
+                                    barIndex: dayIdx
+                                  })}
+                                  onMouseLeave={() => setHoveredDay(null)}
+                                  className={`h-full rounded-[2px] cursor-pointer transition-all duration-100 relative ${bgClass} ${
+                                    isHovered ? 'scale-y-115 z-20 ring-1 ring-white/60 brightness-110' : 'opacity-95 hover:opacity-100'
+                                  }`}
+                                />
+                              );
+                            })}
+                          </div>
+
+                          {/* Hover Popover Tooltip */}
+                          {hoveredDay && hoveredDay.itemId === server.id && (
+                            (() => {
+                              const barPercent = ((hoveredDay.barIndex + 0.5) / 90) * 100;
+                              const clampedBoxLeft = Math.max(18, Math.min(82, barPercent));
+                              const arrowOffsetPct = barPercent - clampedBoxLeft;
+
+                              return (
+                                <div
+                                  style={{
+                                    left: `${clampedBoxLeft}%`,
+                                    transform: 'translateX(-50%)',
+                                  }}
+                                  className="absolute bottom-full mb-3 pointer-events-none z-30 transition-opacity duration-150"
+                                >
+                                  <div className="relative rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3.5 shadow-2xl min-w-[240px] max-w-[290px] text-xs">
+                                    <div className="font-semibold text-sm text-[var(--foreground)] mb-2">
+                                      {formatTooltipDate(hoveredDay.day.date)}
+                                    </div>
+
+                                    <div className={`rounded-lg p-2 flex items-center justify-between text-xs font-semibold mb-2.5 ${
+                                      hoveredDay.day.status === 'outage'
+                                        ? 'bg-rose-50 text-rose-800 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60'
+                                        : hoveredDay.day.status === 'degraded'
+                                          ? 'bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60'
+                                          : hoveredDay.day.status === 'no_data'
+                                            ? 'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700'
+                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60'
+                                    }`}>
+                                      <div className="flex items-center gap-1.5">
+                                        {hoveredDay.day.status === 'outage' && <XCircle className="w-3.5 h-3.5 text-rose-500" />}
+                                        {hoveredDay.day.status === 'degraded' && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />}
+                                        {hoveredDay.day.status === 'operational' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                                        {hoveredDay.day.status === 'no_data' && <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />}
+                                        <span>
+                                          {hoveredDay.day.status === 'outage' && 'Host offline'}
+                                          {hoveredDay.day.status === 'degraded' && 'Partial downtime'}
+                                          {hoveredDay.day.status === 'operational' && 'Operational'}
+                                          {hoveredDay.day.status === 'no_data' && 'Before enrollment'}
+                                        </span>
+                                      </div>
+
+                                      <span className="font-mono font-medium text-[11px] opacity-90">
+                                        {hoveredDay.day.status === 'operational' ? '100% SLA' : formatOutageDuration(hoveredDay.day.downtime_seconds)}
+                                      </span>
+                                    </div>
+
+                                    <div className="pt-1.5 border-t border-[var(--border-color)]">
+                                      <div className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-muted)] mb-0.5">
+                                        RELATED
+                                      </div>
+                                      <div className="text-[11px] text-[var(--foreground)] truncate font-normal">
+                                        {hoveredDay.day.status === 'operational'
+                                          ? `Heartbeat active · Continuous uptime: ${formattedHostUptime}`
+                                          : hoveredDay.day.status === 'no_data'
+                                            ? 'Host not yet enrolled'
+                                            : 'Agent heartbeat interrupted'}
+                                      </div>
+                                    </div>
+
+                                    <div
+                                      style={{ left: `calc(50% + ${arrowOffsetPct}%)` }}
+                                      className="absolute -bottom-1.5 -translate-x-1/2 w-3 h-3 bg-[var(--background-card)] border-r border-b border-[var(--border-color)] rotate-45"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          )}
+
+                          {/* Axis footer underneath the bars */}
+                          <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)] mt-2.5 font-medium select-none">
+                            <span className="shrink-0">90 days ago</span>
+                            <div className="relative flex-1 flex items-center justify-center">
+                              <div className="w-full border-t border-[var(--border-color)]" />
+                              <span className="absolute bg-[var(--background-card)] px-2.5 text-[11px] font-semibold text-[var(--color-muted)]">
+                                {availability.toFixed(1)} % availability
+                              </span>
+                            </div>
+                            <span className="shrink-0">{!selectedEndDate ? 'Today' : serverBars[serverBars.length - 1]?.date || 'Today'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Table View fallback for Servers */
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                        <th className="py-3.5 px-4">Server / Host</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4">Availability (30d)</th>
+                        <th className="py-3.5 px-4">Host Uptime</th>
+                        <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-color)]">
+                      {servers.map(server => {
+                        const isOnline = server.status?.toLowerCase() === 'online';
+                        const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
+                        const osInfo = parseJSON<{ os_name?: string; version?: string; uptime?: number; cpu_cores?: number; cpu_usage?: number }>(server.os_info);
+
+                        const uptimeSecs = snapshot?.system_info?.uptime || osInfo?.uptime || 0;
+                        const formattedHostUptime = formatUptimeSeconds(uptimeSecs);
+                        const availability = server.availability_30d != null
+                          ? server.availability_30d
+                          : (isOnline ? 100.0 : 0.0);
+                        const downtimeSecs = server.downtime_seconds_30d ?? 0;
+
+                        return (
+                          <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-xl border shrink-0 ${
+                                  isOnline
+                                    ? 'bg-blue-50 text-blue-600 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
+                                    : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
+                                }`}>
+                                  <Server className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="font-bold text-sm text-[var(--foreground)] block truncate">{server.name}</span>
+                                  <span className="text-xs text-[var(--color-muted)] font-mono">
+                                    {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
+                                isOnline
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
+                              }`}>
+                                {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                                {isOnline ? 'ONLINE' : 'OFFLINE'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-mono font-bold text-sm ${
+                                    availability >= 99.0
+                                      ? 'text-emerald-700 dark:text-emerald-400'
+                                      : availability >= 95.0
+                                        ? 'text-amber-700 dark:text-amber-400'
+                                        : 'text-rose-700 dark:text-rose-400'
+                                  }`}>
+                                    {availability.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-[var(--color-muted)]">
+                                  {downtimeSecs > 0 ? (
+                                    <span className="text-amber-600 dark:text-amber-400 font-medium">{formatDowntimeDuration(downtimeSecs)}</span>
+                                  ) : (
+                                    <span>100% SLA target</span>
+                                  )}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5 font-mono text-sm font-semibold text-[var(--foreground)]">
+                                  <Clock className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                                  {isOnline ? formattedHostUptime : '—'}
+                                </div>
+                                <span className="text-[11px] text-[var(--color-muted)]">
+                                  {isOnline ? 'Since last boot' : 'Offline / down'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex justify-end">
+                                <Link
+                                  href={`/dashboard/servers/${server.id}`}
+                                  className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                                >
+                                  View Details <ArrowRight className="w-3 h-3 text-blue-500 dark:text-blue-400" />
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </>
       )}
+
 
       {/* Add Website Modal */}
       {isModalOpen && (

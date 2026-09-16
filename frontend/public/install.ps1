@@ -161,9 +161,24 @@ try {
 
     # Step 3: Install & Start Service
     $TaskName = "DatrixOpsAgent"
-    Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+    if (-not $TestMode) {
+        Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null
+        Get-Process -Name "datrixops-agent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
 
-    Move-Item -LiteralPath $StagedPath -Destination $ExePath -Force
+    if (Test-Path -LiteralPath $ExePath) {
+        try {
+            Remove-Item -LiteralPath $ExePath -Force -ErrorAction Stop
+        } catch {
+            $OldExe = "$ExePath.old"
+            Remove-Item -LiteralPath $OldExe -Force -ErrorAction SilentlyContinue
+            Move-Item -LiteralPath $ExePath -Destination $OldExe -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Copy-Item -LiteralPath $StagedPath -Destination $ExePath -Force
+    Remove-Item -LiteralPath $StagedPath -Force -ErrorAction SilentlyContinue
 
     $LogPath = "$InstallDir\agent.log"
     $BatContent = @(

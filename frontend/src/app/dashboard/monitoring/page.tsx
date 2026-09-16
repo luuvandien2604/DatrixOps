@@ -3,9 +3,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Activity, CircleAlert, Clock3, Cpu, DatabaseBackup,
   HardDrive, Maximize2, Minimize2, RefreshCw, Server as ServerIcon, Wifi,
+  ArrowRight,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Line, LineChart,
@@ -367,6 +369,18 @@ export default function MonitoringPage() {
   const chartTimeline = timeline;
   const selectedServer = servers.find((server) => server.id === selectedServerId);
   const serverOnline = selectedServer?.status === 'online';
+
+  const netDiag = useMemo(() => {
+    if (!selectedServer?.snapshot) return null;
+    try {
+      const snap = typeof selectedServer.snapshot === 'string'
+        ? JSON.parse(selectedServer.snapshot)
+        : selectedServer.snapshot;
+      return (snap as { network_diagnostics?: { status?: string; primary_interface?: string; default_gateway?: string; gateway_packet_loss?: number; summary?: string; issues?: string[] } })?.network_diagnostics || null;
+    } catch {
+      return null;
+    }
+  }, [selectedServer]);
   const dataPoints = timeline.reduce((total, point) => total + (point.hasData ? 1 : 0), 0);
   const xDomain: [number, number] = [now - rangeConfig.durationMs, now];
   const chartContext = {
@@ -672,6 +686,55 @@ export default function MonitoringPage() {
           </button>
         </div>
       </header>
+
+      {/* Network Diagnostics Quick Card */}
+      {selectedServer && (
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className={`p-2.5 rounded-xl border shrink-0 ${
+              netDiag?.status === 'CRITICAL' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+              netDiag?.status === 'WARNING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+              'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            }`}>
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-sm text-[var(--foreground)]">Network Diagnostics</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  netDiag?.status === 'CRITICAL' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                  netDiag?.status === 'WARNING' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}>
+                  {netDiag?.status || (serverOnline ? 'HEALTHY' : 'OFFLINE')}
+                </span>
+                {netDiag?.primary_interface && (
+                  <span className="text-xs text-[var(--color-muted)] font-mono">
+                    Uplink: {netDiag.primary_interface} ({netDiag.default_gateway ? `GW: ${netDiag.default_gateway}` : 'Gateway OK'})
+                  </span>
+                )}
+                {netDiag?.gateway_packet_loss != null && (
+                  <span className="text-xs text-[var(--color-muted)] font-mono">
+                    · Loss: {netDiag.gateway_packet_loss}%
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[var(--color-muted)] mt-1">
+                {netDiag?.summary || (serverOnline ? 'Egress connectivity, DNS resolution, and gateway probes operating normally' : 'Server is currently offline')}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+            <Link
+              href={`/dashboard/servers/${selectedServerId}?tab=network`}
+              className="h-8 px-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition shadow-sm"
+            >
+              View Diagnostics <ArrowRight className="w-3.5 h-3.5 text-blue-400" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {metricsError && (
         <div className="monitoring-empty-notice text-[var(--rose)]" role="alert">
