@@ -568,7 +568,7 @@ export default function ServersPage() {
       case 'macos':
         return `curl -fsSL ${agentArtifactBaseUrl}/install-mac.sh | sudo bash -s -- --server ${controlPlaneOrigin} --token ${generatedAgentToken} --agent-version ${agentVersion} --agent-artifact-base-url ${agentArtifactBaseUrl} --agent-release-layout ${agentReleaseLayout}${shellInsecureArg}${shellServicesArgument}`;
       case 'windows':
-        return `Invoke-WebRequest -Uri "${agentArtifactBaseUrl}/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}" -ServerUrl "${controlPlaneOrigin}" -AgentVersion "${agentVersion}" -AgentArtifactBaseUrl "${agentArtifactBaseUrl}" -AgentReleaseLayout "${agentReleaseLayout}"${powershellInsecureArg}${powershellServicesArgument}`;
+        return `Invoke-WebRequest -Uri "${controlPlaneOrigin}/install.ps1" -OutFile "install.ps1"; .\\install.ps1 -Token "${generatedAgentToken}" -ServerUrl "${controlPlaneOrigin}" -AgentVersion "${agentVersion}" -AgentArtifactBaseUrl "${agentArtifactBaseUrl}" -AgentReleaseLayout "${agentReleaseLayout}"${powershellInsecureArg}${powershellServicesArgument}`;
       default:
         return '';
     }

@@ -267,7 +267,7 @@ export default function OverviewDashboard() {
                   <Tooltip
                     contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }}
                     labelFormatter={(label) => label}
-                    formatter={(value: any, name: any) => [`${value}%`, name]}
+                    formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
                   />
                   <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
                   <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />

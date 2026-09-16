@@ -2,18 +2,15 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import {
   Activity,
   AlertCircle,
   AlertTriangle,
-  ArrowRight,
   Bell,
   Box,
   Check,
   CheckCircle2,
   Clock,
-  ExternalLink,
   Flame,
   Globe2,
   Layers,
@@ -24,12 +21,9 @@ import {
   Search,
   Send,
   Server,
-  ShieldAlert,
-  ShieldCheck,
   Sparkles,
   Trash2,
   X,
-  XCircle,
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
@@ -147,7 +141,6 @@ export default function AlertsPage() {
   const [unreadIncidentsCount, setUnreadIncidentsCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
-  const [loadingWebsites, setLoadingWebsites] = useState(false);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
 
   const [savingRule, setSavingRule] = useState(false);
@@ -281,14 +274,11 @@ export default function AlertsPage() {
   }
 
   async function fetchWebsites() {
-    setLoadingWebsites(true);
     try {
       const data = await apiClient('/websites');
       setWebsites(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoadingWebsites(false);
     }
   }
 

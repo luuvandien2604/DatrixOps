@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Globe, Plus, Trash2, CheckCircle2, XCircle, Shield, ShieldAlert,
+  Globe, Plus, Trash2, CheckCircle2, XCircle, ShieldAlert,
   ShieldCheck, RefreshCw, Activity, ExternalLink, Bell, Check,
-  Server, Clock, ArrowRight, ChevronLeft, ChevronRight, HelpCircle,
+  Server, Clock, ArrowRight, ChevronLeft, ChevronRight,
   AlertTriangle, LayoutGrid, List
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -1085,7 +1085,8 @@ export default function WebsitesPage() {
                     // Generate continuous 90 day bars for server
                     const baseDate = selectedEndDate ? new Date(selectedEndDate + 'T00:00:00Z') : new Date();
                     const createdAtTime = server.created_at ? new Date(server.created_at).getTime() : 0;
-                    const uptimeStartTime = Date.now() - (uptimeSecs * 1000);
+                    const referenceNow = currentTimestamp || baseDate.getTime();
+                    const uptimeStartTime = referenceNow - (uptimeSecs * 1000);
 
                     const serverBars = Array.from({ length: 90 }, (_, i) => {
                       const d = new Date(baseDate);

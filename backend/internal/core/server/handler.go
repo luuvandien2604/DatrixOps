@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/middleware"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/response"
@@ -24,6 +26,8 @@ type Handler struct {
 	enableRemoteScripts   bool
 	enableServiceControls bool
 	enableReadOnlyLogs    bool
+	netReportsMu          sync.RWMutex
+	lastNetReports        map[string]*NetworkDiagnosticReport
 }
 
 var allowedTaskTypes = map[string]struct{}{
@@ -59,6 +63,7 @@ func NewHandler(svc *Service, enableRemoteScripts, enableServiceControls, enable
 		enableRemoteScripts:   enableRemoteScripts,
 		enableServiceControls: enableServiceControls,
 		enableReadOnlyLogs:    enableReadOnlyLogs,
+		lastNetReports:        make(map[string]*NetworkDiagnosticReport),
 	}
 }
 
@@ -800,4 +805,89 @@ func (h *Handler) recordAudit(ctx context.Context, userID, action, resourceType,
 		 VALUES ($1, $2, $3, $4, $5)`,
 		userID, action, resourceType, resourceID, detailsJSON,
 	)
+}
+
+// DiagnoseNetwork runs an on-demand live network diagnostic probing domestic and international targets.
+func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Server ID is required")
+		return
+	}
+
+	server, err := h.svc.GetServer(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+
+	diagCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	var snapshotRaw []byte
+	if server.Snapshot != nil {
+		snapshotRaw = []byte(*server.Snapshot)
+	}
+
+	report := RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw)
+
+	h.netReportsMu.Lock()
+	if h.lastNetReports == nil {
+		h.lastNetReports = make(map[string]*NetworkDiagnosticReport)
+	}
+	h.lastNetReports[server.ID] = report
+	h.netReportsMu.Unlock()
+
+	response.Success(w, http.StatusOK, report)
+}
+
+// GetNetworkDiagnostics returns the latest network diagnostic report or generates a fresh one.
+func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Server ID is required")
+		return
+	}
+
+	server, err := h.svc.GetServer(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Server not found")
+		return
+	}
+
+	h.netReportsMu.RLock()
+	report, exists := h.lastNetReports[server.ID]
+	h.netReportsMu.RUnlock()
+
+	if !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute {
+		diagCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		defer cancel()
+
+		var snapshotRaw []byte
+		if server.Snapshot != nil {
+			snapshotRaw = []byte(*server.Snapshot)
+		}
+		report = RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw)
+
+		h.netReportsMu.Lock()
+		if h.lastNetReports == nil {
+			h.lastNetReports = make(map[string]*NetworkDiagnosticReport)
+		}
+		h.lastNetReports[server.ID] = report
+		h.netReportsMu.Unlock()
+	}
+
+	response.Success(w, http.StatusOK, report)
 }
