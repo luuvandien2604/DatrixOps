@@ -291,11 +291,11 @@ export default function ServerDetailsPage() {
       if (res) {
         setNetReport(res);
         setLastDiagTime(new Date().toLocaleTimeString());
-        toast.success('Chẩn đoán chất lượng mạng hoàn tất!');
+        toast.success('Network diagnostics completed successfully!');
       }
     } catch (err: unknown) {
       console.error(err);
-      toast.error('Không thể chạy chẩn đoán mạng');
+      toast.error('Failed to run network diagnostics');
     } finally {
       setRunningNetDiag(false);
     }
@@ -1270,11 +1270,11 @@ export default function ServerDetailsPage() {
             const isWarn = alertSev === 'warning';
 
             const domesticProbes = netReport?.domestic_probes || [
-              { id: 'viettel', name: 'Viettel Telecom Core', category: 'domestic', host: '203.113.131.1', port: 53, protocol: 'DNS/TCP', location: 'Hà Nội / Toàn quốc', latency_ms: 6.8, packet_loss: 0, status: 'optimal' as const },
-              { id: 'vnpt', name: 'VNPT Telecom Core', category: 'domestic', host: '203.162.4.190', port: 53, protocol: 'DNS/TCP', location: 'TP.HCM / Toàn quốc', latency_ms: 7.2, packet_loss: 0, status: 'optimal' as const },
-              { id: 'fpt', name: 'FPT Telecom Core', category: 'domestic', host: '210.245.24.20', port: 53, protocol: 'DNS/TCP', location: 'Hà Nội / TP.HCM', latency_ms: 5.9, packet_loss: 0, status: 'optimal' as const },
-              { id: 'vnnic', name: 'VNNIC (Trạm VNIX QG)', category: 'domestic', host: '203.119.9.9', port: 53, protocol: 'DNS/TCP', location: 'Trạm VNIX Quốc gia', latency_ms: 8.4, packet_loss: 0, status: 'optimal' as const },
-              { id: 'vietnix', name: 'Vietnix Core DC', category: 'domestic', host: '103.200.23.1', port: 53, protocol: 'DNS/TCP', location: 'TP.HCM Data Center', latency_ms: 4.5, packet_loss: 0, status: 'optimal' as const },
+              { id: 'viettel', name: 'Viettel Telecom Core', category: 'domestic', host: '203.113.131.1', port: 53, protocol: 'DNS/TCP', location: 'Hanoi / Nationwide', latency_ms: 6.8, packet_loss: 0, status: 'optimal' as const },
+              { id: 'vnpt', name: 'VNPT Telecom Core', category: 'domestic', host: '203.162.4.190', port: 53, protocol: 'DNS/TCP', location: 'HCMC / Nationwide', latency_ms: 7.2, packet_loss: 0, status: 'optimal' as const },
+              { id: 'fpt', name: 'FPT Telecom Core', category: 'domestic', host: '210.245.24.20', port: 53, protocol: 'DNS/TCP', location: 'Hanoi / HCMC', latency_ms: 5.9, packet_loss: 0, status: 'optimal' as const },
+              { id: 'vnnic', name: 'VNNIC (National VNIX Exchange)', category: 'domestic', host: '203.119.9.9', port: 53, protocol: 'DNS/TCP', location: 'National VNIX POP', latency_ms: 8.4, packet_loss: 0, status: 'optimal' as const },
+              { id: 'vietnix', name: 'Vietnix Core DC', category: 'domestic', host: '103.200.23.1', port: 53, protocol: 'DNS/TCP', location: 'HCMC Data Center', latency_ms: 4.5, packet_loss: 0, status: 'optimal' as const },
             ];
 
             const internationalProbes = netReport?.international_probes || [
@@ -1285,10 +1285,10 @@ export default function ServerDetailsPage() {
             ];
 
             const subseaCables = netReport?.subsea_cables || [
-              { code: 'APG', name: 'Asia-Pacific Gateway (Việt Nam - Singapore / Nhật Bản)', status: 'optimal' as const, latency_est_ms: 28.5, notes: 'Băng thông thông suốt, độ trễ đạt tiêu chuẩn' },
-              { code: 'AAG', name: 'Asia-America Gateway (Việt Nam - HongKong - Mỹ)', status: 'optimal' as const, latency_est_ms: 38.0, notes: 'Lưu lượng ổn định, không ghi nhận nghẽn' },
-              { code: 'IA', name: 'Intra-Asia / TGN-IA (Việt Nam - Singapore)', status: 'optimal' as const, latency_est_ms: 31.0, notes: 'Đường truyền dự phòng tốt' },
-              { code: 'AAE-1', name: 'Asia-Africa-Europe 1 (Tuyến Châu Âu / Singapore)', status: 'optimal' as const, latency_est_ms: 34.2, notes: 'Thông suốt qua trạm Singapore' },
+              { code: 'APG', name: 'Asia-Pacific Gateway (Vietnam - Singapore / Japan)', status: 'optimal' as const, latency_est_ms: 28.5, notes: 'Nominal throughput and low latency' },
+              { code: 'AAG', name: 'Asia-America Gateway (Vietnam - Hong Kong - US)', status: 'optimal' as const, latency_est_ms: 38.0, notes: 'Stable egress, no congestion reported' },
+              { code: 'IA', name: 'Intra-Asia / TGN-IA (Vietnam - Singapore)', status: 'optimal' as const, latency_est_ms: 31.0, notes: 'Optimal redundancy route' },
+              { code: 'AAE-1', name: 'Asia-Africa-Europe 1 (Europe / Singapore Route)', status: 'optimal' as const, latency_est_ms: 34.2, notes: 'Nominal transit via Singapore POP' },
             ];
 
             const primaryIface = netIfaces.find(i => i.name === netDiag?.primary_uplink) || netIfaces.find(i => i.is_physical && i.is_up) || netIfaces[0];
@@ -1309,23 +1309,23 @@ export default function ServerDetailsPage() {
                       <div>
                         <div className="flex items-center gap-2.5 flex-wrap">
                           <h2 className="text-lg font-bold text-[var(--foreground)]">
-                            Giám Sát & Chẩn Đoán Chất Lượng Mạng
+                            Network Quality & Diagnostics
                           </h2>
                           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
                             isCrit ? 'bg-rose-500 text-white' :
                             isWarn ? 'bg-amber-500 text-black' :
                             'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           }`}>
-                            {isCrit ? 'Nguy Cấp' : isWarn ? 'Cảnh Báo' : 'Tối Ưu'}
+                            {isCrit ? 'Critical' : isWarn ? 'Warning' : 'Optimal'}
                           </span>
                           {lastDiagTime && (
                             <span className="text-xs text-[var(--color-muted)]">
-                              (Lần đo gần nhất: {lastDiagTime})
+                              (Last probe: {lastDiagTime})
                             </span>
                           )}
                         </div>
                         <p className="mt-1 text-xs sm:text-sm text-[var(--color-muted)] max-w-2xl">
-                          Đo kiểm thời gian thực độ trễ (latency), tỉ lệ rớt gói tới các nhà mạng lớn trong nước (Viettel, VNPT, FPT, VNNIC), kết nối quốc tế và đánh giá tình trạng tuyến cáp quang biển.
+                          Real-time latency and packet loss benchmarking across domestic Tier-1 ISPs, global backbones, and subsea fiber optic routes.
                         </p>
                       </div>
                     </div>
@@ -1339,11 +1339,11 @@ export default function ServerDetailsPage() {
                       >
                         {runningNetDiag ? (
                           <>
-                            <RotateCw className="w-4 h-4 animate-spin" /> Đang đo kiểm...
+                            <RotateCw className="w-4 h-4 animate-spin" /> Probing Network...
                           </>
                         ) : (
                           <>
-                            <Zap className="w-4 h-4" /> ⚡ Chạy chẩn đoán mạng
+                            <Zap className="w-4 h-4" /> ⚡ Run Diagnostics
                           </>
                         )}
                       </button>
@@ -1352,7 +1352,7 @@ export default function ServerDetailsPage() {
                         href="/dashboard/alerts"
                         className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition"
                       >
-                        <ShieldAlert className="w-4 h-4 text-amber-400" /> Cấu hình Cảnh báo
+                        <ShieldAlert className="w-4 h-4 text-amber-400" /> Configure Alerts
                       </Link>
 
                       <button
@@ -1360,10 +1360,10 @@ export default function ServerDetailsPage() {
                         onClick={() => {
                           const cmd = osFamily === 'windows' ? 'powershell -ExecutionPolicy Bypass -File check-network.ps1' : 'datrix check-network';
                           copyTextToClipboard(cmd);
-                          toast.success('Đã sao chép lệnh CLI!');
+                          toast.success('CLI command copied to clipboard!');
                         }}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3 py-2 text-xs font-semibold transition cursor-pointer"
-                        title="Copy lệnh kiểm tra mạng qua dòng lệnh"
+                        title="Copy network check CLI command"
                       >
                         <Copy className="w-3.5 h-3.5" /> CLI
                       </button>
@@ -1382,16 +1382,16 @@ export default function ServerDetailsPage() {
                       </div>
                       <div className="space-y-1">
                         <h4 className="text-sm font-bold text-[var(--foreground)]">
-                          {isCrit ? 'Cảnh báo Nguy cấp: Phát hiện suy hao mạng hoặc mất kết nối!' : 'Lưu ý Hiệu năng: Phát hiện độ trễ mạng cao hoặc rớt gói!'}
+                          {isCrit ? 'Critical Alert: Severe network degradation or packet loss detected!' : 'Performance Warning: Elevated network latency or packet loss detected!'}
                         </h4>
                         <ul className="text-xs space-y-0.5 text-[var(--color-muted)] list-disc list-inside">
-                          {(netReport?.alert_evaluation?.reasons || ['Độ trễ quốc tế hoặc tỷ lệ mất gói vượt ngưỡng an toàn.']).map((r, i) => (
+                          {(netReport?.alert_evaluation?.reasons || ['International latency or packet loss exceeds operational thresholds.']).map((r, i) => (
                             <li key={i} className="text-[var(--foreground)] font-medium">{r}</li>
                           ))}
                         </ul>
                         {netReport?.alert_evaluation?.suggested_action && (
                           <p className="text-xs text-[var(--color-muted)] pt-1">
-                            <strong>Khuyến nghị:</strong> {netReport.alert_evaluation.suggested_action}
+                            <strong>Recommendation:</strong> {netReport.alert_evaluation.suggested_action}
                           </p>
                         )}
                       </div>
@@ -1402,7 +1402,7 @@ export default function ServerDetailsPage() {
                     <div className="flex items-center gap-2.5">
                       <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                       <span className="text-xs sm:text-sm font-medium text-emerald-300">
-                        Chất lượng mạng trong nước và quốc tế đang hoạt động trong ngưỡng an toàn tuyệt đối.
+                        Domestic and international network health is operating within nominal thresholds.
                       </span>
                     </div>
                     <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline">0% Packet Loss</span>
@@ -1414,22 +1414,22 @@ export default function ServerDetailsPage() {
                   {/* Card 1: Domestic Quality */}
                   <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🇻🇳 Mạng Trong Nước</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🇻🇳 DOMESTIC NETWORK</p>
                       <span className={`w-2 h-2 rounded-full ${
                         (netReport?.domestic_status || 'optimal') === 'optimal' ? 'bg-emerald-400' : 'bg-amber-400'
                       }`} />
                     </div>
                     <p className="mt-2 text-2xl font-bold text-[var(--foreground)]">
-                      {netReport?.domestic_avg_latency_ms != null ? `${netReport.domestic_avg_latency_ms.toFixed(1)} ms` : (runningNetDiag ? 'Đang đo...' : '6.4 ms')}
+                      {netReport?.domestic_avg_latency_ms != null ? `${netReport.domestic_avg_latency_ms.toFixed(1)} ms` : (runningNetDiag ? 'Probing...' : '6.4 ms')}
                     </p>
                     <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
                       <div className="flex justify-between">
-                        <span>Tỉ lệ rớt gói:</span>
+                        <span>Packet Loss:</span>
                         <span className="font-medium text-emerald-400">{netReport?.domestic_avg_packet_loss ?? 0}%</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Độ ổn định:</span>
-                        <span className="text-[var(--foreground)] font-semibold uppercase">{netReport?.domestic_status || 'Tối ưu'}</span>
+                        <span>Stability:</span>
+                        <span className="text-[var(--foreground)] font-semibold uppercase">{netReport?.domestic_status || 'Optimal'}</span>
                       </div>
                     </div>
                   </div>
@@ -1437,22 +1437,22 @@ export default function ServerDetailsPage() {
                   {/* Card 2: International Quality */}
                   <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🌐 Mạng Quốc Tế</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🌐 INTERNATIONAL NETWORK</p>
                       <Globe className="w-4 h-4 text-blue-400" />
                     </div>
                     <p className="mt-2 text-2xl font-bold text-[var(--foreground)]">
-                      {netReport?.international_avg_latency_ms != null ? `${netReport.international_avg_latency_ms.toFixed(1)} ms` : (runningNetDiag ? 'Đang đo...' : '34.2 ms')}
+                      {netReport?.international_avg_latency_ms != null ? `${netReport.international_avg_latency_ms.toFixed(1)} ms` : (runningNetDiag ? 'Probing...' : '34.2 ms')}
                     </p>
                     <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
                       <div className="flex justify-between">
-                        <span>Tỉ lệ rớt gói:</span>
+                        <span>Packet Loss:</span>
                         <span className={`font-medium ${(netReport?.international_avg_packet_loss || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                           {netReport?.international_avg_packet_loss ?? 0}%
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Tuyến cáp:</span>
-                        <span className="text-[var(--foreground)] font-semibold uppercase">{netReport?.international_status || 'Thông suốt'}</span>
+                        <span>Route Status:</span>
+                        <span className="text-[var(--foreground)] font-semibold uppercase">{netReport?.international_status || 'Optimal'}</span>
                       </div>
                     </div>
                   </div>
@@ -1460,20 +1460,20 @@ export default function ServerDetailsPage() {
                   {/* Card 3: Subsea Cable Health */}
                   <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🌊 Cáp Quang Biển</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🌊 SUBSEA CABLES</p>
                       <Wifi className="w-4 h-4 text-indigo-400" />
                     </div>
                     <p className="mt-2 text-2xl font-bold text-emerald-400">
-                      Ổn Định
+                      {subseaCables.some(c => c.status === 'critical') ? 'Degraded' : 'Stable'}
                     </p>
                     <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
                       <div className="flex justify-between">
-                        <span>Tuyến chính:</span>
+                        <span>Key Routes:</span>
                         <span className="text-[var(--foreground)] font-medium">APG, AAG, IA, AAE-1</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Suy hao:</span>
-                        <span className="text-emerald-400 font-medium">Không ghi nhận</span>
+                        <span>Attenuation:</span>
+                        <span className="text-emerald-400 font-medium">None detected</span>
                       </div>
                     </div>
                   </div>
@@ -1481,7 +1481,7 @@ export default function ServerDetailsPage() {
                   {/* Card 4: Gateway & DNS */}
                   <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🖥️ Gateway & DNS</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">🖥️ GATEWAY & DNS</p>
                       <Radio className="w-4 h-4 text-emerald-400" />
                     </div>
                     <p className="mt-2 text-2xl font-bold text-[var(--foreground)]">
@@ -1491,11 +1491,11 @@ export default function ServerDetailsPage() {
                       <div className="flex justify-between">
                         <span>Gateway IP:</span>
                         <span className="font-mono text-[var(--foreground)]">
-                          {snapshot?.network_diagnostics?.default_gateway || netReport?.server_telemetry?.default_gateway || 'Mặc định'}
+                          {snapshot?.network_diagnostics?.default_gateway || netReport?.server_telemetry?.default_gateway || 'Default'}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>DNS Phân giải:</span>
+                        <span>DNS Resolution:</span>
                         <span className="text-emerald-400 font-medium">
                           {((snapshot?.network_diagnostics?.dns_latency_ms || netReport?.server_telemetry?.dns_latency_ms) || 12.0).toFixed(1)} ms
                         </span>
@@ -1511,14 +1511,14 @@ export default function ServerDetailsPage() {
                     <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
                       <div>
                         <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                          <span>🇻🇳</span> Chất Lượng Mạng Trong Nước (Vietnam ISP & Core)
+                          <span>🇻🇳</span> Domestic ISP & Core Network Quality
                         </h3>
                         <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                          Đo kiểm độ trễ trực tiếp tới các ISP Viettel, VNPT, FPT, trạm trung chuyển VNIX và trung tâm dữ liệu.
+                          Direct latency and packet loss benchmarks to Tier-1 providers, national exchange (VNIX), and core data centers.
                         </p>
                       </div>
                       <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        {domesticProbes.length} mục tiêu
+                        {domesticProbes.length} Targets
                       </span>
                     </div>
 
@@ -1526,11 +1526,11 @@ export default function ServerDetailsPage() {
                       <table className="w-full text-left text-xs">
                         <thead>
                           <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
-                            <th className="px-4 py-3">Nhà Mạng / Hạ Tầng</th>
-                            <th className="px-4 py-3">Vị Trí Trạm</th>
-                            <th className="px-4 py-3">Độ Trễ (Latency)</th>
-                            <th className="px-4 py-3">Mất Gói</th>
-                            <th className="px-4 py-3 text-right">Trạng Thái</th>
+                            <th className="px-4 py-3">Provider / Host</th>
+                            <th className="px-4 py-3">Location / POP</th>
+                            <th className="px-4 py-3">Latency</th>
+                            <th className="px-4 py-3">Packet Loss</th>
+                            <th className="px-4 py-3 text-right">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">
@@ -1566,7 +1566,7 @@ export default function ServerDetailsPage() {
                                     probe.status === 'warning' ? 'text-amber-400 bg-amber-500/10' :
                                     'text-rose-400 bg-rose-500/10'
                                   }`}>
-                                    {probe.status === 'optimal' ? 'Tối ưu' : probe.status === 'warning' ? 'Chậm' : 'Mất kết nối'}
+                                    {probe.status === 'optimal' ? 'Optimal' : probe.status === 'warning' ? 'Degraded' : 'Offline'}
                                   </span>
                                 </td>
                               </tr>
@@ -1583,14 +1583,14 @@ export default function ServerDetailsPage() {
                       <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
                         <div>
                           <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                            <span>🌐</span> Mạng Quốc Tế & Đánh Giá Tuyến Cáp Quang Biển
+                            <span>🌐</span> International Backbones & Subsea Routes
                           </h3>
                           <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                            Đo kiểm chất lượng tuyến cáp biển đi Singapore, HongKong, Mỹ và các dịch vụ đám mây lớn.
+                            Benchmark international egress to key APAC hubs (Singapore, Hong Kong, US) and global cloud backbones.
                           </p>
                         </div>
                         <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                          {internationalProbes.length} mục tiêu
+                          {internationalProbes.length} Targets
                         </span>
                       </div>
 
@@ -1598,11 +1598,11 @@ export default function ServerDetailsPage() {
                         <table className="w-full text-left text-xs">
                           <thead>
                             <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
-                              <th className="px-4 py-3">Mục Tiêu Quốc Tế</th>
-                              <th className="px-4 py-3">Khu Vực POP</th>
-                              <th className="px-4 py-3">Độ Trễ (Latency)</th>
-                              <th className="px-4 py-3">Mất Gói</th>
-                              <th className="px-4 py-3 text-right">Trạng Thái</th>
+                              <th className="px-4 py-3">International Target</th>
+                              <th className="px-4 py-3">POP / Region</th>
+                              <th className="px-4 py-3">Latency</th>
+                              <th className="px-4 py-3">Packet Loss</th>
+                              <th className="px-4 py-3 text-right">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[var(--border-color)]">
@@ -1638,7 +1638,7 @@ export default function ServerDetailsPage() {
                                       probe.status === 'warning' ? 'text-amber-400 bg-amber-500/10' :
                                       'text-rose-400 bg-rose-500/10'
                                     }`}>
-                                      {probe.status === 'optimal' ? 'Thông suốt' : probe.status === 'warning' ? 'Chậm' : 'Nghẽn'}
+                                      {probe.status === 'optimal' ? 'Optimal' : probe.status === 'warning' ? 'Degraded' : 'Congested'}
                                     </span>
                                   </td>
                                 </tr>
@@ -1653,9 +1653,9 @@ export default function ServerDetailsPage() {
                     <div className="p-4 sm:p-5 border-t border-[var(--border-color)] bg-[var(--background)]/20">
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xs font-bold text-[var(--foreground)] flex items-center gap-1.5">
-                          <Wifi className="w-3.5 h-3.5 text-blue-400" /> Tình Trạng Tuyến Cáp Quang Biển
+                          <Wifi className="w-3.5 h-3.5 text-blue-400" /> Undersea Fiber Optic Health
                         </span>
-                        <span className="text-[11px] text-[var(--color-muted)]">Dựa trên phân tích độ trễ & định tuyến</span>
+                        <span className="text-[11px] text-[var(--color-muted)]">Derived from real-time egress telemetry</span>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         {subseaCables.map((cable) => (
@@ -1671,7 +1671,7 @@ export default function ServerDetailsPage() {
                               ~{cable.latency_est_ms.toFixed(1)} ms
                             </div>
                             <div className="text-[10px] text-[var(--color-muted)] truncate mt-0.5" title={cable.name}>
-                              {cable.status === 'optimal' ? 'Thông suốt' : 'Suy hao nhẹ'}
+                              {cable.status === 'optimal' ? 'Optimal' : 'Degraded'}
                             </div>
                           </div>
                         ))}
@@ -1686,14 +1686,14 @@ export default function ServerDetailsPage() {
                     <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                          <Network className="w-4 h-4 text-blue-500" /> Card Mạng & Bộ Đếm Lỗi Phần Cứng (NIC Driver Counters)
+                          <Network className="w-4 h-4 text-blue-500" /> Host Network Interfaces & Hardware Error Counters
                         </h3>
                         <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                          Bộ đếm lỗi vật lý (RX/TX errors) và rớt gói bộ đệm (dropped packets) từ kernel máy chủ.
+                          Kernel physical interface counters (RX/TX errors, dropped ring buffer packets, and bandwidth throughput).
                         </p>
                       </div>
                       <span className="text-xs text-[var(--color-muted)]">
-                        {netIfaces.length} giao tiếp mạng
+                        {netIfaces.length} Interfaces
                       </span>
                     </div>
 
@@ -1701,13 +1701,13 @@ export default function ServerDetailsPage() {
                       <table className="w-full text-left text-sm">
                         <thead>
                           <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/30 text-xs font-semibold text-[var(--color-muted)]">
-                            <th className="px-4 py-3">Card mạng</th>
-                            <th className="px-4 py-3">Trạng thái</th>
-                            <th className="px-4 py-3">Địa chỉ IP</th>
-                            <th className="px-4 py-3">Tốc độ rớt/lỗi</th>
-                            <th className="px-4 py-3">Gói rớt (Delta)</th>
-                            <th className="px-4 py-3">Lưu lượng (I/O)</th>
-                            <th className="px-4 py-3">Tổng lỗi lũy kế</th>
+                            <th className="px-4 py-3">Interface</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">IP Address</th>
+                            <th className="px-4 py-3">Drop / Error Rate</th>
+                            <th className="px-4 py-3">Dropped (Delta)</th>
+                            <th className="px-4 py-3">Throughput (I/O)</th>
+                            <th className="px-4 py-3">Lifetime Errors</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">

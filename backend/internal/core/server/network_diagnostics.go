@@ -92,11 +92,11 @@ type targetDefinition struct {
 }
 
 var domesticTargets = []targetDefinition{
-	{id: "viettel", name: "Viettel Telecom Core", category: "domestic", host: "203.113.131.1", port: 53, protocol: "DNS/TCP", location: "Hà Nội / Toàn quốc"},
-	{id: "vnpt", name: "VNPT Telecom Core", category: "domestic", host: "203.162.4.190", port: 53, protocol: "DNS/TCP", location: "TP.HCM / Toàn quốc"},
-	{id: "fpt", name: "FPT Telecom Core", category: "domestic", host: "210.245.24.20", port: 53, protocol: "DNS/TCP", location: "Hà Nội / TP.HCM"},
-	{id: "vnnic", name: "VNNIC (Trạm Trung chuyển VNIX)", category: "domestic", host: "203.119.9.9", port: 53, protocol: "DNS/TCP", location: "Trạm VNIX Quốc gia"},
-	{id: "vietnix", name: "Vietnix Core Data Center", category: "domestic", host: "103.200.23.1", port: 53, protocol: "DNS/TCP", location: "TP.HCM Data Center"},
+	{id: "viettel", name: "Viettel Telecom Core", category: "domestic", host: "203.113.131.1", port: 53, protocol: "DNS/TCP", location: "Hanoi / Nationwide"},
+	{id: "vnpt", name: "VNPT Telecom Core", category: "domestic", host: "203.162.4.190", port: 53, protocol: "DNS/TCP", location: "HCMC / Nationwide"},
+	{id: "fpt", name: "FPT Telecom Core", category: "domestic", host: "210.245.24.20", port: 53, protocol: "DNS/TCP", location: "Hanoi / HCMC"},
+	{id: "vnnic", name: "VNNIC (National VNIX Exchange)", category: "domestic", host: "203.119.9.9", port: 53, protocol: "DNS/TCP", location: "National VNIX POP"},
+	{id: "vietnix", name: "Vietnix Core Data Center", category: "domestic", host: "103.200.23.1", port: 53, protocol: "DNS/TCP", location: "HCMC Data Center"},
 }
 
 var internationalTargets = []targetDefinition{
@@ -251,13 +251,13 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 
 	if report.DomesticAvgPacketLoss >= 40 || report.DomesticAvgLatencyMs > 60 {
 		report.DomesticStatus = "critical"
-		report.DomesticSummary = fmt.Sprintf("Mạng trong nước suy hao nghiêm trọng (Độ trễ TB: %.1f ms, Mất gói: %.1f%%)", report.DomesticAvgLatencyMs, report.DomesticAvgPacketLoss)
+		report.DomesticSummary = fmt.Sprintf("Severe domestic network degradation (Avg Latency: %.1f ms, Packet Loss: %.1f%%)", report.DomesticAvgLatencyMs, report.DomesticAvgPacketLoss)
 	} else if report.DomesticAvgPacketLoss > 0 || report.DomesticAvgLatencyMs > 25 {
 		report.DomesticStatus = "warning"
-		report.DomesticSummary = fmt.Sprintf("Mạng trong nước có dấu hiệu chậm nhẹ (Độ trễ TB: %.1f ms, Mất gói: %.1f%%)", report.DomesticAvgLatencyMs, report.DomesticAvgPacketLoss)
+		report.DomesticSummary = fmt.Sprintf("Domestic network latency elevated (Avg Latency: %.1f ms, Packet Loss: %.1f%%)", report.DomesticAvgLatencyMs, report.DomesticAvgPacketLoss)
 	} else {
 		report.DomesticStatus = "optimal"
-		report.DomesticSummary = fmt.Sprintf("Mạng trong nước hoạt động xuất sắc (Độ trễ TB: %.1f ms, Kết nối thông suốt 100%%)", report.DomesticAvgLatencyMs)
+		report.DomesticSummary = fmt.Sprintf("Domestic network performance optimal (Avg Latency: %.1f ms, 0%% Packet Loss)", report.DomesticAvgLatencyMs)
 	}
 
 	// Calculate International summaries
@@ -273,13 +273,13 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 
 	if report.InternationalAvgPacketLoss >= 30 || report.InternationalAvgLatencyMs > 150 {
 		report.InternationalStatus = "critical"
-		report.InternationalSummary = fmt.Sprintf("Kết nối quốc tế bị nghẽn hoặc mất gói cao (Độ trễ TB: %.1f ms, Mất gói: %.1f%%)", report.InternationalAvgLatencyMs, report.InternationalAvgPacketLoss)
+		report.InternationalSummary = fmt.Sprintf("International connectivity congested or high packet loss (Avg Latency: %.1f ms, Packet Loss: %.1f%%)", report.InternationalAvgLatencyMs, report.InternationalAvgPacketLoss)
 	} else if report.InternationalAvgPacketLoss > 0 || report.InternationalAvgLatencyMs > 80 {
 		report.InternationalStatus = "warning"
-		report.InternationalSummary = fmt.Sprintf("Kết nối quốc tế phản hồi chậm (Độ trễ TB: %.1f ms, Tuyến cáp có suy hao nhẹ)", report.InternationalAvgLatencyMs)
+		report.InternationalSummary = fmt.Sprintf("International connectivity response elevated (Avg Latency: %.1f ms, minor route degradation)", report.InternationalAvgLatencyMs)
 	} else {
 		report.InternationalStatus = "optimal"
-		report.InternationalSummary = fmt.Sprintf("Kết nối quốc tế ổn định qua trạm Singapore/HongKong (Độ trễ TB: %.1f ms, Mất gói: 0%%)", report.InternationalAvgLatencyMs)
+		report.InternationalSummary = fmt.Sprintf("International connectivity optimal via Singapore/Hong Kong (Avg Latency: %.1f ms, 0%% Packet Loss)", report.InternationalAvgLatencyMs)
 	}
 
 	// Undersea Cables Condition Evaluation
@@ -287,22 +287,22 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 	cables := []SubseaCableStatus{
 		{
 			Code:       "APG",
-			Name:       "Asia-Pacific Gateway (Việt Nam - Singapore / Nhật Bản)",
+			Name:       "Asia-Pacific Gateway (Vietnam - Singapore / Japan)",
 			LatencyEst: math.Round((intLat*0.85)*10) / 10,
 		},
 		{
 			Code:       "AAG",
-			Name:       "Asia-America Gateway (Việt Nam - HongKong - Mỹ)",
+			Name:       "Asia-America Gateway (Vietnam - Hong Kong - US)",
 			LatencyEst: math.Round((intLat*1.15)*10) / 10,
 		},
 		{
 			Code:       "IA",
-			Name:       "Intra-Asia / TGN-IA (Việt Nam - Singapore)",
+			Name:       "Intra-Asia / TGN-IA (Vietnam - Singapore)",
 			LatencyEst: math.Round((intLat*0.95)*10) / 10,
 		},
 		{
 			Code:       "AAE-1",
-			Name:       "Asia-Africa-Europe 1 (Tuyến đi Châu Âu / Singapore)",
+			Name:       "Asia-Africa-Europe 1 (Europe / Singapore Route)",
 			LatencyEst: math.Round((intLat*1.05)*10) / 10,
 		},
 	}
@@ -311,23 +311,23 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 		c := &cables[idx]
 		if intLat > 150 || report.InternationalAvgPacketLoss >= 25 {
 			c.Status = "critical"
-			c.Notes = "Nghẽn lưu lượng quốc tế cao, cảnh báo bảo trì hoặc đứt cáp"
+			c.Notes = "High international congestion; possible cable maintenance or fiber impairment"
 		} else if intLat > 75 || report.InternationalAvgPacketLoss > 0 {
 			c.Status = "warning"
-			c.Notes = "Tuyến cáp ghi nhận suy hao hoặc chuyển hướng dự phòng"
+			c.Notes = "Route latency elevated; traffic rerouted or degraded"
 		} else {
 			c.Status = "optimal"
-			c.Notes = "Băng thông thông suốt, độ trễ đạt tiêu chuẩn kỹ thuật"
+			c.Notes = "Nominal throughput and low latency across active fiber pairs"
 		}
 	}
 	report.SubseaCables = cables
 
 	if intLat > 150 {
-		report.SubseaCableSummary = "Cảnh báo: Độ trễ quốc tế tăng vọt (> 150ms), khả năng một hoặc nhiều tuyến cáp quang biển đang gặp sự cố hoặc đang bảo trì."
+		report.SubseaCableSummary = "Warning: High international latency (> 150ms); one or more undersea cables may be degraded or under maintenance."
 	} else if intLat > 75 {
-		report.SubseaCableSummary = "Lưu ý: Độ trễ quốc tế ở mức trung bình, lưu lượng đang được điều hướng ổn định."
+		report.SubseaCableSummary = "Notice: Moderate international latency; route traffic is operating within normal variance."
 	} else {
-		report.SubseaCableSummary = "Tất cả các tuyến cáp quang biển chính (APG, AAG, IA, AAE-1) đang hoạt động bình thường, không ghi nhận nghẽn."
+		report.SubseaCableSummary = "All major subsea cable routes (APG, AAG, IA, AAE-1) operating nominally without congestion."
 	}
 
 	// Parse server telemetry from snapshot if available
@@ -346,48 +346,48 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 	isWarning := false
 
 	if report.DomesticAvgPacketLoss >= 20 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Tỉ lệ mất gói mạng trong nước rất cao (%.1f%%)", report.DomesticAvgPacketLoss))
+		alertReasons = append(alertReasons, fmt.Sprintf("Severe domestic packet loss (%.1f%%)", report.DomesticAvgPacketLoss))
 		isCritical = true
 	} else if report.DomesticAvgPacketLoss > 0 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Phát hiện mất gói mạng trong nước (%.1f%%)", report.DomesticAvgPacketLoss))
+		alertReasons = append(alertReasons, fmt.Sprintf("Domestic packet loss detected (%.1f%%)", report.DomesticAvgPacketLoss))
 		isWarning = true
 	}
 
 	if report.DomesticAvgLatencyMs > 60 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Độ trễ mạng trong nước vượt ngưỡng (%.1f ms > 60 ms)", report.DomesticAvgLatencyMs))
+		alertReasons = append(alertReasons, fmt.Sprintf("Domestic latency exceeds threshold (%.1f ms > 60 ms)", report.DomesticAvgLatencyMs))
 		isWarning = true
 	}
 
 	if report.InternationalAvgLatencyMs > 160 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Độ trễ quốc tế vượt ngưỡng nghiêm trọng (%.1f ms > 160 ms)", report.InternationalAvgLatencyMs))
+		alertReasons = append(alertReasons, fmt.Sprintf("International latency exceeds critical threshold (%.1f ms > 160 ms)", report.InternationalAvgLatencyMs))
 		isCritical = true
 	} else if report.InternationalAvgLatencyMs > 90 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Độ trễ quốc tế tăng cao (%.1f ms > 90 ms)", report.InternationalAvgLatencyMs))
+		alertReasons = append(alertReasons, fmt.Sprintf("International latency elevated (%.1f ms > 90 ms)", report.InternationalAvgLatencyMs))
 		isWarning = true
 	}
 
 	if report.InternationalAvgPacketLoss >= 20 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Mất gói quốc tế nghiêm trọng (%.1f%%)", report.InternationalAvgPacketLoss))
+		alertReasons = append(alertReasons, fmt.Sprintf("Critical international packet loss (%.1f%%)", report.InternationalAvgPacketLoss))
 		isCritical = true
 	} else if report.InternationalAvgPacketLoss > 0 {
-		alertReasons = append(alertReasons, fmt.Sprintf("Mất gói quốc tế (%.1f%%)", report.InternationalAvgPacketLoss))
+		alertReasons = append(alertReasons, fmt.Sprintf("International packet loss (%.1f%%)", report.InternationalAvgPacketLoss))
 		isWarning = true
 	}
 
 	if report.ServerTelemetry != nil {
 		if report.ServerTelemetry.GatewayPacketLoss >= 40 {
-			alertReasons = append(alertReasons, fmt.Sprintf("Gateway mất gói %.0f%%", report.ServerTelemetry.GatewayPacketLoss))
+			alertReasons = append(alertReasons, fmt.Sprintf("Default gateway packet loss %.0f%%", report.ServerTelemetry.GatewayPacketLoss))
 			isCritical = true
 		} else if report.ServerTelemetry.GatewayPacketLoss >= 20 {
-			alertReasons = append(alertReasons, fmt.Sprintf("Gateway suy hao mất gói %.0f%%", report.ServerTelemetry.GatewayPacketLoss))
+			alertReasons = append(alertReasons, fmt.Sprintf("Default gateway packet loss elevated %.0f%%", report.ServerTelemetry.GatewayPacketLoss))
 			isWarning = true
 		}
 		if !report.ServerTelemetry.DNSResolvable && report.ServerTelemetry.DNSLatencyMs > 0 {
-			alertReasons = append(alertReasons, "DNS cục bộ trên máy chủ không phân giải được tên miền")
+			alertReasons = append(alertReasons, "Host DNS cannot resolve domain names")
 			isCritical = true
 		}
 		if report.ServerTelemetry.ErrorRatePerMin > 10 {
-			alertReasons = append(alertReasons, fmt.Sprintf("Card mạng phát sinh lỗi vật lý (%.1f lỗi/phút)", report.ServerTelemetry.ErrorRatePerMin))
+			alertReasons = append(alertReasons, fmt.Sprintf("Physical network interface error rate elevated (%.1f errors/min)", report.ServerTelemetry.ErrorRatePerMin))
 			isWarning = true
 		}
 	}
@@ -397,21 +397,21 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 			IsTriggered:     true,
 			Severity:        "critical",
 			Reasons:         alertReasons,
-			SuggestedAction: "Kiểm tra switch/cổng mạng uplink, liên hệ ISP hoặc nhà cung cấp hạ tầng để rà soát sự cố định tuyến.",
+			SuggestedAction: "Inspect physical uplink switch/ports and contact upstream ISP to investigate routing anomalies.",
 		}
 	} else if isWarning {
 		report.AlertEvaluation = NetworkAlertEvaluation{
 			IsTriggered:     true,
 			Severity:        "warning",
 			Reasons:         alertReasons,
-			SuggestedAction: "Theo dõi lưu lượng mạng hoặc cấu hình cảnh báo tự động tại mục Cảnh báo (Alerts).",
+			SuggestedAction: "Monitor traffic patterns or configure automated alert rules in the Alerts tab.",
 		}
 	} else {
 		report.AlertEvaluation = NetworkAlertEvaluation{
 			IsTriggered:     false,
 			Severity:        "none",
-			Reasons:         []string{"Hệ thống mạng trong nước và quốc tế hoạt động trong ngưỡng an toàn tuyệt đối."},
-			SuggestedAction: "Không yêu cầu hành động xử lý.",
+			Reasons:         []string{"Domestic and international network telemetry operating within nominal thresholds."},
+			SuggestedAction: "No action required.",
 		}
 	}
 
