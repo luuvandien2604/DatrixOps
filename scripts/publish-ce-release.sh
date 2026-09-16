@@ -92,7 +92,7 @@ if [[ "$AUTO_YES" != "--yes" ]]; then
 fi
 
 git add agent/ backend/ deploy/ frontend/ .env.example docker-compose.yml docker-compose.prod.yml scripts/
-git commit -m "chore(release): release CE Server v${VERSION} with security hardening and improvements" || info "Nothing new to commit"
+git commit -m "chore(release): release CE Server v${VERSION} with network diagnostics and 90-day uptime status page" || info "Nothing new to commit"
 git push origin main
 
 if [[ "$FORCE" == "true" ]]; then

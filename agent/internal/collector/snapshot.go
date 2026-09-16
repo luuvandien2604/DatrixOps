@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -89,16 +90,68 @@ type CronJob struct {
 	LastStatus string     `json:"last_status,omitempty"`
 }
 
+type NetworkInterfaceInfo struct {
+	Name            string   `json:"name"`
+	MAC             string   `json:"mac"`
+	IPs             []string `json:"ips"`
+	Flags           []string `json:"flags"`
+	RxBytes         uint64   `json:"rx_bytes"`
+	TxBytes         uint64   `json:"tx_bytes"`
+	RxPackets       uint64   `json:"rx_packets"`
+	TxPackets       uint64   `json:"tx_packets"`
+	RxErrors        uint64   `json:"rx_errors"`
+	TxErrors        uint64   `json:"tx_errors"`
+	RxDropped       uint64   `json:"rx_dropped"`
+	TxDropped       uint64   `json:"tx_dropped"`
+	DeltaErrors     uint64   `json:"delta_errors"`
+	DeltaDropped    uint64   `json:"delta_dropped"`
+	ErrorRatePerMin float64  `json:"error_rate_per_min"`
+	DropRatePerMin  float64  `json:"drop_rate_per_min"`
+	IsUp            bool     `json:"is_up"`
+	IsPhysical      bool     `json:"is_physical"`
+	IsPrimaryUplink bool     `json:"is_primary_uplink"`
+}
+
+type NetworkSample struct {
+	Timestamp    time.Time `json:"timestamp"`
+	DeltaDropped uint64    `json:"delta_dropped"`
+	DeltaErrors  uint64    `json:"delta_errors"`
+	DNSLatencyMs float64   `json:"dns_latency_ms"`
+}
+
+type NetworkDiagnostics struct {
+	PrimaryUplink     string          `json:"primary_uplink,omitempty"`
+	DefaultGateway    string          `json:"default_gateway,omitempty"`
+	GatewayLatencyMs  float64         `json:"gateway_latency_ms,omitempty"`
+	GatewayPacketLoss float64         `json:"gateway_packet_loss"`
+	DNSLatencyMs      float64         `json:"dns_latency_ms,omitempty"`
+	DNSResolvable     bool            `json:"dns_resolvable"`
+	DNSSource         string          `json:"dns_source,omitempty"`
+	InternetConnected bool            `json:"internet_connected"`
+	ActiveErrors      uint64          `json:"active_errors"`
+	ActiveDropped     uint64          `json:"active_dropped"`
+	LifetimeErrors    uint64          `json:"lifetime_errors"`
+	LifetimeDropped   uint64          `json:"lifetime_dropped"`
+	ErrorRatePerMin   float64         `json:"error_rate_per_min"`
+	DropRatePerMin    float64         `json:"drop_rate_per_min"`
+	Status            string          `json:"status"` // "healthy", "warning", "critical"
+	StatusReason      string          `json:"status_reason,omitempty"`
+	RecentSamples     []NetworkSample `json:"recent_samples,omitempty"`
+	LastCheckedAt     time.Time       `json:"last_checked_at"`
+}
+
 type Snapshot struct {
-	OSFamily              string            `json:"os_family"`
-	SystemInfo            *SystemInfo       `json:"system_info,omitempty"`
-	Inventory             *Inventory        `json:"inventory,omitempty"`
-	CronJobs              []CronJob         `json:"cron_jobs"`
-	CronDiscoveryComplete bool              `json:"cron_discovery_complete"`
-	TopProcesses          []TopProcess      `json:"top_processes,omitempty"`
-	Services              []ServiceStatus   `json:"services,omitempty"`
-	DockerContainers      []DockerContainer `json:"docker_containers,omitempty"`
-	PackageUpdate         int               `json:"package_update"`
+	OSFamily              string                 `json:"os_family"`
+	SystemInfo            *SystemInfo            `json:"system_info,omitempty"`
+	Inventory             *Inventory             `json:"inventory,omitempty"`
+	CronJobs              []CronJob              `json:"cron_jobs"`
+	CronDiscoveryComplete bool                   `json:"cron_discovery_complete"`
+	TopProcesses          []TopProcess           `json:"top_processes,omitempty"`
+	Services              []ServiceStatus        `json:"services,omitempty"`
+	DockerContainers      []DockerContainer      `json:"docker_containers,omitempty"`
+	PackageUpdate         int                    `json:"package_update"`
+	NetworkInterfaces     []NetworkInterfaceInfo `json:"network_interfaces,omitempty"`
+	NetworkDiagnostics    *NetworkDiagnostics    `json:"network_diagnostics,omitempty"`
 }
 
 func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot {
@@ -107,7 +160,7 @@ func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot 
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(8)
 
 	go func() {
 		defer wg.Done()
@@ -144,6 +197,13 @@ func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot 
 	go func() {
 		defer wg.Done()
 		snap.PackageUpdate = collectPackageUpdate()
+	}()
+
+	go func() {
+		defer wg.Done()
+		ifaces, diags := collectNetworkTelemetry()
+		snap.NetworkInterfaces = ifaces
+		snap.NetworkDiagnostics = diags
 	}()
 
 	wg.Wait()
@@ -587,3 +647,520 @@ func collectPackageUpdate() int {
 	}
 	return count
 }
+
+// --- Network Telemetry & Diagnostics Implementation ---
+
+type ifaceCounterState struct {
+	rxErrors  uint64
+	txErrors  uint64
+	rxDropped uint64
+	txDropped uint64
+	lastSeen  time.Time
+}
+
+var (
+	netStateMu        sync.RWMutex
+	lastIfaceCounters = make(map[string]ifaceCounterState)
+	consecutiveErrors = make(map[string]int)
+	recentNetSamples  = make([]NetworkSample, 0, 10)
+	isAgentFirstTick  = true
+)
+
+func safeDelta(current, last uint64) uint64 {
+	if current >= last {
+		return current - last
+	}
+	// Counter reset or interface reload: return current value
+	return current
+}
+
+func parseHexIPv4(hexStr string) string {
+	hexStr = strings.TrimSpace(hexStr)
+	if len(hexStr) != 8 {
+		return ""
+	}
+	b3, err0 := strconv.ParseUint(hexStr[0:2], 16, 8)
+	b2, err1 := strconv.ParseUint(hexStr[2:4], 16, 8)
+	b1, err2 := strconv.ParseUint(hexStr[4:6], 16, 8)
+	b0, err3 := strconv.ParseUint(hexStr[6:8], 16, 8)
+	if err0 != nil || err1 != nil || err2 != nil || err3 != nil {
+		return ""
+	}
+	if b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", b0, b1, b2, b3)
+}
+
+func findPrimaryUplink() (string, string) {
+	// 1. Linux Native: Read /proc/net/route without spawning external processes
+	if runtime.GOOS == "linux" {
+		if content, err := os.ReadFile("/proc/net/route"); err == nil {
+			scanner := bufio.NewScanner(strings.NewReader(string(content)))
+			for scanner.Scan() {
+				fields := strings.Fields(scanner.Text())
+				if len(fields) >= 3 && fields[1] == "00000000" {
+					iface := fields[0]
+					gw := parseHexIPv4(fields[2])
+					return iface, gw
+				}
+			}
+		}
+
+		// Fallback on Linux: ip route show default
+		if out, err := exec.Command("ip", "-4", "route", "show", "default").Output(); err == nil {
+			fields := strings.Fields(string(out))
+			var iface, gw string
+			for i := 0; i < len(fields)-1; i++ {
+				if fields[i] == "dev" {
+					iface = fields[i+1]
+				}
+				if fields[i] == "via" {
+					gw = fields[i+1]
+				}
+			}
+			if iface != "" {
+				return iface, gw
+			}
+		}
+	}
+
+	// 2. macOS / Darwin: route -n get default
+	if runtime.GOOS == "darwin" {
+		if out, err := exec.Command("route", "-n", "get", "default").Output(); err == nil {
+			var iface, gw string
+			scanner := bufio.NewScanner(strings.NewReader(string(out)))
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if strings.HasPrefix(line, "gateway:") {
+					parts := strings.Fields(line)
+					if len(parts) >= 2 {
+						gw = parts[1]
+					}
+				} else if strings.HasPrefix(line, "interface:") {
+					parts := strings.Fields(line)
+					if len(parts) >= 2 {
+						iface = parts[1]
+					}
+				}
+			}
+			if iface != "" {
+				return iface, gw
+			}
+		}
+	}
+
+	// 3. Windows: route print 0.0.0.0
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("route", "print", "0.0.0.0").Output(); err == nil {
+			scanner := bufio.NewScanner(strings.NewReader(string(out)))
+			for scanner.Scan() {
+				fields := strings.Fields(scanner.Text())
+				if len(fields) >= 5 && fields[0] == "0.0.0.0" && fields[1] == "0.0.0.0" {
+					gw := fields[2]
+					ifaceIP := fields[3]
+					if ifaces, err := net.Interfaces(); err == nil {
+						for _, iface := range ifaces {
+							addrs, err := iface.Addrs()
+							if err != nil {
+								continue
+							}
+							for _, addr := range addrs {
+								if strings.HasPrefix(addr.String(), ifaceIP+"/") || addr.String() == ifaceIP {
+									return iface.Name, gw
+								}
+							}
+						}
+					}
+					return ifaceIP, gw
+				}
+			}
+		}
+	}
+
+	// 4. Fallback: find first UP, non-loopback interface with private or public IP
+	if ifaces, err := net.Interfaces(); err == nil {
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+				continue
+			}
+			addrs, err := iface.Addrs()
+			if err == nil && len(addrs) > 0 {
+				return iface.Name, ""
+			}
+		}
+	}
+
+	return "", ""
+}
+
+func isPhysicalInterface(name string) bool {
+	lower := strings.ToLower(name)
+	if lower == "lo" || strings.HasPrefix(lower, "docker") || strings.HasPrefix(lower, "veth") ||
+		strings.HasPrefix(lower, "br-") || strings.HasPrefix(lower, "virbr") ||
+		strings.HasPrefix(lower, "cni") || strings.HasPrefix(lower, "flannel") ||
+		strings.HasPrefix(lower, "calico") || strings.HasPrefix(lower, "tun") ||
+		strings.HasPrefix(lower, "tap") || strings.HasPrefix(lower, "dummy") {
+		return false
+	}
+	if runtime.GOOS == "linux" {
+		devicePath := filepath.Join("/sys/class/net", name, "device")
+		if _, err := os.Stat(devicePath); err == nil {
+			return true
+		}
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		if strings.HasPrefix(lower, "vethernet") || strings.Contains(lower, "virtual") ||
+			strings.Contains(lower, "vmware") || strings.Contains(lower, "hyper-v") ||
+			strings.Contains(lower, "loopback") || strings.Contains(lower, "tap") ||
+			strings.Contains(lower, "npcap") || strings.Contains(lower, "teredo") ||
+			strings.Contains(lower, "isatap") {
+			return false
+		}
+		return true
+	}
+	return strings.HasPrefix(lower, "en") || strings.HasPrefix(lower, "eth") || strings.HasPrefix(lower, "wlan")
+}
+
+func checkDNSResolution() (float64, bool, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err := net.DefaultResolver.LookupIPAddr(ctx, "google.com")
+	latency := float64(time.Since(start).Milliseconds())
+
+	if err == nil {
+		return latency, true, "system"
+	}
+
+	// Fallback to Cloudflare 1.1.1.1 or Google 8.8.8.8
+	fallbackStart := time.Now()
+	conn, errDial := (&net.Dialer{Timeout: 1500 * time.Millisecond}).DialContext(ctx, "tcp", "1.1.1.1:53")
+	if errDial == nil {
+		_ = conn.Close()
+		return float64(time.Since(fallbackStart).Milliseconds()), true, "cloudflare_fallback"
+	}
+
+	conn2, errDial2 := (&net.Dialer{Timeout: 1500 * time.Millisecond}).DialContext(ctx, "tcp", "8.8.8.8:53")
+	if errDial2 == nil {
+		_ = conn2.Close()
+		return float64(time.Since(fallbackStart).Milliseconds()), true, "google_fallback"
+	}
+
+	return latency, false, "none"
+}
+
+func checkInternetConnectivity() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+
+	conn, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "tcp", "1.1.1.1:53")
+	if err == nil {
+		_ = conn.Close()
+		return true
+	}
+
+	conn2, err2 := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "tcp", "8.8.8.8:53")
+	if err2 == nil {
+		_ = conn2.Close()
+		return true
+	}
+
+	return false
+}
+
+func checkGatewayPing(gatewayIP string) (float64, float64) {
+	if gatewayIP == "" {
+		return 0, 0
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.CommandContext(ctx, "ping", "-c", "5", "-t", "2", gatewayIP)
+	} else if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "ping", "-n", "5", "-w", "1000", gatewayIP)
+	} else {
+		cmd = exec.CommandContext(ctx, "ping", "-c", "5", "-W", "2", gatewayIP)
+	}
+
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
+		probeStart := time.Now()
+		conn, probeErr := (&net.Dialer{Timeout: 1 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(gatewayIP, "53"))
+		if probeErr == nil {
+			_ = conn.Close()
+			return float64(time.Since(probeStart).Milliseconds()), 0
+		}
+		return 0, 100
+	}
+
+	return parsePingOutput(string(out))
+}
+
+func parsePingOutput(outStr string) (float64, float64) {
+	var lossPercent float64 = 0
+	var avgLatency float64 = 0
+
+	for _, line := range strings.Split(outStr, "\n") {
+		if strings.Contains(line, "packet loss") {
+			parts := strings.Split(line, ",")
+			for _, part := range parts {
+				if strings.Contains(part, "packet loss") {
+					sub := strings.TrimSpace(strings.ReplaceAll(part, "packet loss", ""))
+					sub = strings.TrimSpace(strings.ReplaceAll(sub, "%", ""))
+					if v, err := strconv.ParseFloat(sub, 64); err == nil {
+						lossPercent = v
+					}
+				}
+			}
+		} else if strings.Contains(line, "% loss") {
+			// Windows format: Lost = 0 (0% loss)
+			start := strings.Index(line, "(")
+			end := strings.Index(line, "% loss")
+			if start != -1 && end != -1 && end > start {
+				sub := strings.TrimSpace(line[start+1 : end])
+				if v, err := strconv.ParseFloat(sub, 64); err == nil {
+					lossPercent = v
+				}
+			}
+		}
+
+		if strings.Contains(line, "round-trip") || strings.Contains(line, "rtt min/avg/max") {
+			eqIdx := strings.Index(line, "=")
+			if eqIdx != -1 {
+				valPart := strings.TrimSpace(line[eqIdx+1:])
+				valParts := strings.Split(valPart, "/")
+				if len(valParts) >= 2 {
+					if v, err := strconv.ParseFloat(strings.TrimSpace(valParts[1]), 64); err == nil {
+						avgLatency = v
+					}
+				}
+			}
+		} else if strings.Contains(line, "Average =") {
+			// Windows format: Minimum = 0ms, Maximum = 1ms, Average = 2ms
+			idx := strings.Index(line, "Average =")
+			sub := strings.TrimSpace(line[idx+len("Average ="):])
+			sub = strings.TrimSpace(strings.ReplaceAll(sub, "ms", ""))
+			if v, err := strconv.ParseFloat(sub, 64); err == nil {
+				avgLatency = v
+			}
+		}
+	}
+
+	return avgLatency, lossPercent
+}
+
+func calculateNetworkStatus(
+	primaryUplink string,
+	internetConnected bool,
+	dnsResolvable bool,
+	dnsLatencyMs float64,
+	gatewayLatencyMs float64,
+	gatewayPacketLoss float64,
+	activeDropped uint64,
+	activeDropRate float64,
+	consecutiveErrors int,
+) (string, string) {
+	if !internetConnected || !dnsResolvable {
+		return "critical", "Internet connectivity or DNS resolution unavailable"
+	}
+	if gatewayPacketLoss >= 40.0 {
+		return "critical", fmt.Sprintf("High packet loss (%.0f%%) to default gateway", gatewayPacketLoss)
+	}
+	if consecutiveErrors >= 2 {
+		return "critical", "Persistent packet errors detected on primary uplink"
+	}
+	if activeDropped > 0 {
+		return "warning", fmt.Sprintf("Packet drops detected on primary uplink (%.1f drops/min)", activeDropRate)
+	}
+	if consecutiveErrors == 1 {
+		return "warning", "Transient packet error detected on primary uplink"
+	}
+	if gatewayLatencyMs > 100.0 {
+		return "warning", fmt.Sprintf("Elevated gateway latency (%.1f ms)", gatewayLatencyMs)
+	}
+	if gatewayPacketLoss >= 20.0 && gatewayPacketLoss < 40.0 {
+		return "warning", fmt.Sprintf("Packet loss (%.0f%%) to default gateway", gatewayPacketLoss)
+	}
+	if dnsLatencyMs > 500.0 {
+		return "warning", fmt.Sprintf("Slow DNS response time (%.1f ms)", dnsLatencyMs)
+	}
+	return "healthy", "Network link clean and operational"
+}
+
+func collectNetworkTelemetry() ([]NetworkInterfaceInfo, *NetworkDiagnostics) {
+	now := time.Now()
+	primaryUplink, defaultGateway := findPrimaryUplink()
+
+	dnsLatency, dnsResolvable, dnsSource := checkDNSResolution()
+	internetConnected := checkInternetConnectivity()
+
+	var gwLatency, gwLoss float64
+	if defaultGateway != "" {
+		gwLatency, gwLoss = checkGatewayPing(defaultGateway)
+	}
+
+	rawIfaces, _ := gnet.Interfaces()
+	rawIOs, _ := gnet.IOCounters(true)
+
+	ioMap := make(map[string]gnet.IOCountersStat)
+	for _, ioStat := range rawIOs {
+		ioMap[ioStat.Name] = ioStat
+	}
+
+	netStateMu.Lock()
+	defer netStateMu.Unlock()
+
+	var resultIfaces []NetworkInterfaceInfo
+	var totalActiveErrors, totalActiveDropped uint64
+	var totalLifetimeErrors, totalLifetimeDropped uint64
+	var activeDropRate, activeErrorRate float64
+
+	for _, iface := range rawIfaces {
+		ioStat := ioMap[iface.Name]
+		isPrimary := (iface.Name == primaryUplink)
+		isPhysical := isPhysicalInterface(iface.Name)
+		isUp := false
+		for _, f := range iface.Flags {
+			if strings.ToLower(f) == "up" {
+				isUp = true
+				break
+			}
+		}
+
+		var ips []string
+		for _, a := range iface.Addrs {
+			ip := strings.Split(a.Addr, "/")[0]
+			if ip != "" {
+				ips = append(ips, ip)
+			}
+		}
+
+		last, exists := lastIfaceCounters[iface.Name]
+		var deltaErr, deltaDrop uint64
+		var errRate, dropRate float64
+
+		if !exists || isAgentFirstTick {
+			deltaErr = 0
+			deltaDrop = 0
+			errRate = 0
+			dropRate = 0
+		} else {
+			elapsed := now.Sub(last.lastSeen).Seconds()
+			if elapsed <= 0.1 {
+				elapsed = 1.0
+			}
+			dErrIn := safeDelta(ioStat.Errin, last.rxErrors)
+			dErrOut := safeDelta(ioStat.Errout, last.txErrors)
+			dDropIn := safeDelta(ioStat.Dropin, last.rxDropped)
+			dDropOut := safeDelta(ioStat.Dropout, last.txDropped)
+
+			deltaErr = dErrIn + dErrOut
+			deltaDrop = dDropIn + dDropOut
+			errRate = float64(deltaErr) / (elapsed / 60.0)
+			dropRate = float64(deltaDrop) / (elapsed / 60.0)
+		}
+
+		lastIfaceCounters[iface.Name] = ifaceCounterState{
+			rxErrors:  ioStat.Errin,
+			txErrors:  ioStat.Errout,
+			rxDropped: ioStat.Dropin,
+			txDropped: ioStat.Dropout,
+			lastSeen:  now,
+		}
+
+		totalLifetimeErrors += (ioStat.Errin + ioStat.Errout)
+		totalLifetimeDropped += (ioStat.Dropin + ioStat.Dropout)
+
+		if isPrimary {
+			totalActiveErrors = deltaErr
+			totalActiveDropped = deltaDrop
+			activeErrorRate = errRate
+			activeDropRate = dropRate
+			if deltaErr > 0 {
+				consecutiveErrors[primaryUplink]++
+			} else {
+				consecutiveErrors[primaryUplink] = 0
+			}
+		}
+
+		resultIfaces = append(resultIfaces, NetworkInterfaceInfo{
+			Name:            iface.Name,
+			MAC:             iface.HardwareAddr,
+			IPs:             ips,
+			Flags:           iface.Flags,
+			RxBytes:         ioStat.BytesRecv,
+			TxBytes:         ioStat.BytesSent,
+			RxPackets:       ioStat.PacketsRecv,
+			TxPackets:       ioStat.PacketsSent,
+			RxErrors:        ioStat.Errin,
+			TxErrors:        ioStat.Errout,
+			RxDropped:       ioStat.Dropin,
+			TxDropped:       ioStat.Dropout,
+			DeltaErrors:     deltaErr,
+			DeltaDropped:    deltaDrop,
+			ErrorRatePerMin: errRate,
+			DropRatePerMin:  dropRate,
+			IsUp:            isUp,
+			IsPhysical:      isPhysical,
+			IsPrimaryUplink: isPrimary,
+		})
+	}
+
+	isAgentFirstTick = false
+
+	status, statusReason := calculateNetworkStatus(
+		primaryUplink,
+		internetConnected,
+		dnsResolvable,
+		dnsLatency,
+		gwLatency,
+		gwLoss,
+		totalActiveDropped,
+		activeDropRate,
+		consecutiveErrors[primaryUplink],
+	)
+
+	sample := NetworkSample{
+		Timestamp:    now,
+		DeltaDropped: totalActiveDropped,
+		DeltaErrors:  totalActiveErrors,
+		DNSLatencyMs: dnsLatency,
+	}
+	recentNetSamples = append(recentNetSamples, sample)
+	if len(recentNetSamples) > 10 {
+		recentNetSamples = recentNetSamples[len(recentNetSamples)-10:]
+	}
+
+	samplesCopy := make([]NetworkSample, len(recentNetSamples))
+	copy(samplesCopy, recentNetSamples)
+
+	diag := &NetworkDiagnostics{
+		PrimaryUplink:     primaryUplink,
+		DefaultGateway:    defaultGateway,
+		GatewayLatencyMs:  gwLatency,
+		GatewayPacketLoss: gwLoss,
+		DNSLatencyMs:      dnsLatency,
+		DNSResolvable:     dnsResolvable,
+		DNSSource:         dnsSource,
+		InternetConnected: internetConnected,
+		ActiveErrors:      totalActiveErrors,
+		ActiveDropped:     totalActiveDropped,
+		LifetimeErrors:    totalLifetimeErrors,
+		LifetimeDropped:   totalLifetimeDropped,
+		ErrorRatePerMin:   activeErrorRate,
+		DropRatePerMin:    activeDropRate,
+		Status:            status,
+		StatusReason:      statusReason,
+		RecentSamples:     samplesCopy,
+		LastCheckedAt:     now,
+	}
+
+	return resultIfaces, diag
+}
+

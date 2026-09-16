@@ -26,6 +26,7 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, jwtSecret string) {
 	}
 
 	mux.Handle("GET /api/v1/websites", withAuth(h.List))
+	mux.Handle("GET /api/v1/websites/uptime-summary", withAuth(h.GetUptimeSummary))
 	mux.Handle("POST /api/v1/websites", withAdmin(h.Create))
 	mux.Handle("DELETE /api/v1/websites/{id}", withAdmin(h.Delete))
 }

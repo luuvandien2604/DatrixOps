@@ -320,6 +320,18 @@ SVCEOF
     systemctl --no-pager status datrixops-self-monitor 2>/dev/null || true
 }
 
+check_network() {
+    local script_path="${PROJECT_ROOT}/deploy/check-network.sh"
+    if [[ ! -f "$script_path" && -f "${PROJECT_ROOT}/check-network.sh" ]]; then
+        script_path="${PROJECT_ROOT}/check-network.sh"
+    fi
+    if [[ -f "$script_path" ]]; then
+        bash "$script_path"
+    else
+        die "Network diagnostics script not found at ${script_path}."
+    fi
+}
+
 show_help() {
     cat <<'EOF'
 Usage: datrix [command]
@@ -333,6 +345,7 @@ Commands:
   update               Upgrade to the latest CE Server release
   backup               Create a backup
   repair-self-monitor  Repair and restart Host Self-Monitoring service
+  check-network        Run comprehensive 6-step network diagnostics
   help                 Show this help
 
 Run `datrix` without a command to open the management menu. Use `sudo datrix`
@@ -357,6 +370,7 @@ menu() {
         printf '%s\n' '  6) Upgrade DatrixOps'
         printf '%s\n' '  7) Create backup'
         printf '%s\n' '  8) Repair Self-Monitor service'
+        printf '%s\n' '  9) Check network diagnostics'
         printf '%s\n' '  0) Exit'
         printf '%s\n' '============================================================'
         printf 'Select: '
@@ -375,6 +389,7 @@ menu() {
             6) (trap - INT; upgrade_server) || action_status=$? ;;
             7) (trap - INT; create_backup) || action_status=$? ;;
             8) (trap - INT; repair_self_monitor) || action_status=$? ;;
+            9) (trap - INT; check_network) || action_status=$? ;;
             0) printf 'Exited DatrixOps Management.\n'; return 0 ;;
             *) printf 'ERROR: Invalid selection.\n' >&2; action_status=2 ;;
         esac
@@ -397,6 +412,7 @@ case "${1:-}" in
     update|upgrade) upgrade_server ;;
     backup) create_backup ;;
     repair-self-monitor|self-monitor) repair_self_monitor ;;
+    check-network|test-network|network) check_network ;;
     help|-h|--help) show_help ;;
     *) show_help; exit 2 ;;
 esac

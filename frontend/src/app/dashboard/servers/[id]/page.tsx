@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers } from 'lucide-react';
+import { ArrowLeft, Cpu, HardDrive, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Globe, Radio, AlertTriangle, CheckCircle2, XCircle, ArrowUpRight, ArrowDownLeft, Wifi } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
@@ -71,6 +71,55 @@ interface Inventory {
   collected_at: string;
 }
 
+interface NetworkInterfaceInfo {
+  name: string;
+  is_physical: boolean;
+  is_up: boolean;
+  ip_addresses: string[];
+  mac_address: string;
+  bytes_sent: number;
+  bytes_recv: number;
+  packets_sent: number;
+  packets_recv: number;
+  errors_in: number;
+  errors_out: number;
+  drop_in: number;
+  drop_out: number;
+  delta_errors_in: number;
+  delta_errors_out: number;
+  delta_drop_in: number;
+  delta_drop_out: number;
+  error_rate_per_min: number;
+  drop_rate_per_min: number;
+}
+
+interface NetworkSample {
+  timestamp: number;
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+  delta_drops: number;
+  delta_errors: number;
+  gateway_loss: number;
+  gateway_latency_ms: number;
+}
+
+interface NetworkDiagnostics {
+  status: 'healthy' | 'warning' | 'critical' | string;
+  primary_uplink: string;
+  default_gateway: string;
+  gateway_reachable: boolean;
+  gateway_packet_loss: number;
+  gateway_latency_ms: number;
+  dns_resolvable: boolean;
+  dns_latency_ms: number;
+  internet_connected: boolean;
+  transient_errors: boolean;
+  persistent_errors: boolean;
+  diagnosis: string;
+  recent_samples?: NetworkSample[];
+  interfaces?: NetworkInterfaceInfo[];
+}
+
 interface Snapshot {
   os_family?: string;
   system_info?: SystemInfo;
@@ -79,6 +128,8 @@ interface Snapshot {
   services?: ServiceStatus[];
   docker_containers?: DockerContainer[];
   package_update?: number;
+  network_diagnostics?: NetworkDiagnostics;
+  network_interfaces?: NetworkInterfaceInfo[];
 }
 
 interface ServerDetails {
@@ -498,6 +549,7 @@ export default function ServerDetailsPage() {
     ['overview', 'Overview'],
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
+    ['network', 'Network Diagnostics'],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
     ['terminal', terminalTabLabel],
   ];
@@ -633,11 +685,34 @@ export default function ServerDetailsPage() {
       </div>
 
       <div role="tablist" aria-label="Server detail views" className="flex gap-4 overflow-x-auto border-b border-[var(--border-color)]">
-        {tabs.map(([key, label]) => (
-          <button key={key} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)} className={`whitespace-nowrap pb-3 text-sm font-semibold transition-colors ${activeTab === key ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}>
-            {label}
-          </button>
-        ))}
+        {tabs.map(([key, label]) => {
+          const isNetTab = key === 'network';
+          const hasNetWarning = isNetTab && snapshot?.network_diagnostics?.status === 'warning';
+          const hasNetCritical = isNetTab && snapshot?.network_diagnostics?.status === 'critical';
+
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === key}
+              onClick={() => setActiveTab(key)}
+              className={`whitespace-nowrap pb-3 text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                activeTab === key
+                  ? 'text-blue-500 border-b-2 border-blue-500'
+                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              {label}
+              {hasNetCritical && (
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" title="Network Critical Alert" />
+              )}
+              {hasNetWarning && !hasNetCritical && (
+                <span className="w-2 h-2 rounded-full bg-amber-500" title="Network Warning" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {activeTab === 'overview' && (
@@ -1081,6 +1156,424 @@ export default function ServerDetailsPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'network' && (
+        <div className="space-y-5">
+          {(() => {
+            const netDiag = snapshot?.network_diagnostics;
+            const netIfaces = netDiag?.interfaces || snapshot?.network_interfaces || [];
+            const diagStatus = netDiag?.status || 'healthy';
+            const isCrit = diagStatus === 'critical';
+            const isWarn = diagStatus === 'warning';
+            const primaryIface = netIfaces.find(i => i.name === netDiag?.primary_uplink) || netIfaces.find(i => i.is_physical && i.is_up) || netIfaces[0];
+
+            if (!netDiag && netIfaces.length === 0) {
+              return (
+                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-12 text-center">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mb-4">
+                    <Network className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-semibold text-[var(--foreground)]">Awaiting Network Diagnostics Telemetry</h3>
+                  <p className="mt-1 text-sm text-[var(--color-muted)] max-w-md mx-auto">
+                    Network health metrics and interface error counters will appear once the DatrixOps Agent sends its next snapshot tick.
+                  </p>
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cmd = osFamily === 'windows' ? 'powershell -ExecutionPolicy Bypass -File check-network.ps1' : 'datrix check-network';
+                        copyTextToClipboard(cmd);
+                        toast.success('Copied CLI diagnostic command!');
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-4 py-2 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-color)]/50 transition-colors cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Run CLI Diagnostics: {osFamily === 'windows' ? 'check-network.ps1' : 'datrix check-network'}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <>
+                {/* Status Overview Banner */}
+                <div className={`rounded-xl border p-5 ${
+                  isCrit
+                    ? 'border-rose-500/40 bg-rose-500/10'
+                    : isWarn
+                    ? 'border-amber-500/40 bg-amber-500/10'
+                    : 'border-emerald-500/40 bg-emerald-500/10'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                      <div className={`rounded-full p-2.5 shrink-0 ${
+                        isCrit ? 'bg-rose-500/20 text-rose-400' : isWarn ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
+                      }`}>
+                        {isCrit ? <XCircle className="w-6 h-6" /> : isWarn ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h3 className="text-base font-bold text-[var(--foreground)]">
+                            {isCrit ? 'Network Connectivity Alert' : isWarn ? 'Network Performance Warning' : 'Network Health Optimal'}
+                          </h3>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${
+                            isCrit
+                              ? 'bg-rose-500 text-white'
+                              : isWarn
+                              ? 'bg-amber-500 text-black'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {diagStatus}
+                          </span>
+                          {netDiag?.primary_uplink && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[var(--background-card)] px-2 py-0.5 text-xs font-medium border border-[var(--border-color)] text-[var(--color-muted)]">
+                              <Network className="w-3.5 h-3.5 text-blue-400" /> Uplink: <strong className="text-[var(--foreground)] font-mono">{netDiag.primary_uplink}</strong>
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-[var(--color-muted)]">
+                          {netDiag?.diagnosis || 'Continuous packet drop, physical error, gateway reachability, and DNS resolution monitoring.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd = osFamily === 'windows' ? 'powershell -ExecutionPolicy Bypass -File check-network.ps1' : 'datrix check-network';
+                          copyTextToClipboard(cmd);
+                          toast.success('Copied CLI diagnostic command!');
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--background-card)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-color)]/50 transition-colors cursor-pointer"
+                        title="Copy command to run via terminal"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> {osFamily === 'windows' ? 'check-network.ps1' : 'datrix check-network'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Metric Cards */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {/* Card 1: Internet & Gateway */}
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[var(--color-muted)]">Internet & Gateway</p>
+                      <Globe className={`w-4 h-4 ${netDiag?.internet_connected !== false ? 'text-emerald-400' : 'text-rose-400'}`} />
+                    </div>
+                    <p className={`mt-2 text-2xl font-bold ${netDiag?.internet_connected !== false ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {netDiag?.internet_connected !== false ? 'Connected' : 'Offline'}
+                    </p>
+                    <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
+                      <div className="flex justify-between">
+                        <span>Gateway IP:</span>
+                        <span className="font-mono text-[var(--foreground)]">{netDiag?.default_gateway || 'Unknown'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Loss / Latency:</span>
+                        <span className={`font-medium ${
+                          (netDiag?.gateway_packet_loss || 0) >= 40
+                            ? 'text-rose-400'
+                            : (netDiag?.gateway_packet_loss || 0) >= 20
+                            ? 'text-amber-400'
+                            : 'text-emerald-400'
+                        }`}>
+                          {(netDiag?.gateway_packet_loss || 0).toFixed(1)}% / {(netDiag?.gateway_latency_ms || 0).toFixed(1)} ms
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: DNS Resolution */}
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[var(--color-muted)]">DNS Resolution</p>
+                      <Radio className={`w-4 h-4 ${netDiag?.dns_resolvable !== false ? 'text-emerald-400' : 'text-rose-400'}`} />
+                    </div>
+                    <p className={`mt-2 text-2xl font-bold ${netDiag?.dns_resolvable !== false ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {netDiag?.dns_resolvable !== false ? 'Resolving' : 'Failing'}
+                    </p>
+                    <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
+                      <div className="flex justify-between">
+                        <span>Query Latency:</span>
+                        <span className={`font-medium ${(netDiag?.dns_latency_ms || 0) > 500 ? 'text-amber-400' : 'text-[var(--foreground)]'}`}>
+                          {(netDiag?.dns_latency_ms || 0).toFixed(1)} ms
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Upstream:</span>
+                        <span className="text-[var(--color-muted)]">Cloudflare / Google</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Buffer Packet Drops */}
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[var(--color-muted)]">Buffer Drops (Burst)</p>
+                      <Activity className={`w-4 h-4 ${(primaryIface?.drop_rate_per_min || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
+                    </div>
+                    <p className={`mt-2 text-2xl font-bold ${(primaryIface?.drop_rate_per_min || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {(primaryIface?.drop_rate_per_min || 0).toFixed(1)} <span className="text-sm font-normal text-[var(--color-muted)]">/min</span>
+                    </p>
+                    <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
+                      <div className="flex justify-between">
+                        <span>Tick Delta:</span>
+                        <span className={`font-medium ${((primaryIface?.delta_drop_in || 0) + (primaryIface?.delta_drop_out || 0)) > 0 ? 'text-amber-400' : 'text-[var(--foreground)]'}`}>
+                          +{((primaryIface?.delta_drop_in || 0) + (primaryIface?.delta_drop_out || 0))} packets
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Buffer Status:</span>
+                        <span className="text-[var(--color-muted)]">
+                          {((primaryIface?.delta_drop_in || 0) + (primaryIface?.delta_drop_out || 0)) > 0 ? 'Queue congested' : 'Normal queue'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Physical Errors */}
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-[var(--color-muted)]">Physical Errors (L1/L2)</p>
+                      <AlertTriangle className={`w-4 h-4 ${netDiag?.persistent_errors ? 'text-rose-400' : netDiag?.transient_errors ? 'text-amber-400' : 'text-emerald-400'}`} />
+                    </div>
+                    <p className={`mt-2 text-2xl font-bold ${netDiag?.persistent_errors ? 'text-rose-400' : netDiag?.transient_errors ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {(primaryIface?.error_rate_per_min || 0).toFixed(1)} <span className="text-sm font-normal text-[var(--color-muted)]">/min</span>
+                    </p>
+                    <div className="mt-2 text-xs space-y-1 text-[var(--color-muted)]">
+                      <div className="flex justify-between">
+                        <span>Tick Delta:</span>
+                        <span className={`font-medium ${((primaryIface?.delta_errors_in || 0) + (primaryIface?.delta_errors_out || 0)) > 0 ? 'text-rose-400' : 'text-[var(--foreground)]'}`}>
+                          +{((primaryIface?.delta_errors_in || 0) + (primaryIface?.delta_errors_out || 0))} errors
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Pattern:</span>
+                        <span className="text-[var(--color-muted)]">
+                          {netDiag?.persistent_errors ? 'Persistent (≥2 ticks)' : netDiag?.transient_errors ? 'Transient spike' : 'Zero physical errors'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Telemetry Samples Timeline */}
+                {netDiag?.recent_samples && netDiag.recent_samples.length > 0 && (
+                  <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-[var(--border-color)] gap-2">
+                      <div>
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-blue-400" /> Recent Network Telemetry Timeline
+                        </h4>
+                        <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                          Throughput, packet loss, and drops across the last {netDiag.recent_samples.length} sampling intervals.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-[var(--color-muted)]">
+                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500"></span> RX (Inbound)</span>
+                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-400"></span> TX (Outbound)</span>
+                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500"></span> Drops / Errs</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                      {netDiag.recent_samples.map((sample, idx) => {
+                        const hasIssues = (sample.delta_drops || 0) > 0 || (sample.delta_errors || 0) > 0 || (sample.gateway_loss || 0) > 0;
+                        const timeStr = sample.timestamp ? new Date(sample.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : `#${idx + 1}`;
+                        const rxKb = (sample.rx_bytes_per_sec / 1024).toFixed(1);
+                        const txKb = (sample.tx_bytes_per_sec / 1024).toFixed(1);
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`rounded-lg border p-2.5 text-center transition-all ${
+                              hasIssues
+                                ? 'border-amber-500/40 bg-amber-500/10'
+                                : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-blue-500/40'
+                            }`}
+                          >
+                            <p className="text-[10px] font-mono text-[var(--color-muted)]">{timeStr}</p>
+                            <div className="my-1.5 flex flex-col items-center gap-1">
+                              <span className="text-xs font-semibold text-blue-400">{rxKb} <span className="text-[9px] font-normal text-[var(--color-muted)]">KB/s</span></span>
+                              <span className="text-xs font-semibold text-indigo-300">{txKb} <span className="text-[9px] font-normal text-[var(--color-muted)]">KB/s</span></span>
+                            </div>
+                            <div className="pt-1 border-t border-[var(--border-color)]/60 text-[10px]">
+                              {hasIssues ? (
+                                <span className="text-amber-400 font-medium">
+                                  {sample.delta_drops ? `+${sample.delta_drops} drop` : sample.delta_errors ? `+${sample.delta_errors} err` : `${sample.gateway_loss.toFixed(0)}% loss`}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 font-medium">clean</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Interfaces Table */}
+                <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
+                  <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                        <Network className="w-4 h-4 text-blue-500" /> Network Interfaces & Performance Counters
+                      </h3>
+                      <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                        Detailed hardware, virtual bridge, and IO counters reported from kernel drivers.
+                      </p>
+                    </div>
+                    <span className="text-xs text-[var(--color-muted)]">
+                      {netIfaces.length} interfaces detected
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/30 text-xs font-semibold text-[var(--color-muted)]">
+                          <th className="px-4 py-3">Interface</th>
+                          <th className="px-4 py-3">Type / State</th>
+                          <th className="px-4 py-3">IP & MAC Address</th>
+                          <th className="px-4 py-3">Active Rate (/min)</th>
+                          <th className="px-4 py-3">Tick Delta</th>
+                          <th className="px-4 py-3">Lifetime Sent / Recv</th>
+                          <th className="px-4 py-3">Lifetime Drops / Errs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--border-color)]/60">
+                        {netIfaces.map(iface => {
+                          const isPrimary = iface.name === netDiag?.primary_uplink;
+                          const hasActiveErrors = (iface.delta_errors_in || 0) > 0 || (iface.delta_errors_out || 0) > 0;
+                          const hasActiveDrops = (iface.delta_drop_in || 0) > 0 || (iface.delta_drop_out || 0) > 0;
+
+                          return (
+                            <tr
+                              key={iface.name}
+                              className={`hover:bg-[var(--border-color)]/20 transition-colors ${
+                                hasActiveErrors
+                                  ? 'bg-rose-500/5'
+                                  : hasActiveDrops
+                                  ? 'bg-amber-500/5'
+                                  : ''
+                              }`}
+                            >
+                              <td className="px-4 py-3 font-semibold text-[var(--foreground)]">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono">{iface.name}</span>
+                                  {isPrimary && (
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                    iface.is_physical
+                                      ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/20'
+                                      : 'bg-zinc-500/15 text-zinc-400 border border-zinc-500/20'
+                                  }`}>
+                                    {iface.is_physical ? 'Physical' : 'Virtual'}
+                                  </span>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                    iface.is_up
+                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                                      : 'bg-zinc-500/15 text-zinc-400'
+                                  }`}>
+                                    {iface.is_up ? 'UP' : 'DOWN'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs">
+                                <div className="space-y-0.5">
+                                  {iface.ip_addresses && iface.ip_addresses.length > 0 ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="font-mono text-[var(--foreground)]">{iface.ip_addresses.join(', ')}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          copyTextToClipboard(iface.ip_addresses.join(', '));
+                                          toast.success('Copied IP!');
+                                        }}
+                                        className="text-[var(--color-muted)] hover:text-[var(--foreground)] cursor-pointer"
+                                        title="Copy IP"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[var(--color-muted)] italic">No IP assigned</span>
+                                  )}
+                                  {iface.mac_address && (
+                                    <p className="font-mono text-[11px] text-[var(--color-muted)]">{iface.mac_address}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs">
+                                <div className="space-y-0.5">
+                                  <div className={`flex items-center justify-between gap-2 ${
+                                    (iface.drop_rate_per_min || 0) > 0 ? 'text-amber-400 font-semibold' : 'text-[var(--color-muted)]'
+                                  }`}>
+                                    <span>Drops:</span>
+                                    <span>{(iface.drop_rate_per_min || 0).toFixed(1)}/m</span>
+                                  </div>
+                                  <div className={`flex items-center justify-between gap-2 ${
+                                    (iface.error_rate_per_min || 0) > 0 ? 'text-rose-400 font-semibold' : 'text-[var(--color-muted)]'
+                                  }`}>
+                                    <span>Errors:</span>
+                                    <span>{(iface.error_rate_per_min || 0).toFixed(1)}/m</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs">
+                                <div className="space-y-0.5">
+                                  <span className={`block ${hasActiveDrops ? 'text-amber-400 font-semibold' : 'text-[var(--color-muted)]'}`}>
+                                    +{(iface.delta_drop_in || 0) + (iface.delta_drop_out || 0)} drops
+                                  </span>
+                                  <span className={`block ${hasActiveErrors ? 'text-rose-400 font-semibold' : 'text-[var(--color-muted)]'}`}>
+                                    +{(iface.delta_errors_in || 0) + (iface.delta_errors_out || 0)} errs
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1">
+                                    <ArrowDownLeft className="w-3 h-3 text-blue-400" />
+                                    <span>RX: {formatBytes(iface.bytes_recv)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <ArrowUpRight className="w-3 h-3 text-indigo-400" />
+                                    <span>TX: {formatBytes(iface.bytes_sent)}</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <div className="space-y-0.5">
+                                  <span className={iface.drop_in + iface.drop_out > 0 ? 'text-amber-400' : ''}>
+                                    Drops: {((iface.drop_in || 0) + (iface.drop_out || 0)).toLocaleString()}
+                                  </span>
+                                  <br />
+                                  <span className={iface.errors_in + iface.errors_out > 0 ? 'text-rose-400' : ''}>
+                                    Errs: {((iface.errors_in || 0) + (iface.errors_out || 0)).toLocaleString()}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 

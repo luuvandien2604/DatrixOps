@@ -98,16 +98,68 @@ type CronJob struct {
 	LastStatus string     `json:"last_status,omitempty"`
 }
 
+type NetworkInterfaceInfo struct {
+	Name            string   `json:"name"`
+	MAC             string   `json:"mac"`
+	IPs             []string `json:"ips"`
+	Flags           []string `json:"flags"`
+	RxBytes         uint64   `json:"rx_bytes"`
+	TxBytes         uint64   `json:"tx_bytes"`
+	RxPackets       uint64   `json:"rx_packets"`
+	TxPackets       uint64   `json:"tx_packets"`
+	RxErrors        uint64   `json:"rx_errors"`
+	TxErrors        uint64   `json:"tx_errors"`
+	RxDropped       uint64   `json:"rx_dropped"`
+	TxDropped       uint64   `json:"tx_dropped"`
+	DeltaErrors     uint64   `json:"delta_errors"`
+	DeltaDropped    uint64   `json:"delta_dropped"`
+	ErrorRatePerMin float64  `json:"error_rate_per_min"`
+	DropRatePerMin  float64  `json:"drop_rate_per_min"`
+	IsUp            bool     `json:"is_up"`
+	IsPhysical      bool     `json:"is_physical"`
+	IsPrimaryUplink bool     `json:"is_primary_uplink"`
+}
+
+type NetworkSample struct {
+	Timestamp    time.Time `json:"timestamp"`
+	DeltaDropped uint64    `json:"delta_dropped"`
+	DeltaErrors  uint64    `json:"delta_errors"`
+	DNSLatencyMs float64   `json:"dns_latency_ms"`
+}
+
+type NetworkDiagnostics struct {
+	PrimaryUplink     string          `json:"primary_uplink,omitempty"`
+	DefaultGateway    string          `json:"default_gateway,omitempty"`
+	GatewayLatencyMs  float64         `json:"gateway_latency_ms,omitempty"`
+	GatewayPacketLoss float64         `json:"gateway_packet_loss"`
+	DNSLatencyMs      float64         `json:"dns_latency_ms,omitempty"`
+	DNSResolvable     bool            `json:"dns_resolvable"`
+	DNSSource         string          `json:"dns_source,omitempty"`
+	InternetConnected bool            `json:"internet_connected"`
+	ActiveErrors      uint64          `json:"active_errors"`
+	ActiveDropped     uint64          `json:"active_dropped"`
+	LifetimeErrors    uint64          `json:"lifetime_errors"`
+	LifetimeDropped   uint64          `json:"lifetime_dropped"`
+	ErrorRatePerMin   float64         `json:"error_rate_per_min"`
+	DropRatePerMin    float64         `json:"drop_rate_per_min"`
+	Status            string          `json:"status"`
+	StatusReason      string          `json:"status_reason,omitempty"`
+	RecentSamples     []NetworkSample `json:"recent_samples,omitempty"`
+	LastCheckedAt     time.Time       `json:"last_checked_at"`
+}
+
 type Snapshot struct {
-	OSFamily              string            `json:"os_family"`
-	SystemInfo            *SystemInfo       `json:"system_info,omitempty"`
-	Inventory             map[string]any    `json:"inventory,omitempty"`
-	CronJobs              []CronJob         `json:"cron_jobs"`
-	CronDiscoveryComplete bool              `json:"cron_discovery_complete"`
-	TopProcesses          []TopProcess      `json:"top_processes,omitempty"`
-	Services              []ServiceStatus   `json:"services,omitempty"`
-	DockerContainers      []DockerContainer `json:"docker_containers,omitempty"`
-	PackageUpdate         int               `json:"package_update"`
+	OSFamily              string                 `json:"os_family"`
+	SystemInfo            *SystemInfo            `json:"system_info,omitempty"`
+	Inventory             map[string]any         `json:"inventory,omitempty"`
+	CronJobs              []CronJob              `json:"cron_jobs"`
+	CronDiscoveryComplete bool                   `json:"cron_discovery_complete"`
+	TopProcesses          []TopProcess           `json:"top_processes,omitempty"`
+	Services              []ServiceStatus        `json:"services,omitempty"`
+	DockerContainers      []DockerContainer      `json:"docker_containers,omitempty"`
+	PackageUpdate         int                    `json:"package_update"`
+	NetworkInterfaces     []NetworkInterfaceInfo `json:"network_interfaces,omitempty"`
+	NetworkDiagnostics    *NetworkDiagnostics    `json:"network_diagnostics,omitempty"`
 }
 
 type HeartbeatRequest struct {

@@ -3,6 +3,7 @@ package website
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/auditlog"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -86,4 +87,29 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	auditlog.Record(r.Context(), h.db, userID, "DELETE_WEBSITE", "WEBSITE", id, nil)
 	response.Success(w, http.StatusOK, map[string]string{"id": id, "status": "deleted"})
+}
+
+func (h *Handler) GetUptimeSummary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	days := 90
+	if daysStr := r.URL.Query().Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 {
+			days = d
+		}
+	}
+
+	endDateStr := r.URL.Query().Get("end_date")
+
+	summary, err := h.svc.GetUptimeSummary(r.Context(), userID, days, endDateStr)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve uptime summary")
+		return
+	}
+
+	response.Success(w, http.StatusOK, summary)
 }
