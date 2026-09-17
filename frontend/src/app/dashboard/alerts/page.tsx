@@ -1,11 +1,12 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowLeft,
   Bell,
   Box,
   Check,
@@ -17,6 +18,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   Send,
@@ -141,6 +143,7 @@ export default function AlertsPage() {
   const [unreadIncidentsCount, setUnreadIncidentsCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
 
   const [savingRule, setSavingRule] = useState(false);
@@ -172,6 +175,7 @@ export default function AlertsPage() {
   const [deletingChannel, setDeletingChannel] = useState(false);
 
   // Rules Tab Filter States
+  const [ruleCategoryFilter, setRuleCategoryFilter] = useState<'all' | AlertCategory>('all');
   const [ruleStatusFilter, setRuleStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
   const [ruleSearchQuery, setRuleSearchQuery] = useState('');
   const [incidentFilter, setIncidentFilter] = useState<'all' | 'unread' | 'read'>('all');
@@ -295,9 +299,19 @@ export default function AlertsPage() {
     }
   }
 
+  const refreshAllData = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents()]);
+      setSuccessMessage('Alert Center data refreshed.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents()]);
       setLoading(false);
     };
     void loadData();
@@ -335,7 +349,6 @@ export default function AlertsPage() {
     };
   };
 
-  // testNewChannel sends a verification notification with current unsaved form values
   const testNewChannel = async () => {
     setErrorMessage('');
     setSuccessMessage('');
@@ -376,7 +389,6 @@ export default function AlertsPage() {
     }
   };
 
-  // testExistingChannel triggers a test notification for an existing saved channel
   const testExistingChannel = async (id: string, name: string) => {
     setErrorMessage('');
     setSuccessMessage('');
@@ -392,7 +404,6 @@ export default function AlertsPage() {
     }
   };
 
-  // testAlertRule triggers a simulated alert for a specific rule
   const testAlertRule = async (id: string, name: string) => {
     setErrorMessage('');
     setSuccessMessage('');
@@ -408,7 +419,6 @@ export default function AlertsPage() {
     }
   };
 
-  // createRule creates a new rule and navigates back to Rules tab
   const createRule = async (event: React.FormEvent) => {
     event.preventDefault();
     setErrorMessage('');
@@ -678,37 +688,129 @@ export default function AlertsPage() {
     }
   };
 
-  // Filter rules list
-  const filteredRules = rules.filter((rule) => {
-    if (ruleStatusFilter === 'active' && !rule.enabled) return false;
-    if (ruleStatusFilter === 'disabled' && rule.enabled) return false;
+  // Filtered rules list
+  const filteredRules = useMemo(() => {
+    return rules.filter((rule) => {
+      // Status filter
+      if (ruleStatusFilter === 'active' && !rule.enabled) return false;
+      if (ruleStatusFilter === 'disabled' && rule.enabled) return false;
 
-    if (ruleSearchQuery.trim()) {
-      const q = ruleSearchQuery.toLowerCase();
-      const matchName = rule.name.toLowerCase().includes(q);
-      const matchMetric = rule.metric.toLowerCase().includes(q);
-      const matchTarget = (rule.target_name || '').toLowerCase().includes(q);
-      const matchServer = (rule.server_name || '').toLowerCase().includes(q);
-      return matchName || matchMetric || matchTarget || matchServer;
-    }
-    return true;
-  });
+      // Category filter
+      if (ruleCategoryFilter !== 'all') {
+        if (ruleCategoryFilter === 'status' && rule.metric !== 'status') return false;
+        if (ruleCategoryFilter === 'container' && rule.metric !== 'container') return false;
+        if (ruleCategoryFilter === 'service' && rule.metric !== 'service') return false;
+        if (ruleCategoryFilter === 'metric' && !['cpu', 'ram', 'disk'].includes(rule.metric)) return false;
+        if (ruleCategoryFilter === 'website' && !['website', 'ssl'].includes(rule.metric)) return false;
+      }
+
+      // Search query
+      if (ruleSearchQuery.trim()) {
+        const q = ruleSearchQuery.toLowerCase();
+        const matchName = rule.name.toLowerCase().includes(q);
+        const matchMetric = rule.metric.toLowerCase().includes(q);
+        const matchTarget = (rule.target_name || '').toLowerCase().includes(q);
+        const matchServer = (rule.server_name || '').toLowerCase().includes(q);
+        return matchName || matchMetric || matchTarget || matchServer;
+      }
+      return true;
+    });
+  }, [rules, ruleStatusFilter, ruleCategoryFilter, ruleSearchQuery]);
 
   const enabledChannels = channels.filter((channel) => channel.enabled);
 
+  // High-level KPI values
+  const activeRulesCount = rules.filter((r) => r.enabled).length;
+  const activeFiringCount = incidents.filter(
+    (i) => (i.kind === 'alert_firing' || i.severity === 'critical' || i.kind === 'website_down') && !i.read_at,
+  ).length;
+
+  // Live Rule Preview summary text generator
+  const rulePreviewText = useMemo(() => {
+    let targetDesc = 'All servers (Entire fleet)';
+    if (selectedCategory === 'website') {
+      targetDesc = ruleTargetName ? `Website "${ruleTargetName}"` : 'All monitored websites';
+    } else if (selectedServerId !== 'all') {
+      const s = servers.find((item) => item.id === selectedServerId);
+      targetDesc = s ? `Server "${s.name}"` : 'Selected server';
+    }
+
+    let conditionDesc = '';
+    if (selectedCategory === 'status') {
+      conditionDesc = `heartbeat is lost for ${ruleDuration} min`;
+    } else if (selectedCategory === 'container') {
+      conditionDesc = `container "${ruleTargetName || 'specified'}" exits or fails`;
+    } else if (selectedCategory === 'service') {
+      conditionDesc = `service "${ruleTargetName || 'specified'}" stops or fails`;
+    } else if (selectedCategory === 'metric') {
+      conditionDesc = `${ruleMetric.toUpperCase()} usage is ${ruleOperator} ${ruleThreshold}% for > ${ruleDuration} min`;
+    } else if (selectedCategory === 'website') {
+      if (ruleMetric === 'ssl') {
+        conditionDesc = `SSL certificate expires in ≤ ${ruleThreshold || 14} days`;
+      } else {
+        conditionDesc = 'probe fails HTTP check or returns error status';
+      }
+    }
+
+    const selectedChNames = selectedChannelIds
+      .map((id) => channels.find((c) => c.id === id)?.name)
+      .filter(Boolean);
+
+    const channelDesc = selectedChNames.length > 0 ? selectedChNames.join(', ') : 'No notification channels selected';
+
+    const repeatDesc =
+      ruleRepeatInterval === '0'
+        ? 'dispatch once'
+        : `repeat every ${ruleRepeatInterval} mins while incident persists`;
+
+    return { targetDesc, conditionDesc, channelDesc, repeatDesc };
+  }, [selectedCategory, selectedServerId, servers, ruleTargetName, ruleDuration, ruleMetric, ruleOperator, ruleThreshold, selectedChannelIds, channels, ruleRepeatInterval]);
+
   return (
     <div className="space-y-6">
-      {/* Top Heading */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
-          Alert Center
-        </h1>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">
-          Monitor server health, Docker containers, systemd services, resource thresholds, and website uptime.
-        </p>
+      {/* Top Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
+            Alert Center
+          </h1>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            Configure automated incident detection, threshold triggers, and real-time dispatch across all infrastructure.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => void refreshAllData()}
+            disabled={refreshing}
+            className="ops-button secondary flex items-center gap-2"
+            title="Refresh alert rules, channels and incident telemetry"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-blue-500' : 'text-[var(--color-muted)]'}`} />
+            <span>Refresh</span>
+          </button>
+
+          {activeTab !== 'create' && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('create');
+                setErrorMessage('');
+                setSuccessMessage('');
+              }}
+              disabled={isViewer}
+              title={isViewer ? 'Creating rules requires Operator or Admin role' : 'Create new alert rule'}
+              className="ops-button primary flex items-center gap-2 shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              <span>+ Create Alert Rule</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Global Alerts / Messages */}
+      {/* Global Alerts / Status Banner */}
       {(errorMessage || successMessage) && (
         <div
           role="status"
@@ -736,7 +838,103 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* 5 Tab Navigation Bar */}
+      {/* Top 4 KPI Summary Metric Cards */}
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Active Rules Card */}
+        <div className="metric-card surface-regular status-tone-healthy p-4">
+          <div className="flex items-start justify-between">
+            <div className="metric-icon" style={{ color: 'var(--mint)' }}>
+              <Bell className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+              POLICIES
+            </span>
+          </div>
+          <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
+            Active Rules
+          </p>
+          <div className="mt-1 flex items-end justify-between gap-2">
+            <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+              {activeRulesCount}
+              <span className="text-lg font-normal text-[var(--color-muted)]">/{rules.length}</span>
+            </p>
+            <p className="mb-0.5 text-right text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+              {rules.length > 0 ? `${Math.round((activeRulesCount / rules.length) * 100)}% active` : 'No rules'}
+            </p>
+          </div>
+        </div>
+
+        {/* Firing Incidents Card */}
+        <div className={`metric-card surface-regular ${activeFiringCount > 0 ? 'status-tone-critical' : 'status-tone-healthy'} p-4`}>
+          <div className="flex items-start justify-between">
+            <div className="metric-icon" style={{ color: activeFiringCount > 0 ? 'var(--rose)' : 'var(--mint)' }}>
+              <Flame className="h-4 w-4" />
+            </div>
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${activeFiringCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              {activeFiringCount > 0 ? 'FIRING' : 'HEALTHY'}
+            </span>
+          </div>
+          <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
+            Open Incidents
+          </p>
+          <div className="mt-1 flex items-end justify-between gap-2">
+            <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+              {activeFiringCount}
+            </p>
+            <p className={`mb-0.5 text-right text-[10px] font-medium ${activeFiringCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              {activeFiringCount > 0 ? `${activeFiringCount} require action` : 'All systems clear'}
+            </p>
+          </div>
+        </div>
+
+        {/* Notification Channels Card */}
+        <div className="metric-card surface-regular status-tone-info p-4">
+          <div className="flex items-start justify-between">
+            <div className="metric-icon" style={{ color: 'var(--violet)' }}>
+              <Radio className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+              ROUTING
+            </span>
+          </div>
+          <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
+            Connected Channels
+          </p>
+          <div className="mt-1 flex items-end justify-between gap-2">
+            <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+              {channels.filter((c) => c.enabled).length}
+            </p>
+            <p className="mb-0.5 text-right text-[10px] font-medium text-purple-600 dark:text-purple-400">
+              {channels.length > 0 ? `${channels.length} delivery endpoints` : 'None linked'}
+            </p>
+          </div>
+        </div>
+
+        {/* Coverage Card */}
+        <div className="metric-card surface-regular status-tone-info p-4">
+          <div className="flex items-start justify-between">
+            <div className="metric-icon" style={{ color: 'var(--sky)' }}>
+              <Server className="h-4 w-4" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+              TARGETS
+            </span>
+          </div>
+          <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
+            Fleet Coverage
+          </p>
+          <div className="mt-1 flex items-end justify-between gap-2">
+            <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+              {servers.length + websites.length}
+            </p>
+            <p className="mb-0.5 text-right text-[10px] font-medium text-blue-600 dark:text-blue-400">
+              {servers.length} servers · {websites.length} sites
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Tab Navigation Bar */}
       <div className="border-b border-[var(--border-color)]">
         <nav role="tablist" aria-label="Alert Sections" className="flex flex-wrap gap-2 sm:gap-6">
           <button
@@ -750,7 +948,11 @@ export default function AlertsPage() {
                 : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
             }`}
           >
+            <Bell className="h-4 w-4" />
             <span>Alert Rules</span>
+            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+              {rules.length}
+            </span>
             {activeTab === 'rules' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -768,7 +970,7 @@ export default function AlertsPage() {
             }`}
           >
             <Plus className="h-4 w-4" />
-            <span>Create Alert</span>
+            <span>Create Alert Rule</span>
             {activeTab === 'create' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -785,8 +987,11 @@ export default function AlertsPage() {
                 : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
             }`}
           >
-            <Bell className="h-4 w-4" />
+            <Radio className="h-4 w-4" />
             <span>Notification Channels</span>
+            <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-xs font-bold text-[var(--color-muted)]">
+              {channels.length}
+            </span>
             {activeTab === 'channels' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -805,6 +1010,15 @@ export default function AlertsPage() {
           >
             <Flame className="h-4 w-4" />
             <span>Incident History</span>
+            {unreadIncidentsCount > 0 ? (
+              <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white">
+                {unreadIncidentsCount} unread
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-xs font-bold text-[var(--color-muted)]">
+                {incidents.length}
+              </span>
+            )}
             {activeTab === 'incidents' && (
               <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
             )}
@@ -818,14 +1032,14 @@ export default function AlertsPage() {
         </div>
       ) : activeTab === 'rules' ? (
         /* ========================================================================= */
-        /* TAB 1: RULES - FULL WIDTH VIEW */
+        /* TAB 1: ALERT RULES LIST */
         /* ========================================================================= */
         <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="flex flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Controls Bar: Search, Category Quick Filter, Status Filter */}
+          <div className="ops-panel surface-regular no-hover-lift p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* Search Input */}
             <div className="relative w-full sm:w-80 md:w-96">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)] z-10" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)] z-10" />
               <input
                 type="text"
                 value={ruleSearchQuery}
@@ -846,20 +1060,49 @@ export default function AlertsPage() {
               )}
             </div>
 
-            {/* Status Filter */}
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-[var(--color-muted)] font-medium">Status:</span>
-              <select
-                value={ruleStatusFilter}
-                onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
-                className="h-9 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
-              >
-                <option value="all">All Statuses ({rules.length})</option>
-                <option value="active">Active only ({rules.filter((r) => r.enabled).length})</option>
-                <option value="disabled">Disabled only ({rules.filter((r) => !r.enabled).length})</option>
-              </select>
+            {/* Category and Status Filter Group */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Category Pills */}
+              <div className="flex items-center overflow-x-auto gap-1 p-1 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)]">
+                {[
+                  { id: 'all', label: 'All Categories' },
+                  { id: 'status', label: 'Server Offline' },
+                  { id: 'container', label: 'Docker' },
+                  { id: 'service', label: 'Systemd' },
+                  { id: 'metric', label: 'Resources' },
+                  { id: 'website', label: 'Website/SSL' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setRuleCategoryFilter(item.id as 'all' | AlertCategory)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition ${
+                      ruleCategoryFilter === item.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status Select */}
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={ruleStatusFilter}
+                  onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
+                  className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+                >
+                  <option value="all">All Statuses ({rules.length})</option>
+                  <option value="active">Active ({rules.filter((r) => r.enabled).length})</option>
+                  <option value="disabled">Disabled ({rules.filter((r) => !r.enabled).length})</option>
+                </select>
+              </div>
             </div>
-          </div>          {/* Rules Full-Width List */}
+          </div>
+
+          {/* Rules List Cards */}
           <div className="space-y-3">
             {filteredRules.map((rule) => {
               const isOffline = rule.metric === 'status';
@@ -871,26 +1114,26 @@ export default function AlertsPage() {
               return (
                 <div
                   key={rule.id}
-                  className={`flex flex-col gap-3 rounded-xl border p-4 transition-all sm:flex-row sm:items-center sm:justify-between ${
-                    rule.enabled
-                      ? 'border-[var(--border-color)] bg-[var(--background-card)] hover:shadow-sm'
-                      : 'border-[var(--border-color)]/50 bg-[var(--background-card)]/50 opacity-75'
+                  className={`ops-panel surface-regular p-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between transition-all ${
+                    rule.enabled ? '' : 'opacity-70 bg-opacity-40'
                   }`}
                 >
-                  {/* Left: Icon & Streamlined Info */}
+                  {/* Left: Category Icon & Metadata */}
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                    {/* Themed Icon */}
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-                      isOffline
-                        ? 'bg-cyan-50 text-cyan-700 border-cyan-200/80 dark:bg-cyan-950/40 dark:text-cyan-400 dark:border-cyan-800/40'
-                        : isDocker
-                          ? 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/40'
-                          : isService
-                            ? 'bg-purple-50 text-purple-700 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/40'
-                            : (isWebsite || isSSL)
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40'
-                              : 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40'
-                    }`}>
+                    {/* Themed Icon Badge */}
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                        isOffline
+                          ? 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30'
+                          : isDocker
+                            ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                            : isService
+                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/30'
+                              : isWebsite || isSSL
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                                : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                      }`}
+                    >
                       {isOffline && <Server className="h-5 w-5" />}
                       {isDocker && <Box className="h-5 w-5" />}
                       {isService && <Layers className="h-5 w-5" />}
@@ -899,7 +1142,7 @@ export default function AlertsPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      {/* Row 1: Name & Badges */}
+                      {/* Title & Badges */}
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-[var(--foreground)] truncate text-sm">{rule.name}</h4>
 
@@ -914,18 +1157,20 @@ export default function AlertsPage() {
                           {rule.enabled ? 'Active' : 'Disabled'}
                         </span>
 
-                        {/* Category / Condition Badge */}
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
-                          isOffline
-                            ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800/60'
-                            : isDocker
-                              ? 'bg-blue-50 text-blue-800 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60'
-                              : isService
-                                ? 'bg-purple-50 text-purple-800 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60'
-                                : (isWebsite || isSSL)
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-                                  : 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
-                        }`}>
+                        {/* Condition Badge */}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+                            isOffline
+                              ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800/60'
+                              : isDocker
+                                ? 'bg-blue-50 text-blue-800 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60'
+                                : isService
+                                  ? 'bg-purple-50 text-purple-800 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60'
+                                  : isWebsite || isSSL
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
+                          }`}
+                        >
                           {isOffline && `Server Offline (${rule.duration_minutes}m)`}
                           {isDocker && `Docker: ${rule.target_name || '*'}`}
                           {isService && `Service: ${rule.target_name || '*'}`}
@@ -935,18 +1180,18 @@ export default function AlertsPage() {
                         </span>
                       </div>
 
-                      {/* Row 2: Target, Repeat & Channel Chips */}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs">
+                      {/* Details & Target */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-[var(--color-muted)]">
                         <span className="flex items-center gap-1 font-medium text-[var(--foreground)] opacity-90">
-                          {(isWebsite || isSSL) ? (
+                          {isWebsite || isSSL ? (
                             <>
-                              <Globe2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <Globe2 className="h-3.5 w-3.5 text-emerald-500" />
                               {rule.target_name ? rule.target_name : 'All websites'}
                             </>
                           ) : (
                             <>
-                              <Server className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                              {rule.server_name ? rule.server_name : 'All servers'}
+                              <Server className="h-3.5 w-3.5 text-blue-500" />
+                              {rule.server_name ? rule.server_name : 'All servers (Entire fleet)'}
                             </>
                           )}
                         </span>
@@ -958,19 +1203,19 @@ export default function AlertsPage() {
                           </span>
                         ) : null}
 
-                        {/* Linked Channels */}
+                        {/* Channels Chips */}
                         <div className="flex flex-wrap items-center gap-1">
                           {(rule.channels ?? []).length > 0 ? (
                             rule.channels.map((channel) => (
                               <span
                                 key={channel.id}
-                                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/90 px-2 py-0.5 text-[10px] font-semibold text-slate-700 uppercase dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                                className="inline-flex items-center gap-1 rounded-full border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--foreground)] uppercase"
                               >
                                 {channel.name} ({channel.type})
                               </span>
                             ))
                           ) : (
-                            <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+                            <span className="rounded-full border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-muted)]">
                               Dashboard only
                             </span>
                           )}
@@ -979,34 +1224,34 @@ export default function AlertsPage() {
                     </div>
                   </div>
 
-                  {/* Right: Actions */}
-                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                  {/* Right Actions: Edit, Test, Switch, Delete */}
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                     {/* EDIT RULE BUTTON */}
                     <button
                       type="button"
                       disabled={isViewer}
                       onClick={() => openEditModal(rule)}
                       title={isViewer ? 'Editing rules requires Operator or Admin role' : 'Edit alert rule'}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs font-bold text-[var(--foreground)] transition hover:bg-[var(--border-color)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="ops-button secondary flex items-center gap-1.5 px-2.5 py-1 text-xs"
                     >
-                      <Pencil className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
-                      Edit
+                      <Pencil className="h-3.5 w-3.5 text-blue-500" />
+                      <span>Edit</span>
                     </button>
 
-                    {/* TEST RULE BUTTON */}
+                    {/* TEST SIMULATION BUTTON */}
                     <button
                       type="button"
                       disabled={testingRuleId === rule.id || !rule.channels || rule.channels.length === 0}
                       onClick={() => void testAlertRule(rule.id, rule.name)}
-                      title="Send a simulated test alert for this rule to linked channels"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60 px-3 py-1.5 text-xs font-semibold transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Send a simulated test alert for this rule to linked notification channels"
+                      className="ops-button secondary flex items-center gap-1.5 px-2.5 py-1 text-xs text-blue-500 hover:text-blue-400"
                     >
                       {testingRuleId === rule.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Send className="h-3.5 w-3.5" />
                       )}
-                      Test
+                      <span>Test</span>
                     </button>
 
                     {/* SWITCH TOGGLE */}
@@ -1015,7 +1260,7 @@ export default function AlertsPage() {
                       role="switch"
                       aria-checked={rule.enabled}
                       onClick={() => toggleRule(rule.id, rule.enabled)}
-                      title={rule.enabled ? 'Click to disable alert' : 'Click to enable alert'}
+                      title={rule.enabled ? 'Click to disable alert rule' : 'Click to enable alert rule'}
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                         rule.enabled ? 'bg-emerald-600' : 'bg-slate-400 dark:bg-slate-700'
                       }`}
@@ -1033,7 +1278,7 @@ export default function AlertsPage() {
                       type="button"
                       aria-label={`Delete rule ${rule.name}`}
                       onClick={() => setDeleteRuleTarget(rule)}
-                      className="p-1.5 text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/40 rounded-lg transition"
+                      className="p-1.5 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 rounded-lg transition"
                       title="Delete rule"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1044,18 +1289,18 @@ export default function AlertsPage() {
             })}
 
             {filteredRules.length === 0 && (
-              <div className="rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center">
+              <div className="ops-panel surface-regular p-12 text-center">
                 <Bell className="mx-auto h-8 w-8 text-[var(--color-muted)]" />
                 <h3 className="mt-3 font-semibold text-[var(--foreground)]">No alert rules found</h3>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  Try adjusting your search or filters, or click below to create a new alert rule.
+                  Try adjusting your search or filters, or create a new automated alert rule.
                 </p>
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('create'); }}
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                  onClick={() => setActiveTab('create')}
+                  className="mt-4 ops-button primary inline-flex items-center gap-2"
                 >
-                  <Plus className="h-4 w-4" /> Create Alert Rule
+                  <Plus className="h-4 w-4" /> + Create Alert Rule
                 </button>
               </div>
             )}
@@ -1063,71 +1308,153 @@ export default function AlertsPage() {
         </div>
       ) : activeTab === 'create' ? (
         /* ========================================================================= */
-        /* TAB 2: CREATE ALERT - DIRECT INTEGRATED FORM */
+        /* TAB 2: CREATE ALERT RULE STUDIO (REDESIGNED UX) */
         /* ========================================================================= */
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          {/* Studio Navigation & Breadcrumbs */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Create Alert Rule</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Define automated conditions to monitor system health, workloads, and web endpoints.
-              </p>
+              <div className="flex items-center gap-2 text-xs font-semibold text-blue-500">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('rules')}
+                  className="hover:underline flex items-center gap-1"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" /> Back to Alert Rules
+                </button>
+                <span>/</span>
+                <span className="text-[var(--color-muted)]">Rule Builder</span>
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-[var(--foreground)] mt-1 sm:text-2xl">
+                Create Alert Rule
+              </h2>
             </div>
 
             <button
               type="button"
               onClick={() => setActiveTab('rules')}
-              className="text-xs font-semibold text-blue-500 hover:text-blue-400"
+              className="ops-button secondary text-xs self-start sm:self-auto"
             >
-              ← Back to Alert Rules
+              Cancel
             </button>
           </div>
 
-          {/* Form */}
-          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-blue-500" />
-              Alert Rule Parameters
-            </h3>
-
-            <form onSubmit={createRule} className="mt-6 space-y-6">
-              {/* Category Selector integrated directly into form */}
-              <div>
-                <label className="mb-2 block text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">
-                  Alert Category
-                </label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {[
-                    { id: 'status', label: 'Server Offline', icon: Server },
-                    { id: 'container', label: 'Docker Container', icon: Box },
-                    { id: 'service', label: 'Systemd Service', icon: Layers },
-                    { id: 'metric', label: 'Resource Thresholds', icon: Activity },
-                    { id: 'website', label: 'Website & SSL', icon: Globe2 },
-                  ].map((cat) => {
-                    const isSelected = selectedCategory === cat.id;
-                    const Icon = cat.icon;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => handleSelectCategory(cat.id as AlertCategory)}
-                        className={`flex items-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition ${
-                          isSelected
-                            ? 'border-blue-500 bg-blue-500/15 text-blue-400 ring-1 ring-blue-500 shadow-sm'
-                            : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:border-[var(--border-color)]'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{cat.label}</span>
-                      </button>
-                    );
-                  })}
+          <form onSubmit={createRule} className="space-y-6">
+            {/* STEP 1: CATEGORY SELECTION CARDS */}
+            <div className="ops-panel surface-regular p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
+                      1
+                    </span>
+                    Select Alert Category
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                    Choose what component, behavior, or metric this alert rule monitors.
+                  </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                {/* Rule Name */}
+
+              {/* 5 Distinct Category Cards */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {[
+                  {
+                    id: 'status',
+                    label: 'Server Offline',
+                    desc: 'Heartbeat loss & unreachable host',
+                    icon: Server,
+                    color: 'text-cyan-500',
+                    borderActive: 'border-cyan-500 ring-1 ring-cyan-500 bg-cyan-500/10',
+                    badgeColor: 'bg-cyan-500/15 text-cyan-400',
+                  },
+                  {
+                    id: 'container',
+                    label: 'Docker Container',
+                    desc: 'Exited, dead, or unhealthy states',
+                    icon: Box,
+                    color: 'text-blue-500',
+                    borderActive: 'border-blue-500 ring-1 ring-blue-500 bg-blue-500/10',
+                    badgeColor: 'bg-blue-500/15 text-blue-400',
+                  },
+                  {
+                    id: 'service',
+                    label: 'Systemd Service',
+                    desc: 'Failed or stopped system units',
+                    icon: Layers,
+                    color: 'text-purple-500',
+                    borderActive: 'border-purple-500 ring-1 ring-purple-500 bg-purple-500/10',
+                    badgeColor: 'bg-purple-500/15 text-purple-400',
+                  },
+                  {
+                    id: 'metric',
+                    label: 'Resource Thresholds',
+                    desc: 'CPU, RAM, or Disk spikes',
+                    icon: Activity,
+                    color: 'text-amber-500',
+                    borderActive: 'border-amber-500 ring-1 ring-amber-500 bg-amber-500/10',
+                    badgeColor: 'bg-amber-500/15 text-amber-400',
+                  },
+                  {
+                    id: 'website',
+                    label: 'Website & SSL',
+                    desc: 'HTTP probe & SSL certificate expiry',
+                    icon: Globe2,
+                    color: 'text-emerald-500',
+                    borderActive: 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-500/10',
+                    badgeColor: 'bg-emerald-500/15 text-emerald-400',
+                  },
+                ].map((cat) => {
+                  const isSelected = selectedCategory === cat.id;
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSelectCategory(cat.id as AlertCategory)}
+                      className={`relative flex flex-col items-start p-4 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? cat.borderActive
+                          : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-[var(--border-color)]/80 hover:bg-[var(--surface-hover)]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <div className={`p-2 rounded-lg ${cat.badgeColor}`}>
+                          <Icon className={`h-5 w-5 ${cat.color}`} />
+                        </div>
+                        {isSelected && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-xs">
+                            <Check className="h-3 w-3" />
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="mt-3 text-sm font-bold text-[var(--foreground)]">{cat.label}</h4>
+                      <p className="mt-1 text-[11px] text-[var(--color-muted)] leading-relaxed">{cat.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* STEP 2: TARGET SCOPE & RULE NAME */}
+            <div className="ops-panel surface-regular p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
+                    2
+                  </span>
+                  Rule Scope & Identity
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                  Assign a descriptive rule title and choose which target machines or endpoints to cover.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                {/* Alert Rule Name */}
                 <div>
-                  <label htmlFor="rule-name" className="mb-1.5 block text-sm font-semibold text-[var(--foreground)]">
+                  <label htmlFor="rule-name" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                     Alert Rule Name
                   </label>
                   <input
@@ -1136,16 +1463,19 @@ export default function AlertsPage() {
                     value={ruleName}
                     onChange={(e) => setRuleName(e.target.value)}
                     type="text"
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                    placeholder="e.g. Production Server Offline Alert"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none transition"
+                    placeholder="e.g. Production Cluster Offline Alert"
                   />
+                  <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                    Shown in Telegram, Discord, and Email alerts to immediately identify the issue.
+                  </p>
                 </div>
 
-                {/* Target Agent / Website */}
+                {/* Target Scope */}
                 {selectedCategory === 'website' ? (
                   <div>
-                    <label htmlFor="rule-website" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Globe2 className="h-4 w-4 text-emerald-500" /> Target Monitored Website
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                      <Globe2 className="h-4 w-4 text-emerald-500" /> Monitored Website Target
                     </label>
                     <CustomSelect
                       value={ruleTargetName || 'all'}
@@ -1159,7 +1489,7 @@ export default function AlertsPage() {
                         }
                       }}
                       options={[
-                        { value: 'all', label: 'All Monitored Websites' },
+                        { value: 'all', label: 'All Monitored Websites (Universal)' },
                         ...websites.map((w) => ({
                           value: w.name,
                           label: w.name,
@@ -1168,14 +1498,14 @@ export default function AlertsPage() {
                       ]}
                       className="w-full"
                     />
-                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Select a specific website or apply universally across all monitored sites.
+                    <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                      Apply universally across all monitored sites or select a specific URL.
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <label htmlFor="rule-server" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Server className="h-4 w-4 text-blue-500" /> Target Server
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                      <Server className="h-4 w-4 text-blue-500" /> Target Server Fleet
                     </label>
                     <CustomSelect
                       value={selectedServerId}
@@ -1190,59 +1520,75 @@ export default function AlertsPage() {
                       ]}
                       className="w-full"
                     />
-                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Select a specific server or apply universally across all connected servers.
+                    <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                      Universal fleet-wide rule or bind to a single dedicated machine.
                     </p>
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* DEDICATED FIELDS PER CATEGORY */}
+            {/* STEP 3: TRIGGER CONDITIONS & THRESHOLDS */}
+            <div className="ops-panel surface-regular p-6 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
+                    3
+                  </span>
+                  Trigger Conditions & Thresholds
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                  Fine-tune the exact operational threshold or health condition that raises an incident.
+                </p>
+              </div>
+
+              {/* Server Offline Conditions */}
               {selectedCategory === 'status' && (
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <Server className="h-5 w-5 text-cyan-500 shrink-0 mt-0.5" />
-                    <div className="flex-1 space-y-3">
-                      <div>
-                        <h4 className="font-semibold text-[var(--foreground)]">Heartbeat Loss Threshold (Minutes)</h4>
-                        <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          Zero double-waiting: alerts fire immediately once an agent has not reported for this duration.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                        {[
-                          { val: '1', label: '1 min', desc: 'Fastest (Recommended)' },
-                          { val: '2', label: '2 min', desc: 'Flaky network tolerance' },
-                          { val: '5', label: '5 min', desc: 'High tolerance' },
-                          { val: '10', label: '10 min', desc: 'Secondary servers' },
-                          { val: '15', label: '15 min', desc: 'Maintenance windows' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.val}
-                            type="button"
-                            onClick={() => setRuleDuration(opt.val)}
-                            className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition ${
-                              ruleDuration === opt.val
-                                ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500'
-                                : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
-                            }`}
-                          >
-                            <span className="text-sm font-semibold">{opt.label}</span>
-                            <span className="mt-0.5 text-[10px] opacity-75">{opt.desc}</span>
-                          </button>
-                        ))}
-                      </div>
+                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                        <Server className="h-4 w-4 text-cyan-500" />
+                        Heartbeat Loss Threshold
+                      </h4>
+                      <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                        Alert fires immediately once an agent has not checked in for this continuous duration.
+                      </p>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {[
+                      { val: '1', label: '1 min', desc: 'Fastest (Recommended)' },
+                      { val: '2', label: '2 min', desc: 'Flaky network tolerance' },
+                      { val: '5', label: '5 min', desc: 'Standard tolerance' },
+                      { val: '10', label: '10 min', desc: 'Secondary servers' },
+                      { val: '15', label: '15 min', desc: 'Maintenance window' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setRuleDuration(opt.val)}
+                        className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${
+                          ruleDuration === opt.val
+                            ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500 shadow-xs'
+                            : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold">{opt.label}</span>
+                        <span className="mt-1 text-[10px] opacity-75">{opt.desc}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
+              {/* Docker Container Conditions */}
               {selectedCategory === 'container' && (
                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-4">
                   <div>
-                    <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Box className="h-4 w-4 text-blue-500" /> Docker Container Name
+                    <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+                      <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name
                     </label>
                     <input
                       id="rule-target-name"
@@ -1253,26 +1599,29 @@ export default function AlertsPage() {
                         setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
                       }}
                       type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                      placeholder="e.g. nginx, web_app, postgres, redis, api_gateway"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                      placeholder="e.g. nginx, postgres, redis, api-gateway"
                     />
                     <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Enter the exact container name as listed in <code className="font-mono text-blue-400">docker ps</code>.
+                      Enter the container name as reported in <code className="font-mono text-blue-400">docker ps</code>.
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                    Trigger condition: Container is stopped (Exited), Dead, Unhealthy, or Crashed (Exit code != 0).
+                  <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 p-3 text-xs font-medium text-blue-600 dark:text-blue-300">
+                    <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                    <span>
+                      Trigger condition: Dispatches alert whenever container status becomes <strong>Exited</strong>, <strong>Dead</strong>, <strong>Unhealthy</strong>, or crashes.
+                    </span>
                   </div>
                 </div>
               )}
 
+              {/* Systemd Service Conditions */}
               {selectedCategory === 'service' && (
                 <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-4">
                   <div>
-                    <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                      <Layers className="h-4 w-4 text-purple-500" /> Systemd Service Name
+                    <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+                      <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name
                     </label>
                     <input
                       id="rule-target-name"
@@ -1283,24 +1632,28 @@ export default function AlertsPage() {
                         setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
                       }}
                       type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500"
-                      placeholder="e.g. nginx, mariadb, docker, ssh, redis-server"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
+                      placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
                     />
                     <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Enter the systemd service name (e.g. <code className="font-mono text-purple-400">nginx</code> or <code className="font-mono text-purple-400">nginx.service</code>).
+                      Enter the systemd unit name (e.g. <code className="font-mono text-purple-400">nginx</code> or <code className="font-mono text-purple-400">nginx.service</code>).
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-purple-500" />
-                    Trigger condition: Service is inactive (stopped) or in failed state.
+                  <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 p-3 text-xs font-medium text-purple-600 dark:text-purple-300">
+                    <span className="inline-flex h-2 w-2 rounded-full bg-purple-500 shrink-0" />
+                    <span>
+                      Trigger condition: Dispatches alert whenever the systemd service transitions into <strong>inactive</strong> (stopped) or <strong>failed</strong> status.
+                    </span>
                   </div>
                 </div>
               )}
 
+              {/* Resource Thresholds Conditions */}
               {selectedCategory === 'metric' && (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {/* Metric */}
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                         Resource Metric
@@ -1320,6 +1673,7 @@ export default function AlertsPage() {
                       />
                     </div>
 
+                    {/* Operator */}
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                         Comparison Operator
@@ -1335,60 +1689,105 @@ export default function AlertsPage() {
                       />
                     </div>
 
+                    {/* Threshold with Presets */}
                     <div>
-                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                        Threshold (%)
-                      </label>
-                      <input
-                        required
-                        min="0"
-                        max="100"
-                        value={ruleThreshold}
-                        onChange={(e) => {
-                          setRuleThreshold(e.target.value);
-                          setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
-                        }}
-                        type="number"
-                        className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-amber-500"
-                      />
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-[var(--foreground)]">
+                          Threshold: <span className="font-mono font-bold text-amber-500">{ruleThreshold}%</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="10"
+                          max="100"
+                          step="5"
+                          value={ruleThreshold}
+                          onChange={(e) => {
+                            setRuleThreshold(e.target.value);
+                            setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                          }}
+                          className="w-full accent-amber-500 cursor-pointer"
+                        />
+                        <input
+                          required
+                          min="0"
+                          max="100"
+                          value={ruleThreshold}
+                          onChange={(e) => {
+                            setRuleThreshold(e.target.value);
+                            setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                          }}
+                          type="number"
+                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] p-1 text-center font-mono text-xs text-[var(--foreground)]"
+                        />
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        {['70', '80', '85', '90', '95'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                              setRuleThreshold(preset);
+                              setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${preset}%)`);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                              ruleThreshold === preset
+                                ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
+                                : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                            }`}
+                          >
+                            {preset}%
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
-                  <div>
-                    <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1 text-xs font-semibold text-[var(--foreground)]">
-                      <Clock className="h-3.5 w-3.5" /> Continuous duration before alerting (Minutes)
+                  {/* Sustained Duration Buffer */}
+                  <div className="pt-2 border-t border-amber-500/20">
+                    <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                      <Clock className="h-3.5 w-3.5 text-amber-500" />
+                      Continuous Sustained Duration (Minutes)
                     </label>
-                    <input
-                      id="metric-duration"
-                      required
-                      min="1"
-                      max="1440"
-                      value={ruleDuration}
-                      onChange={(e) => setRuleDuration(e.target.value)}
-                      type="number"
-                      className="w-full max-w-xs rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-sm text-[var(--foreground)]"
-                    />
-                    <p className="mt-1 text-xs text-[var(--color-muted)]">
-                      Metric must exceed the threshold continuously for this duration before alerting (prevents false alarms from temporary spikes).
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="metric-duration"
+                        required
+                        min="1"
+                        max="1440"
+                        value={ruleDuration}
+                        onChange={(e) => setRuleDuration(e.target.value)}
+                        type="number"
+                        className="w-32 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
+                      />
+                      <p className="text-xs text-[var(--color-muted)]">
+                        Prevents false alarms: Metric must exceed threshold continuously for this duration before firing.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
 
+              {/* Website & SSL Conditions */}
               {selectedCategory === 'website' && (
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                      Alert Trigger Condition
+                    <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
+                      Endpoint Health Trigger Condition
                     </label>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                       {[
                         {
                           id: 'website_down',
                           metric: 'website',
                           threshold: '0',
                           label: 'Website DOWN',
-                          desc: 'Immediately on HTTP fail / timeout',
+                          desc: 'Immediately on HTTP fail or timeout',
                           defaultName: ruleTargetName ? `Website Down: ${ruleTargetName}` : 'Website Down Alert',
                         },
                         {
@@ -1396,7 +1795,7 @@ export default function AlertsPage() {
                           metric: 'ssl',
                           threshold: '14',
                           label: 'SSL Expiring (≤ 14 days)',
-                          desc: 'Critical renewal warning',
+                          desc: 'Critical certificate renewal warning',
                           defaultName: ruleTargetName ? `SSL Expiration (<= 14d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 14 days)',
                         },
                         {
@@ -1404,7 +1803,7 @@ export default function AlertsPage() {
                           metric: 'ssl',
                           threshold: '30',
                           label: 'SSL Expiring (≤ 30 days)',
-                          desc: 'Early renewal notice',
+                          desc: 'Advance certificate renewal reminder',
                           defaultName: ruleTargetName ? `SSL Expiration (<= 30d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 30 days)',
                         },
                       ].map((item) => {
@@ -1418,118 +1817,132 @@ export default function AlertsPage() {
                               setRuleThreshold(item.threshold);
                               setRuleName(item.defaultName);
                             }}
-                            className={`flex flex-col items-start rounded-xl border p-3 text-left transition ${
+                            className={`flex flex-col items-start rounded-xl border p-3.5 text-left transition ${
                               isSelected
                                 ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
                                 : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
                             }`}
                           >
                             <span className="text-sm font-semibold">{item.label}</span>
-                            <span className="mt-0.5 text-[11px] opacity-75">{item.desc}</span>
+                            <span className="mt-1 text-[11px] opacity-75">{item.desc}</span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                    {ruleMetric === 'website'
-                      ? 'Monitored probe: Alerts immediately as soon as a website probe fails or returns non-2xx status code.'
-                      : `Monitored probe: Alerts when SSL certificate has ${ruleThreshold || 14} days or less remaining before expiration.`}
-                  </div>
                 </div>
               )}
+            </div>
 
-              {/* RE-NOTIFICATION INTERVAL */}
-              <div className="max-w-md pt-2">
-                <label className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-[var(--foreground)]">
-                  <Clock className="h-4 w-4 text-purple-500" /> Re-notification Interval
+            {/* STEP 4: NOTIFICATION ROUTING & CHANNELS */}
+            <div className="ops-panel surface-regular p-6 space-y-5">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
+                    4
+                  </span>
+                  Notification Delivery & Schedule
+                </h3>
+                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                  Route incidents to your operations team via Discord, Telegram, or Email with re-notification schedules.
+                </p>
+              </div>
+
+              {/* Re-notification Selector */}
+              <div className="max-w-md">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                  <Clock className="h-3.5 w-3.5 text-purple-500" />
+                  Re-notification Reminder Interval
                 </label>
                 <CustomSelect
                   value={ruleRepeatInterval}
                   onChange={setRuleRepeatInterval}
                   options={[
                     { value: '0', label: 'Send once (Do not repeat)' },
-                    { value: '15', label: 'Every 15 minutes while ongoing' },
-                    { value: '30', label: 'Every 30 minutes while ongoing' },
-                    { value: '60', label: 'Every 1 hour while ongoing' },
-                    { value: '120', label: 'Every 2 hours while ongoing' },
+                    { value: '15', label: 'Repeat every 15 minutes while ongoing' },
+                    { value: '30', label: 'Repeat every 30 minutes while ongoing' },
+                    { value: '60', label: 'Repeat every 1 hour while ongoing' },
+                    { value: '120', label: 'Repeat every 2 hours while ongoing' },
                   ]}
                   className="w-full"
                 />
-                <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                  Periodically resends alerts labeled with [REMINDER] until the incident is resolved.
+                <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+                  Resends alerts labeled with [REMINDER] until the issue is resolved or acknowledged.
                 </p>
               </div>
 
-              {/* NOTIFICATION CHANNELS SELECTOR WITH DIRECT TEST BUTTONS */}
-              <div className="space-y-2 pt-2 border-t border-[var(--border-color)]">
+              {/* Channel Selector Cards with Direct Test Action */}
+              <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-1.5">
-                      <Bell className="h-4 w-4 text-blue-500" /> Select Notification Channels
+                    <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+                      <Radio className="h-3.5 w-3.5 text-blue-500" />
+                      Select Target Delivery Channels ({selectedChannelIds.length} selected)
                     </label>
-                    <p className="text-xs text-[var(--color-muted)]">
-                      Select at least 1 channel for instant incident delivery. You can test each channel directly.
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      Toggle channels to receive alerts. Use the test button to verify delivery directly.
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setActiveTab('channels')}
-                    className="text-xs font-semibold text-blue-500 hover:text-blue-400"
+                    className="text-xs font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1"
                   >
-                    + Add New Channel
+                    + Configure New Channel
                   </button>
                 </div>
 
                 {enabledChannels.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[var(--border-color)] p-6 text-center">
-                    <p className="text-sm text-[var(--color-muted)]">No notification channels configured.</p>
+                    <p className="text-sm text-[var(--color-muted)]">No active notification channels configured.</p>
                     <button
                       type="button"
                       onClick={() => setActiveTab('channels')}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 underline"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:underline"
                     >
-                      Click here to configure Discord / Telegram / Email →
+                      Click here to configure Discord Webhook / Telegram Bot / Email SMTP →
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {enabledChannels.map((channel) => {
-                      const selected = selectedChannelIds.includes(channel.id);
+                      const isSelected = selectedChannelIds.includes(channel.id);
                       return (
                         <div
                           key={channel.id}
-                          className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
-                            selected
-                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500'
-                              : 'border-[var(--border-color)] bg-[var(--background-card)] hover:border-blue-500/30'
+                          className={`flex items-center justify-between rounded-xl border p-3.5 transition-all ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-xs'
+                              : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-blue-500/40'
                           }`}
                         >
                           <div
                             onClick={() => toggleChannel(channel.id)}
-                            className="flex cursor-pointer items-center gap-2.5 min-w-0 flex-1"
+                            className="flex cursor-pointer items-center gap-3 min-w-0 flex-1 select-none"
                           >
-                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                              selected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
-                            }`}>
-                              {selected && <Check className="h-3 w-3" />}
+                            <span
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
+                              }`}
+                            >
+                              {isSelected && <Check className="h-3 w-3" />}
                             </span>
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[var(--foreground)] truncate">{channel.name}</p>
-                              <p className="text-[10px] uppercase font-bold text-[var(--color-muted)]">{channel.type}</p>
+                              <p className="text-xs font-bold text-[var(--foreground)] truncate">{channel.name}</p>
+                              <span className="inline-flex items-center rounded-full bg-slate-500/15 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-[var(--color-muted)]">
+                                {channel.type}
+                              </span>
                             </div>
                           </div>
 
-                          {/* Instant Test Button */}
+                          {/* Direct Test Button */}
                           <button
                             type="button"
                             disabled={testingChannelId === channel.id}
                             onClick={() => void testExistingChannel(channel.id, channel.name)}
                             title="Send test notification to this channel"
-                            className="shrink-0 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[11px] font-semibold text-blue-500 hover:bg-blue-500/10"
+                            className="ops-button secondary ml-2 shrink-0 px-2 py-1 text-[11px] text-blue-500 hover:text-blue-400"
                           >
                             {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
                           </button>
@@ -1539,44 +1952,64 @@ export default function AlertsPage() {
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('rules')}
-                  className="rounded-xl border border-[var(--border-color)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={savingRule || enabledChannels.length === 0 || selectedChannelIds.length === 0}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {savingRule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  Create Alert Rule
-                </button>
+            {/* LIVE RULE PREVIEW CALLOUT */}
+            <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                    Live Rule Preview
+                  </h4>
+                  <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                    When <strong className="text-blue-500">{rulePreviewText.targetDesc}</strong> experiences{' '}
+                    <strong className="text-amber-500 dark:text-amber-400">{rulePreviewText.conditionDesc}</strong>, instantly dispatch incident alert via{' '}
+                    <strong className="text-emerald-500 dark:text-emerald-400">{rulePreviewText.channelDesc}</strong> with schedule to{' '}
+                    <strong className="text-purple-500 dark:text-purple-400">{rulePreviewText.repeatDesc}</strong>.
+                  </p>
+                </div>
               </div>
-            </form>
-          </div>
+            </div>
+
+            {/* SUBMIT ACTIONS */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('rules')}
+                className="ops-button secondary px-5 py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={savingRule || enabledChannels.length === 0 || selectedChannelIds.length === 0}
+                className="ops-button primary flex items-center gap-2 px-6 py-2.5 text-sm shadow-sm"
+              >
+                {savingRule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create Alert Rule
+              </button>
+            </div>
+          </form>
         </div>
       ) : activeTab === 'channels' ? (
         /* ========================================================================= */
-        /* TAB 3: CHANNELS */
+        /* TAB 3: NOTIFICATION CHANNELS */
         /* ========================================================================= */
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Add Channel Form */}
-          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 lg:col-span-1">
-            <h3 className="flex items-center gap-2 font-bold text-[var(--foreground)] text-base">
-              <Plus className="h-4 w-4 text-blue-500" /> Add Notification Channel
-            </h3>
-            <p className="mt-1 text-xs text-[var(--color-muted)]">
-              Connect Discord Webhook, Telegram Bot, or SMTP Email for real-time alerting.
-            </p>
+          <div className="ops-panel surface-regular p-6 lg:col-span-1 space-y-4">
+            <div>
+              <h3 className="flex items-center gap-2 font-bold text-[var(--foreground)] text-base">
+                <Plus className="h-4 w-4 text-blue-500" /> Add Notification Channel
+              </h3>
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                Connect Discord Webhook, Telegram Bot, or SMTP Email for real-time alerting.
+              </p>
+            </div>
 
-            <form onSubmit={createChannel} className="mt-4 space-y-4">
+            <form onSubmit={createChannel} className="space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-[var(--foreground)]">
                   Channel Display Name
@@ -1586,8 +2019,8 @@ export default function AlertsPage() {
                   value={channelName}
                   onChange={(e) => setChannelName(e.target.value)}
                   type="text"
-                  className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500"
-                  placeholder="e.g. Discord IT Alerts"
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                  placeholder="e.g. SRE Incident Room"
                 />
               </div>
 
@@ -1618,7 +2051,7 @@ export default function AlertsPage() {
                       value={channelToken}
                       onChange={(e) => setChannelToken(e.target.value)}
                       type="password"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)]"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)]"
                       placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
                     />
                     <p className="mt-1 text-[11px] text-[var(--color-muted)]">
@@ -1635,7 +2068,7 @@ export default function AlertsPage() {
                       value={channelChatId}
                       onChange={(e) => setChannelChatId(e.target.value)}
                       type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)]"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)]"
                       placeholder="e.g. -1001234567890 or personal Chat ID"
                     />
                   </div>
@@ -1650,7 +2083,7 @@ export default function AlertsPage() {
                     value={channelWebhook}
                     onChange={(e) => setChannelWebhook(e.target.value)}
                     type="url"
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)]"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)]"
                     placeholder="https://discord.com/api/webhooks/..."
                   />
                   <p className="mt-1 text-[11px] text-[var(--color-muted)]">
@@ -1667,7 +2100,7 @@ export default function AlertsPage() {
                         value={channelSMTPHost}
                         onChange={(e) => setChannelSMTPHost(e.target.value)}
                         type="text"
-                        className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)]"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
                         placeholder="smtp.gmail.com"
                       />
                     </div>
@@ -1678,7 +2111,7 @@ export default function AlertsPage() {
                         value={channelSMTPPort}
                         onChange={(e) => setChannelSMTPPort(e.target.value)}
                         type="number"
-                        className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)]"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
                         placeholder="587"
                       />
                     </div>
@@ -1690,7 +2123,7 @@ export default function AlertsPage() {
                       value={channelSMTPUsername}
                       onChange={(e) => setChannelSMTPUsername(e.target.value)}
                       type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)]"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
                     />
                   </div>
 
@@ -1700,7 +2133,7 @@ export default function AlertsPage() {
                       value={channelSMTPPassword}
                       onChange={(e) => setChannelSMTPPassword(e.target.value)}
                       type="password"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)]"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
                     />
                   </div>
 
@@ -1711,7 +2144,7 @@ export default function AlertsPage() {
                       value={channelEmailFrom}
                       onChange={(e) => setChannelEmailFrom(e.target.value)}
                       type="email"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)] mb-1.5"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] mb-1.5"
                       placeholder="From: alerts@domain.com"
                     />
                     <input
@@ -1719,8 +2152,8 @@ export default function AlertsPage() {
                       value={channelEmailTo}
                       onChange={(e) => setChannelEmailTo(e.target.value)}
                       type="email"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2 text-xs text-[var(--foreground)]"
-                      placeholder="To: admin@domain.com"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
+                      placeholder="To: ops@domain.com"
                     />
                   </div>
                 </>
@@ -1732,7 +2165,7 @@ export default function AlertsPage() {
                   type="button"
                   onClick={testNewChannel}
                   disabled={testingNewChannel || savingChannel}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/20"
+                  className="ops-button secondary flex-1 flex items-center justify-center gap-1.5 text-xs text-blue-500"
                 >
                   {testingNewChannel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                   Send Test
@@ -1741,7 +2174,7 @@ export default function AlertsPage() {
                 <button
                   type="submit"
                   disabled={savingChannel || testingNewChannel}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500"
+                  className="ops-button primary flex-1 flex items-center justify-center gap-1.5 text-xs"
                 >
                   {savingChannel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   Save Channel
@@ -1750,7 +2183,7 @@ export default function AlertsPage() {
             </form>
           </div>
 
-          {/* Channels List */}
+          {/* Configured Channels Grid */}
           <div className="space-y-4 lg:col-span-2">
             <div>
               <h3 className="font-bold text-[var(--foreground)] text-base">Configured Channels ({channels.length})</h3>
@@ -1763,7 +2196,7 @@ export default function AlertsPage() {
               {channels.map((channel) => (
                 <div
                   key={channel.id}
-                  className="flex flex-col justify-between rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 shadow-sm"
+                  className="ops-panel surface-regular p-5 flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-start justify-between">
@@ -1780,7 +2213,7 @@ export default function AlertsPage() {
                     </div>
 
                     <p className="mt-3 text-xs text-[var(--color-muted)]">
-                      Used by <strong>{channel.usage_count}</strong> alert rule{channel.usage_count === 1 ? '' : 's'}.
+                      Linked to <strong>{channel.usage_count}</strong> alert rule{channel.usage_count === 1 ? '' : 's'}.
                     </p>
                   </div>
 
@@ -1804,7 +2237,7 @@ export default function AlertsPage() {
                         }
                         setDeleteChannelTarget(channel);
                       }}
-                      className="p-1.5 text-rose-600 hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-950/40 rounded-lg transition"
+                      className="p-1.5 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 rounded-lg transition"
                       title="Delete channel"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1814,7 +2247,7 @@ export default function AlertsPage() {
               ))}
 
               {channels.length === 0 && (
-                <div className="col-span-2 rounded-xl border border-dashed border-[var(--border-color)] p-8 text-center text-xs text-[var(--color-muted)]">
+                <div className="col-span-2 ops-panel surface-regular p-8 text-center text-xs text-[var(--color-muted)]">
                   No notification channels configured yet. Add Telegram, Discord, or Email on the left.
                 </div>
               )}
@@ -1875,7 +2308,7 @@ export default function AlertsPage() {
               <button
                 type="button"
                 onClick={() => void fetchIncidents()}
-                className="h-8 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] px-3 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition"
+                className="ops-button secondary flex items-center gap-1.5 h-8 text-xs"
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Refresh
               </button>
@@ -1884,7 +2317,7 @@ export default function AlertsPage() {
                 <button
                   type="button"
                   onClick={() => void markAllIncidentsRead()}
-                  className="h-8 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-500 shadow-sm transition"
+                  className="ops-button primary h-8 text-xs font-semibold"
                 >
                   Mark all as read
                 </button>
@@ -1920,15 +2353,15 @@ export default function AlertsPage() {
                   return (
                     <div
                       key={item.id}
-                      className={`relative overflow-hidden rounded-2xl border transition-all ${
+                      className={`ops-panel surface-regular relative overflow-hidden transition-all ${
                         isFiring
-                          ? 'border-l-4 border-l-rose-500 border-[var(--border-color)] bg-[var(--background-card)]'
+                          ? 'border-l-4 border-l-rose-500'
                           : isResolved
-                            ? 'border-l-4 border-l-emerald-500 border-[var(--border-color)] bg-[var(--background-card)]'
+                            ? 'border-l-4 border-l-emerald-500'
                             : isReminder
-                              ? 'border-l-4 border-l-amber-500 border-[var(--border-color)] bg-[var(--background-card)]'
-                              : 'border-l-4 border-l-blue-500 border-[var(--border-color)] bg-[var(--background-card)]'
-                      } p-5 shadow-sm hover:shadow-md`}
+                              ? 'border-l-4 border-l-amber-500'
+                              : 'border-l-4 border-l-blue-500'
+                      } p-5 shadow-xs hover:shadow-md`}
                     >
                       {/* Card Header */}
                       <div className="flex items-start justify-between gap-4">
@@ -1950,95 +2383,72 @@ export default function AlertsPage() {
                             <h4 className="text-base font-bold text-[var(--foreground)] tracking-tight truncate">
                               {item.title}
                             </h4>
-                            <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                              Rule: {ruleName}
+                            <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                              {ruleName} · <strong className="text-[var(--foreground)]">{serverName}</strong>
                             </p>
                           </div>
                         </div>
 
-                        {/* Status Badge Pill */}
+                        {/* Status Pills */}
                         <div className="flex items-center gap-2 shrink-0">
                           {isUnread && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-0.5 text-[10px] font-bold text-blue-500 uppercase tracking-wider">
-                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                              Unread
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void markIncidentRead(item.id)}
+                              className="text-[10px] font-semibold text-blue-500 hover:underline"
+                            >
+                              Mark read
+                            </button>
                           )}
-                          <span className={`rounded-full px-3 py-0.5 text-xs font-semibold tracking-wide border ${
-                            isFiring
-                              ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
-                              : isResolved
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-                                : isReminder
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
-                                  : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60'
-                          }`}>
-                            {isFiring ? 'Failed' : isResolved ? 'Active' : isReminder ? 'Reminder' : 'Test'}
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                              isFiring
+                                ? 'bg-rose-500/15 text-rose-500'
+                                : isResolved
+                                  ? 'bg-emerald-500/15 text-emerald-500'
+                                  : isReminder
+                                    ? 'bg-amber-500/15 text-amber-500'
+                                    : 'bg-blue-500/15 text-blue-500'
+                            }`}
+                          >
+                            {isFiring ? 'Firing' : isResolved ? 'Resolved' : isReminder ? 'Reminder' : 'Notification'}
                           </span>
                         </div>
                       </div>
 
-                      {/* 2-Column Key/Value Grid */}
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6">
-                        <div>
-                          <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Server</span>
-                          <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{serverName}</span>
+                      {/* Incident Message */}
+                      <p className="mt-3 text-xs text-[var(--color-muted)] leading-relaxed">
+                        {item.message}
+                      </p>
+
+                      {/* Timestamps & Downtime Chip */}
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-color)] pt-3 text-[11px] text-[var(--color-muted)]">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span>
+                            Triggered: <strong className="text-[var(--foreground)]">{failedAt}</strong>
+                          </span>
+                          {recoveredAt && (
+                            <span>
+                              Recovered: <strong className="text-emerald-500">{recoveredAt}</strong>
+                            </span>
+                          )}
                         </div>
 
-                        {isResolved ? (
-                          <>
-                            <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Downtime</span>
-                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{downtime}</span>
-                            </div>
-                            <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Failed at</span>
-                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{failedAt}</span>
-                            </div>
-                            <div>
-                              <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Recovered at</span>
-                              <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{recoveredAt}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div>
-                            <span className="block text-xs text-[var(--color-muted)] mb-0.5 font-normal">Failed at</span>
-                            <span className="font-bold text-[var(--foreground)] text-sm tracking-wide">{failedAt}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Horizontal Divider */}
-                      <div className="border-t border-[var(--border-color)] my-3.5" />
-
-                      {/* Footer */}
-                      <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
-                        <span className="font-normal">DatrixOps Monitoring</span>
-                        {isUnread && (
-                          <button
-                            type="button"
-                            onClick={() => void markIncidentRead(item.id)}
-                            className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 transition flex items-center gap-1.5"
-                          >
-                            <Check className="h-3.5 w-3.5" /> Mark as read
-                          </button>
+                        {isResolved && downtime && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2 py-0.5 font-mono text-[10px] font-bold text-[var(--foreground)]">
+                            <Clock className="h-3 w-3 text-emerald-500" /> Total Outage: {downtime}
+                          </span>
                         )}
                       </div>
                     </div>
                   );
                 })}
 
-              {incidents.filter((item) => {
-                if (incidentFilter === 'unread') return !item.read_at;
-                if (incidentFilter === 'read') return Boolean(item.read_at);
-                return true;
-              }).length === 0 && (
-                <div className="rounded-xl border border-dashed border-[var(--border-color)] p-12 text-center text-xs text-[var(--color-muted)]">
-                  {incidentFilter === 'unread'
-                    ? 'No unread incidents! All notifications have been reviewed.'
-                    : incidentFilter === 'read'
-                      ? 'No read incidents yet.'
-                      : 'No incidents recorded yet. All systems operating normally.'}
+              {incidents.length === 0 && (
+                <div className="ops-panel surface-regular p-12 text-center text-xs text-[var(--color-muted)]">
+                  <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+                  <p className="mt-2 font-semibold text-[var(--foreground)]">No incidents recorded</p>
+                  <p className="mt-1">All monitored servers, containers, services, and websites are operating normally.</p>
                 </div>
               )}
             </div>
@@ -2079,7 +2489,7 @@ export default function AlertsPage() {
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                   placeholder="e.g. High CPU Usage Alert"
                 />
               </div>
@@ -2133,7 +2543,7 @@ export default function AlertsPage() {
                       required
                       value={editThreshold}
                       onChange={(e) => setEditThreshold(Number(e.target.value))}
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -2150,7 +2560,7 @@ export default function AlertsPage() {
                     required
                     value={editTargetName}
                     onChange={(e) => setEditTargetName(e.target.value)}
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                     placeholder="e.g. nginx, redis, postgres"
                   />
                 </div>
@@ -2166,7 +2576,7 @@ export default function AlertsPage() {
                     required
                     value={editTargetName}
                     onChange={(e) => setEditTargetName(e.target.value)}
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                     placeholder="e.g. apache2, nginx, docker"
                   />
                 </div>
@@ -2184,7 +2594,7 @@ export default function AlertsPage() {
                     required
                     value={editDuration}
                     onChange={(e) => setEditDuration(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div>
@@ -2197,7 +2607,7 @@ export default function AlertsPage() {
                     max="1440"
                     value={editRepeat}
                     onChange={(e) => setEditRepeat(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                     placeholder="0 = Don't repeat"
                   />
                 </div>
@@ -2248,14 +2658,14 @@ export default function AlertsPage() {
                 <button
                   type="button"
                   onClick={() => setEditingRule(null)}
-                  className="h-9 px-4 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-xs font-semibold text-[var(--foreground)] transition"
+                  className="ops-button secondary px-4 py-2 text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition inline-flex items-center gap-2 disabled:opacity-50"
+                  className="ops-button primary px-4 py-2 text-xs flex items-center gap-2"
                 >
                   {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Save Changes
