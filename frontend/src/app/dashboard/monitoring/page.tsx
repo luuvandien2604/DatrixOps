@@ -171,10 +171,17 @@ export default function MonitoringPage() {
 
   const toggleExpand = (metric: MetricType) => {
     setExpandedOrder((prev) => {
-      if (prev.includes(metric)) {
-        return prev.filter((m) => m !== metric);
+      const isExpanding = !prev.includes(metric);
+      if (isExpanding) {
+        setTimeout(() => {
+          const el = document.getElementById(`expanded-chart-${metric}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 80);
+        return [...prev, metric];
       }
-      return [...prev, metric];
+      return prev.filter((m) => m !== metric);
     });
   };
 
@@ -699,7 +706,7 @@ export default function MonitoringPage() {
           {expandedList.length > 0 && (
             <div className="space-y-6">
               {expandedList.map((type) => (
-                <div key={type} className="w-full">
+                <div key={type} id={`expanded-chart-${type}`} className="w-full scroll-mt-24">
                   {renderExpandedCard(type)}
                 </div>
               ))}

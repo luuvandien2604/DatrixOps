@@ -774,9 +774,6 @@ export default function AlertsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
             Alert Center
           </h1>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Configure automated incident detection, threshold triggers, and real-time dispatch across all infrastructure.
-          </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
@@ -1061,44 +1058,31 @@ export default function AlertsPage() {
             </div>
 
             {/* Category and Status Filter Group */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Category Pills */}
-              <div className="flex items-center overflow-x-auto gap-1 p-1 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)]">
-                {[
-                  { id: 'all', label: 'All Categories' },
-                  { id: 'status', label: 'Server Offline' },
-                  { id: 'container', label: 'Docker' },
-                  { id: 'service', label: 'Systemd' },
-                  { id: 'metric', label: 'Resources' },
-                  { id: 'website', label: 'Website/SSL' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setRuleCategoryFilter(item.id as 'all' | AlertCategory)}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition ${
-                      ruleCategoryFilter === item.id
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              {/* Category Select */}
+              <select
+                value={ruleCategoryFilter}
+                onChange={(e) => setRuleCategoryFilter(e.target.value as 'all' | AlertCategory)}
+                className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+              >
+                <option value="all">All Categories</option>
+                <option value="status">Server Offline</option>
+                <option value="container">Docker Container</option>
+                <option value="service">Systemd Service</option>
+                <option value="metric">Resource Thresholds</option>
+                <option value="website">Website & SSL</option>
+              </select>
 
               {/* Status Select */}
-              <div className="flex items-center gap-2 shrink-0">
-                <select
-                  value={ruleStatusFilter}
-                  onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
-                  className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
-                >
-                  <option value="all">All Statuses ({rules.length})</option>
-                  <option value="active">Active ({rules.filter((r) => r.enabled).length})</option>
-                  <option value="disabled">Disabled ({rules.filter((r) => !r.enabled).length})</option>
-                </select>
-              </div>
+              <select
+                value={ruleStatusFilter}
+                onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
+                className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+              >
+                <option value="all">All Statuses ({rules.length})</option>
+                <option value="active">Active ({rules.filter((r) => r.enabled).length})</option>
+                <option value="disabled">Disabled ({rules.filter((r) => !r.enabled).length})</option>
+              </select>
             </div>
           </div>
 
@@ -1340,70 +1324,23 @@ export default function AlertsPage() {
           </div>
 
           <form onSubmit={createRule} className="space-y-6">
-            {/* STEP 1: CATEGORY SELECTION CARDS */}
-            <div className="ops-panel surface-regular p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
-                      1
-                    </span>
-                    Select Alert Category
-                  </h3>
-                  <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                    Choose what component, behavior, or metric this alert rule monitors.
-                  </p>
-                </div>
-              </div>
+            {/* STEP 1: CATEGORY SELECTION (LIST VIEW) */}
+            <div className="ops-panel surface-regular p-6 space-y-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-[11px] font-bold text-blue-500">
+                  1
+                </span>
+                Select Alert Category
+              </h3>
 
-              {/* 5 Distinct Category Cards */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {/* Dạng List */}
+              <div className="divide-y divide-[var(--border-color)] rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] overflow-hidden">
                 {[
-                  {
-                    id: 'status',
-                    label: 'Server Offline',
-                    desc: 'Heartbeat loss & unreachable host',
-                    icon: Server,
-                    color: 'text-cyan-500',
-                    borderActive: 'border-cyan-500 ring-1 ring-cyan-500 bg-cyan-500/10',
-                    badgeColor: 'bg-cyan-500/15 text-cyan-400',
-                  },
-                  {
-                    id: 'container',
-                    label: 'Docker Container',
-                    desc: 'Exited, dead, or unhealthy states',
-                    icon: Box,
-                    color: 'text-blue-500',
-                    borderActive: 'border-blue-500 ring-1 ring-blue-500 bg-blue-500/10',
-                    badgeColor: 'bg-blue-500/15 text-blue-400',
-                  },
-                  {
-                    id: 'service',
-                    label: 'Systemd Service',
-                    desc: 'Failed or stopped system units',
-                    icon: Layers,
-                    color: 'text-purple-500',
-                    borderActive: 'border-purple-500 ring-1 ring-purple-500 bg-purple-500/10',
-                    badgeColor: 'bg-purple-500/15 text-purple-400',
-                  },
-                  {
-                    id: 'metric',
-                    label: 'Resource Thresholds',
-                    desc: 'CPU, RAM, or Disk spikes',
-                    icon: Activity,
-                    color: 'text-amber-500',
-                    borderActive: 'border-amber-500 ring-1 ring-amber-500 bg-amber-500/10',
-                    badgeColor: 'bg-amber-500/15 text-amber-400',
-                  },
-                  {
-                    id: 'website',
-                    label: 'Website & SSL',
-                    desc: 'HTTP probe & SSL certificate expiry',
-                    icon: Globe2,
-                    color: 'text-emerald-500',
-                    borderActive: 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-500/10',
-                    badgeColor: 'bg-emerald-500/15 text-emerald-400',
-                  },
+                  { id: 'status', label: 'Server Offline', icon: Server, color: 'text-cyan-500', badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+                  { id: 'container', label: 'Docker Container', icon: Box, color: 'text-blue-500', badgeColor: 'bg-blue-500/15 text-blue-400' },
+                  { id: 'service', label: 'Systemd Service', icon: Layers, color: 'text-purple-500', badgeColor: 'bg-purple-500/15 text-purple-400' },
+                  { id: 'metric', label: 'Resource Thresholds', icon: Activity, color: 'text-amber-500', badgeColor: 'bg-amber-500/15 text-amber-400' },
+                  { id: 'website', label: 'Website & SSL', icon: Globe2, color: 'text-emerald-500', badgeColor: 'bg-emerald-500/15 text-emerald-400' },
                 ].map((cat) => {
                   const isSelected = selectedCategory === cat.id;
                   const Icon = cat.icon;
@@ -1412,25 +1349,25 @@ export default function AlertsPage() {
                       key={cat.id}
                       type="button"
                       onClick={() => handleSelectCategory(cat.id as AlertCategory)}
-                      className={`relative flex flex-col items-start p-4 rounded-xl border text-left transition-all ${
+                      className={`w-full flex items-center justify-between px-4 py-3 text-left transition-all ${
                         isSelected
-                          ? cat.borderActive
-                          : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-[var(--border-color)]/80 hover:bg-[var(--surface-hover)]'
+                          ? 'bg-blue-500/10 text-blue-400 font-semibold'
+                          : 'hover:bg-[var(--surface-hover)] text-[var(--foreground)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between w-full">
-                        <div className={`p-2 rounded-lg ${cat.badgeColor}`}>
-                          <Icon className={`h-5 w-5 ${cat.color}`} />
+                      <div className="flex items-center gap-3">
+                        <div className={`p-1.5 rounded-lg ${cat.badgeColor}`}>
+                          <Icon className={`h-4 w-4 ${cat.color}`} />
                         </div>
-                        {isSelected && (
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-xs">
-                            <Check className="h-3 w-3" />
-                          </span>
-                        )}
+                        <span className="text-sm font-medium">{cat.label}</span>
                       </div>
-
-                      <h4 className="mt-3 text-sm font-bold text-[var(--foreground)]">{cat.label}</h4>
-                      <p className="mt-1 text-[11px] text-[var(--color-muted)] leading-relaxed">{cat.desc}</p>
+                      <div className="flex items-center gap-2">
+                        <div className={`h-4 w-4 rounded-full border flex items-center justify-center transition ${
+                          isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-[var(--border-color)]'
+                        }`}>
+                          {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
+                        </div>
+                      </div>
                     </button>
                   );
                 })}
@@ -1446,9 +1383,6 @@ export default function AlertsPage() {
                   </span>
                   Rule Scope & Identity
                 </h3>
-                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                  Assign a descriptive rule title and choose which target machines or endpoints to cover.
-                </p>
               </div>
 
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -1466,9 +1400,6 @@ export default function AlertsPage() {
                     className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none transition"
                     placeholder="e.g. Production Cluster Offline Alert"
                   />
-                  <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
-                    Shown in Telegram, Discord, and Email alerts to immediately identify the issue.
-                  </p>
                 </div>
 
                 {/* Target Scope */}
@@ -1498,9 +1429,6 @@ export default function AlertsPage() {
                       ]}
                       className="w-full"
                     />
-                    <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
-                      Apply universally across all monitored sites or select a specific URL.
-                    </p>
                   </div>
                 ) : (
                   <div>
@@ -1520,9 +1448,6 @@ export default function AlertsPage() {
                       ]}
                       className="w-full"
                     />
-                    <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
-                      Universal fleet-wide rule or bind to a single dedicated machine.
-                    </p>
                   </div>
                 )}
               </div>
@@ -1537,46 +1462,35 @@ export default function AlertsPage() {
                   </span>
                   Trigger Conditions & Thresholds
                 </h3>
-                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                  Fine-tune the exact operational threshold or health condition that raises an incident.
-                </p>
               </div>
 
               {/* Server Offline Conditions */}
               {selectedCategory === 'status' && (
                 <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                        <Server className="h-4 w-4 text-cyan-500" />
-                        Heartbeat Loss Threshold
-                      </h4>
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                        Alert fires immediately once an agent has not checked in for this continuous duration.
-                      </p>
-                    </div>
-                  </div>
+                  <h4 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
+                    <Server className="h-4 w-4 text-cyan-500" />
+                    Heartbeat Loss Threshold
+                  </h4>
 
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     {[
-                      { val: '1', label: '1 min', desc: 'Fastest (Recommended)' },
-                      { val: '2', label: '2 min', desc: 'Flaky network tolerance' },
-                      { val: '5', label: '5 min', desc: 'Standard tolerance' },
-                      { val: '10', label: '10 min', desc: 'Secondary servers' },
-                      { val: '15', label: '15 min', desc: 'Maintenance window' },
+                      { val: '1', label: '1 min' },
+                      { val: '2', label: '2 min' },
+                      { val: '5', label: '5 min' },
+                      { val: '10', label: '10 min' },
+                      { val: '15', label: '15 min' },
                     ].map((opt) => (
                       <button
                         key={opt.val}
                         type="button"
                         onClick={() => setRuleDuration(opt.val)}
-                        className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${
+                        className={`flex items-center justify-center rounded-xl border py-2.5 px-3 text-center transition-all ${
                           ruleDuration === opt.val
                             ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500 shadow-xs'
                             : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
                         }`}
                       >
                         <span className="text-sm font-semibold">{opt.label}</span>
-                        <span className="mt-1 text-[10px] opacity-75">{opt.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -1585,7 +1499,7 @@ export default function AlertsPage() {
 
               {/* Docker Container Conditions */}
               {selectedCategory === 'container' && (
-                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-4">
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
                   <div>
                     <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
                       <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name
@@ -1602,23 +1516,13 @@ export default function AlertsPage() {
                       className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
                       placeholder="e.g. nginx, postgres, redis, api-gateway"
                     />
-                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Enter the container name as reported in <code className="font-mono text-blue-400">docker ps</code>.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 p-3 text-xs font-medium text-blue-600 dark:text-blue-300">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                    <span>
-                      Trigger condition: Dispatches alert whenever container status becomes <strong>Exited</strong>, <strong>Dead</strong>, <strong>Unhealthy</strong>, or crashes.
-                    </span>
                   </div>
                 </div>
               )}
 
               {/* Systemd Service Conditions */}
               {selectedCategory === 'service' && (
-                <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-4">
+                <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
                   <div>
                     <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
                       <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name
@@ -1635,16 +1539,6 @@ export default function AlertsPage() {
                       className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
                       placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
                     />
-                    <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-                      Enter the systemd unit name (e.g. <code className="font-mono text-purple-400">nginx</code> or <code className="font-mono text-purple-400">nginx.service</code>).
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 p-3 text-xs font-medium text-purple-600 dark:text-purple-300">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-purple-500 shrink-0" />
-                    <span>
-                      Trigger condition: Dispatches alert whenever the systemd service transitions into <strong>inactive</strong> (stopped) or <strong>failed</strong> status.
-                    </span>
                   </div>
                 </div>
               )}
@@ -1764,9 +1658,6 @@ export default function AlertsPage() {
                         type="number"
                         className="w-32 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
                       />
-                      <p className="text-xs text-[var(--color-muted)]">
-                        Prevents false alarms: Metric must exceed threshold continuously for this duration before firing.
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1787,7 +1678,6 @@ export default function AlertsPage() {
                           metric: 'website',
                           threshold: '0',
                           label: 'Website DOWN',
-                          desc: 'Immediately on HTTP fail or timeout',
                           defaultName: ruleTargetName ? `Website Down: ${ruleTargetName}` : 'Website Down Alert',
                         },
                         {
@@ -1795,7 +1685,6 @@ export default function AlertsPage() {
                           metric: 'ssl',
                           threshold: '14',
                           label: 'SSL Expiring (≤ 14 days)',
-                          desc: 'Critical certificate renewal warning',
                           defaultName: ruleTargetName ? `SSL Expiration (<= 14d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 14 days)',
                         },
                         {
@@ -1803,7 +1692,6 @@ export default function AlertsPage() {
                           metric: 'ssl',
                           threshold: '30',
                           label: 'SSL Expiring (≤ 30 days)',
-                          desc: 'Advance certificate renewal reminder',
                           defaultName: ruleTargetName ? `SSL Expiration (<= 30d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 30 days)',
                         },
                       ].map((item) => {
@@ -1817,14 +1705,13 @@ export default function AlertsPage() {
                               setRuleThreshold(item.threshold);
                               setRuleName(item.defaultName);
                             }}
-                            className={`flex flex-col items-start rounded-xl border p-3.5 text-left transition ${
+                            className={`flex items-center justify-center rounded-xl border py-3 px-3.5 text-center transition ${
                               isSelected
                                 ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
                                 : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
                             }`}
                           >
                             <span className="text-sm font-semibold">{item.label}</span>
-                            <span className="mt-1 text-[11px] opacity-75">{item.desc}</span>
                           </button>
                         );
                       })}
@@ -1843,9 +1730,6 @@ export default function AlertsPage() {
                   </span>
                   Notification Delivery & Schedule
                 </h3>
-                <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                  Route incidents to your operations team via Discord, Telegram, or Email with re-notification schedules.
-                </p>
               </div>
 
               {/* Re-notification Selector */}
@@ -1866,9 +1750,6 @@ export default function AlertsPage() {
                   ]}
                   className="w-full"
                 />
-                <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
-                  Resends alerts labeled with [REMINDER] until the issue is resolved or acknowledged.
-                </p>
               </div>
 
               {/* Channel Selector Cards with Direct Test Action */}
@@ -1879,9 +1760,6 @@ export default function AlertsPage() {
                       <Radio className="h-3.5 w-3.5 text-blue-500" />
                       Select Target Delivery Channels ({selectedChannelIds.length} selected)
                     </label>
-                    <p className="text-[11px] text-[var(--color-muted)]">
-                      Toggle channels to receive alerts. Use the test button to verify delivery directly.
-                    </p>
                   </div>
 
                   <button
@@ -2187,9 +2065,6 @@ export default function AlertsPage() {
           <div className="space-y-4 lg:col-span-2">
             <div>
               <h3 className="font-bold text-[var(--foreground)] text-base">Configured Channels ({channels.length})</h3>
-              <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                Active notification channels receiving alerts from configured rules.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
