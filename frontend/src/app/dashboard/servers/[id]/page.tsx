@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, Activity, ShieldCheck, ShieldAlert, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Globe, Radio, AlertTriangle, CheckCircle2, Zap } from 'lucide-react';
+import { ArrowLeft, Cpu, Activity, ShieldCheck, ShieldAlert, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Globe, Radio, AlertTriangle, CheckCircle2, Zap, ExternalLink, X, Plus } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
@@ -12,11 +13,13 @@ import CustomSelect from '@/components/CustomSelect';
 
 interface NetworkTargetProbe {
   id: string;
+  target_id?: string;
   name: string;
-  category: string;
+  tag: string;
   host: string;
   port: number;
-  location: string;
+  location?: string;
+  is_gateway?: boolean;
   probe_method: string; // "ICMP" | "TCP"
   probe_status: string; // "success" | "timeout" | "refused" | "unavailable"
   total_probes: number;
@@ -53,11 +56,10 @@ interface NetworkDiagnosticReport {
   server_name: string;
   timestamp: string;
   sample_size: number;
-  gateway: NetworkPillarResult;
-  domestic: NetworkPillarResult;
-  international: NetworkPillarResult;
-  domestic_probes: NetworkTargetProbe[];
-  international_probes: NetworkTargetProbe[];
+  gateway?: NetworkPillarResult;
+  groups: Record<string, NetworkPillarResult>;
+  group_order?: string[];
+  probes: NetworkTargetProbe[];
   alert_evaluation: NetworkAlertEvaluation;
   server_telemetry?: {
     primary_uplink?: string;
@@ -279,7 +281,30 @@ export default function ServerDetailsPage() {
   const [netReport, setNetReport] = useState<NetworkDiagnosticReport | null>(null);
   const [runningNetDiag, setRunningNetDiag] = useState(false);
   const [lastDiagTime, setLastDiagTime] = useState<string | null>(null);
-  const [netTargetFilter, setNetTargetFilter] = useState<'all' | 'domestic' | 'international'>('all');
+  const [netTargetFilter, setNetTargetFilter] = useState<string>('all');
+  const [historyTargetProbe, setHistoryTargetProbe] = useState<NetworkTargetProbe | null>(null);
+  const [historyData, setHistoryData] = useState<{ id: string; latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyRange, setHistoryRange] = useState<'6h' | '24h' | '7d'>('24h');
+
+  const openProbeHistory = async (probe: NetworkTargetProbe, range: '6h' | '24h' | '7d' = '24h') => {
+    const targetId = probe.target_id || probe.id;
+    setHistoryTargetProbe(probe);
+    setHistoryRange(range);
+    setLoadingHistory(true);
+    try {
+      const now = new Date();
+      let fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      if (range === '6h') fromDate = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      else if (range === '7d') fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const data = (await apiClient(`/network-targets/${targetId}/history?from=${encodeURIComponent(fromDate.toISOString())}&to=${encodeURIComponent(now.toISOString())}&limit=150`)) as { id: string; latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number }[];
+      setHistoryData(data || []);
+    } catch {
+      setHistoryData([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
@@ -662,7 +687,7 @@ export default function ServerDetailsPage() {
     ['overview', 'Overview'],
     ['processes', 'Processes'],
     ['services', serviceContent.tab],
-    ['network', 'Network Diagnostics'],
+    ['network', 'Network Quality'],
     ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
     ['terminal', terminalTabLabel],
   ];
@@ -1277,69 +1302,26 @@ export default function ServerDetailsPage() {
           {(() => {
             const netDiag = snapshot?.network_diagnostics;
             const netIfaces = netDiag?.interfaces || snapshot?.network_interfaces || [];
+            const primaryIface = (netIfaces as Array<{ name: string; is_default?: boolean }>).find((i) => i.is_default || i.name === netDiag?.primary_uplink) || netIfaces[0];
             const isAlert = netReport?.alert_evaluation?.is_triggered || netDiag?.status === 'critical' || netDiag?.status === 'warning';
             const alertSev = netReport?.alert_evaluation?.severity || netDiag?.status || 'none';
             const isCrit = alertSev === 'critical';
             const isWarn = alertSev === 'warning';
 
-            const gateway: NetworkPillarResult = netReport?.gateway || {
-              status: (snapshot?.network_diagnostics?.gateway_latency_ms || 0) > 50 ? 'critical' : (snapshot?.network_diagnostics?.gateway_latency_ms || 0) > 5 ? 'warning' : 'optimal',
-              latency_ms: snapshot?.network_diagnostics?.gateway_latency_ms || 0.8,
-              packet_loss: snapshot?.network_diagnostics?.gateway_packet_loss ?? 0,
-              total_probes: 5,
-              successful_probes: 5,
-              failed_probes: 0,
-              measurement_method: 'ICMP',
-              summary: 'Local uplink to default gateway is stable.',
-            };
+            const gateway = netReport?.gateway;
+            const groups = netReport?.groups || {};
+            const groupTags = netReport?.group_order && netReport.group_order.length > 0
+              ? netReport.group_order
+              : Object.keys(groups);
 
-            const domestic: NetworkPillarResult = netReport?.domestic || {
-              status: 'optimal',
-              latency_ms: 6.4,
-              packet_loss: 0,
-              total_probes: 25,
-              successful_probes: 25,
-              failed_probes: 0,
-              measurement_method: 'ICMP',
-              summary: 'All domestic Tier-1 routes (Viettel, VNPT, FPT, VNIX) are optimal.',
-            };
+            const allProbes = netReport?.probes || [];
+            const discoveredTags = Array.from(new Set(allProbes.map(p => p.tag || 'default')));
 
-            const international: NetworkPillarResult = netReport?.international || {
-              status: 'optimal',
-              latency_ms: 36.2,
-              packet_loss: 0,
-              total_probes: 20,
-              successful_probes: 20,
-              failed_probes: 0,
-              measurement_method: 'MIXED',
-              summary: 'International egress routes are operating within nominal thresholds.',
-            };
-
-            const domesticProbes: NetworkTargetProbe[] = netReport?.domestic_probes || [
-              { id: 'viettel', name: 'Viettel Telecom Core', category: 'domestic', host: '203.113.131.1', port: 53, location: 'Hanoi / Nationwide', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 6.8, min_latency_ms: 6.2, max_latency_ms: 7.5, status: 'optimal' },
-              { id: 'vnpt', name: 'VNPT Telecom Core', category: 'domestic', host: '203.162.4.190', port: 53, location: 'HCMC / Nationwide', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 7.2, min_latency_ms: 6.8, max_latency_ms: 7.9, status: 'optimal' },
-              { id: 'fpt', name: 'FPT Telecom Core', category: 'domestic', host: '210.245.24.20', port: 53, location: 'Hanoi / HCMC', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 5.9, min_latency_ms: 5.4, max_latency_ms: 6.5, status: 'optimal' },
-              { id: 'vnnic', name: 'VNNIC (National VNIX Exchange)', category: 'domestic', host: '203.119.9.9', port: 53, location: 'National VNIX POP', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 8.4, min_latency_ms: 7.8, max_latency_ms: 9.1, status: 'optimal' },
-              { id: 'coredc', name: 'Core Data Center', category: 'domestic', host: '103.200.23.1', port: 53, location: 'HCMC Data Center', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 4.5, min_latency_ms: 4.1, max_latency_ms: 5.0, status: 'optimal' },
-            ];
-
-            const internationalProbes: NetworkTargetProbe[] = netReport?.international_probes || [
-              { id: 'cloudflare', name: 'Cloudflare DNS — APAC Anycast', category: 'international', host: '1.1.1.1', port: 443, location: 'APAC Anycast', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 32.5, min_latency_ms: 31.8, max_latency_ms: 33.6, status: 'optimal' },
-              { id: 'google', name: 'Google DNS — Global Anycast', category: 'international', host: '8.8.8.8', port: 53, location: 'Global Anycast', probe_method: 'ICMP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: 0, latency_ms: 29.8, min_latency_ms: 29.1, max_latency_ms: 30.5, status: 'optimal' },
-              { id: 'aws', name: 'AWS APAC — Singapore Region', category: 'international', host: 's3.ap-southeast-1.amazonaws.com', port: 443, location: 'Singapore (ap-southeast-1)', probe_method: 'TCP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: null, latency_ms: 31.4, min_latency_ms: 30.5, max_latency_ms: 32.8, status: 'reachable' },
-              { id: 'github', name: 'GitHub API — US East / Global CDN', category: 'international', host: 'api.github.com', port: 443, location: 'US East / CDN', probe_method: 'TCP', probe_status: 'success', total_probes: 5, successful_probes: 5, failed_probes: 0, packet_loss: null, latency_ms: 48.2, min_latency_ms: 47.0, max_latency_ms: 50.1, status: 'reachable' },
-            ];
-
-            const allProbes = [...domesticProbes, ...internationalProbes];
             const filteredProbes = netTargetFilter === 'all'
               ? allProbes
-              : netTargetFilter === 'domestic'
-                ? domesticProbes
-                : internationalProbes;
+              : allProbes.filter(p => (p.tag || 'default').toLowerCase() === netTargetFilter.toLowerCase());
 
-            const primaryIface = netIfaces.find(i => i.name === netDiag?.primary_uplink) || netIfaces.find(i => i.is_physical && i.is_up) || netIfaces[0];
-
-            const renderStatusBadge = (status: string) => {
+            const renderStatusBadge = (status?: string) => {
               switch (status?.toLowerCase()) {
                 case 'optimal':
                   return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Optimal</span>;
@@ -1352,7 +1334,7 @@ export default function ServerDetailsPage() {
                 case 'offline':
                   return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30">{status}</span>;
                 default:
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">{status}</span>;
+                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">{status || 'Unavailable'}</span>;
               }
             };
 
@@ -1388,7 +1370,7 @@ export default function ServerDetailsPage() {
                           )}
                         </div>
                         <p className="mt-1 text-xs sm:text-sm text-[var(--color-muted)] max-w-2xl">
-                          Periodic short health sample benchmarking Gateway Uplink, Domestic ISPs, and International Backbones.
+                          Periodic health sample benchmarking Gateway Uplink and user-defined targets grouped by tag.
                         </p>
                       </div>
                     </div>
@@ -1412,10 +1394,11 @@ export default function ServerDetailsPage() {
                       </button>
 
                       <Link
-                        href="/dashboard/alerts"
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition"
+                        href={`/dashboard/network?agent_id=${params.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
+                        title="Open centralized network targets manager"
                       >
-                        <ShieldAlert className="w-4 h-4 text-amber-400" /> Configure Alerts
+                        <Network className="w-4 h-4" /> Quản lý targets <ExternalLink className="w-3 h-3" />
                       </Link>
 
                       <button
@@ -1465,290 +1448,412 @@ export default function ServerDetailsPage() {
                     <div className="flex items-center gap-2.5">
                       <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                       <span className="text-xs sm:text-sm font-medium text-emerald-300">
-                        All network pathways (Gateway, Domestic ISPs, Global Backbones) operating normally.
+                        All monitored network pathways operating within nominal thresholds.
                       </span>
                     </div>
                     <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline">0% Packet Loss</span>
                   </div>
                 )}
 
-                {/* 3 Pillar Cards */}
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {/* Pillar 1: Gateway Uplink */}
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Radio className="w-4 h-4 text-emerald-400" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                            Gateway Uplink
-                          </span>
+                {/* Dynamic Pillar / Tag Group Cards */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {/* Gateway Uplink Card (if present) */}
+                  {gateway && (
+                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Radio className="w-4 h-4 text-emerald-400" />
+                            <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                              Gateway Uplink
+                            </span>
+                          </div>
+                          {renderStatusBadge(gateway.status)}
                         </div>
-                        {renderStatusBadge(gateway.status)}
-                      </div>
-                      <div className="flex items-baseline gap-2 mb-2">
-                        <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
-                          {gateway.latency_ms > 0 ? `${gateway.latency_ms.toFixed(1)}` : '< 1'}
-                        </span>
-                        <span className="text-xs text-[var(--color-muted)] font-medium">ms latency</span>
-                      </div>
-                      <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
-                        <div className="flex justify-between">
-                          <span>Packet Loss:</span>
-                          <span className={`font-mono font-semibold ${
-                            (gateway.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
-                          }`}>
-                            {gateway.packet_loss != null ? `${gateway.packet_loss}%` : 'N/A'}
+                        <div className="flex items-baseline gap-2 mb-2">
+                          <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
+                            {gateway.latency_ms > 0 ? `${gateway.latency_ms.toFixed(1)}` : '< 1'}
                           </span>
+                          <span className="text-xs text-[var(--color-muted)] font-medium">ms latency</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Gateway IP:</span>
-                          <span className="font-mono text-[var(--foreground)]">
-                            {snapshot?.network_diagnostics?.default_gateway || netReport?.server_telemetry?.default_gateway || 'Default Gateway'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Sample Probes:</span>
-                          <span className="font-mono text-[var(--foreground)]">
-                            {gateway.successful_probes}/{gateway.total_probes} ({gateway.measurement_method})
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs text-[var(--color-muted)] italic">
-                      {gateway.summary || 'Local server-to-gateway connection is healthy.'}
-                    </p>
-                  </div>
-
-                  {/* Pillar 2: Domestic Network */}
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-emerald-400" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                            Domestic Network (VN)
-                          </span>
-                        </div>
-                        {renderStatusBadge(domestic.status)}
-                      </div>
-                      <div className="flex items-baseline gap-2 mb-2">
-                        <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
-                          {domestic.latency_ms.toFixed(1)}
-                        </span>
-                        <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
-                      </div>
-                      <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
-                        <div className="flex justify-between">
-                          <span>Packet Loss:</span>
-                          <span className={`font-mono font-semibold ${
-                            (domestic.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
-                          }`}>
-                            {domestic.packet_loss != null ? `${domestic.packet_loss}%` : 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Key Providers:</span>
-                          <span className="font-medium text-[var(--foreground)]">Viettel, VNPT, FPT, VNIX</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Sample Probes:</span>
-                          <span className="font-mono text-[var(--foreground)]">
-                            {domestic.successful_probes}/{domestic.total_probes} ({domestic.measurement_method})
-                          </span>
+                        <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
+                          <div className="flex justify-between">
+                            <span>Packet Loss:</span>
+                            <span className={`font-mono font-semibold ${
+                              (gateway.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
+                            }`}>
+                              {gateway.packet_loss != null ? `${gateway.packet_loss}%` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Gateway IP:</span>
+                            <span className="font-mono text-[var(--foreground)] truncate max-w-[150px]">
+                              {snapshot?.network_diagnostics?.default_gateway || netReport?.server_telemetry?.default_gateway || 'Default Gateway'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Sample Probes:</span>
+                            <span className="font-mono text-[var(--foreground)]">
+                              {gateway.successful_probes}/{gateway.total_probes} ({gateway.measurement_method})
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <p className="mt-3 text-xs text-[var(--color-muted)] italic">
-                      {domestic.summary || 'Domestic Tier-1 routes operating normally.'}
-                    </p>
-                  </div>
-
-                  {/* Pillar 3: International Network */}
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Globe className="w-4 h-4 text-blue-400" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                            International Network
-                          </span>
-                        </div>
-                        {renderStatusBadge(international.status)}
-                      </div>
-                      <div className="flex items-baseline gap-2 mb-2">
-                        <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
-                          {international.latency_ms.toFixed(1)}
-                        </span>
-                        <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
-                      </div>
-                      <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
-                        <div className="flex justify-between">
-                          <span>Packet Loss:</span>
-                          <span className={`font-mono font-semibold ${
-                            (international.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
-                          }`}>
-                            {international.packet_loss != null ? `${international.packet_loss}%` : 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Global Endpoints:</span>
-                          <span className="font-medium text-[var(--foreground)]">Cloudflare, Google, AWS, GitHub</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Sample Probes:</span>
-                          <span className="font-mono text-[var(--foreground)]">
-                            {international.successful_probes}/{international.total_probes} ({international.measurement_method})
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-xs text-[var(--color-muted)] italic">
-                      {international.summary || 'International routes operating normally.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tested Targets Table */}
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
-                  <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-blue-400" /> Tested Network Targets Breakdown
-                      </h3>
-                      <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                        Sample of 5 probes per target {lastDiagTime ? `at ${lastDiagTime}` : ''} · Auto-refreshes every 60s
+                      <p className="mt-3 text-xs text-[var(--color-muted)] italic">
+                        {gateway.summary || 'First-hop server-to-gateway route is healthy.'}
                       </p>
                     </div>
+                  )}
 
-                    <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)] self-start sm:self-center">
-                      <button
-                        type="button"
-                        onClick={() => setNetTargetFilter('all')}
-                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                          netTargetFilter === 'all'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        All ({allProbes.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNetTargetFilter('domestic')}
-                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                          netTargetFilter === 'domestic'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        Domestic ({domesticProbes.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNetTargetFilter('international')}
-                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                          netTargetFilter === 'international'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                        }`}
-                      >
-                        International ({internationalProbes.length})
-                      </button>
-                    </div>
+                  {/* Dynamic Tag Groups */}
+                  {groupTags.map((tag) => {
+                    const grp = groups[tag];
+                    if (!grp) return null;
+                    return (
+                      <div key={tag} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Zap className="w-4 h-4 text-blue-400" />
+                              <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] truncate" title={tag}>
+                                Tag: {tag}
+                              </span>
+                            </div>
+                            {renderStatusBadge(grp.status)}
+                          </div>
+                          <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
+                              {grp.latency_ms.toFixed(1)}
+                            </span>
+                            <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
+                          </div>
+                          <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
+                            <div className="flex justify-between">
+                              <span>Packet Loss:</span>
+                              <span className={`font-mono font-semibold ${
+                                (grp.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
+                              }`}>
+                                {grp.packet_loss != null ? `${grp.packet_loss}%` : 'N/A'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Sample Probes:</span>
+                              <span className="font-mono text-[var(--foreground)]">
+                                {grp.successful_probes}/{grp.total_probes} ({grp.measurement_method})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-[var(--color-muted)] italic">
+                          {grp.summary || 'Network pathway operating normally.'}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* If no targets configured */}
+                {!gateway && groupTags.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-[var(--border-color)] p-8 text-center bg-[var(--background-card)]">
+                    <Network className="w-8 h-8 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Chưa cấu hình mục tiêu kiểm tra mạng cho server này</p>
+                    <p className="text-xs text-[var(--color-muted)] mt-1 max-w-md mx-auto">
+                      Để đo độ trễ và mất gói tin, hãy bấm &quot;Quản lý targets&quot; để gán các mục tiêu như Cloudflare, Google, hoặc DNS nhà mạng VNPT/Viettel/FPT cho server này.
+                    </p>
+                    <Link
+                      href={`/dashboard/network?agent_id=${params.id}`}
+                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Quản lý targets ngay
+                    </Link>
                   </div>
+                )}
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
-                          <th className="px-4 py-3">Target & Host</th>
-                          <th className="px-4 py-3">Location / Hub</th>
-                          <th className="px-4 py-3">Method</th>
-                          <th className="px-4 py-3">Probes</th>
-                          <th className="px-4 py-3">Packet Loss</th>
-                          <th className="px-4 py-3">Latency (Avg / Min–Max)</th>
-                          <th className="px-4 py-3 text-right">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[var(--border-color)]">
-                        {filteredProbes.map((probe) => {
-                          const isTCP = probe.probe_method === 'TCP';
-                          const lat = probe.latency_ms;
-                          const latColor = lat <= 20 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
-                                           lat <= 60 ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
-                                           lat <= 120 ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
-                                           'text-rose-400 bg-rose-500/10 border-rose-500/20';
+                {/* Tested Targets Table */}
+                {allProbes.length > 0 && (
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
+                    <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-blue-400" /> Monitored Targets Breakdown ({allProbes.length})
+                        </h3>
+                        <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                          Short health sample. Click any target row to view time-series latency &amp; packet loss history.
+                        </p>
+                      </div>
 
+                      {/* Tag Filter Pills */}
+                      <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)] self-start sm:self-center overflow-x-auto max-w-full">
+                        <button
+                          type="button"
+                          onClick={() => setNetTargetFilter('all')}
+                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                            netTargetFilter === 'all'
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          All ({allProbes.length})
+                        </button>
+                        {discoveredTags.map((tag) => {
+                          const count = allProbes.filter(p => (p.tag || 'default') === tag).length;
                           return (
-                            <tr key={probe.id} className="hover:bg-[var(--border-color)]/20 transition-colors">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-[var(--foreground)]">{probe.name}</span>
-                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
-                                    probe.category === 'domestic'
-                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                      : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                  }`}>
-                                    {probe.category === 'domestic' ? 'VN' : 'INT'}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] font-mono text-[var(--color-muted)] mt-0.5">
-                                  {probe.host}{probe.port ? `:${probe.port}` : ''}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-[var(--color-muted)]">
-                                {probe.location}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`inline-flex items-center font-mono font-semibold px-2 py-0.5 rounded text-[11px] border ${
-                                  isTCP
-                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                }`}>
-                                  {probe.probe_method || (probe.port === 443 ? 'TCP' : 'ICMP')}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 font-mono text-[var(--color-muted)]">
-                                <span className="text-[var(--foreground)] font-medium">{probe.successful_probes ?? 5}</span>/{probe.total_probes ?? 5}
-                              </td>
-                              <td className="px-4 py-3 font-mono">
-                                {probe.packet_loss != null ? (
-                                  <span className={probe.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-medium'}>
-                                    {probe.packet_loss}%
-                                  </span>
-                                ) : (
-                                  <span className="text-[var(--color-muted)] italic" title="TCP reachability probe — packet loss not measured">
-                                    N/A
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                {probe.status === 'unreachable' || (lat === 0 && probe.failed_probes === probe.total_probes) ? (
-                                  <span className="font-mono text-rose-400 font-semibold text-[11px]">Timeout</span>
-                                ) : (
-                                  <div>
-                                    <span className={`inline-block font-mono font-bold px-2 py-0.5 rounded border text-[11px] ${latColor}`}>
-                                      {lat.toFixed(1)} ms
-                                    </span>
-                                    {probe.min_latency_ms > 0 && probe.max_latency_ms > 0 && (
-                                      <div className="text-[10px] font-mono text-[var(--color-muted)] mt-0.5">
-                                        {probe.min_latency_ms.toFixed(1)} – {probe.max_latency_ms.toFixed(1)} ms
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                {renderStatusBadge(probe.status)}
-                              </td>
-                            </tr>
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setNetTargetFilter(tag)}
+                              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                                netTargetFilter.toLowerCase() === tag.toLowerCase()
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                              }`}
+                            >
+                              {tag} ({count})
+                            </button>
                           );
                         })}
-                      </tbody>
-                    </table>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
+                            <th className="px-4 py-3">Target &amp; Host</th>
+                            <th className="px-4 py-3">Tag</th>
+                            <th className="px-4 py-3">Method</th>
+                            <th className="px-4 py-3">Probes</th>
+                            <th className="px-4 py-3">Packet Loss</th>
+                            <th className="px-4 py-3">Latency (Avg / Min–Max)</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3 text-right">History</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border-color)]">
+                          {filteredProbes.map((probe) => {
+                            const isTCP = probe.probe_method === 'TCP';
+                            const lat = probe.latency_ms;
+                            const latColor = lat <= 20 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                                             lat <= 60 ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
+                                             lat <= 120 ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
+                                             'text-rose-400 bg-rose-500/10 border-rose-500/20';
+
+                            return (
+                              <tr
+                                key={probe.id}
+                                onClick={() => openProbeHistory(probe)}
+                                className="hover:bg-[var(--border-color)]/20 transition-colors cursor-pointer"
+                                title="Click to view latency & packet loss chart"
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-[var(--foreground)]">{probe.name}</span>
+                                    {probe.is_gateway && (
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                                        Gateway
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] font-mono text-[var(--color-muted)] mt-0.5">
+                                    {probe.host}{probe.port ? `:${probe.port}` : ''}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)]">
+                                    {probe.tag || 'default'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center font-mono font-semibold px-2 py-0.5 rounded text-[11px] border ${
+                                    isTCP
+                                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  }`}>
+                                    {probe.probe_method}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 font-mono text-[var(--color-muted)]">
+                                  <span className="text-[var(--foreground)] font-medium">{probe.successful_probes ?? 5}</span>/{probe.total_probes ?? 5}
+                                </td>
+                                <td className="px-4 py-3 font-mono">
+                                  {probe.packet_loss != null ? (
+                                    <span className={probe.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-medium'}>
+                                      {probe.packet_loss}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-[var(--color-muted)] italic" title="TCP reachability probe — packet loss not measured">
+                                      N/A
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {probe.status === 'unreachable' || (lat === 0 && probe.failed_probes === probe.total_probes) ? (
+                                    <span className="font-mono text-rose-400 font-semibold text-[11px]">Timeout</span>
+                                  ) : (
+                                    <div>
+                                      <span className={`inline-block font-mono font-bold px-2 py-0.5 rounded border text-[11px] ${latColor}`}>
+                                        {lat.toFixed(1)} ms
+                                      </span>
+                                      {probe.min_latency_ms > 0 && probe.max_latency_ms > 0 && (
+                                        <div className="text-[10px] font-mono text-[var(--color-muted)] mt-0.5">
+                                          {probe.min_latency_ms.toFixed(1)} – {probe.max_latency_ms.toFixed(1)} ms
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {renderStatusBadge(probe.status)}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openProbeHistory(probe);
+                                    }}
+                                    className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-blue-400 transition cursor-pointer"
+                                    title="View latency history chart"
+                                  >
+                                    <Activity className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* In-context History Modal */}
+                {historyTargetProbe && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-2xl rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl p-6 text-[var(--foreground)] space-y-4">
+                      <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Activity className="w-5 h-5 text-blue-400" />
+                            <h3 className="text-base font-bold">{historyTargetProbe.name} — Latency Trend</h3>
+                          </div>
+                          <p className="text-xs text-[var(--color-muted)] font-mono mt-0.5">
+                            Host: {historyTargetProbe.host} · Tag: {historyTargetProbe.tag}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryTargetProbe(null)}
+                          className="p-1 rounded-lg hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)]">
+                          {(['6h', '24h', '7d'] as const).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => openProbeHistory(historyTargetProbe, r)}
+                              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                                historyRange === r
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                              }`}
+                            >
+                              {r.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="text-xs text-[var(--color-muted)] font-mono">
+                          {historyData.length} probe points
+                        </span>
+                      </div>
+
+                      <div className="h-60 w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-3">
+                        {loadingHistory ? (
+                          <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
+                            Loading time-series data...
+                          </div>
+                        ) : historyData.length === 0 ? (
+                          <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
+                            No history records found for this target.
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={historyData}>
+                              <defs>
+                                <linearGradient id="latencyGradAgent" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+                                </linearGradient>
+                              </defs>
+                              <XAxis
+                                dataKey="measured_at"
+                                tickFormatter={(t: string) => {
+                                  const d = new Date(t);
+                                  return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                                }}
+                                stroke="var(--color-muted)"
+                                fontSize={10}
+                              />
+                              <YAxis
+                                stroke="var(--color-muted)"
+                                fontSize={10}
+                                unit=" ms"
+                                domain={['auto', 'auto']}
+                              />
+                              <RechartsTooltip
+                                content={({ active, payload }) => {
+                                  if (!active || !payload || !payload.length) return null;
+                                  const pt = payload[0].payload as { latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number };
+                                  return (
+                                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-2.5 shadow-xl text-xs space-y-1">
+                                      <p className="text-[var(--color-muted)] font-mono text-[10px]">
+                                        {new Date(pt.measured_at).toLocaleString()}
+                                      </p>
+                                      <p className="font-bold text-[var(--foreground)] font-mono">
+                                        Latency: {pt.latency_ms?.toFixed(1) ?? 'N/A'} ms
+                                      </p>
+                                      {pt.packet_loss != null && (
+                                        <p className={`font-mono text-[11px] ${pt.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                                          Packet Loss: {pt.packet_loss}%
+                                        </p>
+                                      )}
+                                      <p className="text-[10px] text-[var(--color-muted)]">
+                                        Status: {pt.status.toUpperCase()} ({pt.successful_probes}/{pt.total_probes} probes)
+                                      </p>
+                                    </div>
+                                  );
+                                }}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="latency_ms"
+                                stroke="#3b82f6"
+                                strokeWidth={2}
+                                fillOpacity={1}
+                                fill="url(#latencyGradAgent)"
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryTargetProbe(null)}
+                          className="px-4 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-color)]"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Host Network Interfaces & Hardware Error Counters */}
                 {netIfaces.length > 0 && (

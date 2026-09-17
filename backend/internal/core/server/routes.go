@@ -44,4 +44,16 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("PUT /api/v1/servers/{id}/agent-update-policy", withRoles(h.UpdateAgentUpdatePolicy, "admin"))
 	mux.HandleFunc("POST /api/v1/servers/{id}/diagnose-network", withAuth(h.DiagnoseNetwork))
 	mux.HandleFunc("GET /api/v1/servers/{id}/diagnose-network", withAuth(h.GetNetworkDiagnostics))
+
+	// Network Targets Endpoints
+	mux.HandleFunc("GET /api/v1/network-targets", withAuth(h.ListNetworkTargets))
+	mux.HandleFunc("POST /api/v1/network-targets", withAuth(h.CreateNetworkTarget))
+	mux.HandleFunc("GET /api/v1/network-targets/presets", withAuth(h.GetNetworkTargetPresets))
+	mux.HandleFunc("GET /api/v1/network-targets/overview", withAuth(h.GetNetworkQualityOverview))
+	mux.HandleFunc("GET /api/v1/network-targets/{id}", withAuth(h.GetNetworkTarget))
+	mux.HandleFunc("PUT /api/v1/network-targets/{id}", withAuth(h.UpdateNetworkTarget))
+	mux.HandleFunc("DELETE /api/v1/network-targets/{id}", withAuth(h.DeleteNetworkTarget))
+	mux.HandleFunc("GET /api/v1/network-targets/{id}/history", withAuth(h.GetNetworkTargetHistory))
+	mux.HandleFunc("POST /api/v1/network-targets/{id}/test-now", withAuth(h.TestNetworkTargetNow))
 }
+

@@ -282,3 +282,42 @@ func parseVersionParts(version string) []int {
 	}
 	return parts
 }
+
+// ---------- Network Targets Service Methods ----------
+
+func (s *Service) CreateNetworkTargets(ctx context.Context, targets []NetworkTarget, userID string) ([]NetworkTarget, error) {
+	return s.repo.CreateNetworkTargets(ctx, targets, userID)
+}
+
+func (s *Service) GetNetworkTarget(ctx context.Context, id, userID string) (*NetworkTarget, error) {
+	return s.repo.GetNetworkTarget(ctx, id, userID)
+}
+
+func (s *Service) ListNetworkTargets(ctx context.Context, agentIDs []string, tag, status, userID string) ([]NetworkTargetWithLatest, error) {
+	return s.repo.ListNetworkTargets(ctx, agentIDs, tag, status, userID)
+}
+
+func (s *Service) GetEnabledNetworkTargets(ctx context.Context, agentID string) ([]NetworkTarget, error) {
+	return s.repo.GetEnabledNetworkTargets(ctx, agentID)
+}
+
+func (s *Service) UpdateNetworkTarget(ctx context.Context, target *NetworkTarget, userID string) error {
+	return s.repo.UpdateNetworkTarget(ctx, target, userID)
+}
+
+func (s *Service) DeleteNetworkTarget(ctx context.Context, id, userID string) error {
+	return s.repo.DeleteNetworkTarget(ctx, id, userID)
+}
+
+func (s *Service) SaveNetworkTargetResults(ctx context.Context, results []NetworkTargetResult) error {
+	return s.repo.SaveNetworkTargetResults(ctx, results)
+}
+
+func (s *Service) GetNetworkTargetHistory(ctx context.Context, targetID string, from, to time.Time, limit int) ([]NetworkTargetResult, error) {
+	return s.repo.GetNetworkTargetHistory(ctx, targetID, from, to, limit)
+}
+
+func (s *Service) GetNetworkQualityOverview(ctx context.Context, userID string) ([]TagQualityOverview, error) {
+	return s.repo.GetNetworkQualityOverview(ctx, userID)
+}
+

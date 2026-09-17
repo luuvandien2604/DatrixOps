@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o reset_admin 
 
 FROM alpine:3.22
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata iputils
 RUN addgroup -S datrixops && adduser -S -G datrixops datrixops
 
 WORKDIR /app

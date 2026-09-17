@@ -1000,3 +1000,427 @@ func (r *Repository) calculateSingleServerAvailability30d(ctx context.Context, s
 
 	return availPct, totalDowntime
 }
+
+// ---------- Network Targets Persistence Methods ----------
+
+// CreateNetworkTargets inserts one or more network targets (supports multi-agent batch creation).
+// Each target is inserted as an independent database row.
+func (r *Repository) CreateNetworkTargets(ctx context.Context, targets []NetworkTarget, userID string) ([]NetworkTarget, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	// Verify all target agent_ids belong to the user
+	agentIDs := make([]string, len(targets))
+	for i, t := range targets {
+		agentIDs[i] = t.AgentID
+	}
+
+	verifyQuery := `SELECT COUNT(DISTINCT id) FROM servers WHERE id = ANY($1) AND user_id = $2`
+	var validCount int
+	err := r.db.Pool.QueryRow(ctx, verifyQuery, agentIDs, userID).Scan(&validCount)
+	if err != nil {
+		return nil, fmt.Errorf("verify servers ownership: %w", err)
+	}
+
+	// Find unique agentIDs
+	uniqueAgents := make(map[string]struct{})
+	for _, id := range agentIDs {
+		uniqueAgents[id] = struct{}{}
+	}
+	if validCount != len(uniqueAgents) {
+		return nil, errors.New("one or more target servers not found or not owned by user")
+	}
+
+	created := make([]NetworkTarget, len(targets))
+	insertQuery := `
+		INSERT INTO network_targets (
+			agent_id, name, host, port, tag, probe_method, probes_per_run,
+			alert_latency_warning_ms, alert_latency_critical_ms, alert_loss_critical_pct,
+			enabled, is_gateway
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, created_at, updated_at
+	`
+
+	for i, t := range targets {
+		created[i] = t
+		probes := t.ProbesPerRun
+		if probes <= 0 {
+			probes = ProbesPerTarget
+		}
+		method := strings.ToUpper(strings.TrimSpace(t.ProbeMethod))
+		if method != "TCP" {
+			method = "ICMP"
+		}
+		tag := strings.TrimSpace(t.Tag)
+		if tag == "" {
+			tag = "default"
+		}
+
+		err = r.db.Pool.QueryRow(ctx, insertQuery,
+			t.AgentID, t.Name, t.Host, t.Port, tag, method, probes,
+			t.AlertLatencyWarningMs, t.AlertLatencyCriticalMs, t.AlertLossCriticalPct,
+			t.Enabled, t.IsGateway,
+		).Scan(&created[i].ID, &created[i].CreatedAt, &created[i].UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("insert network target: %w", err)
+		}
+		created[i].ProbesPerRun = probes
+		created[i].ProbeMethod = method
+		created[i].Tag = tag
+	}
+
+	return created, nil
+}
+
+// GetNetworkTarget returns a single network target by ID with ownership verification.
+func (r *Repository) GetNetworkTarget(ctx context.Context, id, userID string) (*NetworkTarget, error) {
+	query := `
+		SELECT t.id, t.agent_id, t.name, t.host, t.port, t.tag, t.probe_method, t.probes_per_run,
+		       t.alert_latency_warning_ms, t.alert_latency_critical_ms, t.alert_loss_critical_pct,
+		       t.enabled, t.is_gateway, t.created_at, t.updated_at
+		FROM network_targets t
+		JOIN servers s ON t.agent_id = s.id
+		WHERE t.id = $1 AND s.user_id = $2
+	`
+	t := &NetworkTarget{}
+	err := r.db.Pool.QueryRow(ctx, query, id, userID).Scan(
+		&t.ID, &t.AgentID, &t.Name, &t.Host, &t.Port, &t.Tag, &t.ProbeMethod, &t.ProbesPerRun,
+		&t.AlertLatencyWarningMs, &t.AlertLatencyCriticalMs, &t.AlertLossCriticalPct,
+		&t.Enabled, &t.IsGateway, &t.CreatedAt, &t.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("target not found")
+		}
+		return nil, err
+	}
+	return t, nil
+}
+
+// ListNetworkTargets lists network targets with server ownership, cross-filtering, and latest measurement.
+func (r *Repository) ListNetworkTargets(ctx context.Context, agentIDs []string, tag, status, userID string) ([]NetworkTargetWithLatest, error) {
+	var sb strings.Builder
+	args := []any{userID}
+
+	sb.WriteString(`
+		SELECT t.id, t.agent_id, t.name, t.host, t.port, t.tag, t.probe_method, t.probes_per_run,
+		       t.alert_latency_warning_ms, t.alert_latency_critical_ms, t.alert_loss_critical_pct,
+		       t.enabled, t.is_gateway, t.created_at, t.updated_at,
+		       s.name AS server_name,
+		       r.id AS result_id, r.latency_ms, r.min_latency_ms, r.max_latency_ms, r.packet_loss,
+		       r.total_probes, r.successful_probes, r.failed_probes, r.status AS result_status, r.measured_at
+		FROM network_targets t
+		JOIN servers s ON t.agent_id = s.id
+		LEFT JOIN LATERAL (
+			SELECT id, latency_ms, min_latency_ms, max_latency_ms, packet_loss,
+			       total_probes, successful_probes, failed_probes, status, measured_at
+			FROM network_target_results
+			WHERE target_id = t.id
+			ORDER BY measured_at DESC
+			LIMIT 1
+		) r ON true
+		WHERE s.user_id = $1
+	`)
+
+	if len(agentIDs) > 0 {
+		args = append(args, agentIDs)
+		sb.WriteString(fmt.Sprintf(" AND t.agent_id = ANY($%d)", len(args)))
+	}
+
+	if tag != "" {
+		args = append(args, strings.ToLower(tag))
+		sb.WriteString(fmt.Sprintf(" AND LOWER(t.tag) = $%d", len(args)))
+	}
+
+	if status != "" {
+		args = append(args, status)
+		sb.WriteString(fmt.Sprintf(" AND COALESCE(r.status, 'optimal') = $%d", len(args)))
+	}
+
+	sb.WriteString(" ORDER BY t.tag ASC, t.created_at DESC")
+
+	rows, err := r.db.Pool.Query(ctx, sb.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list network targets: %w", err)
+	}
+	defer rows.Close()
+
+	var targets []NetworkTargetWithLatest
+	for rows.Next() {
+		var item NetworkTargetWithLatest
+		var resID *string
+		var lat, minLat, maxLat, loss *float64
+		var totP, succP, failP *int
+		var resStatus *string
+		var measuredAt *time.Time
+
+		err := rows.Scan(
+			&item.ID, &item.AgentID, &item.Name, &item.Host, &item.Port, &item.Tag, &item.ProbeMethod, &item.ProbesPerRun,
+			&item.AlertLatencyWarningMs, &item.AlertLatencyCriticalMs, &item.AlertLossCriticalPct,
+			&item.Enabled, &item.IsGateway, &item.CreatedAt, &item.UpdatedAt,
+			&item.ServerName,
+			&resID, &lat, &minLat, &maxLat, &loss,
+			&totP, &succP, &failP, &resStatus, &measuredAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan network target row: %w", err)
+		}
+
+		if resID != nil && measuredAt != nil {
+			item.LatestResult = &NetworkTargetResult{
+				ID:               *resID,
+				TargetID:         item.ID,
+				LatencyMs:        lat,
+				MinLatencyMs:     minLat,
+				MaxLatencyMs:     maxLat,
+				PacketLoss:       loss,
+				TotalProbes:      *totP,
+				SuccessfulProbes: *succP,
+				FailedProbes:     *failP,
+				Status:           *resStatus,
+				MeasuredAt:       *measuredAt,
+			}
+		}
+
+		targets = append(targets, item)
+	}
+
+	return targets, nil
+}
+
+// GetEnabledNetworkTargets returns enabled targets for a specific agent without user check (for background/run diagnostics).
+func (r *Repository) GetEnabledNetworkTargets(ctx context.Context, agentID string) ([]NetworkTarget, error) {
+	query := `
+		SELECT id, agent_id, name, host, port, tag, probe_method, probes_per_run,
+		       alert_latency_warning_ms, alert_latency_critical_ms, alert_loss_critical_pct,
+		       enabled, is_gateway, created_at, updated_at
+		FROM network_targets
+		WHERE agent_id = $1 AND enabled = true
+		ORDER BY tag, name
+	`
+	rows, err := r.db.Pool.Query(ctx, query, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var targets []NetworkTarget
+	for rows.Next() {
+		var t NetworkTarget
+		err := rows.Scan(
+			&t.ID, &t.AgentID, &t.Name, &t.Host, &t.Port, &t.Tag, &t.ProbeMethod, &t.ProbesPerRun,
+			&t.AlertLatencyWarningMs, &t.AlertLatencyCriticalMs, &t.AlertLossCriticalPct,
+			&t.Enabled, &t.IsGateway, &t.CreatedAt, &t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, t)
+	}
+	return targets, nil
+}
+
+// UpdateNetworkTarget updates a target's parameters with user ownership validation.
+func (r *Repository) UpdateNetworkTarget(ctx context.Context, target *NetworkTarget, userID string) error {
+	probes := target.ProbesPerRun
+	if probes <= 0 {
+		probes = ProbesPerTarget
+	}
+	method := strings.ToUpper(strings.TrimSpace(target.ProbeMethod))
+	if method != "TCP" {
+		method = "ICMP"
+	}
+	tag := strings.TrimSpace(target.Tag)
+	if tag == "" {
+		tag = "default"
+	}
+
+	query := `
+		UPDATE network_targets
+		SET name = $1, host = $2, port = $3, tag = $4, probe_method = $5, probes_per_run = $6,
+		    alert_latency_warning_ms = $7, alert_latency_critical_ms = $8, alert_loss_critical_pct = $9,
+		    enabled = $10, is_gateway = $11, updated_at = NOW()
+		WHERE id = $12 AND agent_id IN (SELECT id FROM servers WHERE user_id = $13)
+	`
+	tagRes, err := r.db.Pool.Exec(ctx, query,
+		target.Name, target.Host, target.Port, tag, method, probes,
+		target.AlertLatencyWarningMs, target.AlertLatencyCriticalMs, target.AlertLossCriticalPct,
+		target.Enabled, target.IsGateway, target.ID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update network target: %w", err)
+	}
+	if tagRes.RowsAffected() == 0 {
+		return errors.New("target not found or not owned by user")
+	}
+	return nil
+}
+
+// DeleteNetworkTarget deletes a target by ID with user ownership check.
+func (r *Repository) DeleteNetworkTarget(ctx context.Context, id, userID string) error {
+	query := `DELETE FROM network_targets WHERE id = $1 AND agent_id IN (SELECT id FROM servers WHERE user_id = $2)`
+	res, err := r.db.Pool.Exec(ctx, query, id, userID)
+	if err != nil {
+		return fmt.Errorf("delete network target: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return errors.New("target not found or not owned by user")
+	}
+	return nil
+}
+
+// SaveNetworkTargetResults persists multiple probe results into network_target_results.
+func (r *Repository) SaveNetworkTargetResults(ctx context.Context, results []NetworkTargetResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	insertQuery := `
+		INSERT INTO network_target_results (
+			target_id, latency_ms, min_latency_ms, max_latency_ms, packet_loss,
+			total_probes, successful_probes, failed_probes, status, measured_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	for _, res := range results {
+		measured := res.MeasuredAt
+		if measured.IsZero() {
+			measured = time.Now()
+		}
+		status := res.Status
+		if status == "" {
+			status = "optimal"
+		}
+		batch.Queue(insertQuery,
+			res.TargetID, res.LatencyMs, res.MinLatencyMs, res.MaxLatencyMs, res.PacketLoss,
+			res.TotalProbes, res.SuccessfulProbes, res.FailedProbes, status, measured,
+		)
+	}
+
+	br := r.db.Pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for i := 0; i < len(results); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return fmt.Errorf("batch insert network_target_results row %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+// GetNetworkTargetHistory returns time-series measurements for a target within a date range, limited for chart performance.
+func (r *Repository) GetNetworkTargetHistory(ctx context.Context, targetID string, from, to time.Time, limit int) ([]NetworkTargetResult, error) {
+	if from.IsZero() {
+		from = time.Now().Add(-24 * time.Hour)
+	}
+	if to.IsZero() {
+		to = time.Now()
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 150
+	}
+
+	query := `
+		SELECT id, target_id, latency_ms, min_latency_ms, max_latency_ms, packet_loss,
+		       total_probes, successful_probes, failed_probes, status, measured_at
+		FROM network_target_results
+		WHERE target_id = $1 AND measured_at >= $2 AND measured_at <= $3
+		ORDER BY measured_at ASC
+		LIMIT $4
+	`
+
+	rows, err := r.db.Pool.Query(ctx, query, targetID, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query network target history: %w", err)
+	}
+	defer rows.Close()
+
+	var results []NetworkTargetResult
+	for rows.Next() {
+		var res NetworkTargetResult
+		err := rows.Scan(
+			&res.ID, &res.TargetID, &res.LatencyMs, &res.MinLatencyMs, &res.MaxLatencyMs, &res.PacketLoss,
+			&res.TotalProbes, &res.SuccessfulProbes, &res.FailedProbes, &res.Status, &res.MeasuredAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, res)
+	}
+
+	return results, nil
+}
+
+// GetNetworkQualityOverview groups network health across all user's agents by tag to detect wide-area incidents.
+func (r *Repository) GetNetworkQualityOverview(ctx context.Context, userID string) ([]TagQualityOverview, error) {
+	query := `
+		SELECT 
+			t.tag,
+			COUNT(DISTINCT t.id) AS total_targets,
+			COUNT(DISTINCT t.agent_id) AS total_agents,
+			COUNT(DISTINCT CASE WHEN r.status = 'critical' THEN t.agent_id END) AS critical_agents,
+			COUNT(DISTINCT CASE WHEN r.status = 'warning' THEN t.agent_id END) AS warning_agents,
+			COUNT(DISTINCT CASE WHEN r.status IN ('optimal', 'reachable') THEN t.agent_id END) AS optimal_agents,
+			COALESCE(AVG(r.latency_ms), 0) AS avg_latency_ms,
+			COALESCE(MAX(r.packet_loss), 0) AS max_loss_pct,
+			ARRAY_AGG(DISTINCT t.agent_id::text) AS agent_ids
+		FROM network_targets t
+		JOIN servers s ON t.agent_id = s.id
+		LEFT JOIN LATERAL (
+			SELECT status, latency_ms, packet_loss 
+			FROM network_target_results 
+			WHERE target_id = t.id 
+			ORDER BY measured_at DESC 
+			LIMIT 1
+		) r ON true
+		WHERE s.user_id = $1 AND t.enabled = true
+		GROUP BY t.tag
+		ORDER BY t.tag ASC
+	`
+
+	rows, err := r.db.Pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get network quality overview: %w", err)
+	}
+	defer rows.Close()
+
+	var overviews []TagQualityOverview
+	for rows.Next() {
+		var o TagQualityOverview
+		var rawAgentIDs []string
+		err := rows.Scan(
+			&o.Tag, &o.TotalTargets, &o.TotalAgents,
+			&o.CriticalAgents, &o.WarningAgents, &o.OptimalAgents,
+			&o.AvgLatencyMs, &o.MaxLossPct, &rawAgentIDs,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		o.AgentIDs = rawAgentIDs
+		o.AvgLatencyMs = math.Round(o.AvgLatencyMs*10) / 10
+		o.MaxLossPct = math.Round(o.MaxLossPct*10) / 10
+
+		// Status determination
+		if o.CriticalAgents > 0 {
+			o.Status = "critical"
+		} else if o.WarningAgents > 0 {
+			o.Status = "warning"
+		} else {
+			o.Status = "optimal"
+		}
+
+		// Detect wide-area incident: if 2+ agents or >= 40% of fleet report critical on the same tag
+		if o.TotalAgents >= 2 && (o.CriticalAgents >= 2 || (float64(o.CriticalAgents)/float64(o.TotalAgents) >= 0.4 && o.CriticalAgents > 0)) {
+			o.IsWideAreaIssue = true
+		}
+
+		overviews = append(overviews, o)
+	}
+
+	return overviews, nil
+}

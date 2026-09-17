@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity, Bell, BookOpen, Bot, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
   Command, FileText, Gauge, Globe2, KeyRound,
-  Loader2, LogOut, Menu, ScrollText, Search, Server,
+  Loader2, LogOut, Menu, Network, ScrollText, Search, Server,
   ShieldAlert, Sparkles, Users, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -51,6 +51,7 @@ type UpdateCheckInfo = {
 const primaryNav: NavDefinition[] = [
   { label: 'Overview', href: '/dashboard', icon: Gauge },
   { label: 'Servers', href: '/dashboard/servers', icon: Server },
+  { label: 'Network Quality', href: '/dashboard/network', icon: Network },
   { label: 'Uptime', href: '/dashboard/websites', icon: Globe2 },
   { label: 'Metrics', href: '/dashboard/monitoring', icon: Activity },
   { label: 'Alerts', href: '/dashboard/alerts', icon: Bell },

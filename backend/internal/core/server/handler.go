@@ -807,7 +807,7 @@ func (h *Handler) recordAudit(ctx context.Context, userID, action, resourceType,
 	)
 }
 
-// DiagnoseNetwork runs an on-demand live network diagnostic probing domestic and international targets.
+// DiagnoseNetwork runs an on-demand live network diagnostic probing user-configured targets.
 func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -827,7 +827,12 @@ func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	diagCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	targets, err := h.svc.GetEnabledNetworkTargets(r.Context(), server.ID)
+	if err != nil {
+		slog.Error("failed to get network targets", "server_id", server.ID, "error", err)
+	}
+
+	diagCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	var snapshotRaw []byte
@@ -835,7 +840,13 @@ func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
 		snapshotRaw = []byte(*server.Snapshot)
 	}
 
-	report := RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw)
+	report, historyResults := RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw, targets)
+
+	if len(historyResults) > 0 {
+		if saveErr := h.svc.SaveNetworkTargetResults(r.Context(), historyResults); saveErr != nil {
+			slog.Error("failed to save network target results", "server_id", server.ID, "error", saveErr)
+		}
+	}
 
 	h.netReportsMu.Lock()
 	if h.lastNetReports == nil {
@@ -872,14 +883,26 @@ func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) 
 	h.netReportsMu.RUnlock()
 
 	if !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute {
-		diagCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		targets, err := h.svc.GetEnabledNetworkTargets(r.Context(), server.ID)
+		if err != nil {
+			slog.Error("failed to get network targets", "server_id", server.ID, "error", err)
+		}
+
+		diagCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 
 		var snapshotRaw []byte
 		if server.Snapshot != nil {
 			snapshotRaw = []byte(*server.Snapshot)
 		}
-		report = RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw)
+		var historyResults []NetworkTargetResult
+		report, historyResults = RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw, targets)
+
+		if len(historyResults) > 0 {
+			if saveErr := h.svc.SaveNetworkTargetResults(r.Context(), historyResults); saveErr != nil {
+				slog.Error("failed to save network target results", "server_id", server.ID, "error", saveErr)
+			}
+		}
 
 		h.netReportsMu.Lock()
 		if h.lastNetReports == nil {
@@ -891,3 +914,442 @@ func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) 
 
 	response.Success(w, http.StatusOK, report)
 }
+
+// ---------- Network Targets Handlers ----------
+
+// ListNetworkTargets lists network targets with server ownership, cross-filtering, and latest measurement.
+func (h *Handler) ListNetworkTargets(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	query := r.URL.Query()
+	var agentIDs []string
+	if singleAgent := strings.TrimSpace(query.Get("agent_id")); singleAgent != "" {
+		agentIDs = append(agentIDs, singleAgent)
+	}
+	if rawAgentIDs := strings.TrimSpace(query.Get("agent_ids")); rawAgentIDs != "" {
+		for _, part := range strings.Split(rawAgentIDs, ",") {
+			p := strings.TrimSpace(part)
+			if p != "" {
+				agentIDs = append(agentIDs, p)
+			}
+		}
+	}
+
+	tag := strings.TrimSpace(query.Get("tag"))
+	status := strings.TrimSpace(query.Get("status"))
+
+	targets, err := h.svc.ListNetworkTargets(r.Context(), agentIDs, tag, status, userID)
+	if err != nil {
+		slog.Error("failed to list network targets", "error", err)
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to list network targets")
+		return
+	}
+
+	response.Success(w, http.StatusOK, targets)
+}
+
+// CreateNetworkTargetRequest defines the JSON payload for creating network targets.
+type CreateNetworkTargetRequest struct {
+	AgentID                string   `json:"agent_id"`
+	AgentIDs               []string `json:"agent_ids,omitempty"`
+	Name                   string   `json:"name"`
+	Host                   string   `json:"host"`
+	Port                   int      `json:"port"`
+	Tag                    string   `json:"tag"`
+	ProbeMethod            string   `json:"probe_method"`
+	ProbesPerRun           int      `json:"probes_per_run"`
+	AlertLatencyWarningMs  *float64 `json:"alert_latency_warning_ms,omitempty"`
+	AlertLatencyCriticalMs *float64 `json:"alert_latency_critical_ms,omitempty"`
+	AlertLossCriticalPct   *float64 `json:"alert_loss_critical_pct,omitempty"`
+	Enabled                *bool    `json:"enabled,omitempty"`
+	IsGateway              bool     `json:"is_gateway"`
+}
+
+// CreateNetworkTarget handles creating network targets for one or multiple agents (batch creation).
+func (h *Handler) CreateNetworkTarget(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	var req CreateNetworkTargetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_JSON", "Invalid request body")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	host := strings.TrimSpace(req.Host)
+	if name == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Target name is required")
+		return
+	}
+	if host == "" && !req.IsGateway {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Host is required")
+		return
+	}
+	if req.IsGateway && host == "" {
+		host = "gateway"
+	}
+
+	var targetAgentIDs []string
+	if len(req.AgentIDs) > 0 {
+		for _, aid := range req.AgentIDs {
+			trimmed := strings.TrimSpace(aid)
+			if trimmed != "" {
+				targetAgentIDs = append(targetAgentIDs, trimmed)
+			}
+		}
+	} else if strings.TrimSpace(req.AgentID) != "" {
+		targetAgentIDs = append(targetAgentIDs, strings.TrimSpace(req.AgentID))
+	}
+
+	if len(targetAgentIDs) == 0 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "At least one target server (agent_id) is required")
+		return
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	probes := req.ProbesPerRun
+	if probes <= 0 {
+		probes = ProbesPerTarget
+	}
+
+	tag := strings.TrimSpace(req.Tag)
+	if tag == "" {
+		tag = "default"
+	}
+
+	method := strings.ToUpper(strings.TrimSpace(req.ProbeMethod))
+	if method != "TCP" {
+		method = "ICMP"
+	}
+
+	// Prepare independent rows for each agent
+	targetsToCreate := make([]NetworkTarget, len(targetAgentIDs))
+	for i, aid := range targetAgentIDs {
+		targetsToCreate[i] = NetworkTarget{
+			AgentID:                aid,
+			Name:                   name,
+			Host:                   host,
+			Port:                   req.Port,
+			Tag:                    tag,
+			ProbeMethod:            method,
+			ProbesPerRun:           probes,
+			AlertLatencyWarningMs:  req.AlertLatencyWarningMs,
+			AlertLatencyCriticalMs: req.AlertLatencyCriticalMs,
+			AlertLossCriticalPct:   req.AlertLossCriticalPct,
+			Enabled:                enabled,
+			IsGateway:              req.IsGateway,
+		}
+	}
+
+	created, err := h.svc.CreateNetworkTargets(r.Context(), targetsToCreate, userID)
+	if err != nil {
+		slog.Error("failed to create network targets", "error", err)
+		response.Error(w, http.StatusBadRequest, "CREATION_FAILED", err.Error())
+		return
+	}
+
+	response.Success(w, http.StatusCreated, created)
+}
+
+// GetNetworkTarget returns details of a single network target.
+func (h *Handler) GetNetworkTarget(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	target, err := h.svc.GetNetworkTarget(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Target not found")
+		return
+	}
+
+	response.Success(w, http.StatusOK, target)
+}
+
+// UpdateNetworkTarget updates a user-configured target.
+func (h *Handler) UpdateNetworkTarget(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	var target NetworkTarget
+	if err := json.NewDecoder(r.Body).Decode(&target); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_JSON", "Invalid request body")
+		return
+	}
+	target.ID = id
+
+	if err := h.svc.UpdateNetworkTarget(r.Context(), &target, userID); err != nil {
+		slog.Error("failed to update network target", "id", id, "error", err)
+		response.Error(w, http.StatusBadRequest, "UPDATE_FAILED", err.Error())
+		return
+	}
+
+	updated, err := h.svc.GetNetworkTarget(r.Context(), id, userID)
+	if err != nil {
+		response.Success(w, http.StatusOK, target)
+		return
+	}
+	response.Success(w, http.StatusOK, updated)
+}
+
+// DeleteNetworkTarget removes a target.
+func (h *Handler) DeleteNetworkTarget(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if err := h.svc.DeleteNetworkTarget(r.Context(), id, userID); err != nil {
+		slog.Error("failed to delete network target", "id", id, "error", err)
+		response.Error(w, http.StatusBadRequest, "DELETE_FAILED", err.Error())
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{"message": "Network target deleted successfully"})
+}
+
+// NetworkTargetPreset represents a template suggestion for the UI.
+type NetworkTargetPreset struct {
+	Name                   string   `json:"name"`
+	Host                   string   `json:"host"`
+	Port                   int      `json:"port"`
+	Tag                    string   `json:"tag"`
+	ProbeMethod            string   `json:"probe_method"`
+	ProbesPerRun           int      `json:"probes_per_run"`
+	AlertLatencyWarningMs  *float64 `json:"alert_latency_warning_ms,omitempty"`
+	AlertLatencyCriticalMs *float64 `json:"alert_latency_critical_ms,omitempty"`
+	AlertLossCriticalPct   *float64 `json:"alert_loss_critical_pct,omitempty"`
+	IsGateway              bool     `json:"is_gateway"`
+	Description            string   `json:"description"`
+}
+
+// GetNetworkTargetPresets returns curated presets for easy form pre-filling.
+func (h *Handler) GetNetworkTargetPresets(w http.ResponseWriter, r *http.Request) {
+	warn25 := 25.0
+	crit60 := 60.0
+	warn50 := 50.0
+	crit150 := 150.0
+	warn80 := 80.0
+	crit180 := 180.0
+	warn90 := 90.0
+	crit200 := 200.0
+	warn20 := 20.0
+	crit80 := 80.0
+	loss20 := 20.0
+
+	presets := []NetworkTargetPreset{
+		{
+			Name:                   "Cloudflare DNS",
+			Host:                   "1.1.1.1",
+			Port:                   0,
+			Tag:                    "Quốc tế",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn50,
+			AlertLatencyCriticalMs: &crit150,
+			AlertLossCriticalPct:   &loss20,
+			Description:            "Anycast global DNS resolver with high availability worldwide.",
+		},
+		{
+			Name:                   "Google DNS",
+			Host:                   "8.8.8.8",
+			Port:                   0,
+			Tag:                    "Quốc tế",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn50,
+			AlertLatencyCriticalMs: &crit150,
+			AlertLossCriticalPct:   &loss20,
+			Description:            "Google Public DNS global anycast backbone.",
+		},
+		{
+			Name:                   "VNPT DNS",
+			Host:                   "203.162.4.190",
+			Port:                   0,
+			Tag:                    "Trong nước",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn25,
+			AlertLatencyCriticalMs: &crit60,
+			AlertLossCriticalPct:   &loss20,
+			Description:            "VNPT Telecom national DNS core in Vietnam.",
+		},
+		{
+			Name:                   "Viettel DNS",
+			Host:                   "203.113.131.1",
+			Port:                   0,
+			Tag:                    "Trong nước",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn25,
+			AlertLatencyCriticalMs: &crit60,
+			AlertLossCriticalPct:   &loss20,
+			Description:            "Viettel Telecom primary DNS gateway in Vietnam.",
+		},
+		{
+			Name:                   "FPT DNS",
+			Host:                   "210.245.24.22",
+			Port:                   0,
+			Tag:                    "Trong nước",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn25,
+			AlertLatencyCriticalMs: &crit60,
+			AlertLossCriticalPct:   &loss20,
+			Description:            "FPT Telecom regional DNS server in Vietnam.",
+		},
+		{
+			Name:                   "GitHub API",
+			Host:                   "api.github.com",
+			Port:                   443,
+			Tag:                    "Quốc tế",
+			ProbeMethod:            "TCP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn90,
+			AlertLatencyCriticalMs: &crit200,
+			Description:            "Global developer cloud endpoint measuring TCP connect time.",
+		},
+		{
+			Name:                   "AWS APAC (Singapore)",
+			Host:                   "s3.ap-southeast-1.amazonaws.com",
+			Port:                   443,
+			Tag:                    "Quốc tế",
+			ProbeMethod:            "TCP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn80,
+			AlertLatencyCriticalMs: &crit180,
+			Description:            "Amazon Web Services Southeast Asia regional cloud endpoint.",
+		},
+		{
+			Name:                   "Default Gateway",
+			Host:                   "gateway",
+			Port:                   0,
+			Tag:                    "Hạ tầng nội bộ",
+			ProbeMethod:            "ICMP",
+			ProbesPerRun:           5,
+			AlertLatencyWarningMs:  &warn20,
+			AlertLatencyCriticalMs: &crit80,
+			AlertLossCriticalPct:   &loss20,
+			IsGateway:              true,
+			Description:            "First-hop physical or virtual gateway router of the server.",
+		},
+	}
+
+	response.Success(w, http.StatusOK, presets)
+}
+
+// GetNetworkQualityOverview returns fleet-wide tag aggregated health to detect wide-area issues.
+func (h *Handler) GetNetworkQualityOverview(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	overview, err := h.svc.GetNetworkQualityOverview(r.Context(), userID)
+	if err != nil {
+		slog.Error("failed to get network quality overview", "error", err)
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to calculate network quality overview")
+		return
+	}
+
+	response.Success(w, http.StatusOK, overview)
+}
+
+// GetNetworkTargetHistory returns time-series measurements for a single target.
+func (h *Handler) GetNetworkTargetHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	// Verify target belongs to user
+	_, err := h.svc.GetNetworkTarget(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Target not found")
+		return
+	}
+
+	query := r.URL.Query()
+	var from, to time.Time
+	if fStr := query.Get("from"); fStr != "" {
+		if t, parseErr := time.Parse(time.RFC3339, fStr); parseErr == nil {
+			from = t
+		}
+	}
+	if tStr := query.Get("to"); tStr != "" {
+		if t, parseErr := time.Parse(time.RFC3339, tStr); parseErr == nil {
+			to = t
+		}
+	}
+	limit := 150
+	if lStr := query.Get("limit"); lStr != "" {
+		if l, parseErr := strconv.Atoi(lStr); parseErr == nil && l > 0 && l <= 500 {
+			limit = l
+		}
+	}
+
+	history, err := h.svc.GetNetworkTargetHistory(r.Context(), id, from, to, limit)
+	if err != nil {
+		slog.Error("failed to get network target history", "target_id", id, "error", err)
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve target history")
+		return
+	}
+
+	response.Success(w, http.StatusOK, history)
+}
+
+// TestNetworkTargetNow runs an on-demand probe for a single target and persists the result.
+func (h *Handler) TestNetworkTargetNow(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	target, err := h.svc.GetNetworkTarget(r.Context(), id, userID)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "NOT_FOUND", "Target not found")
+		return
+	}
+
+	diagCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	probe, res := ProbeSingleTarget(diagCtx, *target)
+
+	// Persist the test result
+	if saveErr := h.svc.SaveNetworkTargetResults(r.Context(), []NetworkTargetResult{res}); saveErr != nil {
+		slog.Error("failed to save single target result", "target_id", id, "error", saveErr)
+	}
+
+	response.Success(w, http.StatusOK, map[string]any{
+		"probe":  probe,
+		"result": res,
+	})
+}
+

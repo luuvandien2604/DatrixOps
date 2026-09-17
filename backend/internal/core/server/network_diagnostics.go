@@ -18,7 +18,7 @@ import (
 // ---------- Configuration Constants ----------
 
 const (
-	// ProbesPerTarget is the number of probes sent to each target per diagnostic run.
+	// ProbesPerTarget is the default number of probes sent to each target per diagnostic run.
 	ProbesPerTarget = 5
 
 	// ProbeIntervalMs is the approximate pacing between probes to the same target.
@@ -31,40 +31,88 @@ const (
 	TCPProbeTimeout = 2500 * time.Millisecond
 )
 
-// ---------- Gateway Thresholds ----------
+// ---------- Threshold Fallback Defaults ----------
+// Used when a target's user-configured threshold values are NULL.
 
 const (
-	GatewayLatencyCritical = 50.0
-	GatewayLatencyWarning  = 5.0
-	GatewayLossCritical    = 20.0
-)
+	DefaultLatencyWarningMs  = 50.0  // Default warning latency (50 ms)
+	DefaultLatencyCriticalMs = 150.0 // Default critical latency (150 ms)
+	DefaultLossCriticalPct   = 20.0  // Default critical packet loss (20%)
 
-// ---------- Domestic Thresholds ----------
-
-const (
-	DomesticLatencyCritical = 60.0
-	DomesticLatencyWarning  = 25.0
-	DomesticLossCritical    = 20.0
-)
-
-// ---------- International Thresholds ----------
-
-const (
-	InternationalLatencyCritical = 160.0
-	InternationalLatencyWarning  = 90.0
-	InternationalLossCritical    = 20.0
+	// Gateway defaults: local hop should be fast, but 20ms accommodates typical cloud/VPS hypervisor gateways
+	DefaultGatewayLatencyWarningMs  = 20.0
+	DefaultGatewayLatencyCriticalMs = 80.0
+	DefaultGatewayLossCriticalPct   = 20.0
 )
 
 // ---------- Data Models ----------
 
+// NetworkTarget represents a user-configured monitoring target in the database.
+type NetworkTarget struct {
+	ID                     string    `json:"id"`
+	AgentID                string    `json:"agent_id"`
+	Name                   string    `json:"name"`
+	Host                   string    `json:"host"`
+	Port                   int       `json:"port"`
+	Tag                    string    `json:"tag"`
+	ProbeMethod            string    `json:"probe_method"` // "ICMP" or "TCP"
+	ProbesPerRun           int       `json:"probes_per_run"`
+	AlertLatencyWarningMs  *float64  `json:"alert_latency_warning_ms,omitempty"`
+	AlertLatencyCriticalMs *float64  `json:"alert_latency_critical_ms,omitempty"`
+	AlertLossCriticalPct   *float64  `json:"alert_loss_critical_pct,omitempty"`
+	Enabled                bool      `json:"enabled"`
+	IsGateway              bool      `json:"is_gateway"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+// NetworkTargetResult represents a single probe run result saved to time-series history.
+type NetworkTargetResult struct {
+	ID               string    `json:"id"`
+	TargetID         string    `json:"target_id"`
+	LatencyMs        *float64  `json:"latency_ms,omitempty"`
+	MinLatencyMs     *float64  `json:"min_latency_ms,omitempty"`
+	MaxLatencyMs     *float64  `json:"max_latency_ms,omitempty"`
+	PacketLoss       *float64  `json:"packet_loss,omitempty"`
+	TotalProbes      int       `json:"total_probes"`
+	SuccessfulProbes int       `json:"successful_probes"`
+	FailedProbes     int       `json:"failed_probes"`
+	Status           string    `json:"status"` // "optimal", "warning", "critical", "reachable", "unreachable"
+	MeasuredAt       time.Time `json:"measured_at"`
+}
+
+// NetworkTargetWithLatest joins a target with its most recent measurement and server info.
+type NetworkTargetWithLatest struct {
+	NetworkTarget
+	ServerName   string               `json:"server_name,omitempty"`
+	LatestResult *NetworkTargetResult `json:"latest_result,omitempty"`
+}
+
+// TagQualityOverview represents fleet-wide aggregated health for a tag across all agents.
+type TagQualityOverview struct {
+	Tag             string   `json:"tag"`
+	TotalTargets    int      `json:"total_targets"`
+	TotalAgents     int      `json:"total_agents"`
+	CriticalAgents  int      `json:"critical_agents"`
+	WarningAgents   int      `json:"warning_agents"`
+	OptimalAgents   int      `json:"optimal_agents"`
+	AvgLatencyMs    float64  `json:"avg_latency_ms"`
+	MaxLossPct      float64  `json:"max_loss_pct"`
+	Status          string   `json:"status"` // "optimal" | "warning" | "critical"
+	IsWideAreaIssue bool     `json:"is_wide_area_issue"`
+	AgentIDs        []string `json:"agent_ids"`
+}
+
 // NetworkTargetProbe represents the multi-probe measurement result for a single target.
 type NetworkTargetProbe struct {
 	ID               string   `json:"id"`
+	TargetID         string   `json:"target_id,omitempty"`
 	Name             string   `json:"name"`
-	Category         string   `json:"category"` // "domestic" | "international"
+	Tag              string   `json:"tag"`
 	Host             string   `json:"host"`
 	Port             int      `json:"port"`
-	Location         string   `json:"location"`
+	Location         string   `json:"location,omitempty"`
+	IsGateway        bool     `json:"is_gateway"`
 	ProbeMethod      string   `json:"probe_method"` // "ICMP" | "TCP"
 	ProbeStatus      string   `json:"probe_status"` // "success" | "timeout" | "refused" | "unavailable" | "unsupported"
 	TotalProbes      int      `json:"total_probes"`
@@ -78,7 +126,7 @@ type NetworkTargetProbe struct {
 	ErrorMessage     string   `json:"error_message,omitempty"`
 }
 
-// NetworkPillarResult represents an aggregate summary for Gateway, Domestic, or International.
+// NetworkPillarResult represents an aggregate summary for Gateway or any dynamic Tag group.
 type NetworkPillarResult struct {
 	Status            string   `json:"status"` // "optimal" | "warning" | "critical" | "unavailable" | "reachable"
 	LatencyMs         float64  `json:"latency_ms"`
@@ -118,43 +166,16 @@ type ServerNetworkTelemetry struct {
 
 // NetworkDiagnosticReport is the comprehensive network diagnostic report.
 type NetworkDiagnosticReport struct {
-	ServerID            string                  `json:"server_id"`
-	ServerName          string                  `json:"server_name"`
-	Timestamp           time.Time               `json:"timestamp"`
-	SampleSize          int                     `json:"sample_size"`
-	Gateway             NetworkPillarResult     `json:"gateway"`
-	Domestic            NetworkPillarResult     `json:"domestic"`
-	International       NetworkPillarResult     `json:"international"`
-	DomesticProbes      []NetworkTargetProbe    `json:"domestic_probes"`
-	InternationalProbes []NetworkTargetProbe    `json:"international_probes"`
-	AlertEvaluation     NetworkAlertEvaluation  `json:"alert_evaluation"`
-	ServerTelemetry     *ServerNetworkTelemetry `json:"server_telemetry,omitempty"`
-}
-
-// ---------- Target Definitions ----------
-
-type targetDefinition struct {
-	id       string
-	name     string
-	category string
-	host     string
-	port     int // 0 means ICMP-only (no TCP port)
-	location string
-}
-
-var domesticTargets = []targetDefinition{
-	{id: "viettel", name: "Viettel Telecom Core", category: "domestic", host: "203.113.131.1", port: 0, location: "Hanoi / Nationwide"},
-	{id: "vnpt", name: "VNPT Telecom Core", category: "domestic", host: "203.162.4.190", port: 0, location: "HCMC / Nationwide"},
-	{id: "fpt", name: "FPT Telecom Core", category: "domestic", host: "210.245.24.20", port: 0, location: "Hanoi / HCMC"},
-	{id: "vnnic", name: "VNNIC (National VNIX Exchange)", category: "domestic", host: "203.119.9.9", port: 0, location: "National VNIX POP"},
-	{id: "core-dc", name: "Core Data Center", category: "domestic", host: "103.200.23.1", port: 0, location: "HCMC Data Center"},
-}
-
-var internationalTargets = []targetDefinition{
-	{id: "cloudflare", name: "Cloudflare DNS", category: "international", host: "1.1.1.1", port: 0, location: "APAC Anycast"},
-	{id: "google", name: "Google DNS", category: "international", host: "8.8.8.8", port: 0, location: "Global Anycast"},
-	{id: "github", name: "GitHub API", category: "international", host: "api.github.com", port: 443, location: "US East / Global CDN"},
-	{id: "aws", name: "AWS APAC", category: "international", host: "s3.ap-southeast-1.amazonaws.com", port: 443, location: "Singapore Region"},
+	ServerID        string                         `json:"server_id"`
+	ServerName      string                         `json:"server_name"`
+	Timestamp       time.Time                      `json:"timestamp"`
+	SampleSize      int                            `json:"sample_size"`
+	Gateway         *NetworkPillarResult           `json:"gateway,omitempty"`
+	Groups          map[string]NetworkPillarResult `json:"groups"`      // Dynamic groups by user tag
+	GroupOrder      []string                       `json:"group_order"` // Ordered unique tag names
+	Probes          []NetworkTargetProbe           `json:"probes"`
+	AlertEvaluation NetworkAlertEvaluation         `json:"alert_evaluation"`
+	ServerTelemetry *ServerNetworkTelemetry        `json:"server_telemetry,omitempty"`
 }
 
 // ---------- ICMP Ping Implementation ----------
@@ -172,7 +193,6 @@ type icmpPingResult struct {
 }
 
 // runICMPPing shells out to the OS ping command. Returns parsed result.
-// count is the number of pings. timeoutSec is the per-packet wait timeout.
 func runICMPPing(ctx context.Context, host string, count int, timeoutSec int) icmpPingResult {
 	var cmd *exec.Cmd
 	countStr := strconv.Itoa(count)
@@ -197,6 +217,7 @@ func runICMPPing(ctx context.Context, host string, count int, timeoutSec int) ic
 }
 
 // parsePingOutput extracts loss and latency from ping command output.
+// Supports Linux (iputils and BusyBox), macOS, and Windows ping output formats.
 func parsePingOutput(output string, expectedCount int) icmpPingResult {
 	result := icmpPingResult{
 		available: true,
@@ -236,8 +257,12 @@ func parsePingOutput(output string, expectedCount int) icmpPingResult {
 		result.lossPercent = float64(result.lost) / float64(result.total) * 100
 	}
 
-	// Parse RTT statistics: min/avg/max or Minimum/Average/Maximum
-	rttRe := regexp.MustCompile(`(?:rtt|round-trip)\s+min/avg/max/(?:mdev|stddev)\s*=\s*([\d.]+)/([\d.]+)/([\d.]+)`)
+	// Parse RTT statistics:
+	// Matches:
+	// - Linux iputils: "rtt min/avg/max/mdev = 1.2/2.3/3.4/0.1 ms"
+	// - Linux BusyBox: "round-trip min/avg/max = 1.2/2.3/3.4 ms"
+	// - macOS: "round-trip min/avg/max/stddev = 1.2/2.3/3.4/0.1 ms"
+	rttRe := regexp.MustCompile(`(?:rtt|round-trip)\s+min/avg/max(?:\/(?:mdev|stddev))?\s*=\s*([\d.]+)/([\d.]+)/([\d.]+)`)
 	if m := rttRe.FindStringSubmatch(output); len(m) > 3 {
 		result.minMs, _ = strconv.ParseFloat(m[1], 64)
 		result.avgMs, _ = strconv.ParseFloat(m[2], 64)
@@ -268,12 +293,15 @@ type tcpProbeResult struct {
 	lastError string
 }
 
-// runTCPProbe performs multiple TCP connection probes with pacing.
+// runTCPProbe performs multiple sequential TCP connection attempts with pacing.
 func runTCPProbe(ctx context.Context, host string, port int, count int) tcpProbeResult {
-	result := tcpProbeResult{total: count}
+	result := tcpProbeResult{
+		total: count,
+	}
+
 	var latencies []float64
 
-	// For hostname targets, resolve DNS first so TCP latency is pure handshake.
+	// Resolve IP first so DNS resolution time doesn't distort TCP connection time
 	ip := host
 	if net.ParseIP(host) == nil {
 		ips, err := net.DefaultResolver.LookupHost(ctx, host)
@@ -334,24 +362,68 @@ func runTCPProbe(ctx context.Context, host string, port int, count int) tcpProbe
 
 // ---------- Per-Target Probing ----------
 
-// probeTarget runs a full multi-probe measurement against a single target.
-// It tries ICMP first; if ICMP is unavailable, falls back to TCP.
-func probeTarget(ctx context.Context, target targetDefinition) NetworkTargetProbe {
-	probe := NetworkTargetProbe{
-		ID:          target.id,
-		Name:        target.name,
-		Category:    target.category,
-		Host:        target.host,
-		Port:        target.port,
-		Location:    target.location,
-		TotalProbes: ProbesPerTarget,
+// probeTarget runs a multi-probe measurement against a single user-configured NetworkTarget.
+func probeTarget(ctx context.Context, target NetworkTarget) NetworkTargetProbe {
+	probesCount := target.ProbesPerRun
+	if probesCount <= 0 {
+		probesCount = ProbesPerTarget
 	}
 
-	// Try ICMP first (for IP-based targets)
-	if net.ParseIP(target.host) != nil {
-		icmpResult := runICMPPing(ctx, target.host, ProbesPerTarget, ICMPTimeoutSec)
+	tag := strings.TrimSpace(target.Tag)
+	if tag == "" {
+		tag = "default"
+	}
+
+	probe := NetworkTargetProbe{
+		ID:          target.ID,
+		TargetID:    target.ID,
+		Name:        target.Name,
+		Tag:         tag,
+		Host:        target.Host,
+		Port:        target.Port,
+		IsGateway:   target.IsGateway,
+		TotalProbes: probesCount,
+	}
+
+	method := strings.ToUpper(strings.TrimSpace(target.ProbeMethod))
+	if method != "TCP" {
+		method = "ICMP"
+	}
+
+	// 1. If explicitly configured as TCP:
+	if method == "TCP" {
+		tcpPort := target.Port
+		if tcpPort <= 0 {
+			tcpPort = 443
+		}
+		probe.Port = tcpPort
+		tcpResult := runTCPProbe(ctx, target.Host, tcpPort, probesCount)
+		probe.ProbeMethod = "TCP"
+		probe.TotalProbes = tcpResult.total
+		probe.SuccessfulProbes = tcpResult.success
+		probe.FailedProbes = tcpResult.failed
+		probe.PacketLoss = nil // TCP never produces ICMP packet loss
+		probe.LatencyMs = tcpResult.avgMs
+		probe.MinLatencyMs = tcpResult.minMs
+		probe.MaxLatencyMs = tcpResult.maxMs
+
+		if tcpResult.success > 0 {
+			probe.ProbeStatus = "success"
+			probe.Status = "reachable"
+		} else {
+			probe.ProbeStatus = "timeout"
+			probe.Status = "unreachable"
+			probe.ErrorMessage = tcpResult.lastError
+		}
+		return probe
+	}
+
+	// 2. ICMP method: try ICMP ping first
+	if net.ParseIP(target.Host) != nil {
+		icmpResult := runICMPPing(ctx, target.Host, probesCount, ICMPTimeoutSec)
 		if icmpResult.available && icmpResult.total > 0 {
 			probe.ProbeMethod = "ICMP"
+			probe.TotalProbes = icmpResult.total
 			probe.SuccessfulProbes = icmpResult.received
 			probe.FailedProbes = icmpResult.lost
 			loss := math.Round(icmpResult.lossPercent*10) / 10
@@ -366,24 +438,27 @@ func probeTarget(ctx context.Context, target targetDefinition) NetworkTargetProb
 				probe.ProbeStatus = "timeout"
 			}
 
-			probe.Status = evaluateTargetStatus(target.category, probe.PacketLoss, probe.LatencyMs, probe.ProbeMethod)
+			probe.Status = evaluateTargetStatus(target, probe.PacketLoss, probe.LatencyMs, probe.ProbeMethod)
 			return probe
 		}
 	}
 
-	// Fallback to TCP if ICMP unavailable or target is a hostname
-	tcpPort := target.port
-	if tcpPort == 0 {
-		tcpPort = 53 // DNS port for IP targets that didn't respond to ICMP
+	// 3. Fallback to TCP if ICMP is unavailable or host is hostname
+	tcpPort := target.Port
+	if tcpPort <= 0 {
+		tcpPort = 53 // fallback to DNS port 53 for IP targets, or 443
+		if net.ParseIP(target.Host) == nil {
+			tcpPort = 443
+		}
 	}
 
 	probe.Port = tcpPort
-	tcpResult := runTCPProbe(ctx, target.host, tcpPort, ProbesPerTarget)
+	tcpResult := runTCPProbe(ctx, target.Host, tcpPort, probesCount)
 	probe.ProbeMethod = "TCP"
 	probe.TotalProbes = tcpResult.total
 	probe.SuccessfulProbes = tcpResult.success
 	probe.FailedProbes = tcpResult.failed
-	probe.PacketLoss = nil // TCP does not produce ICMP packet loss
+	probe.PacketLoss = nil
 	probe.LatencyMs = tcpResult.avgMs
 	probe.MinLatencyMs = tcpResult.minMs
 	probe.MaxLatencyMs = tcpResult.maxMs
@@ -401,9 +476,32 @@ func probeTarget(ctx context.Context, target targetDefinition) NetworkTargetProb
 }
 
 // evaluateTargetStatus determines status for an individual target using Critical-first.
-func evaluateTargetStatus(category string, packetLoss *float64, latencyMs float64, method string) string {
+func evaluateTargetStatus(target NetworkTarget, packetLoss *float64, latencyMs float64, method string) string {
 	if method == "TCP" {
-		return "reachable"
+		if latencyMs > 0 {
+			return "reachable"
+		}
+		return "unreachable"
+	}
+
+	warnLat := DefaultLatencyWarningMs
+	critLat := DefaultLatencyCriticalMs
+	critLoss := DefaultLossCriticalPct
+
+	if target.IsGateway {
+		warnLat = DefaultGatewayLatencyWarningMs
+		critLat = DefaultGatewayLatencyCriticalMs
+		critLoss = DefaultGatewayLossCriticalPct
+	}
+
+	if target.AlertLatencyWarningMs != nil && *target.AlertLatencyWarningMs > 0 {
+		warnLat = *target.AlertLatencyWarningMs
+	}
+	if target.AlertLatencyCriticalMs != nil && *target.AlertLatencyCriticalMs > 0 {
+		critLat = *target.AlertLatencyCriticalMs
+	}
+	if target.AlertLossCriticalPct != nil && *target.AlertLossCriticalPct > 0 {
+		critLoss = *target.AlertLossCriticalPct
 	}
 
 	loss := 0.0
@@ -411,24 +509,42 @@ func evaluateTargetStatus(category string, packetLoss *float64, latencyMs float6
 		loss = *packetLoss
 	}
 
-	switch category {
-	case "domestic":
-		if loss >= DomesticLossCritical || latencyMs > DomesticLatencyCritical {
-			return "critical"
-		}
-		if loss > 0 || latencyMs > DomesticLatencyWarning {
-			return "warning"
-		}
-		return "optimal"
-	default: // international
-		if loss >= InternationalLossCritical || latencyMs > InternationalLatencyCritical {
-			return "critical"
-		}
-		if loss > 0 || latencyMs > InternationalLatencyWarning {
-			return "warning"
-		}
-		return "optimal"
+	if loss >= critLoss || latencyMs > critLat {
+		return "critical"
 	}
+	if loss > 0 || latencyMs > warnLat {
+		return "warning"
+	}
+	return "optimal"
+}
+
+// ProbeSingleTarget probes a single target and formats the result for saving to network_target_results.
+func ProbeSingleTarget(ctx context.Context, target NetworkTarget) (NetworkTargetProbe, NetworkTargetResult) {
+	probe := probeTarget(ctx, target)
+
+	res := NetworkTargetResult{
+		TargetID:         target.ID,
+		TotalProbes:      probe.TotalProbes,
+		SuccessfulProbes: probe.SuccessfulProbes,
+		FailedProbes:     probe.FailedProbes,
+		Status:           probe.Status,
+		MeasuredAt:       time.Now(),
+	}
+
+	if probe.SuccessfulProbes > 0 {
+		lat := probe.LatencyMs
+		minLat := probe.MinLatencyMs
+		maxLat := probe.MaxLatencyMs
+		res.LatencyMs = &lat
+		res.MinLatencyMs = &minLat
+		res.MaxLatencyMs = &maxLat
+	}
+	if probe.PacketLoss != nil {
+		loss := *probe.PacketLoss
+		res.PacketLoss = &loss
+	}
+
+	return probe, res
 }
 
 // ---------- Pillar Aggregation ----------
@@ -487,13 +603,11 @@ func aggregatePillar(probes []NetworkTargetProbe) NetworkPillarResult {
 			loss := math.Round(float64(failedICMPProbes)/float64(totalICMPProbes)*1000) / 10
 			result.PacketLoss = &loss
 		}
-
-		// Category latency comes from ICMP when available
 		if icmpSuccessCount > 0 {
 			result.LatencyMs = math.Round(icmpLatencySum/float64(icmpSuccessCount)*10) / 10
 		}
 	} else if hasTCP {
-		// If only TCP, use TCP latency but packet loss stays nil
+		// TCP only: no packet loss (nil), average TCP latency
 		result.PacketLoss = nil
 		var tcpLatencySum float64
 		var tcpSuccessCount int
@@ -552,19 +666,30 @@ func evaluatePillarStatus(pillar *NetworkPillarResult, lossCrit, latWarn, latCri
 
 // ---------- Gateway Probing ----------
 
-// probeGateway runs ICMP probes against the default gateway from agent telemetry.
-func probeGateway(ctx context.Context, telemetry *ServerNetworkTelemetry) NetworkPillarResult {
+// probeGateway runs ICMP probes against the default gateway from agent telemetry or dedicated gateway target.
+func probeGateway(ctx context.Context, telemetry *ServerNetworkTelemetry, gwTarget *NetworkTarget) NetworkPillarResult {
 	result := NetworkPillarResult{
 		MeasurementMethod: "ICMP",
 	}
 
+	// 1. If user configured an explicit gateway target with an IP
+	if gwTarget != nil && gwTarget.Host != "" && gwTarget.Host != "gateway" {
+		probe := probeTarget(ctx, *gwTarget)
+		result.TotalProbes = probe.TotalProbes
+		result.SuccessfulProbes = probe.SuccessfulProbes
+		result.FailedProbes = probe.FailedProbes
+		result.LatencyMs = probe.LatencyMs
+		result.PacketLoss = probe.PacketLoss
+		evaluatePillarStatus(&result, DefaultGatewayLossCriticalPct, DefaultGatewayLatencyWarningMs, DefaultGatewayLatencyCriticalMs)
+		return result
+	}
+
+	// 2. Use agent telemetry default gateway
 	if telemetry == nil || telemetry.DefaultGateway == "" {
 		result.Status = "unavailable"
 		result.Summary = "Default gateway information is not available from the agent."
 		return result
 	}
-
-	gw := telemetry.DefaultGateway
 
 	// Use agent-reported data first (the agent already runs ICMP pings to the gateway)
 	if telemetry.GatewayLatencyMs > 0 || telemetry.GatewayPacketLoss > 0 {
@@ -578,12 +703,12 @@ func probeGateway(ctx context.Context, telemetry *ServerNetworkTelemetry) Networ
 		}
 		result.FailedProbes = result.TotalProbes - result.SuccessfulProbes
 
-		evaluatePillarStatus(&result, GatewayLossCritical, GatewayLatencyWarning, GatewayLatencyCritical)
+		evaluatePillarStatus(&result, DefaultGatewayLossCriticalPct, DefaultGatewayLatencyWarningMs, DefaultGatewayLatencyCriticalMs)
 		return result
 	}
 
-	// Fallback: run ICMP from the backend server itself
-	icmpResult := runICMPPing(ctx, gw, ProbesPerTarget, ICMPTimeoutSec)
+	// Fallback: run ICMP from the backend server itself to telemetry.DefaultGateway
+	icmpResult := runICMPPing(ctx, telemetry.DefaultGateway, ProbesPerTarget, ICMPTimeoutSec)
 	if !icmpResult.available {
 		result.Status = "unavailable"
 		result.Summary = "ICMP probe to gateway is not available from the server environment."
@@ -597,19 +722,23 @@ func probeGateway(ctx context.Context, telemetry *ServerNetworkTelemetry) Networ
 	loss := math.Round(icmpResult.lossPercent*10) / 10
 	result.PacketLoss = &loss
 
-	evaluatePillarStatus(&result, GatewayLossCritical, GatewayLatencyWarning, GatewayLatencyCritical)
+	evaluatePillarStatus(&result, DefaultGatewayLossCriticalPct, DefaultGatewayLatencyWarningMs, DefaultGatewayLatencyCriticalMs)
 	return result
 }
 
 // ---------- Main Diagnostic Entry Point ----------
 
-// RunNetworkDiagnostic executes concurrent network diagnostics for gateway, domestic & international targets.
-func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serverSnapshotRaw []byte) *NetworkDiagnosticReport {
+// RunNetworkDiagnostic executes network diagnostics for dynamic user-configured targets.
+// Returns the compiled report and a slice of historical results ready to be persisted.
+func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serverSnapshotRaw []byte, targets []NetworkTarget) (*NetworkDiagnosticReport, []NetworkTargetResult) {
 	report := &NetworkDiagnosticReport{
 		ServerID:   serverID,
 		ServerName: serverName,
 		Timestamp:  time.Now(),
 		SampleSize: ProbesPerTarget,
+		Groups:     make(map[string]NetworkPillarResult),
+		GroupOrder: []string{},
+		Probes:     []NetworkTargetProbe{},
 	}
 
 	// Parse server telemetry from snapshot if available
@@ -624,101 +753,151 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 		}
 	}
 
-	// Gateway probe (from agent telemetry or server-side ICMP)
-	report.Gateway = probeGateway(ctx, telemetry)
+	// Check if any target represents gateway
+	var gwTarget *NetworkTarget
+	var regularTargets []NetworkTarget
+	for _, t := range targets {
+		if !t.Enabled {
+			continue
+		}
+		if t.IsGateway {
+			gwCopy := t
+			gwTarget = &gwCopy
+		} else {
+			regularTargets = append(regularTargets, t)
+		}
+	}
 
-	// Probe all domestic and international targets concurrently
-	allTargets := make([]targetDefinition, 0, len(domesticTargets)+len(internationalTargets))
-	allTargets = append(allTargets, domesticTargets...)
-	allTargets = append(allTargets, internationalTargets...)
-	probeResults := make([]NetworkTargetProbe, len(allTargets))
+	// Gateway evaluation if telemetry or target exists
+	if telemetry != nil || gwTarget != nil {
+		gwResult := probeGateway(ctx, telemetry, gwTarget)
+		report.Gateway = &gwResult
+	}
+
+	if len(regularTargets) == 0 {
+		report.AlertEvaluation = evaluateAlerts(report)
+		return report, nil
+	}
+
+	// Probe regular targets concurrently
+	probeResults := make([]NetworkTargetProbe, len(regularTargets))
+	historyResults := make([]NetworkTargetResult, len(regularTargets))
 
 	var wg sync.WaitGroup
-	for i, tgt := range allTargets {
+	for i, tgt := range regularTargets {
 		wg.Add(1)
-		go func(idx int, t targetDefinition) {
+		go func(idx int, t NetworkTarget) {
 			defer wg.Done()
-			probeResults[idx] = probeTarget(ctx, t)
+			p, h := ProbeSingleTarget(ctx, t)
+			probeResults[idx] = p
+			historyResults[idx] = h
 		}(i, tgt)
 	}
 	wg.Wait()
 
-	// Split results into domestic and international
-	var domProbes, intProbes []NetworkTargetProbe
-	for _, p := range probeResults {
-		if p.Category == "domestic" {
-			domProbes = append(domProbes, p)
-		} else {
-			intProbes = append(intProbes, p)
+	report.Probes = probeResults
+
+	// Group probe results dynamically by Tag
+	tagProbes := make(map[string][]NetworkTargetProbe)
+	tagTargets := make(map[string][]NetworkTarget)
+	var groupOrder []string
+
+	for i, p := range probeResults {
+		tag := p.Tag
+		if tag == "" {
+			tag = "default"
 		}
+		if _, exists := tagProbes[tag]; !exists {
+			groupOrder = append(groupOrder, tag)
+		}
+		tagProbes[tag] = append(tagProbes[tag], p)
+		tagTargets[tag] = append(tagTargets[tag], regularTargets[i])
 	}
-	report.DomesticProbes = domProbes
-	report.InternationalProbes = intProbes
+	report.GroupOrder = groupOrder
 
-	// Aggregate pillars
-	report.Domestic = aggregatePillar(domProbes)
-	evaluatePillarStatus(&report.Domestic, DomesticLossCritical, DomesticLatencyWarning, DomesticLatencyCritical)
+	// Aggregate each dynamic tag group
+	for _, tag := range groupOrder {
+		probes := tagProbes[tag]
+		groupPillar := aggregatePillar(probes)
 
-	report.International = aggregatePillar(intProbes)
-	evaluatePillarStatus(&report.International, InternationalLossCritical, InternationalLatencyWarning, InternationalLatencyCritical)
+		// Calculate thresholds for this group
+		lossCrit := DefaultLossCriticalPct
+		latWarn := DefaultLatencyWarningMs
+		latCrit := DefaultLatencyCriticalMs
 
-	// Evaluate alert criteria
+		var warnSum, critSum, lossSum float64
+		var warnCount, critCount, lossCount int
+
+		for _, t := range tagTargets[tag] {
+			if t.AlertLatencyWarningMs != nil && *t.AlertLatencyWarningMs > 0 {
+				warnSum += *t.AlertLatencyWarningMs
+				warnCount++
+			}
+			if t.AlertLatencyCriticalMs != nil && *t.AlertLatencyCriticalMs > 0 {
+				critSum += *t.AlertLatencyCriticalMs
+				critCount++
+			}
+			if t.AlertLossCriticalPct != nil && *t.AlertLossCriticalPct > 0 {
+				lossSum += *t.AlertLossCriticalPct
+				lossCount++
+			}
+		}
+
+		if warnCount > 0 {
+			latWarn = warnSum / float64(warnCount)
+		}
+		if critCount > 0 {
+			latCrit = critSum / float64(critCount)
+		}
+		if lossCount > 0 {
+			lossCrit = lossSum / float64(lossCount)
+		}
+
+		evaluatePillarStatus(&groupPillar, lossCrit, latWarn, latCrit)
+		report.Groups[tag] = groupPillar
+	}
+
 	report.AlertEvaluation = evaluateAlerts(report)
-
-	return report
+	return report, historyResults
 }
 
-// evaluateAlerts builds the alert evaluation from pillar results.
+// evaluateAlerts builds the alert evaluation from Gateway and dynamic Tag groups.
 func evaluateAlerts(report *NetworkDiagnosticReport) NetworkAlertEvaluation {
 	var reasons []string
 	isCritical := false
 	isWarning := false
 
-	// Gateway
-	if report.Gateway.Status == "critical" {
-		reasons = append(reasons, fmt.Sprintf("Gateway connectivity critical (Latency: %.1f ms)", report.Gateway.LatencyMs))
-		isCritical = true
-	} else if report.Gateway.Status == "warning" {
-		reasons = append(reasons, fmt.Sprintf("Gateway latency elevated (%.1f ms)", report.Gateway.LatencyMs))
-		isWarning = true
-	}
-
-	// Domestic
-	if report.Domestic.PacketLoss != nil {
-		loss := *report.Domestic.PacketLoss
-		if loss >= DomesticLossCritical {
-			reasons = append(reasons, fmt.Sprintf("Domestic packet loss %.1f%% exceeds critical threshold", loss))
+	// Gateway check
+	if report.Gateway != nil {
+		if report.Gateway.Status == "critical" {
+			reasons = append(reasons, fmt.Sprintf("Gateway connectivity critical (Latency: %.1f ms)", report.Gateway.LatencyMs))
 			isCritical = true
-		} else if loss > 0 {
-			reasons = append(reasons, fmt.Sprintf("Domestic packet loss detected (%.1f%%)", loss))
+		} else if report.Gateway.Status == "warning" {
+			reasons = append(reasons, fmt.Sprintf("Gateway latency elevated (%.1f ms)", report.Gateway.LatencyMs))
 			isWarning = true
 		}
 	}
-	if report.Domestic.LatencyMs > DomesticLatencyCritical {
-		reasons = append(reasons, fmt.Sprintf("Domestic latency %.1f ms exceeds critical threshold", report.Domestic.LatencyMs))
-		isCritical = true
-	} else if report.Domestic.LatencyMs > DomesticLatencyWarning {
-		reasons = append(reasons, fmt.Sprintf("Domestic latency elevated (%.1f ms)", report.Domestic.LatencyMs))
-		isWarning = true
-	}
 
-	// International
-	if report.International.PacketLoss != nil {
-		loss := *report.International.PacketLoss
-		if loss >= InternationalLossCritical {
-			reasons = append(reasons, fmt.Sprintf("International packet loss %.1f%% exceeds critical threshold", loss))
+	// Dynamic tag groups check
+	for tag, grp := range report.Groups {
+		if grp.PacketLoss != nil {
+			loss := *grp.PacketLoss
+			if loss >= DefaultLossCriticalPct {
+				reasons = append(reasons, fmt.Sprintf("Group '%s' packet loss %.1f%% exceeds critical threshold", tag, loss))
+				isCritical = true
+			} else if loss > 0 {
+				reasons = append(reasons, fmt.Sprintf("Group '%s' packet loss detected (%.1f%%)", tag, loss))
+				isWarning = true
+			}
+		}
+
+		if grp.LatencyMs > DefaultLatencyCriticalMs {
+			reasons = append(reasons, fmt.Sprintf("Group '%s' latency %.1f ms exceeds critical threshold", tag, grp.LatencyMs))
 			isCritical = true
-		} else if loss > 0 {
-			reasons = append(reasons, fmt.Sprintf("International packet loss detected (%.1f%%)", loss))
+		} else if grp.LatencyMs > DefaultLatencyWarningMs {
+			reasons = append(reasons, fmt.Sprintf("Group '%s' latency elevated (%.1f ms)", tag, grp.LatencyMs))
 			isWarning = true
 		}
-	}
-	if report.International.LatencyMs > InternationalLatencyCritical {
-		reasons = append(reasons, fmt.Sprintf("International latency %.1f ms exceeds critical threshold", report.International.LatencyMs))
-		isCritical = true
-	} else if report.International.LatencyMs > InternationalLatencyWarning {
-		reasons = append(reasons, fmt.Sprintf("International latency elevated (%.1f ms)", report.International.LatencyMs))
-		isWarning = true
 	}
 
 	// Agent-reported telemetry checks
@@ -745,7 +924,7 @@ func evaluateAlerts(report *NetworkDiagnosticReport) NetworkAlertEvaluation {
 			IsTriggered:     true,
 			Severity:        "critical",
 			Reasons:         reasons,
-			SuggestedAction: "Inspect physical uplink switch/ports and contact upstream ISP to investigate routing anomalies.",
+			SuggestedAction: "Inspect physical uplink switch/ports or contact upstream ISP to investigate routing anomalies.",
 		}
 	}
 	if isWarning {
@@ -763,6 +942,6 @@ func evaluateAlerts(report *NetworkDiagnosticReport) NetworkAlertEvaluation {
 	}
 }
 
-// Ensure regexp and strings are used (suppress unused import warnings)
+// Ensure unused import suppressions
 var _ = regexp.Compile
 var _ = strings.Contains
