@@ -6,13 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
-  ArrowUpDown,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
   Filter,
-  Globe,
-  HelpCircle,
   LoaderCircle,
   Network,
   Pencil,
@@ -21,8 +15,6 @@ import {
   RefreshCw,
   Search,
   Server as ServerIcon,
-  ShieldAlert,
-  Sparkles,
   Trash2,
   X,
   Zap,
@@ -161,7 +153,6 @@ function NetworkQualityPageInner() {
   // Fetch initial data
   const loadData = useCallback(async (showToast = false) => {
     try {
-      if (showToast) setRefreshing(true);
       const [serversRes, targetsRes, overviewRes, presetsRes] = await Promise.all([
         apiClient('/servers') as Promise<ServerOption[]>,
         apiClient('/network-targets') as Promise<NetworkTargetWithLatest[]>,
@@ -183,16 +174,9 @@ function NetworkQualityPageInner() {
   }, []);
 
   useEffect(() => {
-    void loadData();
+    const initialRequest = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(initialRequest);
   }, [loadData]);
-
-  // Set agent filter from URL if present
-  useEffect(() => {
-    const urlAgent = searchParams.get('agent_id');
-    if (urlAgent) {
-      setSelectedAgentId(urlAgent);
-    }
-  }, [searchParams]);
 
   // Unique tags discovered from targets
   const discoveredTags = useMemo(() => {
@@ -476,7 +460,10 @@ function NetworkQualityPageInner() {
         <div className="flex items-center gap-2.5 flex-wrap">
           <button
             type="button"
-            onClick={() => loadData(true)}
+            onClick={() => {
+              setRefreshing(true);
+              void loadData(true);
+            }}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
           >

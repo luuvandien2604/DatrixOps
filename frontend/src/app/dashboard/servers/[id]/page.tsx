@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, Activity, ShieldCheck, ShieldAlert, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Globe, Radio, AlertTriangle, CheckCircle2, Zap, ExternalLink, X, Plus } from 'lucide-react';
+import { ArrowLeft, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -1303,7 +1303,6 @@ export default function ServerDetailsPage() {
             const netDiag = snapshot?.network_diagnostics;
             const netIfaces = netDiag?.interfaces || snapshot?.network_interfaces || [];
             const primaryIface = (netIfaces as Array<{ name: string; is_default?: boolean }>).find((i) => i.is_default || i.name === netDiag?.primary_uplink) || netIfaces[0];
-            const isAlert = netReport?.alert_evaluation?.is_triggered || netDiag?.status === 'critical' || netDiag?.status === 'warning';
             const alertSev = netReport?.alert_evaluation?.severity || netDiag?.status || 'none';
             const isCrit = alertSev === 'critical';
             const isWarn = alertSev === 'warning';
