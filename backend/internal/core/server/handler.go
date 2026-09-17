@@ -827,7 +827,7 @@ func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	diagCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	diagCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
 	var snapshotRaw []byte
@@ -872,7 +872,7 @@ func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) 
 	h.netReportsMu.RUnlock()
 
 	if !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute {
-		diagCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		diagCtx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 
 		var snapshotRaw []byte
