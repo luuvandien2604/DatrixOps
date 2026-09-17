@@ -224,4 +224,3 @@ func TestBuildAlertNotification_LayoutAndCustomFields(t *testing.T) {
 		t.Errorf("expected emailHTML to contain Downtime")
 	}
 }
-

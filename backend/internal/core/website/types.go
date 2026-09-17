@@ -53,7 +53,7 @@ type DailyUptimeRollup struct {
 }
 
 type UptimeDayBar struct {
-	Date            string  `json:"date"` // YYYY-MM-DD
+	Date            string  `json:"date"`   // YYYY-MM-DD
 	Status          string  `json:"status"` // "operational", "degraded", "outage", "no_data"
 	UptimePct       float64 `json:"uptime_pct"`
 	DowntimeSeconds int     `json:"downtime_seconds"`
@@ -76,4 +76,3 @@ type UptimeSummaryResponse struct {
 	DaysCount int                 `json:"days_count"` // e.g. 90
 	Items     []UptimeSummaryItem `json:"items"`
 }
-

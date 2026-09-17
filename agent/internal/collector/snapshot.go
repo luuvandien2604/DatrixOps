@@ -1163,4 +1163,3 @@ func collectNetworkTelemetry() ([]NetworkInterfaceInfo, *NetworkDiagnostics) {
 
 	return resultIfaces, diag
 }
-

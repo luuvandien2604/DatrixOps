@@ -63,23 +63,23 @@ type ServerNetworkTelemetry struct {
 
 // NetworkDiagnosticReport is the comprehensive network diagnostic report.
 type NetworkDiagnosticReport struct {
-	ServerID                 string                  `json:"server_id"`
-	ServerName               string                  `json:"server_name"`
-	Timestamp                time.Time               `json:"timestamp"`
-	DomesticProbes           []NetworkTargetProbe    `json:"domestic_probes"`
-	InternationalProbes      []NetworkTargetProbe    `json:"international_probes"`
-	DomesticAvgLatencyMs     float64                 `json:"domestic_avg_latency_ms"`
-	DomesticAvgPacketLoss    float64                 `json:"domestic_avg_packet_loss"`
-	DomesticStatus           string                  `json:"domestic_status"` // "optimal", "warning", "critical"
-	DomesticSummary          string                  `json:"domestic_summary"`
-	InternationalAvgLatencyMs float64                `json:"international_avg_latency_ms"`
-	InternationalAvgPacketLoss float64                `json:"international_avg_packet_loss"`
-	InternationalStatus      string                  `json:"international_status"` // "optimal", "warning", "critical"
-	InternationalSummary     string                  `json:"international_summary"`
-	SubseaCables             []SubseaCableStatus     `json:"subsea_cables"`
-	SubseaCableSummary       string                  `json:"subsea_cable_summary"`
-	AlertEvaluation          NetworkAlertEvaluation  `json:"alert_evaluation"`
-	ServerTelemetry          *ServerNetworkTelemetry `json:"server_telemetry,omitempty"`
+	ServerID                   string                  `json:"server_id"`
+	ServerName                 string                  `json:"server_name"`
+	Timestamp                  time.Time               `json:"timestamp"`
+	DomesticProbes             []NetworkTargetProbe    `json:"domestic_probes"`
+	InternationalProbes        []NetworkTargetProbe    `json:"international_probes"`
+	DomesticAvgLatencyMs       float64                 `json:"domestic_avg_latency_ms"`
+	DomesticAvgPacketLoss      float64                 `json:"domestic_avg_packet_loss"`
+	DomesticStatus             string                  `json:"domestic_status"` // "optimal", "warning", "critical"
+	DomesticSummary            string                  `json:"domestic_summary"`
+	InternationalAvgLatencyMs  float64                 `json:"international_avg_latency_ms"`
+	InternationalAvgPacketLoss float64                 `json:"international_avg_packet_loss"`
+	InternationalStatus        string                  `json:"international_status"` // "optimal", "warning", "critical"
+	InternationalSummary       string                  `json:"international_summary"`
+	SubseaCables               []SubseaCableStatus     `json:"subsea_cables"`
+	SubseaCableSummary         string                  `json:"subsea_cable_summary"`
+	AlertEvaluation            NetworkAlertEvaluation  `json:"alert_evaluation"`
+	ServerTelemetry            *ServerNetworkTelemetry `json:"server_telemetry,omitempty"`
 }
 
 type targetDefinition struct {

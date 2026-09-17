@@ -1000,4 +1000,3 @@ func (r *Repository) calculateSingleServerAvailability30d(ctx context.Context, s
 
 	return availPct, totalDowntime
 }
-
