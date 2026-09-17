@@ -133,7 +133,7 @@ function NetworkQualityPageInner() {
     name: '',
     host: '',
     port: 0,
-    tag: 'Trong nước',
+    tag: 'Domestic',
     probe_method: 'ICMP',
     probes_per_run: 5,
     alert_latency_warning_ms: '',
@@ -238,7 +238,7 @@ function NetworkQualityPageInner() {
       name: '',
       host: '',
       port: 0,
-      tag: 'Trong nước',
+      tag: 'Domestic',
       probe_method: 'ICMP',
       probes_per_run: 5,
       alert_latency_warning_ms: '',
@@ -427,7 +427,14 @@ function NetworkQualityPageInner() {
   };
 
   const renderStatusBadge = (status?: string) => {
-    const s = (status || 'optimal').toLowerCase();
+    if (!status) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/15 border border-zinc-500/30 text-zinc-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" /> Pending
+        </span>
+      );
+    }
+    const s = status.toLowerCase();
     if (s === 'critical' || s === 'unreachable') {
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
@@ -462,9 +469,6 @@ function NetworkQualityPageInner() {
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
                 Network Quality & Targets
               </h1>
-              <p className="text-xs sm:text-sm text-[var(--color-muted)] mt-0.5">
-                Fleet-wide network benchmarking, anomaly detection, and centralized target management.
-              </p>
             </div>
           </div>
         </div>
@@ -490,212 +494,208 @@ function NetworkQualityPageInner() {
         </div>
       </div>
 
-      {/* Overview Cards by Tag (Fleet-Wide Incident Detection) */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-2">
-            <Radio className="w-3.5 h-3.5 text-blue-400" /> Fleet Network Overview by Tag
-          </h2>
-          <span className="text-[11px] text-[var(--color-muted)]">
-            Aggregated health across all servers
-          </span>
+      {/* If no targets configured at all */}
+      {targets.length === 0 && !loading ? (
+        <div className="rounded-2xl border border-[var(--border-color)] p-12 text-center bg-[var(--background-card)] shadow-xs space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
+            <Network className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-[var(--foreground)]">No Active Targets Configured</h3>
+          </div>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Add First Target with Presets
+          </button>
         </div>
+      ) : (
+        <>
+          {/* Overview Cards by Tag (Fleet-Wide Incident Detection) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-blue-400" /> Fleet Network Overview by Tag
+              </h2>
+            </div>
 
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] animate-pulse" />
-            ))}
-          </div>
-        ) : overviews.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--border-color)] p-8 text-center bg-[var(--background-card)]/50">
-            <Network className="w-8 h-8 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
-            <p className="text-sm font-semibold text-[var(--foreground)]">No active targets configured</p>
-            <p className="text-xs text-[var(--color-muted)] mt-1 max-w-md mx-auto">
-              Add custom targets or use built-in presets (Cloudflare, Google, ISP DNS) to begin benchmarking network latency and packet loss.
-            </p>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Add First Target with Presets
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {overviews.map((ov) => {
-              const isCrit = ov.status === 'critical';
-              const isWarn = ov.status === 'warning';
-              return (
-                <div
-                  key={ov.tag}
-                  className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
-                    ov.is_wide_area_issue
-                      ? 'border-rose-500/60 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/50'
-                      : isCrit
-                      ? 'border-rose-500/40 bg-[var(--background-card)]'
-                      : isWarn
-                      ? 'border-amber-500/40 bg-[var(--background-card)]'
-                      : 'border-[var(--border-color)] bg-[var(--background-card)]'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="font-bold text-sm text-[var(--foreground)] truncate" title={ov.tag}>
-                        {ov.tag}
-                      </span>
-                      {renderStatusBadge(ov.status)}
-                    </div>
-
-                    {ov.is_wide_area_issue && (
-                      <div className="mb-3 rounded-lg bg-rose-500/20 border border-rose-500/30 px-2.5 py-1.5 flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
-                        <span className="text-[11px] font-semibold text-rose-300 leading-tight">
-                          Wide-Area Alert: Multiple servers reporting critical on this tag!
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex items-baseline gap-2 mb-3">
-                      <span className="text-2xl font-bold font-mono text-[var(--foreground)]">
-                        {ov.avg_latency_ms.toFixed(1)}
-                      </span>
-                      <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
-                    </div>
-
-                    <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-2 border-b border-[var(--border-color)]/60">
-                      <div className="flex justify-between">
-                        <span>Servers Monitored:</span>
-                        <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_agents}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Targets:</span>
-                        <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_targets}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Max Packet Loss:</span>
-                        <span className={`font-mono font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                          {ov.max_loss_pct.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between text-[11px]">
-                    <span className="text-[var(--color-muted)]">
-                      {ov.critical_agents > 0 ? `${ov.critical_agents} critical` : `${ov.optimal_agents} optimal`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTag(ov.tag);
-                      }}
-                      className="text-blue-400 hover:underline font-semibold cursor-pointer"
+            {loading ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-32 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {overviews.map((ov) => {
+                  const isCrit = ov.status === 'critical';
+                  const isWarn = ov.status === 'warning';
+                  return (
+                    <div
+                      key={ov.tag}
+                      className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
+                        ov.is_wide_area_issue
+                          ? 'border-rose-500/60 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/50'
+                          : isCrit
+                          ? 'border-rose-500/40 bg-[var(--background-card)]'
+                          : isWarn
+                          ? 'border-amber-500/40 bg-[var(--background-card)]'
+                          : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                      }`}
                     >
-                      Filter tag →
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="font-bold text-sm text-[var(--foreground)] truncate" title={ov.tag}>
+                            {ov.tag}
+                          </span>
+                          {renderStatusBadge(ov.status)}
+                        </div>
 
-      {/* Filter and Search Bar */}
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 space-y-3 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-[var(--color-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by target name, host, or server..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
+                        {ov.is_wide_area_issue && (
+                          <div className="mb-3 rounded-lg bg-rose-500/20 border border-rose-500/30 px-2.5 py-1.5 flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+                            <span className="text-[11px] font-semibold text-rose-300 leading-tight">
+                              Wide-Area Alert: Multiple servers reporting critical
+                            </span>
+                          </div>
+                        )}
 
-          <div className="flex items-center gap-2 flex-wrap text-xs">
-            {/* Server filter */}
-            <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
-              <ServerIcon className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-              <select
-                value={selectedAgentId}
-                onChange={(e) => setSelectedAgentId(e.target.value)}
-                className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
-              >
-                <option value="">All Servers ({servers.length})</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.ip_address || 'No IP'})
-                  </option>
-                ))}
-              </select>
-            </div>
+                        <div className="flex items-baseline gap-2 mb-3">
+                          <span className="text-2xl font-bold font-mono text-[var(--foreground)]">
+                            {ov.avg_latency_ms.toFixed(1)}
+                          </span>
+                          <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
+                        </div>
 
-            {/* Tag filter */}
-            <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
-              <Filter className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-              <select
-                value={selectedTag}
-                onChange={(e) => setSelectedTag(e.target.value)}
-                className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
-              >
-                <option value="all">All Tags</option>
-                {discoveredTags.map((t) => (
-                  <option key={t} value={t}>
-                    Tag: {t}
-                  </option>
-                ))}
-              </select>
-            </div>
+                        <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-2 border-b border-[var(--border-color)]/60">
+                          <div className="flex justify-between">
+                            <span>Servers Monitored:</span>
+                            <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_agents}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Total Targets:</span>
+                            <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_targets}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Max Packet Loss:</span>
+                            <span className={`font-mono font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              {ov.max_loss_pct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
 
-            {/* Status filter */}
-            <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
-              >
-                <option value="all">All Statuses</option>
-                <option value="optimal">Optimal</option>
-                <option value="warning">Warning</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-
-            {(selectedAgentId || selectedTag !== 'all' || selectedStatus !== 'all' || searchQuery) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedAgentId('');
-                  setSelectedTag('all');
-                  setSelectedStatus('all');
-                  setSearchQuery('');
-                }}
-                className="text-[var(--color-muted)] hover:text-[var(--foreground)] font-medium text-xs px-2 py-1"
-              >
-                Reset
-              </button>
+                      <div className="mt-3 flex items-center justify-end text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTag(ov.tag);
+                          }}
+                          className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                        >
+                          Filter tag →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* Target Management Table */}
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
-        <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-              <Activity className="w-4 h-4 text-blue-400" /> Monitored Network Targets ({filteredTargets.length})
-            </h3>
-            <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-              Independent targets tracked across your infrastructure. Click a target to view history.
-            </p>
+          {/* Filter and Search Bar */}
+          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 space-y-3 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none z-10" />
+                <input
+                  type="text"
+                  placeholder="Search by target name, host, or server..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ paddingLeft: '40px' }}
+                  className="w-full pr-3 py-2 text-xs rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                {/* Server filter */}
+                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
+                  <ServerIcon className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                  <select
+                    value={selectedAgentId}
+                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                  >
+                    <option value="">All Servers ({servers.length})</option>
+                    {servers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.ip_address || 'No IP'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Tag filter */}
+                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
+                  <Filter className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                  <select
+                    value={selectedTag}
+                    onChange={(e) => setSelectedTag(e.target.value)}
+                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                  >
+                    <option value="all">All Tags</option>
+                    {discoveredTags.map((t) => (
+                      <option key={t} value={t}>
+                        Tag: {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status filter */}
+                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
+                  <select
+                    value={selectedStatus}
+                    onChange={(e) => setSelectedStatus(e.target.value)}
+                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="optimal">Optimal</option>
+                    <option value="warning">Warning</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+
+                {(selectedAgentId || selectedTag !== 'all' || selectedStatus !== 'all' || searchQuery) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAgentId('');
+                      setSelectedTag('all');
+                      setSelectedStatus('all');
+                      setSearchQuery('');
+                    }}
+                    className="text-[var(--color-muted)] hover:text-[var(--foreground)] font-medium text-xs px-2 py-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* Target Management Table */}
+          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
+            <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-blue-400" /> Monitored Network Targets ({filteredTargets.length})
+                </h3>
+              </div>
+            </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -852,6 +852,8 @@ function NetworkQualityPageInner() {
           </table>
         </div>
       </div>
+    </>
+  )}
 
       {/* Target Add/Edit Modal */}
       {targetModalOpen && (
@@ -877,7 +879,7 @@ function NetworkQualityPageInner() {
             {!editingTarget && presets.length > 0 && (
               <div className="mb-5 p-3 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)]">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)] block mb-2">
-                  ⚡ Quick Presets (Click to autofill)
+                  Presets
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {presets.map((p) => (
@@ -935,13 +937,13 @@ function NetworkQualityPageInner() {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Quốc tế, Trong nước, Khách hàng"
+                    placeholder="e.g. International, Domestic, Infrastructure"
                     value={formData.tag}
                     onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none"
                   />
                   <div className="flex gap-1 mt-1.5 flex-wrap">
-                    {['Quốc tế', 'Trong nước', 'Hạ tầng', 'Khách hàng'].map((tag) => (
+                    {['International', 'Domestic', 'Infrastructure', 'Custom'].map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -970,7 +972,7 @@ function NetworkQualityPageInner() {
 
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Port (0 for ICMP-only)
+                    Port
                   </label>
                   <input
                     type="number"
@@ -986,7 +988,7 @@ function NetworkQualityPageInner() {
               {/* Thresholds (Optional) */}
               <div className="p-3 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] space-y-2">
                 <span className="font-semibold text-[var(--foreground)] block">
-                  Alert Thresholds (Optional — leave blank for system defaults)
+                  Alert Thresholds
                 </span>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div>
@@ -1117,9 +1119,6 @@ function NetworkQualityPageInner() {
                       );
                     })}
                   </div>
-                  <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                    Creating this target will insert independent target records on each selected server.
-                  </p>
                 </div>
               )}
 

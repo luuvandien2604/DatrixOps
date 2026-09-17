@@ -1369,9 +1369,6 @@ export default function ServerDetailsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 text-xs sm:text-sm text-[var(--color-muted)] max-w-2xl">
-                          Periodic health sample benchmarking Gateway Uplink and user-defined targets grouped by tag.
-                        </p>
                       </div>
                     </div>
 
@@ -1398,7 +1395,7 @@ export default function ServerDetailsPage() {
                         className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
                         title="Open centralized network targets manager"
                       >
-                        <Network className="w-4 h-4" /> Quản lý targets <ExternalLink className="w-3 h-3" />
+                        <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
                       </Link>
 
                       <button
@@ -1416,44 +1413,6 @@ export default function ServerDetailsPage() {
                     </div>
                   </div>
                 </div>
-
-                {/* Alert Evaluation Banner */}
-                {isAlert ? (
-                  <div className={`rounded-xl border p-4 sm:p-5 ${
-                    isCrit ? 'border-rose-500/40 bg-rose-500/10' : 'border-amber-500/40 bg-amber-500/10'
-                  }`}>
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg shrink-0 ${isCrit ? 'text-rose-400' : 'text-amber-400'}`}>
-                        <AlertTriangle className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-bold text-[var(--foreground)]">
-                          {isCrit ? 'Critical Alert: Elevated latency or packet loss detected!' : 'Performance Warning: Sub-optimal network route detected!'}
-                        </h4>
-                        <ul className="text-xs space-y-0.5 text-[var(--color-muted)] list-disc list-inside">
-                          {(netReport?.alert_evaluation?.reasons || ['Network path metric exceeds operational thresholds.']).map((r, i) => (
-                            <li key={i} className="text-[var(--foreground)] font-medium">{r}</li>
-                          ))}
-                        </ul>
-                        {netReport?.alert_evaluation?.suggested_action && (
-                          <p className="text-xs text-[var(--color-muted)] pt-1">
-                            <strong>Recommendation:</strong> {netReport.alert_evaluation.suggested_action}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 sm:px-5 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium text-emerald-300">
-                        All monitored network pathways operating within nominal thresholds.
-                      </span>
-                    </div>
-                    <span className="text-xs text-emerald-400/80 font-mono hidden sm:inline">0% Packet Loss</span>
-                  </div>
-                )}
 
                 {/* Dynamic Pillar / Tag Group Cards */}
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1499,9 +1458,6 @@ export default function ServerDetailsPage() {
                           </div>
                         </div>
                       </div>
-                      <p className="mt-3 text-xs text-[var(--color-muted)] italic">
-                        {gateway.summary || 'First-hop server-to-gateway route is healthy.'}
-                      </p>
                     </div>
                   )}
 
@@ -1527,7 +1483,7 @@ export default function ServerDetailsPage() {
                             </span>
                             <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
                           </div>
-                          <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
+                          <div className="text-xs space-y-1.5 text-[var(--color-muted)]">
                             <div className="flex justify-between">
                               <span>Packet Loss:</span>
                               <span className={`font-mono font-semibold ${
@@ -1544,9 +1500,6 @@ export default function ServerDetailsPage() {
                             </div>
                           </div>
                         </div>
-                        <p className="mt-3 text-xs text-[var(--color-muted)] italic">
-                          {grp.summary || 'Network pathway operating normally.'}
-                        </p>
                       </div>
                     );
                   })}
@@ -1556,15 +1509,12 @@ export default function ServerDetailsPage() {
                 {!gateway && groupTags.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-[var(--border-color)] p-8 text-center bg-[var(--background-card)]">
                     <Network className="w-8 h-8 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
-                    <p className="text-sm font-semibold text-[var(--foreground)]">Chưa cấu hình mục tiêu kiểm tra mạng cho server này</p>
-                    <p className="text-xs text-[var(--color-muted)] mt-1 max-w-md mx-auto">
-                      Để đo độ trễ và mất gói tin, hãy bấm &quot;Quản lý targets&quot; để gán các mục tiêu như Cloudflare, Google, hoặc DNS nhà mạng VNPT/Viettel/FPT cho server này.
-                    </p>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">No network targets configured for this server</p>
                     <Link
                       href={`/dashboard/network?agent_id=${params.id}`}
                       className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Quản lý targets ngay
+                      <Plus className="w-3.5 h-3.5" /> Manage Targets
                     </Link>
                   </div>
                 )}
@@ -1577,9 +1527,6 @@ export default function ServerDetailsPage() {
                         <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
                           <Activity className="w-4 h-4 text-blue-400" /> Monitored Targets Breakdown ({allProbes.length})
                         </h3>
-                        <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                          Short health sample. Click any target row to view time-series latency &amp; packet loss history.
-                        </p>
                       </div>
 
                       {/* Tag Filter Pills */}
