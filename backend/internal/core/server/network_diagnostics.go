@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -108,7 +109,7 @@ var internationalTargets = []targetDefinition{
 
 // probeSingleTarget performs a high-precision latency probe to a target host/port.
 func probeSingleTarget(ctx context.Context, target targetDefinition, timeout time.Duration) NetworkTargetProbe {
-	addr := fmt.Sprintf("%s:%d", target.host, target.port)
+	addr := net.JoinHostPort(target.host, strconv.Itoa(target.port))
 	d := net.Dialer{Timeout: timeout}
 
 	t0 := time.Now()
