@@ -1060,6 +1060,24 @@ func (h *Handler) CreateNetworkTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trigger immediate asynchronous probe for newly created targets
+	if len(created) > 0 {
+		go func(targets []NetworkTarget) {
+			probeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			var results []NetworkTargetResult
+			for _, t := range targets {
+				_, res := ProbeSingleTarget(probeCtx, t)
+				results = append(results, res)
+			}
+			if len(results) > 0 {
+				if err := h.svc.SaveNetworkTargetResults(probeCtx, results); err != nil {
+					slog.Warn("failed to save initial probe results for created targets", "error", err)
+				}
+			}
+		}(created)
+	}
+
 	response.Success(w, http.StatusCreated, created)
 }
 
@@ -1245,7 +1263,7 @@ func (h *Handler) GetNetworkTargetPresets(w http.ResponseWriter, r *http.Request
 			Name:                   "Default Gateway",
 			Host:                   "gateway",
 			Port:                   0,
-			Tag:                    "Hạ tầng nội bộ",
+			Tag:                    "Infrastructure",
 			ProbeMethod:            "ICMP",
 			ProbesPerRun:           5,
 			AlertLatencyWarningMs:  &warn20,
@@ -1259,7 +1277,7 @@ func (h *Handler) GetNetworkTargetPresets(w http.ResponseWriter, r *http.Request
 	response.Success(w, http.StatusOK, presets)
 }
 
-// GetNetworkQualityOverview returns fleet-wide tag aggregated health to detect wide-area issues.
+// GetNetworkQualityOverview returns tag aggregated health (fleet-wide or scoped by agent_id).
 func (h *Handler) GetNetworkQualityOverview(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -1267,9 +1285,10 @@ func (h *Handler) GetNetworkQualityOverview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	overview, err := h.svc.GetNetworkQualityOverview(r.Context(), userID)
+	agentID := r.URL.Query().Get("agent_id")
+	overview, err := h.svc.GetNetworkQualityOverview(r.Context(), userID, agentID)
 	if err != nil {
-		slog.Error("failed to get network quality overview", "error", err)
+		slog.Error("failed to get network quality overview", "agent_id", agentID, "error", err)
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to calculate network quality overview")
 		return
 	}

@@ -1221,6 +1221,38 @@ func (r *Repository) GetEnabledNetworkTargets(ctx context.Context, agentID strin
 	return targets, nil
 }
 
+// GetAllEnabledNetworkTargets returns all enabled targets across all agents for the background probe scheduler.
+func (r *Repository) GetAllEnabledNetworkTargets(ctx context.Context) ([]NetworkTarget, error) {
+	query := `
+		SELECT id, agent_id, name, host, port, tag, probe_method, probes_per_run,
+		       alert_latency_warning_ms, alert_latency_critical_ms, alert_loss_critical_pct,
+		       enabled, is_gateway, created_at, updated_at
+		FROM network_targets
+		WHERE enabled = true
+		ORDER BY agent_id, tag
+	`
+	rows, err := r.db.Pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var targets []NetworkTarget
+	for rows.Next() {
+		var t NetworkTarget
+		err := rows.Scan(
+			&t.ID, &t.AgentID, &t.Name, &t.Host, &t.Port, &t.Tag, &t.ProbeMethod, &t.ProbesPerRun,
+			&t.AlertLatencyWarningMs, &t.AlertLatencyCriticalMs, &t.AlertLossCriticalPct,
+			&t.Enabled, &t.IsGateway, &t.CreatedAt, &t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, t)
+	}
+	return targets, nil
+}
+
 // UpdateNetworkTarget updates a target's parameters with user ownership validation.
 func (r *Repository) UpdateNetworkTarget(ctx context.Context, target *NetworkTarget, userID string) error {
 	probes := target.ProbesPerRun
@@ -1355,8 +1387,9 @@ func (r *Repository) GetNetworkTargetHistory(ctx context.Context, targetID strin
 	return results, nil
 }
 
-// GetNetworkQualityOverview groups network health across all user's agents by tag to detect wide-area incidents.
-func (r *Repository) GetNetworkQualityOverview(ctx context.Context, userID string) ([]TagQualityOverview, error) {
+// GetNetworkQualityOverview groups network health across user's agents by tag to detect wide-area incidents.
+// If agentID is provided, it scopes the aggregation to targets belonging to that agent.
+func (r *Repository) GetNetworkQualityOverview(ctx context.Context, userID, agentID string) ([]TagQualityOverview, error) {
 	query := `
 		SELECT 
 			t.tag,
@@ -1377,12 +1410,12 @@ func (r *Repository) GetNetworkQualityOverview(ctx context.Context, userID strin
 			ORDER BY measured_at DESC 
 			LIMIT 1
 		) r ON true
-		WHERE s.user_id = $1 AND t.enabled = true
+		WHERE s.user_id = $1 AND t.enabled = true AND ($2 = '' OR t.agent_id::text = $2)
 		GROUP BY t.tag
 		ORDER BY t.tag ASC
 	`
 
-	rows, err := r.db.Pool.Query(ctx, query, userID)
+	rows, err := r.db.Pool.Query(ctx, query, userID, agentID)
 	if err != nil {
 		return nil, fmt.Errorf("get network quality overview: %w", err)
 	}

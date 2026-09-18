@@ -418,29 +418,27 @@ func probeTarget(ctx context.Context, target NetworkTarget) NetworkTargetProbe {
 		return probe
 	}
 
-	// 2. ICMP method: try ICMP ping first
-	if net.ParseIP(target.Host) != nil {
-		icmpResult := runICMPPing(ctx, target.Host, probesCount, ICMPTimeoutSec)
-		if icmpResult.available && icmpResult.total > 0 {
-			probe.ProbeMethod = "ICMP"
-			probe.TotalProbes = icmpResult.total
-			probe.SuccessfulProbes = icmpResult.received
-			probe.FailedProbes = icmpResult.lost
-			loss := math.Round(icmpResult.lossPercent*10) / 10
-			probe.PacketLoss = &loss
-			probe.LatencyMs = math.Round(icmpResult.avgMs*10) / 10
-			probe.MinLatencyMs = math.Round(icmpResult.minMs*10) / 10
-			probe.MaxLatencyMs = math.Round(icmpResult.maxMs*10) / 10
+	// 2. ICMP method: run ICMP ping (supports both IPs and hostnames)
+	icmpResult := runICMPPing(ctx, target.Host, probesCount, ICMPTimeoutSec)
+	if icmpResult.available && icmpResult.total > 0 {
+		probe.ProbeMethod = "ICMP"
+		probe.TotalProbes = icmpResult.total
+		probe.SuccessfulProbes = icmpResult.received
+		probe.FailedProbes = icmpResult.lost
+		loss := math.Round(icmpResult.lossPercent*10) / 10
+		probe.PacketLoss = &loss
+		probe.LatencyMs = math.Round(icmpResult.avgMs*10) / 10
+		probe.MinLatencyMs = math.Round(icmpResult.minMs*10) / 10
+		probe.MaxLatencyMs = math.Round(icmpResult.maxMs*10) / 10
 
-			if probe.SuccessfulProbes > 0 {
-				probe.ProbeStatus = "success"
-			} else {
-				probe.ProbeStatus = "timeout"
-			}
-
-			probe.Status = evaluateTargetStatus(target, probe.PacketLoss, probe.LatencyMs, probe.ProbeMethod)
-			return probe
+		if probe.SuccessfulProbes > 0 {
+			probe.ProbeStatus = "success"
+		} else {
+			probe.ProbeStatus = "timeout"
 		}
+
+		probe.Status = evaluateTargetStatus(target, probe.PacketLoss, probe.LatencyMs, probe.ProbeMethod)
+		return probe
 	}
 
 	// 3. Fallback to TCP if ICMP is unavailable or host is hostname

@@ -57,6 +57,7 @@ func (j *RetentionJob) run() {
 	j.deleteBatches(ctx, "daily_uptime_rollups", "date", 365)
 	j.deleteBatches(ctx, "dashboard_notifications", "created_at", j.operationalDays)
 	j.deleteBatches(ctx, "terminal_sessions", "started_at", j.operationalDays)
+	j.deleteBatches(ctx, "network_target_results", "measured_at", j.metricsDays)
 }
 
 func (j *RetentionJob) deleteBatches(ctx context.Context, table, timestampColumn string, days int) {

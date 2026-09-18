@@ -317,7 +317,7 @@ func (s *Service) GetNetworkTargetHistory(ctx context.Context, targetID string, 
 	return s.repo.GetNetworkTargetHistory(ctx, targetID, from, to, limit)
 }
 
-func (s *Service) GetNetworkQualityOverview(ctx context.Context, userID string) ([]TagQualityOverview, error) {
-	return s.repo.GetNetworkQualityOverview(ctx, userID)
+func (s *Service) GetNetworkQualityOverview(ctx context.Context, userID, agentID string) ([]TagQualityOverview, error) {
+	return s.repo.GetNetworkQualityOverview(ctx, userID, agentID)
 }
 

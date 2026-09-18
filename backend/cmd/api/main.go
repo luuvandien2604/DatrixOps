@@ -129,6 +129,11 @@ func main() {
 		alertJob.Start()
 		defer alertJob.Stop()
 
+		serverRepo := server.NewRepository(c.DB)
+		networkJob := server.NewNetworkTargetJob(serverRepo, c.DB, log)
+		networkJob.Start()
+		defer networkJob.Stop()
+
 		retentionJob := scheduler.NewRetentionJob(c.DB, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
 		retentionJob.Start()
 		defer retentionJob.Stop()

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/luuvandien2604/DatrixOps/backend/internal/core/server"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/core/website"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/config"
 	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/database"
@@ -130,12 +131,17 @@ func startSchedulers(db *database.DB, log *slog.Logger, cfg *config.Config) func
 	alertJob := scheduler.NewAlertJob(db, log)
 	alertJob.Start()
 
+	serverRepo := server.NewRepository(db)
+	networkJob := server.NewNetworkTargetJob(serverRepo, db, log)
+	networkJob.Start()
+
 	retentionJob := scheduler.NewRetentionJob(db, log, cfg.MetricsRetentionDays, cfg.OperationalRetentionDays)
 	retentionJob.Start()
 
 	return func() {
 		websiteJob.Stop()
 		alertJob.Stop()
+		networkJob.Stop()
 		retentionJob.Stop()
 	}
 }

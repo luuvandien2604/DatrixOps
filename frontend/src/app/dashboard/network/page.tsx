@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
+  ChevronDown,
   Filter,
   LoaderCircle,
   Network,
@@ -151,12 +152,17 @@ function NetworkQualityPageInner() {
   const [deletingTarget, setDeletingTarget] = useState(false);
 
   // Fetch initial data
-  const loadData = useCallback(async (showToast = false) => {
+  const loadData = useCallback(async (showToast = false, agentFilterOverride?: string) => {
     try {
+      const activeAgent = agentFilterOverride !== undefined ? agentFilterOverride : selectedAgentId;
+      const overviewUrl = activeAgent
+        ? `/network-targets/overview?agent_id=${encodeURIComponent(activeAgent)}`
+        : '/network-targets/overview';
+
       const [serversRes, targetsRes, overviewRes, presetsRes] = await Promise.all([
         apiClient('/servers') as Promise<ServerOption[]>,
         apiClient('/network-targets') as Promise<NetworkTargetWithLatest[]>,
-        apiClient('/network-targets/overview') as Promise<TagQualityOverview[]>,
+        apiClient(overviewUrl) as Promise<TagQualityOverview[]>,
         apiClient('/network-targets/presets') as Promise<NetworkTargetPreset[]>,
       ]);
 
@@ -171,11 +177,18 @@ function NetworkQualityPageInner() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedAgentId]);
 
+  // Initial fetch and 30-second live polling interval
   useEffect(() => {
     const initialRequest = window.setTimeout(() => void loadData(), 0);
-    return () => window.clearTimeout(initialRequest);
+    const interval = window.setInterval(() => {
+      void loadData(false);
+    }, 30000);
+    return () => {
+      window.clearTimeout(initialRequest);
+      window.clearInterval(interval);
+    };
   }, [loadData]);
 
   // Unique tags discovered from targets
@@ -186,6 +199,9 @@ function NetworkQualityPageInner() {
     });
     return Array.from(set);
   }, [targets]);
+
+  // Currently selected server for title / header scoping
+  const selectedServer = useMemo(() => servers.find((s) => s.id === selectedAgentId), [servers, selectedAgentId]);
 
   // Filtered targets
   const filteredTargets = useMemo(() => {
@@ -332,11 +348,24 @@ function NetworkQualityPageInner() {
             is_gateway: formData.is_gateway,
           },
         });
-        toast.success(`Created target "${formData.name}" on ${selectedAgentIds.length} server(s)`);
+        // If batch targets were created for multiple agents or for agents outside the active filter, switch to All Servers view
+        if (selectedAgentIds.length > 1 || (selectedAgentId && !selectedAgentIds.includes(selectedAgentId))) {
+          setSelectedAgentId('');
+          setSelectedTag('all');
+          setSelectedStatus('all');
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('agent_id');
+            window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+          }
+          toast.success(`Created target "${formData.name}" across ${selectedAgentIds.length} servers (switched to All Servers view)`);
+        } else {
+          toast.success(`Created target "${formData.name}" on ${selectedAgentIds.length} server(s)`);
+        }
       }
 
       setTargetModalOpen(false);
-      void loadData();
+      void loadData(false, '');
     } catch (err) {
       toast.error('Failed to save target: ' + (err as Error).message);
     } finally {
@@ -501,96 +530,102 @@ function NetworkQualityPageInner() {
       ) : (
         <>
           {/* Overview Cards by Tag (Fleet-Wide Incident Detection) */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-2">
-                <Radio className="w-3.5 h-3.5 text-blue-400" /> Fleet Network Overview by Tag
-              </h2>
+          {/* Overview Cards by Tag (Fleet-Wide Incident Detection or Scoped by Server) */}
+          {(overviews.length > 0 || loading) && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-2">
+                  <Radio className="w-3.5 h-3.5 text-blue-400" />
+                  {selectedServer ? `Network Overview by Tag — ${selectedServer.name}` : 'Fleet Network Overview by Tag'}
+                </h2>
+              </div>
+
+              {loading ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-32 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {overviews.map((ov) => {
+                    const isCrit = ov.status === 'critical';
+                    const isWarn = ov.status === 'warning';
+                    return (
+                      <div
+                        key={ov.tag}
+                        className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
+                          ov.is_wide_area_issue
+                            ? 'border-rose-500/60 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/50'
+                            : isCrit
+                            ? 'border-rose-500/40 bg-[var(--background-card)]'
+                            : isWarn
+                            ? 'border-amber-500/40 bg-[var(--background-card)]'
+                            : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="font-bold text-sm text-[var(--foreground)] truncate" title={ov.tag}>
+                              {ov.tag}
+                            </span>
+                            {renderStatusBadge(ov.status)}
+                          </div>
+
+                          {ov.is_wide_area_issue && (
+                            <div className="mb-3 rounded-lg bg-rose-500/20 border border-rose-500/30 px-2.5 py-1.5 flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+                              <span className="text-[11px] font-semibold text-rose-300 leading-tight">
+                                Wide-Area Alert: Multiple servers reporting critical
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex items-baseline gap-2 mb-3">
+                            <span className="text-2xl font-bold font-mono text-[var(--foreground)]">
+                              {ov.avg_latency_ms.toFixed(1)}
+                            </span>
+                            <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
+                          </div>
+
+                          <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-2 border-b border-[var(--border-color)]/60">
+                            {!selectedAgentId && (
+                              <div className="flex justify-between">
+                                <span>Servers Monitored:</span>
+                                <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_agents}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span>Total Targets:</span>
+                              <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_targets}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Max Packet Loss:</span>
+                              <span className={`font-mono font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                {ov.max_loss_pct.toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-end text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTag(ov.tag);
+                            }}
+                            className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                          >
+                            Filter tag →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-
-            {loading ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-32 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {overviews.map((ov) => {
-                  const isCrit = ov.status === 'critical';
-                  const isWarn = ov.status === 'warning';
-                  return (
-                    <div
-                      key={ov.tag}
-                      className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
-                        ov.is_wide_area_issue
-                          ? 'border-rose-500/60 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/50'
-                          : isCrit
-                          ? 'border-rose-500/40 bg-[var(--background-card)]'
-                          : isWarn
-                          ? 'border-amber-500/40 bg-[var(--background-card)]'
-                          : 'border-[var(--border-color)] bg-[var(--background-card)]'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="font-bold text-sm text-[var(--foreground)] truncate" title={ov.tag}>
-                            {ov.tag}
-                          </span>
-                          {renderStatusBadge(ov.status)}
-                        </div>
-
-                        {ov.is_wide_area_issue && (
-                          <div className="mb-3 rounded-lg bg-rose-500/20 border border-rose-500/30 px-2.5 py-1.5 flex items-start gap-2">
-                            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
-                            <span className="text-[11px] font-semibold text-rose-300 leading-tight">
-                              Wide-Area Alert: Multiple servers reporting critical
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex items-baseline gap-2 mb-3">
-                          <span className="text-2xl font-bold font-mono text-[var(--foreground)]">
-                            {ov.avg_latency_ms.toFixed(1)}
-                          </span>
-                          <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
-                        </div>
-
-                        <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-2 border-b border-[var(--border-color)]/60">
-                          <div className="flex justify-between">
-                            <span>Servers Monitored:</span>
-                            <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_agents}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Total Targets:</span>
-                            <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_targets}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Max Packet Loss:</span>
-                            <span className={`font-mono font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                              {ov.max_loss_pct.toFixed(1)}%
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-end text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTag(ov.tag);
-                          }}
-                          className="text-blue-400 hover:underline font-semibold cursor-pointer"
-                        >
-                          Filter tag →
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          )}
 
           {/* Filter and Search Bar */}
           <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 space-y-3 shadow-sm">
@@ -609,12 +644,24 @@ function NetworkQualityPageInner() {
 
               <div className="flex items-center gap-2 flex-wrap text-xs">
                 {/* Server filter */}
-                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
-                  <ServerIcon className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                <div className="relative inline-flex items-center">
+                  <ServerIcon className="absolute left-3 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
                   <select
                     value={selectedAgentId}
-                    onChange={(e) => setSelectedAgentId(e.target.value)}
-                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedAgentId(val);
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        if (val) {
+                          url.searchParams.set('agent_id', val);
+                        } else {
+                          url.searchParams.delete('agent_id');
+                        }
+                        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                      }
+                    }}
+                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-8 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="">All Servers ({servers.length})</option>
                     {servers.map((s) => (
@@ -623,15 +670,16 @@ function NetworkQualityPageInner() {
                       </option>
                     ))}
                   </select>
+                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
                 </div>
 
                 {/* Tag filter */}
-                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
-                  <Filter className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                <div className="relative inline-flex items-center">
+                  <Filter className="absolute left-3 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
                   <select
                     value={selectedTag}
                     onChange={(e) => setSelectedTag(e.target.value)}
-                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-8 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="all">All Tags</option>
                     {discoveredTags.map((t) => (
@@ -640,20 +688,22 @@ function NetworkQualityPageInner() {
                       </option>
                     ))}
                   </select>
+                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
                 </div>
 
                 {/* Status filter */}
-                <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl">
+                <div className="relative inline-flex items-center">
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="bg-transparent text-[var(--foreground)] font-medium focus:outline-none text-xs cursor-pointer"
+                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="all">All Statuses</option>
                     <option value="optimal">Optimal</option>
                     <option value="warning">Warning</option>
                     <option value="critical">Critical</option>
                   </select>
+                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
                 </div>
 
                 {(selectedAgentId || selectedTag !== 'all' || selectedStatus !== 'all' || searchQuery) && (
@@ -664,9 +714,15 @@ function NetworkQualityPageInner() {
                       setSelectedTag('all');
                       setSelectedStatus('all');
                       setSearchQuery('');
+                      if (typeof window !== 'undefined') {
+                        const url = new URL(window.location.href);
+                        url.searchParams.delete('agent_id');
+                        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                      }
                     }}
-                    className="text-[var(--color-muted)] hover:text-[var(--foreground)] font-medium text-xs px-2 py-1"
+                    className="h-9 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)]/40 px-3 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] transition cursor-pointer"
                   >
+                    <X className="w-3.5 h-3.5" />
                     Reset
                   </button>
                 )}
