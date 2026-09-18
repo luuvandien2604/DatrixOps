@@ -11,8 +11,6 @@ import {
   Box,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Clock,
   Flame,
   Globe2,
@@ -25,8 +23,8 @@ import {
   Search,
   Send,
   Server,
-  Sparkles,
   Trash2,
+  Wifi,
   X,
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -126,7 +124,7 @@ function formatIncidentDate(dateStr?: string | null) {
 }
 
 type AlertTab = 'rules' | 'create' | 'channels' | 'incidents';
-type AlertCategory = 'status' | 'container' | 'service' | 'metric' | 'website';
+type AlertCategory = 'status' | 'container' | 'service' | 'metric' | 'website' | 'network';
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message.trim() !== '') {
@@ -193,7 +191,6 @@ export default function AlertsPage() {
   const [ruleDuration, setRuleDuration] = useState('1');
   const [selectedServerId, setSelectedServerId] = useState('all');
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
-  const [expandedStep, setExpandedStep] = useState<number>(1);
 
   // Channel form state
   const [channelName, setChannelName] = useState('');
@@ -237,6 +234,13 @@ export default function AlertsPage() {
       setRuleName('High CPU Usage (> 90%)');
       setRuleOperator('>');
       setRuleThreshold('90');
+      setRuleDuration('1');
+      setRuleTargetName('');
+    } else if (cat === 'network') {
+      setRuleMetric('network_latency');
+      setRuleName('High Network Latency (> 100ms)');
+      setRuleOperator('>');
+      setRuleThreshold('100');
       setRuleDuration('1');
       setRuleTargetName('');
     } else if (cat === 'website') {
@@ -441,9 +445,18 @@ export default function AlertsPage() {
     }
 
     const threshold = Number.parseFloat(ruleThreshold);
-    if (!isSpecialMetric && (!Number.isFinite(threshold) || threshold < 0 || threshold > 100)) {
-      setErrorMessage('Threshold percentage must be between 0 and 100%.');
-      return;
+    if (!isSpecialMetric) {
+      if (ruleMetric === 'network_latency') {
+        if (!Number.isFinite(threshold) || threshold < 0 || threshold > 60000) {
+          setErrorMessage('Network latency threshold must be between 0 and 60,000 ms.');
+          return;
+        }
+      } else {
+        if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+          setErrorMessage('Threshold percentage must be between 0 and 100%.');
+          return;
+        }
+      }
     }
     const duration = Number.parseInt(ruleDuration, 10);
     if (!Number.isFinite(duration) || duration < 1 || duration > 1440) {
@@ -464,7 +477,7 @@ export default function AlertsPage() {
           server_id: (selectedServerId === 'all' || selectedCategory === 'website') ? null : selectedServerId,
           channel_ids: selectedChannelIds,
           repeat_interval_minutes: Number.parseInt(ruleRepeatInterval, 10) || 0,
-          target_name: (ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl') ? (ruleTargetName.trim() || null) : null,
+          target_name: (ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl' || ruleMetric === 'network_latency' || ruleMetric === 'network_loss') ? (ruleTargetName.trim() || null) : null,
         }),
       });
 
@@ -494,9 +507,9 @@ export default function AlertsPage() {
     setEditingRule(rule);
     setEditName(rule.name);
     setEditMetric(rule.metric);
-    setEditOperator(rule.operator || '>');
-    setEditThreshold(rule.threshold ?? 0);
-    setEditDuration(rule.duration_minutes || 1);
+    setEditOperator(rule.operator);
+    setEditThreshold(rule.threshold);
+    setEditDuration(rule.duration_minutes);
     setEditRepeat(rule.repeat_interval_minutes || 0);
     setEditServerId(rule.server_id || '');
     setEditTargetName(rule.target_name || '');
@@ -525,7 +538,7 @@ export default function AlertsPage() {
         duration_minutes: Number(editDuration),
         repeat_interval_minutes: Number(editRepeat),
         server_id: editServerId && editServerId !== 'all' ? editServerId : null,
-        target_name: (editMetric === 'container' || editMetric === 'service') ? (editTargetName.trim() || null) : null,
+        target_name: (editMetric === 'container' || editMetric === 'service' || editMetric === 'network_latency' || editMetric === 'network_loss') ? (editTargetName.trim() || null) : null,
         channel_ids: editChannelIds,
       };
       await apiClient(`/alerts/rules/${editingRule.id}`, {
@@ -705,6 +718,7 @@ export default function AlertsPage() {
         if (ruleCategoryFilter === 'service' && rule.metric !== 'service') return false;
         if (ruleCategoryFilter === 'metric' && !['cpu', 'ram', 'disk'].includes(rule.metric)) return false;
         if (ruleCategoryFilter === 'website' && !['website', 'ssl'].includes(rule.metric)) return false;
+        if (ruleCategoryFilter === 'network' && !['network_latency', 'network_loss'].includes(rule.metric)) return false;
       }
 
       // Search query
@@ -727,47 +741,6 @@ export default function AlertsPage() {
   const activeFiringCount = incidents.filter(
     (i) => (i.kind === 'alert_firing' || i.severity === 'critical' || i.kind === 'website_down') && !i.read_at,
   ).length;
-
-  // Live Rule Preview summary text generator
-  const rulePreviewText = useMemo(() => {
-    let targetDesc = 'All servers (Entire fleet)';
-    if (selectedCategory === 'website') {
-      targetDesc = ruleTargetName ? `Website "${ruleTargetName}"` : 'All monitored websites';
-    } else if (selectedServerId !== 'all') {
-      const s = servers.find((item) => item.id === selectedServerId);
-      targetDesc = s ? `Server "${s.name}"` : 'Selected server';
-    }
-
-    let conditionDesc = '';
-    if (selectedCategory === 'status') {
-      conditionDesc = `heartbeat is lost for ${ruleDuration} min`;
-    } else if (selectedCategory === 'container') {
-      conditionDesc = `container "${ruleTargetName || 'specified'}" exits or fails`;
-    } else if (selectedCategory === 'service') {
-      conditionDesc = `service "${ruleTargetName || 'specified'}" stops or fails`;
-    } else if (selectedCategory === 'metric') {
-      conditionDesc = `${ruleMetric.toUpperCase()} usage is ${ruleOperator} ${ruleThreshold}% for > ${ruleDuration} min`;
-    } else if (selectedCategory === 'website') {
-      if (ruleMetric === 'ssl') {
-        conditionDesc = `SSL certificate expires in ≤ ${ruleThreshold || 14} days`;
-      } else {
-        conditionDesc = 'probe fails HTTP check or returns error status';
-      }
-    }
-
-    const selectedChNames = selectedChannelIds
-      .map((id) => channels.find((c) => c.id === id)?.name)
-      .filter(Boolean);
-
-    const channelDesc = selectedChNames.length > 0 ? selectedChNames.join(', ') : 'No notification channels selected';
-
-    const repeatDesc =
-      ruleRepeatInterval === '0'
-        ? 'dispatch once'
-        : `repeat every ${ruleRepeatInterval} mins while incident persists`;
-
-    return { targetDesc, conditionDesc, channelDesc, repeatDesc };
-  }, [selectedCategory, selectedServerId, servers, ruleTargetName, ruleDuration, ruleMetric, ruleOperator, ruleThreshold, selectedChannelIds, channels, ruleRepeatInterval]);
 
   return (
     <div className="space-y-6">
@@ -1070,9 +1043,10 @@ export default function AlertsPage() {
               >
                 <option value="all">All Categories</option>
                 <option value="status">Server Offline</option>
+                <option value="metric">Resource Thresholds</option>
+                <option value="network">Network Quality</option>
                 <option value="container">Docker Container</option>
                 <option value="service">Systemd Service</option>
-                <option value="metric">Resource Thresholds</option>
                 <option value="website">Website & SSL</option>
               </select>
 
@@ -1097,6 +1071,7 @@ export default function AlertsPage() {
               const isService = rule.metric === 'service';
               const isWebsite = rule.metric === 'website';
               const isSSL = rule.metric === 'ssl';
+              const isNetwork = rule.metric === 'network_latency' || rule.metric === 'network_loss';
 
               return (
                 <div
@@ -1118,14 +1093,17 @@ export default function AlertsPage() {
                               ? 'bg-purple-500/10 text-purple-500 border-purple-500/30'
                               : isWebsite || isSSL
                                 ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
-                                : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                : isNetwork
+                                  ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30'
+                                  : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
                       }`}
                     >
                       {isOffline && <Server className="h-5 w-5" />}
                       {isDocker && <Box className="h-5 w-5" />}
                       {isService && <Layers className="h-5 w-5" />}
                       {(isWebsite || isSSL) && <Globe2 className="h-5 w-5" />}
-                      {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && <Activity className="h-5 w-5" />}
+                      {isNetwork && <Wifi className="h-5 w-5" />}
+                      {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && !isNetwork && <Activity className="h-5 w-5" />}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -1155,7 +1133,9 @@ export default function AlertsPage() {
                                   ? 'bg-purple-50 text-purple-800 border-purple-200/80 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60'
                                   : isWebsite || isSSL
                                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-                                    : 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
+                                    : isNetwork
+                                      ? 'bg-indigo-50 text-indigo-800 border-indigo-200/80 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/60'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
                           }`}
                         >
                           {isOffline && `Server Offline (${rule.duration_minutes}m)`}
@@ -1163,7 +1143,9 @@ export default function AlertsPage() {
                           {isService && `Service: ${rule.target_name || '*'}`}
                           {isWebsite && 'Website DOWN'}
                           {isSSL && `SSL Expiry (≤ ${rule.threshold || 14}d)`}
-                          {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m)`}
+                          {rule.metric === 'network_latency' && `Latency ${rule.operator} ${rule.threshold}ms (${rule.duration_minutes}m)`}
+                          {rule.metric === 'network_loss' && `Packet Loss ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m)`}
+                          {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && !isNetwork && `${rule.metric.toUpperCase()} ${rule.operator} ${rule.threshold}% (${rule.duration_minutes}m)`}
                         </span>
                       </div>
 
@@ -1182,6 +1164,13 @@ export default function AlertsPage() {
                             </>
                           )}
                         </span>
+
+                        {isNetwork && rule.target_name && (
+                          <span className="flex items-center gap-1 font-medium text-indigo-400">
+                            <Wifi className="h-3.5 w-3.5 text-indigo-400" />
+                            Target: {rule.target_name}
+                          </span>
+                        )}
 
                         {rule.repeat_interval_minutes && rule.repeat_interval_minutes > 0 ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200/80 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/60">
@@ -1326,792 +1315,589 @@ export default function AlertsPage() {
             </button>
           </div>
 
-          {/* STICKY MINI STEPPER */}
-          <div className="sticky top-14 z-20 -mx-1 px-3 py-2.5 rounded-2xl bg-[var(--background)]/90 backdrop-blur-md border border-[var(--border-color)] shadow-sm">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[
-                {
-                  step: 1,
-                  title: '1. Category',
-                  summary: selectedCategory === 'status' ? 'Server Offline' :
-                           selectedCategory === 'container' ? 'Docker' :
-                           selectedCategory === 'service' ? 'Systemd' :
-                           selectedCategory === 'metric' ? 'Resource' : 'Website & SSL',
-                  isValid: true,
-                },
-                {
-                  step: 2,
-                  title: '2. Scope & Name',
-                  summary: ruleName ? ruleName.slice(0, 20) + (ruleName.length > 20 ? '...' : '') : 'Unnamed',
-                  isValid: ruleName.trim().length > 0,
-                },
-                {
-                  step: 3,
-                  title: '3. Conditions',
-                  summary: selectedCategory === 'metric' ? `${ruleMetric.toUpperCase()} ${ruleOperator} ${ruleThreshold}%` :
-                           selectedCategory === 'status' ? `Lost > ${ruleDuration}m` :
-                           selectedCategory === 'website' ? (ruleMetric === 'ssl' ? 'SSL Expire' : 'HTTP Down') :
-                           ruleTargetName || 'Required',
-                  isValid: !(selectedCategory === 'container' || selectedCategory === 'service') || ruleTargetName.trim().length > 0,
-                },
-                {
-                  step: 4,
-                  title: '4. Delivery',
-                  summary: selectedChannelIds.length > 0 ? `${selectedChannelIds.length} channel(s)` : '0 channels ⚠',
-                  isValid: selectedChannelIds.length > 0,
-                },
-              ].map((item) => {
-                const isActive = expandedStep === item.step;
-                return (
-                  <button
-                    key={item.step}
-                    type="button"
-                    onClick={() => setExpandedStep(item.step)}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left border transition-all text-xs cursor-pointer ${
-                      isActive
-                        ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 text-[var(--foreground)] font-semibold shadow-xs'
-                        : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:border-blue-500/40 hover:text-[var(--foreground)]'
-                    }`}
-                  >
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                      isActive
-                        ? 'bg-blue-600 text-white'
-                        : item.isValid
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    }`}>
-                      {item.isValid && !isActive ? <Check className="h-3 w-3 stroke-[3]" /> : item.step}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-[11px] truncate">{item.title}</div>
-                      <div className={`text-[10px] truncate ${!item.isValid ? 'text-amber-400 font-medium' : 'text-[var(--color-muted)]'}`}>
-                        {item.summary}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <form onSubmit={createRule} className="space-y-4">
-            {/* STEP 1: CATEGORY SELECTION (ACCORDION) */}
-            <div className={`ops-panel surface-regular transition-all duration-200 overflow-hidden ${
-              expandedStep === 1 ? 'p-6 ring-1 ring-blue-500/20 shadow-sm' : 'p-4 hover:border-blue-500/30'
-            }`}>
-              <div
-                onClick={() => setExpandedStep(expandedStep === 1 ? 0 : 1)}
-                className="flex items-center justify-between cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/15 text-xs font-bold text-blue-500">
-                    1
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
-                      Select Alert Category
-                    </h3>
-                    {expandedStep !== 1 && (
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 font-normal flex items-center gap-1.5">
-                        Selected: <span className="font-semibold text-blue-400">{
-                          selectedCategory === 'status' ? 'Server Offline' :
-                          selectedCategory === 'container' ? 'Docker Container' :
-                          selectedCategory === 'service' ? 'Systemd Service' :
-                          selectedCategory === 'metric' ? 'Resource Thresholds' : 'Website & SSL'
-                        }</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-blue-500 hover:underline">
-                    {expandedStep === 1 ? 'Collapse' : 'Edit'}
-                  </span>
-                  {expandedStep === 1 ? <ChevronUp className="h-4 w-4 text-[var(--color-muted)]" /> : <ChevronDown className="h-4 w-4 text-[var(--color-muted)]" />}
-                </div>
+          <form onSubmit={createRule} className="space-y-6">
+            {/* SECTION 1: ALERT TYPE & CONDITIONS */}
+            <div className="ops-panel surface-regular p-6 space-y-5">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
+                  1. Alert Type & Conditions
+                </h3>
               </div>
 
-              {expandedStep === 1 && (
-                <div className="mt-4 pt-4 border-t border-[var(--border-color)]/60 space-y-3">
-                  <div className="divide-y divide-[var(--border-color)] rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] overflow-hidden">
-                    {[
-                      { id: 'status', label: 'Server Offline', icon: Server, color: 'text-cyan-500', badgeColor: 'bg-cyan-500/15 text-cyan-400' },
-                      { id: 'container', label: 'Docker Container', icon: Box, color: 'text-blue-500', badgeColor: 'bg-blue-500/15 text-blue-400' },
-                      { id: 'service', label: 'Systemd Service', icon: Layers, color: 'text-purple-500', badgeColor: 'bg-purple-500/15 text-purple-400' },
-                      { id: 'metric', label: 'Resource Thresholds', icon: Activity, color: 'text-amber-500', badgeColor: 'bg-amber-500/15 text-amber-400' },
-                      { id: 'website', label: 'Website & SSL', icon: Globe2, color: 'text-emerald-500', badgeColor: 'bg-emerald-500/15 text-emerald-400' },
-                    ].map((cat) => {
-                      const isSelected = selectedCategory === cat.id;
-                      const Icon = cat.icon;
-                      return (
+              {/* Category Selection Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                {[
+                  { id: 'status', label: 'Server Offline', icon: Server, color: 'text-cyan-500', badgeColor: 'bg-cyan-500/15 text-cyan-400' },
+                  { id: 'metric', label: 'Resource Usage', icon: Activity, color: 'text-amber-500', badgeColor: 'bg-amber-500/15 text-amber-400' },
+                  { id: 'network', label: 'Network Quality', icon: Wifi, color: 'text-indigo-500', badgeColor: 'bg-indigo-500/15 text-indigo-400' },
+                  { id: 'container', label: 'Docker Container', icon: Box, color: 'text-blue-500', badgeColor: 'bg-blue-500/15 text-blue-400' },
+                  { id: 'service', label: 'Systemd Service', icon: Layers, color: 'text-purple-500', badgeColor: 'bg-purple-500/15 text-purple-400' },
+                  { id: 'website', label: 'Website & SSL', icon: Globe2, color: 'text-emerald-500', badgeColor: 'bg-emerald-500/15 text-emerald-400' },
+                ].map((cat) => {
+                  const isSelected = selectedCategory === cat.id;
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSelectCategory(cat.id as AlertCategory)}
+                      className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-center transition-all cursor-pointer select-none ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 font-semibold text-blue-400 shadow-xs'
+                          : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:border-blue-500/40 hover:bg-[var(--surface-hover)]'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-lg mb-2 ${cat.badgeColor}`}>
+                        <Icon className={`h-5 w-5 ${cat.color}`} />
+                      </div>
+                      <span className="text-xs font-medium">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Condition Configuration Cards */}
+              <div className="pt-2">
+                {/* Server Offline */}
+                {selectedCategory === 'status' && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
+                    <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-2">
+                      <Server className="h-4 w-4 text-cyan-500" />
+                      Heartbeat Loss Timeout
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      {[
+                        { val: '1', label: '1 min' },
+                        { val: '2', label: '2 min' },
+                        { val: '5', label: '5 min' },
+                        { val: '10', label: '10 min' },
+                        { val: '15', label: '15 min' },
+                      ].map((opt) => (
                         <button
-                          key={cat.id}
+                          key={opt.val}
                           type="button"
-                          onClick={() => handleSelectCategory(cat.id as AlertCategory)}
-                          className={`w-full flex items-center justify-between px-4 py-3 text-left transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-500/10 text-blue-400 font-semibold'
-                              : 'hover:bg-[var(--surface-hover)] text-[var(--foreground)]'
+                          onClick={() => setRuleDuration(opt.val)}
+                          className={`flex items-center justify-center rounded-xl border py-2 px-3 text-center transition-all cursor-pointer ${
+                            ruleDuration === opt.val
+                              ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500 shadow-xs'
+                              : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className={`p-1.5 rounded-lg ${cat.badgeColor}`}>
-                              <Icon className={`h-4 w-4 ${cat.color}`} />
-                            </div>
-                            <span className="text-sm font-medium">{cat.label}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className={`h-4 w-4 rounded-full border flex items-center justify-center transition ${
-                              isSelected ? 'border-blue-500 bg-blue-500 text-white' : 'border-[var(--border-color)]'
-                            }`}>
-                              {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                            </div>
-                          </div>
+                          <span className="text-xs font-semibold">{opt.label}</span>
                         </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedStep(2)}
-                      className="ops-button secondary text-xs flex items-center gap-1.5"
-                    >
-                      Continue to Rule Scope →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* STEP 2: TARGET SCOPE & RULE NAME (ACCORDION) */}
-            <div className={`ops-panel surface-regular transition-all duration-200 overflow-hidden ${
-              expandedStep === 2 ? 'p-6 ring-1 ring-blue-500/20 shadow-sm' : 'p-4 hover:border-blue-500/30'
-            }`}>
-              <div
-                onClick={() => setExpandedStep(expandedStep === 2 ? 0 : 2)}
-                className="flex items-center justify-between cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                    ruleName.trim() ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-blue-500/15 text-blue-500'
-                  }`}>
-                    {ruleName.trim() && expandedStep !== 2 ? <Check className="h-3 w-3 stroke-[3]" /> : '2'}
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
-                      Rule Scope & Identity
-                    </h3>
-                    {expandedStep !== 2 && (
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 font-normal truncate max-w-xl">
-                        Name: <span className="font-semibold text-[var(--foreground)]">{ruleName || 'Unnamed'}</span> · Fleet: <span className="text-blue-400 font-medium">{
-                          selectedCategory === 'website'
-                            ? (ruleTargetName ? `Website "${ruleTargetName}"` : 'All websites')
-                            : (selectedServerId === 'all' ? 'All servers' : servers.find(s => s.id === selectedServerId)?.name || 'Selected server')
-                        }</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-blue-500 hover:underline">
-                    {expandedStep === 2 ? 'Collapse' : 'Edit'}
-                  </span>
-                  {expandedStep === 2 ? <ChevronUp className="h-4 w-4 text-[var(--color-muted)]" /> : <ChevronDown className="h-4 w-4 text-[var(--color-muted)]" />}
-                </div>
-              </div>
-
-              {expandedStep === 2 && (
-                <div className="mt-4 pt-4 border-t border-[var(--border-color)]/60 space-y-4">
-                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    {/* Alert Rule Name */}
-                    <div>
-                      <label htmlFor="rule-name" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                        Alert Rule Name <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        id="rule-name"
-                        required
-                        value={ruleName}
-                        onChange={(e) => setRuleName(e.target.value)}
-                        type="text"
-                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none transition"
-                        placeholder="e.g. Production Cluster Offline Alert"
-                      />
-                      <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                        Descriptive title shown on notifications and incident logs.
-                      </p>
+                      ))}
                     </div>
+                  </div>
+                )}
 
-                    {/* Target Scope */}
-                    {selectedCategory === 'website' ? (
+                {/* Resource Usage */}
+                {selectedCategory === 'metric' && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div>
-                        <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                          <Globe2 className="h-4 w-4 text-emerald-500" /> Monitored Website Target
+                        <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                          Resource Metric
                         </label>
                         <CustomSelect
-                          value={ruleTargetName || 'all'}
+                          value={ruleMetric}
                           onChange={(val) => {
-                            const targetVal = val === 'all' ? '' : val;
-                            setRuleTargetName(targetVal);
-                            if (ruleMetric === 'ssl') {
-                              setRuleName(targetVal ? `SSL Expiration: ${targetVal}` : 'SSL Certificate Expiration Alert');
+                            setRuleMetric(val);
+                            setRuleName(`High ${val.toUpperCase()} Alert (> ${ruleThreshold}%)`);
+                          }}
+                          options={[
+                            { value: 'cpu', label: 'CPU Usage (%)' },
+                            { value: 'ram', label: 'RAM Memory (%)' },
+                            { value: 'disk', label: 'Disk Storage (%)' },
+                          ]}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                          Condition
+                        </label>
+                        <CustomSelect
+                          value={ruleOperator}
+                          onChange={setRuleOperator}
+                          options={[
+                            { value: '>', label: 'Greater than (>)' },
+                            { value: '<', label: 'Less than (<)' },
+                          ]}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-semibold text-[var(--foreground)]">
+                            Threshold: <span className="font-mono font-bold text-amber-500">{ruleThreshold}%</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="10"
+                            max="100"
+                            step="5"
+                            value={ruleThreshold}
+                            onChange={(e) => {
+                              setRuleThreshold(e.target.value);
+                              setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                            }}
+                            className="w-full accent-amber-500 cursor-pointer"
+                          />
+                          <input
+                            required
+                            min="0"
+                            max="100"
+                            value={ruleThreshold}
+                            onChange={(e) => {
+                              setRuleThreshold(e.target.value);
+                              setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                            }}
+                            type="number"
+                            className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] p-1 text-center font-mono text-xs text-[var(--foreground)]"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {['70', '80', '85', '90', '95'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setRuleThreshold(preset);
+                                setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${preset}%)`);
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${
+                                ruleThreshold === preset
+                                  ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
+                                  : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                              }`}
+                            >
+                              {preset}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-amber-500/20">
+                      <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                        <Clock className="h-3.5 w-3.5 text-amber-500" />
+                        Continuous Duration (Minutes)
+                      </label>
+                      <input
+                        id="metric-duration"
+                        required
+                        min="1"
+                        max="1440"
+                        value={ruleDuration}
+                        onChange={(e) => setRuleDuration(e.target.value)}
+                        type="number"
+                        className="w-32 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Network Quality */}
+                {selectedCategory === 'network' && (
+                  <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                          Network Metric
+                        </label>
+                        <CustomSelect
+                          value={ruleMetric}
+                          onChange={(val) => {
+                            setRuleMetric(val);
+                            if (val === 'network_latency') {
+                              setRuleThreshold('100');
+                              setRuleName('High Network Latency (> 100ms)');
                             } else {
-                              setRuleName(targetVal ? `Website Down: ${targetVal}` : 'Website Down Alert');
+                              setRuleThreshold('10');
+                              setRuleName('High Packet Loss (> 10%)');
                             }
                           }}
                           options={[
-                            { value: 'all', label: 'All Monitored Websites (Universal)' },
-                            ...websites.map((w) => ({
-                              value: w.name,
-                              label: w.name,
-                              subLabel: w.url,
-                            })),
+                            { value: 'network_latency', label: 'Latency (ms)' },
+                            { value: 'network_loss', label: 'Packet Loss (%)' },
                           ]}
                           className="w-full"
                         />
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          Choose a specific website or apply rule universally across all endpoints.
-                        </p>
                       </div>
-                    ) : (
+
                       <div>
-                        <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                          <Server className="h-4 w-4 text-blue-500" /> Target Server Fleet
+                        <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                          Condition
                         </label>
                         <CustomSelect
-                          value={selectedServerId}
-                          onChange={setSelectedServerId}
+                          value={ruleOperator}
+                          onChange={setRuleOperator}
                           options={[
-                            { value: 'all', label: 'All servers (Entire Agent Fleet)' },
-                            ...servers.map((server) => ({
-                              value: server.id,
-                              label: server.name,
-                              subLabel: server.status === 'online' ? 'Online' : 'Offline',
-                            })),
+                            { value: '>', label: 'Greater than (>)' },
+                            { value: '<', label: 'Less than (<)' },
                           ]}
                           className="w-full"
                         />
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          Determines which servers this rule applies to. Universal rules monitor the whole fleet automatically.
-                        </p>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedStep(3)}
-                      className="ops-button secondary text-xs flex items-center gap-1.5"
-                    >
-                      Continue to Trigger Conditions →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* STEP 3: TRIGGER CONDITIONS & THRESHOLDS (ACCORDION) */}
-            <div className={`ops-panel surface-regular transition-all duration-200 overflow-hidden ${
-              expandedStep === 3 ? 'p-6 ring-1 ring-blue-500/20 shadow-sm' : 'p-4 hover:border-blue-500/30'
-            }`}>
-              <div
-                onClick={() => setExpandedStep(expandedStep === 3 ? 0 : 3)}
-                className="flex items-center justify-between cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/15 text-xs font-bold text-blue-500">
-                    3
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
-                      Trigger Conditions & Thresholds
-                    </h3>
-                    {expandedStep !== 3 && (
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 font-normal">
-                        Condition: <span className="font-semibold text-amber-400">{rulePreviewText.conditionDesc}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-blue-500 hover:underline">
-                    {expandedStep === 3 ? 'Collapse' : 'Edit'}
-                  </span>
-                  {expandedStep === 3 ? <ChevronUp className="h-4 w-4 text-[var(--color-muted)]" /> : <ChevronDown className="h-4 w-4 text-[var(--color-muted)]" />}
-                </div>
-              </div>
-
-              {expandedStep === 3 && (
-                <div className="mt-4 pt-4 border-t border-[var(--border-color)]/60 space-y-4">
-                  {/* Server Offline Conditions */}
-                  {selectedCategory === 'status' && (
-                    <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
                       <div>
-                        <h4 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                          <Server className="h-4 w-4 text-cyan-500" />
-                          Heartbeat Loss Threshold
-                        </h4>
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          If an agent stops sending heartbeats for longer than this duration, DatrixOps triggers an offline incident.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                        {[
-                          { val: '1', label: '1 min' },
-                          { val: '2', label: '2 min' },
-                          { val: '5', label: '5 min' },
-                          { val: '10', label: '10 min' },
-                          { val: '15', label: '15 min' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.val}
-                            type="button"
-                            onClick={() => setRuleDuration(opt.val)}
-                            className={`flex items-center justify-center rounded-xl border py-2.5 px-3 text-center transition-all cursor-pointer ${
-                              ruleDuration === opt.val
-                                ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500 shadow-xs'
-                                : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
-                            }`}
-                          >
-                            <span className="text-sm font-semibold">{opt.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Docker Container Conditions */}
-                  {selectedCategory === 'container' && (
-                    <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-                      <div>
-                        <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
-                          <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name <span className="text-rose-400">*</span>
-                        </label>
-                        <input
-                          id="rule-target-name"
-                          required
-                          value={ruleTargetName}
-                          onChange={(e) => {
-                            setRuleTargetName(e.target.value);
-                            setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
-                          }}
-                          type="text"
-                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
-                          placeholder="e.g. nginx, postgres, redis, api-gateway"
-                        />
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          Exact container name or prefix to monitor on the target hosts.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Systemd Service Conditions */}
-                  {selectedCategory === 'service' && (
-                    <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
-                      <div>
-                        <label htmlFor="rule-target-name" className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
-                          <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name <span className="text-rose-400">*</span>
-                        </label>
-                        <input
-                          id="rule-target-name"
-                          required
-                          value={ruleTargetName}
-                          onChange={(e) => {
-                            setRuleTargetName(e.target.value);
-                            setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
-                          }}
-                          type="text"
-                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
-                          placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
-                        />
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          Unit name of the systemd service to track across server heartbeats.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Resource Thresholds Conditions */}
-                  {selectedCategory === 'metric' && (
-                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-4">
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        {/* Metric */}
-                        <div>
-                          <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                            Resource Metric
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-semibold text-[var(--foreground)]">
+                            Threshold: <span className="font-mono font-bold text-indigo-500">{ruleThreshold}{ruleMetric === 'network_latency' ? 'ms' : '%'}</span>
                           </label>
-                          <CustomSelect
-                            value={ruleMetric}
-                            onChange={(val) => {
-                              setRuleMetric(val);
-                              setRuleName(`High ${val.toUpperCase()} Alert (> ${ruleThreshold}%)`);
-                            }}
-                            options={[
-                              { value: 'cpu', label: 'CPU Usage (%)' },
-                              { value: 'ram', label: 'RAM Memory (%)' },
-                              { value: 'disk', label: 'Disk Storage (%)' },
-                            ]}
-                            className="w-full"
-                          />
                         </div>
-
-                        {/* Operator */}
-                        <div>
-                          <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                            Comparison Operator
-                          </label>
-                          <CustomSelect
-                            value={ruleOperator}
-                            onChange={setRuleOperator}
-                            options={[
-                              { value: '>', label: 'Greater than (>)' },
-                              { value: '<', label: 'Less than (<)' },
-                            ]}
-                            className="w-full"
-                          />
-                        </div>
-
-                        {/* Threshold with Presets */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="text-xs font-semibold text-[var(--foreground)]">
-                              Threshold: <span className="font-mono font-bold text-amber-500">{ruleThreshold}%</span>
-                            </label>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="10"
-                              max="100"
-                              step="5"
-                              value={ruleThreshold}
-                              onChange={(e) => {
-                                setRuleThreshold(e.target.value);
-                                setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                        <input
+                          required
+                          min="0"
+                          max={ruleMetric === 'network_latency' ? 60000 : 100}
+                          value={ruleThreshold}
+                          onChange={(e) => {
+                            setRuleThreshold(e.target.value);
+                            const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+                            const metricName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                            setRuleName(`Network ${metricName} Alert (${ruleOperator} ${e.target.value}${unit})`);
+                          }}
+                          type="number"
+                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs font-mono text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder={ruleMetric === 'network_latency' ? 'e.g. 100' : 'e.g. 10'}
+                        />
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {(ruleMetric === 'network_latency' ? ['30', '50', '100', '200', '500'] : ['5', '10', '20', '50']).map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setRuleThreshold(preset);
+                                const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+                                const metricName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                                setRuleName(`Network ${metricName} Alert (${ruleOperator} ${preset}${unit})`);
                               }}
-                              className="w-full accent-amber-500 cursor-pointer"
-                            />
-                            <input
-                              required
-                              min="0"
-                              max="100"
-                              value={ruleThreshold}
-                              onChange={(e) => {
-                                setRuleThreshold(e.target.value);
-                                setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
-                              }}
-                              type="number"
-                              className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] p-1 text-center font-mono text-xs text-[var(--foreground)]"
-                            />
-                          </div>
-
-                          {/* Quick Presets */}
-                          <div className="flex items-center gap-1.5 mt-2">
-                            {['70', '80', '85', '90', '95'].map((preset) => (
-                              <button
-                                key={preset}
-                                type="button"
-                                onClick={() => {
-                                  setRuleThreshold(preset);
-                                  setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${preset}%)`);
-                                }}
-                                className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${
-                                  ruleThreshold === preset
-                                    ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
-                                    : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                                }`}
-                              >
-                                {preset}%
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Sustained Duration Buffer */}
-                      <div className="pt-2 border-t border-amber-500/20">
-                        <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                          <Clock className="h-3.5 w-3.5 text-amber-500" />
-                          Continuous Sustained Duration (Minutes)
-                        </label>
-                        <div className="flex items-center gap-3">
-                          <input
-                            id="metric-duration"
-                            required
-                            min="1"
-                            max="1440"
-                            value={ruleDuration}
-                            onChange={(e) => setRuleDuration(e.target.value)}
-                            type="number"
-                            className="w-32 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                          Prevents alerting on transient spikes. The metric must stay continuously above the threshold for this entire duration.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Website & SSL Conditions */}
-                  {selectedCategory === 'website' && (
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
-                      <div>
-                        <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
-                          Endpoint Health Trigger Condition
-                        </label>
-
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                          {[
-                            {
-                              id: 'website_down',
-                              metric: 'website',
-                              threshold: '0',
-                              label: 'Website DOWN',
-                              defaultName: ruleTargetName ? `Website Down: ${ruleTargetName}` : 'Website Down Alert',
-                            },
-                            {
-                              id: 'ssl_14d',
-                              metric: 'ssl',
-                              threshold: '14',
-                              label: 'SSL Expiring (≤ 14 days)',
-                              defaultName: ruleTargetName ? `SSL Expiration (<= 14d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 14 days)',
-                            },
-                            {
-                              id: 'ssl_30d',
-                              metric: 'ssl',
-                              threshold: '30',
-                              label: 'SSL Expiring (≤ 30 days)',
-                              defaultName: ruleTargetName ? `SSL Expiration (<= 30d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 30 days)',
-                            },
-                          ].map((item) => {
-                            const isSelected = ruleMetric === item.metric && (item.metric === 'website' || ruleThreshold === item.threshold);
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => {
-                                  setRuleMetric(item.metric);
-                                  setRuleThreshold(item.threshold);
-                                  setRuleName(item.defaultName);
-                                }}
-                                className={`flex items-center justify-center rounded-xl border py-3 px-3.5 text-center transition cursor-pointer ${
-                                  isSelected
-                                    ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
-                                    : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
-                                }`}
-                              >
-                                <span className="text-sm font-semibold">{item.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-                          Monitors external HTTP reachability or warns ahead of upcoming TLS certificate expirations.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedStep(4)}
-                      className="ops-button secondary text-xs flex items-center gap-1.5"
-                    >
-                      Continue to Notification Delivery →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* STEP 4: NOTIFICATION ROUTING & CHANNELS (ACCORDION) */}
-            <div className={`ops-panel surface-regular transition-all duration-200 overflow-hidden ${
-              expandedStep === 4 ? 'p-6 ring-1 ring-blue-500/20 shadow-sm' : 'p-4 hover:border-blue-500/30'
-            }`}>
-              <div
-                onClick={() => setExpandedStep(expandedStep === 4 ? 0 : 4)}
-                className="flex items-center justify-between cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                    selectedChannelIds.length > 0 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-blue-500/15 text-blue-500'
-                  }`}>
-                    {selectedChannelIds.length > 0 && expandedStep !== 4 ? <Check className="h-3 w-3 stroke-[3]" /> : '4'}
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
-                      Notification Delivery & Schedule
-                    </h3>
-                    {expandedStep !== 4 && (
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 font-normal">
-                        Channels: <span className={selectedChannelIds.length > 0 ? 'font-semibold text-blue-400' : 'font-semibold text-amber-400'}>
-                          {selectedChannelIds.length > 0 ? `${selectedChannelIds.length} selected` : '0 selected ⚠'}
-                        </span> · Repeat: <span className="font-semibold text-purple-400">{ruleRepeatInterval === '0' ? 'Once' : `${ruleRepeatInterval}m`}</span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-blue-500 hover:underline">
-                    {expandedStep === 4 ? 'Collapse' : 'Edit'}
-                  </span>
-                  {expandedStep === 4 ? <ChevronUp className="h-4 w-4 text-[var(--color-muted)]" /> : <ChevronDown className="h-4 w-4 text-[var(--color-muted)]" />}
-                </div>
-              </div>
-
-              {expandedStep === 4 && (
-                <div className="mt-4 pt-4 border-t border-[var(--border-color)]/60 space-y-5">
-                  {/* Re-notification Selector */}
-                  <div className="max-w-md">
-                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                      <Clock className="h-3.5 w-3.5 text-purple-500" />
-                      Re-notification Reminder Interval
-                    </label>
-                    <CustomSelect
-                      value={ruleRepeatInterval}
-                      onChange={setRuleRepeatInterval}
-                      options={[
-                        { value: '0', label: 'Send once (Do not repeat)' },
-                        { value: '15', label: 'Repeat every 15 minutes while ongoing' },
-                        { value: '30', label: 'Repeat every 30 minutes while ongoing' },
-                        { value: '60', label: 'Repeat every 1 hour while ongoing' },
-                        { value: '120', label: 'Repeat every 2 hours while ongoing' },
-                      ]}
-                      className="w-full"
-                    />
-                    <p className="mt-1 text-[11px] text-[var(--color-muted)]">
-                      How frequently reminder alerts are resent if the underlying incident remains ongoing and unacknowledged.
-                    </p>
-                  </div>
-
-                  {/* Channel Selector Cards with Direct Test Action */}
-                  <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
-                          <Radio className="h-3.5 w-3.5 text-blue-500" />
-                          Select Target Delivery Channels ({selectedChannelIds.length} selected) <span className="text-rose-400">*</span>
-                        </label>
-                        <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
-                          Alerts will be dispatched simultaneously to all selected channels.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('channels')}
-                        className="text-xs font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1"
-                      >
-                        + Configure New Channel
-                      </button>
-                    </div>
-
-                    {/* Inline Validation Warning if 0 channels selected */}
-                    {selectedChannelIds.length === 0 && (
-                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-2.5 text-xs text-amber-400">
-                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-                        <span>Please select at least one notification delivery channel to receive alerts.</span>
-                      </div>
-                    )}
-
-                    {enabledChannels.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[var(--border-color)] p-6 text-center">
-                        <p className="text-sm text-[var(--color-muted)]">No active notification channels configured.</p>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab('channels')}
-                          className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:underline"
-                        >
-                          Click here to configure Discord Webhook / Telegram Bot / Email SMTP →
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {enabledChannels.map((channel) => {
-                          const isSelected = selectedChannelIds.includes(channel.id);
-                          return (
-                            <div
-                              key={channel.id}
-                              onClick={() => toggleChannel(channel.id)}
-                              className={`flex items-center justify-between rounded-xl border p-3.5 transition-all cursor-pointer select-none ${
-                                isSelected
-                                  ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-xs'
-                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-blue-500/40 hover:bg-[var(--surface-hover)]'
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${
+                                ruleThreshold === preset
+                                  ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
+                                  : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <span
-                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                                    isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
-                                  }`}
-                                >
-                                  {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                                </span>
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-[var(--foreground)] truncate">{channel.name}</p>
-                                  <span className="inline-flex items-center rounded-full bg-slate-500/15 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-[var(--color-muted)]">
-                                    {channel.type}
-                                  </span>
-                                </div>
-                              </div>
+                              {preset}{ruleMetric === 'network_latency' ? 'ms' : '%'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                              {/* Direct Test Button with stopPropagation */}
-                              <button
-                                type="button"
-                                disabled={testingChannelId === channel.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void testExistingChannel(channel.id, channel.name);
-                                }}
-                                title="Send test notification to this channel"
-                                className="ops-button secondary ml-2 shrink-0 px-2.5 py-1 text-[11px] text-blue-500 hover:text-blue-400"
-                              >
-                                {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
-                              </button>
-                            </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-2 border-t border-indigo-500/20">
+                      <div>
+                        <label htmlFor="network-target-filter" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                          Target / Tag Filter (Optional)
+                        </label>
+                        <input
+                          id="network-target-filter"
+                          type="text"
+                          value={ruleTargetName}
+                          onChange={(e) => setRuleTargetName(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Target name, tag, or host (leave blank for all)"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="network-duration" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                          <Clock className="h-3.5 w-3.5 text-indigo-400" />
+                          Continuous Duration (Minutes)
+                        </label>
+                        <input
+                          id="network-duration"
+                          required
+                          min="1"
+                          max="1440"
+                          value={ruleDuration}
+                          onChange={(e) => setRuleDuration(e.target.value)}
+                          type="number"
+                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Docker Container */}
+                {selectedCategory === 'container' && (
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+                    <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+                      <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      id="rule-target-name"
+                      required
+                      value={ruleTargetName}
+                      onChange={(e) => {
+                        setRuleTargetName(e.target.value);
+                        setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
+                      }}
+                      type="text"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                      placeholder="e.g. nginx, postgres, redis, api-gateway"
+                    />
+                  </div>
+                )}
+
+                {/* Systemd Service */}
+                {selectedCategory === 'service' && (
+                  <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
+                    <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+                      <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      id="rule-target-name"
+                      required
+                      value={ruleTargetName}
+                      onChange={(e) => {
+                        setRuleTargetName(e.target.value);
+                        setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
+                      }}
+                      type="text"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
+                      placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
+                    />
+                  </div>
+                )}
+
+                {/* Website & SSL */}
+                {selectedCategory === 'website' && (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
+                        Endpoint Health Trigger Condition
+                      </label>
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                        {[
+                          {
+                            id: 'website_down',
+                            metric: 'website',
+                            threshold: '0',
+                            label: 'Website DOWN',
+                            defaultName: ruleTargetName ? `Website Down: ${ruleTargetName}` : 'Website Down Alert',
+                          },
+                          {
+                            id: 'ssl_14d',
+                            metric: 'ssl',
+                            threshold: '14',
+                            label: 'SSL Expiring (≤ 14 days)',
+                            defaultName: ruleTargetName ? `SSL Expiration (<= 14d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 14 days)',
+                          },
+                          {
+                            id: 'ssl_30d',
+                            metric: 'ssl',
+                            threshold: '30',
+                            label: 'SSL Expiring (≤ 30 days)',
+                            defaultName: ruleTargetName ? `SSL Expiration (<= 30d): ${ruleTargetName}` : 'SSL Certificate Expiration Alert (<= 30 days)',
+                          },
+                        ].map((item) => {
+                          const isSelected = ruleMetric === item.metric && (item.metric === 'website' || ruleThreshold === item.threshold);
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setRuleMetric(item.metric);
+                                setRuleThreshold(item.threshold);
+                                setRuleName(item.defaultName);
+                              }}
+                              className={`flex items-center justify-center rounded-xl border py-3 px-3.5 text-center transition cursor-pointer ${
+                                isSelected
+                                  ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
+                                  : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
+                              }`}
+                            >
+                              <span className="text-sm font-semibold">{item.label}</span>
+                            </button>
                           );
                         })}
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* LIVE RULE PREVIEW CALLOUT */}
-            <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <Sparkles className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                    Live Rule Preview
-                  </h4>
-                  <p className="text-sm text-[var(--foreground)] leading-relaxed">
-                    When <strong className="text-blue-500 font-semibold">{rulePreviewText.targetDesc}</strong> experiences{' '}
-                    <strong className="text-amber-500 dark:text-amber-400 font-semibold">{rulePreviewText.conditionDesc}</strong>, instantly dispatch incident alert via{' '}
-                    {selectedChannelIds.length === 0 ? (
-                      <strong className="inline-flex items-center gap-1 text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 inline" /> No notification channels selected
-                      </strong>
-                    ) : (
-                      <strong className="text-blue-400 font-semibold">{rulePreviewText.channelDesc}</strong>
-                    )}{' '}
-                    with schedule to{' '}
-                    <strong className="text-purple-500 dark:text-purple-400 font-semibold">{rulePreviewText.repeatDesc}</strong>.
-                  </p>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* SUBMIT ACTIONS WITH STRICT VALIDATION */}
+            {/* SECTION 2: SCOPE & IDENTITY */}
+            <div className="ops-panel surface-regular p-6 space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
+                2. Scope & Rule Name
+              </h3>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label htmlFor="rule-name" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                    Alert Rule Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    id="rule-name"
+                    required
+                    value={ruleName}
+                    onChange={(e) => setRuleName(e.target.value)}
+                    type="text"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none transition"
+                    placeholder="e.g. Production Latency High"
+                  />
+                </div>
+
+                {selectedCategory === 'website' ? (
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                      <Globe2 className="h-4 w-4 text-emerald-500" /> Monitored Website Target
+                    </label>
+                    <CustomSelect
+                      value={ruleTargetName || 'all'}
+                      onChange={(val) => {
+                        const targetVal = val === 'all' ? '' : val;
+                        setRuleTargetName(targetVal);
+                        if (ruleMetric === 'ssl') {
+                          setRuleName(targetVal ? `SSL Expiration: ${targetVal}` : 'SSL Certificate Expiration Alert');
+                        } else {
+                          setRuleName(targetVal ? `Website Down: ${targetVal}` : 'Website Down Alert');
+                        }
+                      }}
+                      options={[
+                        { value: 'all', label: 'All Monitored Websites (Universal)' },
+                        ...websites.map((w) => ({
+                          value: w.name,
+                          label: w.name,
+                          subLabel: w.url,
+                        })),
+                      ]}
+                      className="w-full"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                      <Server className="h-4 w-4 text-blue-500" /> Target Server Fleet
+                    </label>
+                    <CustomSelect
+                      value={selectedServerId}
+                      onChange={setSelectedServerId}
+                      options={[
+                        { value: 'all', label: 'All servers (Entire Agent Fleet)' },
+                        ...servers.map((server) => ({
+                          value: server.id,
+                          label: server.name,
+                          subLabel: server.status === 'online' ? 'Online' : 'Offline',
+                        })),
+                      ]}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SECTION 3: NOTIFICATION DELIVERY */}
+            <div className="ops-panel surface-regular p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
+                  3. Notification Delivery & Schedule
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('channels')}
+                  className="text-xs font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1 cursor-pointer"
+                >
+                  + Add New Channel
+                </button>
+              </div>
+
+              <div className="max-w-md">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                  <Clock className="h-3.5 w-3.5 text-purple-500" />
+                  Reminder Interval
+                </label>
+                <CustomSelect
+                  value={ruleRepeatInterval}
+                  onChange={setRuleRepeatInterval}
+                  options={[
+                    { value: '0', label: 'Send once (Do not repeat)' },
+                    { value: '15', label: 'Repeat every 15 minutes' },
+                    { value: '30', label: 'Repeat every 30 minutes' },
+                    { value: '60', label: 'Repeat every 1 hour' },
+                    { value: '120', label: 'Repeat every 2 hours' },
+                  ]}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+                  <Radio className="h-3.5 w-3.5 text-blue-500" />
+                  Select Target Delivery Channels ({selectedChannelIds.length} selected) <span className="text-rose-400">*</span>
+                </label>
+
+                {enabledChannels.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[var(--border-color)] p-6 text-center">
+                    <p className="text-sm text-[var(--color-muted)]">No active notification channels configured.</p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('channels')}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:underline cursor-pointer"
+                    >
+                      Configure Telegram / Discord / Email →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {enabledChannels.map((channel) => {
+                      const isSelected = selectedChannelIds.includes(channel.id);
+                      return (
+                        <div
+                          key={channel.id}
+                          onClick={() => toggleChannel(channel.id)}
+                          className={`flex items-center justify-between rounded-xl border p-3.5 transition-all cursor-pointer select-none ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-xs'
+                              : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-blue-500/40 hover:bg-[var(--surface-hover)]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
+                              }`}
+                            >
+                              {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-[var(--foreground)] truncate">{channel.name}</p>
+                              <span className="inline-flex items-center rounded-full bg-slate-500/15 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-[var(--color-muted)]">
+                                {channel.type}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={testingChannelId === channel.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void testExistingChannel(channel.id, channel.name);
+                            }}
+                            title="Send test notification to this channel"
+                            className="ops-button secondary ml-2 shrink-0 px-2.5 py-1 text-[11px] text-blue-500 hover:text-blue-400 cursor-pointer"
+                          >
+                            {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ACTION BAR */}
             {(() => {
               const isNameValid = ruleName.trim().length > 0;
               const isChannelValid = selectedChannelIds.length > 0;
@@ -2119,11 +1905,11 @@ export default function AlertsPage() {
               const isFormValid = isNameValid && isChannelValid && isTargetValid;
 
               const disabledReason = !isNameValid
-                ? 'Please provide an alert rule name in Step 2.'
+                ? 'Please provide an alert rule name.'
                 : !isTargetValid
-                ? 'Please specify the target container or service name in Step 3.'
+                ? 'Please specify the target container or service name.'
                 : !isChannelValid
-                ? 'Please select at least one notification delivery channel in Step 4.'
+                ? 'Please select at least one notification delivery channel.'
                 : '';
 
               return (
@@ -2709,6 +2495,54 @@ export default function AlertsPage() {
                       value={editThreshold}
                       onChange={(e) => setEditThreshold(Number(e.target.value))}
                       className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Threshold & condition for network metrics */}
+              {['network_latency', 'network_loss'].includes(editMetric) && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        Operator
+                      </label>
+                      <CustomSelect
+                        value={editOperator}
+                        onChange={(val) => setEditOperator(val)}
+                        options={[
+                          { value: '>', label: '> (Greater than)' },
+                          { value: '<', label: '< (Less than)' },
+                        ]}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        Threshold ({editMetric === 'network_latency' ? 'ms' : '%'})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={editMetric === 'network_latency' ? 60000 : 100}
+                        required
+                        value={editThreshold}
+                        onChange={(e) => setEditThreshold(Number(e.target.value))}
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                      Target / Tag Filter (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={editTargetName}
+                      onChange={(e) => setEditTargetName(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                      placeholder="Target name, tag, or host (leave blank for all)"
                     />
                   </div>
                 </div>

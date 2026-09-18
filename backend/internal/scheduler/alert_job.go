@@ -270,6 +270,66 @@ func (j *AlertJob) evaluateCondition(ctx context.Context, rule alert.AlertRule, 
 		return evaluateServiceCondition(target, snapshotJSON)
 	}
 
+	if rule.Metric == "network_latency" {
+		targetFilter := ""
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			targetFilter = strings.TrimSpace(*rule.TargetName)
+		}
+		var currentValue float64
+		var count int
+		aggFunc := "MAX"
+		if rule.Operator == "<" {
+			aggFunc = "MIN"
+		}
+		query := fmt.Sprintf(`
+			SELECT COALESCE(%s(r.latency_ms), 0), COUNT(r.id)
+			FROM (
+				SELECT DISTINCT ON (nt.id) r.latency_ms, r.id
+				FROM network_targets nt
+				JOIN network_target_results r ON r.target_id = nt.id
+				WHERE nt.agent_id = $1::uuid AND nt.enabled = true
+				  AND ($2 = '' OR nt.name ILIKE '%%' || $2 || '%%' OR nt.tag ILIKE '%%' || $2 || '%%' OR nt.host ILIKE '%%' || $2 || '%%')
+				  AND r.measured_at >= NOW() - INTERVAL '15 minutes'
+				ORDER BY nt.id, r.measured_at DESC
+			) r
+			WHERE r.latency_ms IS NOT NULL
+		`, aggFunc)
+		if err := j.db.Pool.QueryRow(ctx, query, serverID, targetFilter).Scan(&currentValue, &count); err != nil || count == 0 {
+			return false, 0, false
+		}
+		return compareAlertValue(rule.Operator, currentValue, rule.Threshold), currentValue, true
+	}
+
+	if rule.Metric == "network_loss" {
+		targetFilter := ""
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			targetFilter = strings.TrimSpace(*rule.TargetName)
+		}
+		var currentValue float64
+		var count int
+		aggFunc := "MAX"
+		if rule.Operator == "<" {
+			aggFunc = "MIN"
+		}
+		query := fmt.Sprintf(`
+			SELECT COALESCE(%s(r.packet_loss), 0), COUNT(r.id)
+			FROM (
+				SELECT DISTINCT ON (nt.id) r.packet_loss, r.id
+				FROM network_targets nt
+				JOIN network_target_results r ON r.target_id = nt.id
+				WHERE nt.agent_id = $1::uuid AND nt.enabled = true
+				  AND ($2 = '' OR nt.name ILIKE '%%' || $2 || '%%' OR nt.tag ILIKE '%%' || $2 || '%%' OR nt.host ILIKE '%%' || $2 || '%%')
+				  AND r.measured_at >= NOW() - INTERVAL '15 minutes'
+				ORDER BY nt.id, r.measured_at DESC
+			) r
+			WHERE r.packet_loss IS NOT NULL
+		`, aggFunc)
+		if err := j.db.Pool.QueryRow(ctx, query, serverID, targetFilter).Scan(&currentValue, &count); err != nil || count == 0 {
+			return false, 0, false
+		}
+		return compareAlertValue(rule.Operator, currentValue, rule.Threshold), currentValue, true
+	}
+
 	metricExpression := "cpu_usage"
 	if rule.Metric == "ram" {
 		metricExpression = "memory_used * 100.0 / NULLIF(memory_total, 0)"
@@ -893,15 +953,20 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		}
 	}
 
-	// 4. METRICS (CPU, RAM, DISK)
+	// 4. METRICS (CPU, RAM, DISK, NETWORK)
+	unit := "%"
+	if rule.Metric == "network_latency" {
+		unit = "ms"
+	}
+
 	if isFiring {
 		if isReminder {
 			title := fmt.Sprintf("%s alert (reminder)", rule.Name)
-			dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%) - active for %s.", metricName, serverName, currentValue, rule.Operator, rule.Threshold, downtimeStr)
-			summary := fmt.Sprintf("%s on %s remains in violation at %.2f%% (Condition: %s %.2f%%) - active for %s.", metricName, serverName, currentValue, rule.Operator, rule.Threshold, downtimeStr)
+			dashMsg := fmt.Sprintf("%s on %s is %.2f%s (%s %.2f%s) - active for %s.", metricName, serverName, currentValue, unit, rule.Operator, rule.Threshold, unit, downtimeStr)
+			summary := fmt.Sprintf("%s on %s remains in violation at %.2f%s (Condition: %s %.2f%s) - active for %s.", metricName, serverName, currentValue, unit, rule.Operator, rule.Threshold, unit, downtimeStr)
 			teleMsg := fmt.Sprintf(
-				"⚠️ <b>%s alert (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code> (Threshold: %s %.2f%%)\n<b>Duration Active:</b> <code>%s</code>\n<b>Time:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-				rule.Name, rule.Name, serverName, metricName, currentValue, rule.Operator, rule.Threshold, downtimeStr, nowStr,
+				"⚠️ <b>%s alert (reminder)</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%s</code> (Threshold: %s %.2f%s)\n<b>Duration Active:</b> <code>%s</code>\n<b>Time:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+				rule.Name, rule.Name, serverName, metricName, currentValue, unit, rule.Operator, rule.Threshold, unit, downtimeStr, nowStr,
 			)
 			discord := notifier.DiscordEmbed{
 				Title:       fmt.Sprintf("⚠️ %s alert (reminder)", rule.Name),
@@ -911,8 +976,8 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 					{Name: "Server", Value: serverName, Inline: true},
 					{Name: "Metric", Value: metricName, Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
-					{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
-					{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%%`", rule.Operator, rule.Threshold), Inline: true},
+					{Name: "Current Value", Value: fmt.Sprintf("`%.2f%s`", currentValue, unit), Inline: true},
+					{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%s`", rule.Operator, rule.Threshold, unit), Inline: true},
 					{Name: "\u200b", Value: "\u200b", Inline: true},
 					{Name: "Duration Active", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 					{Name: "Triggered at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -923,7 +988,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 			emailSubj := fmt.Sprintf("[DATRIXOPS REMINDER] Firing (%s): %s on %s", downtimeStr, rule.Name, serverName)
 			emailRows := []alertRow{
 				{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
-				{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold)},
+				{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%s", currentValue, unit), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%s", rule.Operator, rule.Threshold, unit)},
 				{LeftLabel: "Duration Active", LeftVal: downtimeStr, RightLabel: "Triggered at", RightVal: failedAtStr},
 			}
 			emailHTML := renderAlertEmail(rule.Name, summary, "REMINDER", "reminder", emailRows)
@@ -931,11 +996,11 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		}
 
 		title := fmt.Sprintf("%s alert", rule.Name)
-		dashMsg := fmt.Sprintf("%s on %s is %.2f%% (%s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
-		summary := fmt.Sprintf("%s on %s reached %.2f%% (Condition: %s %.2f%%).", metricName, serverName, currentValue, rule.Operator, rule.Threshold)
+		dashMsg := fmt.Sprintf("%s on %s is %.2f%s (%s %.2f%s).", metricName, serverName, currentValue, unit, rule.Operator, rule.Threshold, unit)
+		summary := fmt.Sprintf("%s on %s reached %.2f%s (Condition: %s %.2f%s).", metricName, serverName, currentValue, unit, rule.Operator, rule.Threshold, unit)
 		teleMsg := fmt.Sprintf(
-			"🔴 <b>%s alert</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code> (Condition: %s %.2f%%)\n<b>Triggered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-			rule.Name, rule.Name, serverName, metricName, currentValue, rule.Operator, rule.Threshold, nowStr,
+			"🔴 <b>%s alert</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%s</code> (Condition: %s %.2f%s)\n<b>Triggered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+			rule.Name, rule.Name, serverName, metricName, currentValue, unit, rule.Operator, rule.Threshold, unit, nowStr,
 		)
 		discord := notifier.DiscordEmbed{
 			Title:       fmt.Sprintf("🔴 %s alert", rule.Name),
@@ -945,8 +1010,8 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 				{Name: "Server", Value: serverName, Inline: true},
 				{Name: "Metric", Value: metricName, Inline: true},
 				{Name: "\u200b", Value: "\u200b", Inline: true},
-				{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
-				{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%%`", rule.Operator, rule.Threshold), Inline: true},
+				{Name: "Current Value", Value: fmt.Sprintf("`%.2f%s`", currentValue, unit), Inline: true},
+				{Name: "Condition", Value: fmt.Sprintf("`%s %.2f%s`", rule.Operator, rule.Threshold, unit), Inline: true},
 				{Name: "\u200b", Value: "\u200b", Inline: true},
 				{Name: "Triggered at", Value: fmt.Sprintf("`%s`", nowStr), Inline: true},
 			},
@@ -955,7 +1020,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 		emailSubj := fmt.Sprintf("[DATRIXOPS ALERT] %s on %s", rule.Name, serverName)
 		emailRows := []alertRow{
 			{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
-			{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%%", rule.Operator, rule.Threshold)},
+			{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%s", currentValue, unit), RightLabel: "Condition", RightVal: fmt.Sprintf("%s %.2f%s", rule.Operator, rule.Threshold, unit)},
 			{LeftLabel: "Triggered at", LeftVal: nowStr, RightLabel: "", RightVal: ""},
 		}
 		emailHTML := renderAlertEmail(rule.Name, summary, "FIRING", "firing", emailRows)
@@ -964,11 +1029,11 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 
 	// Resolved
 	title := fmt.Sprintf("%s recovered", rule.Name)
-	dashMsg := fmt.Sprintf("%s on %s returned to %.2f%%. (Duration: %s)", metricName, serverName, currentValue, downtimeStr)
-	summary := fmt.Sprintf("%s on %s returned to %.2f%% (within normal threshold).", metricName, serverName, currentValue)
+	dashMsg := fmt.Sprintf("%s on %s returned to %.2f%s. (Duration: %s)", metricName, serverName, currentValue, unit, downtimeStr)
+	summary := fmt.Sprintf("%s on %s returned to %.2f%s (within normal threshold).", metricName, serverName, currentValue, unit)
 	teleMsg := fmt.Sprintf(
-		"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%%</code>\n<b>Duration:</b> <code>%s</code>\n<b>Triggered at:</b> %s\n<b>Resolved at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
-		rule.Name, rule.Name, serverName, metricName, currentValue, downtimeStr, failedAtStr, nowStr,
+		"🟢 <b>%s recovered</b>\nRule: <i>%s</i>\n─────────────────────────────\n<b>Server:</b> <code>%s</code>\n<b>Metric:</b> <code>%s</code>\n<b>Current Value:</b> <code>%.2f%s</code>\n<b>Duration:</b> <code>%s</code>\n<b>Triggered at:</b> %s\n<b>Resolved at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		rule.Name, rule.Name, serverName, metricName, currentValue, unit, downtimeStr, failedAtStr, nowStr,
 	)
 	discord := notifier.DiscordEmbed{
 		Title:       fmt.Sprintf("🟢 %s recovered", rule.Name),
@@ -978,7 +1043,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 			{Name: "Server", Value: serverName, Inline: true},
 			{Name: "Metric", Value: metricName, Inline: true},
 			{Name: "\u200b", Value: "\u200b", Inline: true},
-			{Name: "Current Value", Value: fmt.Sprintf("`%.2f%%`", currentValue), Inline: true},
+			{Name: "Current Value", Value: fmt.Sprintf("`%.2f%s`", currentValue, unit), Inline: true},
 			{Name: "Duration", Value: fmt.Sprintf("`%s`", downtimeStr), Inline: true},
 			{Name: "\u200b", Value: "\u200b", Inline: true},
 			{Name: "Triggered at", Value: fmt.Sprintf("`%s`", failedAtStr), Inline: true},
@@ -990,7 +1055,7 @@ func buildAlertNotification(rule alert.AlertRule, serverName string, currentValu
 	emailSubj := fmt.Sprintf("[DATRIXOPS RESOLVED] %s on %s", rule.Name, serverName)
 	emailRows := []alertRow{
 		{LeftLabel: "Server", LeftVal: serverName, RightLabel: "Metric", RightVal: metricName},
-		{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%%", currentValue), RightLabel: "Duration", RightVal: downtimeStr},
+		{LeftLabel: "Current Value", LeftVal: fmt.Sprintf("%.2f%s", currentValue, unit), RightLabel: "Duration", RightVal: downtimeStr},
 		{LeftLabel: "Triggered at", LeftVal: failedAtStr, RightLabel: "Resolved at", RightVal: nowStr},
 	}
 	emailHTML := renderAlertEmail(rule.Name, summary, "RESOLVED", "resolved", emailRows)
@@ -1125,6 +1190,10 @@ func metricLabel(metric string) string {
 		return "Docker Container"
 	case "service":
 		return "Systemd Service"
+	case "network_latency":
+		return "Network Latency"
+	case "network_loss":
+		return "Network Packet Loss"
 	default:
 		return metric
 	}

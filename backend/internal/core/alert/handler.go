@@ -432,6 +432,18 @@ func (h *Handler) TestAlertRule(w http.ResponseWriter, r *http.Request) {
 		}
 		serverName = "SSL Certificate Monitor"
 		metricLabel = fmt.Sprintf("Website \"%s\" SSL Certificate expiring soon (≤ %d days)", target, threshold)
+	case "network_latency":
+		target := "All targets"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		metricLabel = fmt.Sprintf("Network Latency for \"%s\" %s %.1f ms (sustained > %dm)", target, rule.Operator, rule.Threshold, rule.DurationMinutes)
+	case "network_loss":
+		target := "All targets"
+		if rule.TargetName != nil && *rule.TargetName != "" {
+			target = *rule.TargetName
+		}
+		metricLabel = fmt.Sprintf("Network Packet Loss for \"%s\" %s %.1f%% (sustained > %dm)", target, rule.Operator, rule.Threshold, rule.DurationMinutes)
 	default:
 		metricLabel = fmt.Sprintf("%s %s %.1f%% (sustained > %dm)", strings.ToUpper(rule.Metric), rule.Operator, rule.Threshold, rule.DurationMinutes)
 	}
@@ -612,6 +624,20 @@ func validateRule(rule AlertRule) string {
 		}
 		if rule.Threshold < 0 || rule.Threshold > 100 {
 			return "Threshold must be between 0 and 100"
+		}
+	case "network_loss":
+		if rule.Operator != ">" && rule.Operator != "<" {
+			return "Unsupported alert condition"
+		}
+		if rule.Threshold < 0 || rule.Threshold > 100 {
+			return "Threshold must be between 0 and 100"
+		}
+	case "network_latency":
+		if rule.Operator != ">" && rule.Operator != "<" {
+			return "Unsupported alert condition"
+		}
+		if rule.Threshold < 0 || rule.Threshold > 60000 {
+			return "Threshold must be between 0 and 60000 ms"
 		}
 	case "status", "container", "service", "website", "ssl":
 		rule.Operator = "=="

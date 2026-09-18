@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowDown, ArrowUp, ArrowUpDown, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -273,6 +273,8 @@ export default function ServerDetailsPage() {
   const [activeTab, setActiveTab] = useState('overview');
 
   const [logsModal, setLogsModal] = useState<{isOpen: boolean, containerId: string, logs: string, loading: boolean}>({isOpen: false, containerId: '', logs: '', loading: false});
+  const [processSortField, setProcessSortField] = useState<'cpu' | 'ram'>('cpu');
+  const [processSortOrder, setProcessSortOrder] = useState<'asc' | 'desc'>('desc');
   const [serviceActionRequest, setServiceActionRequest] = useState<{action: ServiceAction, service: ServiceStatus} | null>(null);
   const [serviceActionBusy, setServiceActionBusy] = useState(false);
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
@@ -1069,33 +1071,91 @@ export default function ServerDetailsPage() {
               <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP RESOURCE-CONSUMING PROCESSES</h3>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-[var(--background)] text-[var(--color-muted)]">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">PID</th>
-                    <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
-                    <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
-                    <th className="px-6 py-3 font-medium">CPU %</th>
-                    <th className="px-6 py-3 font-medium">RAM %</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-color)]">
-                  {snapshot?.top_processes?.map(p => (
-                    <tr key={p.pid} className="hover:bg-[var(--background)] transition-colors">
-                      <td className="px-6 py-3 text-[var(--color-muted)]">{p.pid}</td>
-                      <td className="px-6 py-3 font-medium text-[var(--foreground)]">{p.name}</td>
-                      <td className="px-6 py-3 text-[var(--color-muted)]">{p.user}</td>
-                      <td className="px-6 py-3 text-rose-400">{p.cpu.toFixed(1)}%</td>
-                      <td className="px-6 py-3 text-blue-400">{p.ram.toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                  {!snapshot?.top_processes?.length && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              {(() => {
+                const processes = snapshot?.top_processes || [];
+                const sortedProcesses = [...processes].sort((a, b) => {
+                  const valA = processSortField === 'cpu' ? a.cpu : a.ram;
+                  const valB = processSortField === 'cpu' ? b.cpu : b.ram;
+                  return processSortOrder === 'desc' ? valB - valA : valA - valB;
+                });
+                return (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-[var(--background)] text-[var(--color-muted)]">
+                      <tr>
+                        <th className="px-6 py-3 font-medium">PID</th>
+                        <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
+                        <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
+                        <th className="px-6 py-3 font-medium">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (processSortField === 'cpu') {
+                                setProcessSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'));
+                              } else {
+                                setProcessSortField('cpu');
+                                setProcessSortOrder('desc');
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                          >
+                            <span>CPU %</span>
+                            {processSortField === 'cpu' ? (
+                              processSortOrder === 'desc' ? (
+                                <ArrowDown className="h-3.5 w-3.5 text-rose-400" />
+                              ) : (
+                                <ArrowUp className="h-3.5 w-3.5 text-rose-400" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-6 py-3 font-medium">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (processSortField === 'ram') {
+                                setProcessSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'));
+                              } else {
+                                setProcessSortField('ram');
+                                setProcessSortOrder('desc');
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                          >
+                            <span>RAM %</span>
+                            {processSortField === 'ram' ? (
+                              processSortOrder === 'desc' ? (
+                                <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                              ) : (
+                                <ArrowUp className="h-3.5 w-3.5 text-blue-400" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                            )}
+                          </button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-color)]">
+                      {sortedProcesses.map(p => (
+                        <tr key={p.pid} className="hover:bg-[var(--background)] transition-colors">
+                          <td className="px-6 py-3 text-[var(--color-muted)]">{p.pid}</td>
+                          <td className="px-6 py-3 font-medium text-[var(--foreground)]">{p.name}</td>
+                          <td className="px-6 py-3 text-[var(--color-muted)]">{p.user}</td>
+                          <td className="px-6 py-3 text-rose-400 font-mono font-medium">{p.cpu.toFixed(1)}%</td>
+                          <td className="px-6 py-3 text-blue-400 font-mono font-medium">{p.ram.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                      {!sortedProcesses.length && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1243,18 +1303,18 @@ export default function ServerDetailsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {serviceActions.map(({ action, label, icon: Icon, tone, disabled, unavailableReason }) => (
                         <button
                           key={action}
                           type="button"
+                          aria-label={label}
                           disabled={disabled}
                           title={unavailableReason || (!supportsServiceControls ? `Update the agent to version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.` : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
                           onClick={() => setServiceActionRequest({ action, service })}
-                          className={`px-2.5 py-1 text-xs font-semibold rounded-md border transition-colors inline-flex items-center gap-1.5 ${tone} disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent`}
+                          className={`p-1.5 text-xs font-semibold rounded-lg border transition-all inline-flex items-center justify-center ${tone} disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer`}
                         >
-                          <Icon className="h-3.5 w-3.5" />
-                          {label}
+                          <Icon className="h-4 w-4" />
                         </button>
                       ))}
                     </div>
