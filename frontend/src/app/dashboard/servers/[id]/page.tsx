@@ -3,10 +3,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Copy, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
+import { ArrowLeft, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
-import { copyTextToClipboard } from '@/lib/clipboard';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
@@ -279,8 +278,6 @@ export default function ServerDetailsPage() {
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
   const [netReport, setNetReport] = useState<NetworkDiagnosticReport | null>(null);
-  const [runningNetDiag, setRunningNetDiag] = useState(false);
-  const [lastDiagTime, setLastDiagTime] = useState<string | null>(null);
   const [netTargetFilter, setNetTargetFilter] = useState<string>('all');
   const [historyTargetProbe, setHistoryTargetProbe] = useState<NetworkTargetProbe | null>(null);
   const [historyData, setHistoryData] = useState<{ id: string; latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number }[]>([]);
@@ -311,24 +308,6 @@ export default function ServerDetailsPage() {
     apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
   }, []);
   const isViewer = userRole === 'viewer';
-
-  const runNetworkDiagnostic = useCallback(async () => {
-    if (!params.id) return;
-    setRunningNetDiag(true);
-    try {
-      const res = (await apiClient(`/servers/${params.id}/diagnose-network`, { method: 'POST' })) as unknown as NetworkDiagnosticReport;
-      if (res) {
-        setNetReport(res);
-        setLastDiagTime(new Date().toLocaleTimeString());
-        toast.success('Network diagnostics completed successfully!');
-      }
-    } catch (err: unknown) {
-      console.error(err);
-      toast.error('Failed to run network diagnostics');
-    } finally {
-      setRunningNetDiag(false);
-    }
-  }, [params.id]);
 
   const fetchServer = useCallback(async () => {
     try {
@@ -376,7 +355,6 @@ export default function ServerDetailsPage() {
             const data = raw as unknown as NetworkDiagnosticReport;
             if (isMounted && data) {
               setNetReport(data);
-              setLastDiagTime(new Date(data.timestamp || Date.now()).toLocaleTimeString());
             }
           })
           .catch(() => {});
@@ -1303,10 +1281,6 @@ export default function ServerDetailsPage() {
             const netDiag = snapshot?.network_diagnostics;
             const netIfaces = netDiag?.interfaces || snapshot?.network_interfaces || [];
             const primaryIface = (netIfaces as Array<{ name: string; is_default?: boolean }>).find((i) => i.is_default || i.name === netDiag?.primary_uplink) || netIfaces[0];
-            const alertSev = netReport?.alert_evaluation?.severity || netDiag?.status || 'none';
-            const isCrit = alertSev === 'critical';
-            const isWarn = alertSev === 'warning';
-
             const gateway = netReport?.gateway;
             const groups = netReport?.groups || {};
             const groupTags = netReport?.group_order && netReport.group_order.length > 0
@@ -1339,79 +1313,19 @@ export default function ServerDetailsPage() {
 
             return (
               <>
-                {/* Header Action & Status Card */}
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex items-start sm:items-center gap-3.5">
-                      <div className={`p-3 rounded-xl border shrink-0 ${
-                        isCrit ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' :
-                        isWarn ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
-                        'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                      }`}>
-                        <Zap className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <h2 className="text-lg font-bold text-[var(--foreground)]">
-                            Network Quality Diagnostics
-                          </h2>
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
-                            isCrit ? 'bg-rose-500 text-white' :
-                            isWarn ? 'bg-amber-500 text-black' :
-                            'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          }`}>
-                            {isCrit ? 'Critical' : isWarn ? 'Warning' : 'Optimal'}
-                          </span>
-                          {lastDiagTime && (
-                            <span className="text-xs text-[var(--color-muted)]">
-                              (Last probe: {lastDiagTime})
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2.5 flex-wrap self-start lg:self-center shrink-0">
-                      <button
-                        type="button"
-                        onClick={runNetworkDiagnostic}
-                        disabled={runningNetDiag}
-                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {runningNetDiag ? (
-                          <>
-                            <RotateCw className="w-4 h-4 animate-spin" /> Probing Network...
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="w-4 h-4" /> ⚡ Run Diagnostics
-                          </>
-                        )}
-                      </button>
-
-                      <Link
-                        href={`/dashboard/network?agent_id=${params.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
-                        title="Open centralized network targets manager"
-                      >
-                        <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cmd = osFamily === 'windows' ? 'powershell -ExecutionPolicy Bypass -File check-network.ps1' : 'datrix check-network';
-                          copyTextToClipboard(cmd);
-                          toast.success('CLI command copied to clipboard!');
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3 py-2 text-xs font-semibold transition cursor-pointer"
-                        title="Copy network check CLI command"
-                      >
-                        <Copy className="w-3.5 h-3.5" /> CLI
-                      </button>
-                    </div>
+                {/* Top Action Bar */}
+                {(gateway || groupTags.length > 0) && (
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="text-base font-bold text-[var(--foreground)]">Network Quality</h3>
+                    <Link
+                      href={`/dashboard/network?agent_id=${params.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
+                      title="Open centralized network targets manager"
+                    >
+                      <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
+                    </Link>
                   </div>
-                </div>
+                )}
 
                 {/* Dynamic Pillar / Tag Group Cards */}
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1434,7 +1348,7 @@ export default function ServerDetailsPage() {
                           </span>
                           <span className="text-xs text-[var(--color-muted)] font-medium">ms latency</span>
                         </div>
-                        <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-3 border-b border-[var(--border-color)]/60">
+                        <div className="text-xs space-y-1.5 text-[var(--color-muted)]">
                           <div className="flex justify-between">
                             <span>Packet Loss:</span>
                             <span className={`font-mono font-semibold ${
