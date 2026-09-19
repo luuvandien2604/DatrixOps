@@ -897,64 +897,53 @@ func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	targets, err := h.svc.GetEnabledNetworkTargets(r.Context(), server.ID)
+	targetsWithLatest, err := h.svc.ListNetworkTargets(r.Context(), []string{server.ID}, "", "", userID)
 	if err != nil {
-		slog.Error("failed to get network targets", "server_id", server.ID, "error", err)
+		slog.Error("failed to list network targets with latest results", "server_id", server.ID, "error", err)
 	}
 
-	h.netReportsMu.RLock()
-	report, exists := h.lastNetReports[server.ID]
-	h.netReportsMu.RUnlock()
-
-	needsRefresh := !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute
-	if !needsRefresh && report != nil {
-		cachedTargetIDs := make(map[string]struct{}, len(report.Probes))
-		for _, p := range report.Probes {
-			if p.TargetID != "" {
-				cachedTargetIDs[p.TargetID] = struct{}{}
-			}
-		}
-		var regularCount int
-		for _, t := range targets {
-			if !t.IsGateway {
-				regularCount++
-				if _, found := cachedTargetIDs[t.ID]; !found {
-					needsRefresh = true
-					break
-				}
-			}
-		}
-		if len(cachedTargetIDs) != regularCount {
-			needsRefresh = true
-		}
+	var snapshotRaw []byte
+	if server.Snapshot != nil {
+		snapshotRaw = []byte(*server.Snapshot)
 	}
 
-	if needsRefresh {
-		diagCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		defer cancel()
+	// 1. If we have targets in DB, build report instantly from DB latest results!
+	if len(targetsWithLatest) > 0 {
+		report := BuildDiagnosticReportFromTargets(server.ID, server.Name, snapshotRaw, targetsWithLatest)
 
-		var snapshotRaw []byte
-		if server.Snapshot != nil {
-			snapshotRaw = []byte(*server.Snapshot)
-		}
-		var historyResults []NetworkTargetResult
-		report, historyResults = RunNetworkDiagnostic(diagCtx, server.ID, server.Name, snapshotRaw, targets)
-
-		if len(historyResults) > 0 {
-			if saveErr := h.svc.SaveNetworkTargetResults(r.Context(), historyResults); saveErr != nil {
-				slog.Error("failed to save network target results", "server_id", server.ID, "error", saveErr)
-			}
-		}
-
+		// Update in-memory cache
 		h.netReportsMu.Lock()
 		if h.lastNetReports == nil {
 			h.lastNetReports = make(map[string]*NetworkDiagnosticReport)
 		}
 		h.lastNetReports[server.ID] = report
 		h.netReportsMu.Unlock()
+
+		// If data is older than 2 minutes, trigger background refresh so subsequent polls get fresh metrics
+		if time.Since(report.Timestamp) > 2*time.Minute {
+			go func(sID, sName string, snap []byte) {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+				defer cancel()
+				enabledTargets, err := h.svc.GetEnabledNetworkTargets(bgCtx, sID)
+				if err == nil && len(enabledTargets) > 0 {
+					freshReport, historyResults := RunNetworkDiagnostic(bgCtx, sID, sName, snap, enabledTargets)
+					if len(historyResults) > 0 {
+						_ = h.svc.SaveNetworkTargetResults(bgCtx, historyResults)
+					}
+					h.netReportsMu.Lock()
+					h.lastNetReports[sID] = freshReport
+					h.netReportsMu.Unlock()
+				}
+			}(server.ID, server.Name, snapshotRaw)
+		}
+
+		response.Success(w, http.StatusOK, report)
+		return
 	}
 
-	response.Success(w, http.StatusOK, report)
+	// 2. If no targets configured, return empty report immediately
+	emptyReport := BuildDiagnosticReportFromTargets(server.ID, server.Name, snapshotRaw, nil)
+	response.Success(w, http.StatusOK, emptyReport)
 }
 
 // ---------- Network Targets Handlers ----------

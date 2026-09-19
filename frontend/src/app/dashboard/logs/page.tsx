@@ -362,7 +362,7 @@ export default function LogsPage() {
         sinceVal = `${fromDate} ${fromTime || '00:00'}:00`;
       }
 
-      const effectiveUnit = remoteLogUnit.trim() || (remoteLogSource === 'journal' && !searchQuery.includes(' ') && searchQuery.trim() ? searchQuery.trim() : '');
+      const effectiveUnit = remoteLogUnit.trim();
       const payload: Record<string, string> = {
         source: remoteLogSource,
         unit: effectiveUnit,
@@ -510,6 +510,12 @@ export default function LogsPage() {
                 placeholder="e.g. apache2, nginx..."
                 value={remoteLogUnit}
                 onChange={e => setRemoteLogUnit(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && selectedServer) {
+                    e.preventDefault();
+                    void fetchRemoteLogs();
+                  }
+                }}
                 className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all font-mono"
               />
             </div>
@@ -559,9 +565,15 @@ export default function LogsPage() {
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" />
               <input
                 type="text"
-                placeholder="Search message text..."
+                placeholder="Search message text (press Enter to fetch)..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && selectedServer) {
+                    e.preventDefault();
+                    void fetchRemoteLogs();
+                  }
+                }}
                 style={{ paddingLeft: '44px' }}
                 className="w-full pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all"
               />
@@ -678,7 +690,9 @@ export default function LogsPage() {
             )}
           </div>
 
-          <span className="status-badge disabled">AUDIT STREAM</span>
+          <span className={`status-badge ${selectedServer ? 'online' : 'disabled'}`}>
+            {selectedServer ? `${selectedServer.name} · ${remoteLogSource.toUpperCase().replace('_', ' ')}` : 'AUDIT STREAM'}
+          </span>
         </div>
 
         {/* Console Body */}
@@ -692,8 +706,25 @@ export default function LogsPage() {
               Unable to load logs: {loadError}
             </div>
           ) : visibleLogs.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 font-sans">
-              No log records match the current filters.
+            <div className="py-12 text-center text-slate-400 font-sans space-y-3">
+              <p className="text-sm">
+                {searchQuery.trim()
+                  ? `No log lines matching "${searchQuery.trim()}" found in current view.`
+                  : selectedServer
+                  ? `No ${remoteLogSource.replace('_', ' ')} logs loaded yet for ${selectedServer.name}.`
+                  : 'No log records match the current filters.'}
+              </p>
+              {selectedServer && (
+                <button
+                  type="button"
+                  onClick={() => void fetchRemoteLogs()}
+                  disabled={fetchingRemoteLogs}
+                  className="ops-button primary text-xs py-1.5 px-3 inline-flex items-center gap-2 mx-auto"
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  {fetchingRemoteLogs ? 'Fetching…' : `Fetch ${remoteLogSource.replace('_', ' ')} logs`}
+                </button>
+              )}
             </div>
           ) : (
             visibleLogs.map((log, idx) => (

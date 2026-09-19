@@ -747,7 +747,11 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 			if !serviceIdentifierPattern.MatchString(unit) {
 				return "", fmt.Errorf("invalid journal unit")
 			}
-			args = append([]string{"-u", unit}, args...)
+			if !strings.Contains(unit, "*") && !strings.HasSuffix(unit, ".service") {
+				args = append([]string{"-u", unit, "-u", unit + "*"}, args...)
+			} else {
+				args = append([]string{"-u", unit}, args...)
+			}
 		}
 		grep := strings.TrimSpace(payload["grep"])
 		var out string

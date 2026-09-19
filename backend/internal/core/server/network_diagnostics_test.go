@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 )
 
 // ---------- TestMultiProbeStrictProtocolSeparation ----------
@@ -392,3 +393,81 @@ func TestDynamicTagGroupingInDiagnosticReport(t *testing.T) {
 		t.Fatalf("expected 1 regular history result, got %d", len(results))
 	}
 }
+
+func TestBuildDiagnosticReportFromTargets(t *testing.T) {
+	lat := 12.5
+	minLat := 10.0
+	maxLat := 15.0
+	loss := 0.0
+	now := time.Now()
+
+	targets := []NetworkTargetWithLatest{
+		{
+			NetworkTarget: NetworkTarget{
+				ID:          "gw-1",
+				AgentID:     "srv-1",
+				Name:        "Local Gateway",
+				Host:        "192.168.1.1",
+				Tag:         "Network",
+				ProbeMethod: "ICMP",
+				Enabled:     true,
+				IsGateway:   true,
+			},
+			LatestResult: &NetworkTargetResult{
+				ID:               "res-1",
+				TargetID:         "gw-1",
+				LatencyMs:        &lat,
+				PacketLoss:       &loss,
+				TotalProbes:      5,
+				SuccessfulProbes: 5,
+				Status:           "optimal",
+				MeasuredAt:       now,
+			},
+		},
+		{
+			NetworkTarget: NetworkTarget{
+				ID:          "tgt-1",
+				AgentID:     "srv-1",
+				Name:        "Google DNS",
+				Host:        "8.8.8.8",
+				Tag:         "Quốc tế",
+				ProbeMethod: "ICMP",
+				Enabled:     true,
+			},
+			LatestResult: &NetworkTargetResult{
+				ID:               "res-2",
+				TargetID:         "tgt-1",
+				LatencyMs:        &lat,
+				MinLatencyMs:     &minLat,
+				MaxLatencyMs:     &maxLat,
+				PacketLoss:       &loss,
+				TotalProbes:      5,
+				SuccessfulProbes: 5,
+				Status:           "optimal",
+				MeasuredAt:       now,
+			},
+		},
+	}
+
+	report := BuildDiagnosticReportFromTargets("srv-1", "Server One", nil, targets)
+
+	if report.ServerID != "srv-1" {
+		t.Fatalf("expected ServerID 'srv-1', got '%s'", report.ServerID)
+	}
+	if report.Gateway == nil {
+		t.Fatal("expected gateway result to be populated")
+	}
+	if report.Gateway.LatencyMs != 12.5 {
+		t.Fatalf("expected gateway latency 12.5, got %f", report.Gateway.LatencyMs)
+	}
+	if len(report.Probes) != 1 {
+		t.Fatalf("expected 1 regular probe, got %d", len(report.Probes))
+	}
+	if _, ok := report.Groups["Quốc tế"]; !ok {
+		t.Fatal("expected group 'Quốc tế' to exist")
+	}
+	if report.AlertEvaluation.Severity != "none" {
+		t.Fatalf("expected alert severity none, got %s", report.AlertEvaluation.Severity)
+	}
+}
+

@@ -859,6 +859,187 @@ func RunNetworkDiagnostic(ctx context.Context, serverID, serverName string, serv
 	return report, historyResults
 }
 
+// BuildDiagnosticReportFromTargets constructs a NetworkDiagnosticReport instantly using latest DB results.
+func BuildDiagnosticReportFromTargets(serverID, serverName string, serverSnapshotRaw []byte, targets []NetworkTargetWithLatest) *NetworkDiagnosticReport {
+	report := &NetworkDiagnosticReport{
+		ServerID:   serverID,
+		ServerName: serverName,
+		Timestamp:  time.Now(),
+		SampleSize: ProbesPerTarget,
+		Groups:     make(map[string]NetworkPillarResult),
+		GroupOrder: []string{},
+		Probes:     []NetworkTargetProbe{},
+	}
+
+	// Parse server telemetry from snapshot if available
+	var telemetry *ServerNetworkTelemetry
+	if len(serverSnapshotRaw) > 0 {
+		var snap struct {
+			NetworkDiagnostics *ServerNetworkTelemetry `json:"network_diagnostics"`
+		}
+		if err := json.Unmarshal(serverSnapshotRaw, &snap); err == nil && snap.NetworkDiagnostics != nil {
+			telemetry = snap.NetworkDiagnostics
+			report.ServerTelemetry = telemetry
+		}
+	}
+
+	var gwTarget *NetworkTargetWithLatest
+	var regularTargets []NetworkTargetWithLatest
+	var latestTs time.Time
+
+	for i := range targets {
+		t := &targets[i]
+		if !t.Enabled {
+			continue
+		}
+		if t.LatestResult != nil && t.LatestResult.MeasuredAt.After(latestTs) {
+			latestTs = t.LatestResult.MeasuredAt
+		}
+		if t.IsGateway {
+			gwTarget = t
+		} else {
+			regularTargets = append(regularTargets, *t)
+		}
+	}
+
+	if !latestTs.IsZero() {
+		report.Timestamp = latestTs
+	}
+
+	// Gateway evaluation
+	if gwTarget != nil && gwTarget.LatestResult != nil {
+		method := gwTarget.ProbeMethod
+		if method == "" {
+			method = "ICMP"
+		}
+		lat := 0.0
+		if gwTarget.LatestResult.LatencyMs != nil {
+			lat = *gwTarget.LatestResult.LatencyMs
+		}
+		gwPillar := NetworkPillarResult{
+			Status:            gwTarget.LatestResult.Status,
+			LatencyMs:         lat,
+			PacketLoss:        gwTarget.LatestResult.PacketLoss,
+			TotalProbes:       gwTarget.LatestResult.TotalProbes,
+			SuccessfulProbes:  gwTarget.LatestResult.SuccessfulProbes,
+			FailedProbes:      gwTarget.LatestResult.FailedProbes,
+			MeasurementMethod: method,
+			Summary:           fmt.Sprintf("Gateway probe: %.1fms", lat),
+		}
+		report.Gateway = &gwPillar
+	} else if telemetry != nil {
+		gwResult := probeGateway(context.Background(), telemetry, nil)
+		report.Gateway = &gwResult
+	}
+
+	if len(regularTargets) == 0 {
+		report.AlertEvaluation = evaluateAlerts(report)
+		return report
+	}
+
+	probeResults := make([]NetworkTargetProbe, len(regularTargets))
+	for i, tgt := range regularTargets {
+		p := NetworkTargetProbe{
+			ID:          tgt.ID,
+			TargetID:    tgt.ID,
+			Name:        tgt.Name,
+			Tag:         tgt.Tag,
+			Host:        tgt.Host,
+			Port:        tgt.Port,
+			ProbeMethod: tgt.ProbeMethod,
+			IsGateway:   tgt.IsGateway,
+			Status:      "optimal",
+			ProbeStatus: "pending",
+		}
+		if tgt.LatestResult != nil {
+			p.Status = tgt.LatestResult.Status
+			p.TotalProbes = tgt.LatestResult.TotalProbes
+			p.SuccessfulProbes = tgt.LatestResult.SuccessfulProbes
+			p.FailedProbes = tgt.LatestResult.FailedProbes
+			p.PacketLoss = tgt.LatestResult.PacketLoss
+			if tgt.LatestResult.LatencyMs != nil {
+				p.LatencyMs = *tgt.LatestResult.LatencyMs
+			}
+			if tgt.LatestResult.MinLatencyMs != nil {
+				p.MinLatencyMs = *tgt.LatestResult.MinLatencyMs
+			}
+			if tgt.LatestResult.MaxLatencyMs != nil {
+				p.MaxLatencyMs = *tgt.LatestResult.MaxLatencyMs
+			}
+			if p.Status == "optimal" || p.Status == "warning" || p.Status == "reachable" {
+				p.ProbeStatus = "success"
+			} else if p.Status == "unreachable" {
+				p.ProbeStatus = "refused"
+			} else {
+				p.ProbeStatus = "timeout"
+			}
+		}
+		probeResults[i] = p
+	}
+	report.Probes = probeResults
+
+	// Dynamic Tag grouping
+	tagProbes := make(map[string][]NetworkTargetProbe)
+	tagTargets := make(map[string][]NetworkTargetWithLatest)
+	var groupOrder []string
+
+	for i, p := range probeResults {
+		tag := p.Tag
+		if tag == "" {
+			tag = "default"
+		}
+		if _, exists := tagProbes[tag]; !exists {
+			groupOrder = append(groupOrder, tag)
+		}
+		tagProbes[tag] = append(tagProbes[tag], p)
+		tagTargets[tag] = append(tagTargets[tag], regularTargets[i])
+	}
+	report.GroupOrder = groupOrder
+
+	for _, tag := range groupOrder {
+		probes := tagProbes[tag]
+		groupPillar := aggregatePillar(probes)
+
+		lossCrit := DefaultLossCriticalPct
+		latWarn := DefaultLatencyWarningMs
+		latCrit := DefaultLatencyCriticalMs
+
+		var warnSum, critSum, lossSum float64
+		var warnCount, critCount, lossCount int
+
+		for _, t := range tagTargets[tag] {
+			if t.AlertLatencyWarningMs != nil && *t.AlertLatencyWarningMs > 0 {
+				warnSum += *t.AlertLatencyWarningMs
+				warnCount++
+			}
+			if t.AlertLatencyCriticalMs != nil && *t.AlertLatencyCriticalMs > 0 {
+				critSum += *t.AlertLatencyCriticalMs
+				critCount++
+			}
+			if t.AlertLossCriticalPct != nil && *t.AlertLossCriticalPct > 0 {
+				lossSum += *t.AlertLossCriticalPct
+				lossCount++
+			}
+		}
+
+		if warnCount > 0 {
+			latWarn = warnSum / float64(warnCount)
+		}
+		if critCount > 0 {
+			latCrit = critSum / float64(critCount)
+		}
+		if lossCount > 0 {
+			lossCrit = lossSum / float64(lossCount)
+		}
+
+		evaluatePillarStatus(&groupPillar, lossCrit, latWarn, latCrit)
+		report.Groups[tag] = groupPillar
+	}
+
+	report.AlertEvaluation = evaluateAlerts(report)
+	return report
+}
+
 // evaluateAlerts builds the alert evaluation from Gateway and dynamic Tag groups.
 func evaluateAlerts(report *NetworkDiagnosticReport) NetworkAlertEvaluation {
 	var reasons []string

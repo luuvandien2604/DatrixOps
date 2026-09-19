@@ -6,7 +6,6 @@ import { useSearchParams } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
-  ChevronDown,
   Filter,
   LoaderCircle,
   Network,
@@ -30,6 +29,7 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
+import CustomSelect from '@/components/CustomSelect';
 
 interface ServerOption {
   id: string;
@@ -199,6 +199,39 @@ function NetworkQualityPageInner() {
     });
     return Array.from(set);
   }, [targets]);
+
+  const serverSelectOptions = useMemo(
+    () => [
+      { value: '', label: `All Servers (${servers.length})` },
+      ...servers.map((s) => ({
+        value: s.id,
+        label: s.name,
+        subLabel: s.ip_address || 'No IP',
+      })),
+    ],
+    [servers]
+  );
+
+  const tagSelectOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Tags' },
+      ...discoveredTags.map((t) => ({
+        value: t,
+        label: `Tag: ${t}`,
+      })),
+    ],
+    [discoveredTags]
+  );
+
+  const statusSelectOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Statuses' },
+      { value: 'optimal', label: 'Optimal' },
+      { value: 'warning', label: 'Warning' },
+      { value: 'critical', label: 'Critical' },
+    ],
+    []
+  );
 
   // Currently selected server for title / header scoping
   const selectedServer = useMemo(() => servers.find((s) => s.id === selectedAgentId), [servers, selectedAgentId]);
@@ -644,70 +677,41 @@ function NetworkQualityPageInner() {
 
               <div className="flex items-center gap-2 flex-wrap text-xs">
                 {/* Server filter */}
-                <div className="relative inline-flex items-center">
-                  <ServerIcon className="absolute left-3 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                  <select
-                    value={selectedAgentId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedAgentId(val);
-                      if (typeof window !== 'undefined') {
-                        const url = new URL(window.location.href);
-                        if (val) {
-                          url.searchParams.set('agent_id', val);
-                        } else {
-                          url.searchParams.delete('agent_id');
-                        }
-                        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                <CustomSelect
+                  value={selectedAgentId}
+                  onChange={(val) => {
+                    setSelectedAgentId(val);
+                    if (typeof window !== 'undefined') {
+                      const url = new URL(window.location.href);
+                      if (val) {
+                        url.searchParams.set('agent_id', val);
+                      } else {
+                        url.searchParams.delete('agent_id');
                       }
-                    }}
-                    style={{ paddingLeft: '34px', paddingRight: '32px' }}
-                    className="h-9 max-w-[220px] appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] truncate focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
-                  >
-                    <option value="">All Servers ({servers.length})</option>
-                    {servers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.ip_address || 'No IP'})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                </div>
+                      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+                    }
+                  }}
+                  options={serverSelectOptions}
+                  icon={<ServerIcon className="w-3.5 h-3.5 text-[var(--color-muted)]" />}
+                  className="h-9 min-w-[190px] max-w-[240px]"
+                />
 
                 {/* Tag filter */}
-                <div className="relative inline-flex items-center">
-                  <Filter className="absolute left-3 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                  <select
-                    value={selectedTag}
-                    onChange={(e) => setSelectedTag(e.target.value)}
-                    style={{ paddingLeft: '34px', paddingRight: '32px' }}
-                    className="h-9 max-w-[180px] appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] truncate focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
-                  >
-                    <option value="all">All Tags</option>
-                    {discoveredTags.map((t) => (
-                      <option key={t} value={t}>
-                        Tag: {t}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                </div>
+                <CustomSelect
+                  value={selectedTag}
+                  onChange={setSelectedTag}
+                  options={tagSelectOptions}
+                  icon={<Filter className="w-3.5 h-3.5 text-[var(--color-muted)]" />}
+                  className="h-9 min-w-[140px] max-w-[180px]"
+                />
 
                 {/* Status filter */}
-                <div className="relative inline-flex items-center">
-                  <select
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
-                    style={{ paddingLeft: '14px', paddingRight: '30px' }}
-                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="optimal">Optimal</option>
-                    <option value="warning">Warning</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                  <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                </div>
+                <CustomSelect
+                  value={selectedStatus}
+                  onChange={setSelectedStatus}
+                  options={statusSelectOptions}
+                  className="h-9 min-w-[130px] max-w-[150px]"
+                />
 
                 {(selectedAgentId || selectedTag !== 'all' || selectedStatus !== 'all' || searchQuery) && (
                   <button
@@ -1006,14 +1010,15 @@ function NetworkQualityPageInner() {
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
                     Probe Method
                   </label>
-                  <select
+                  <CustomSelect
                     value={formData.probe_method}
-                    onChange={(e) => setFormData({ ...formData, probe_method: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value="ICMP">ICMP Ping (Loss + Latency)</option>
-                    <option value="TCP">TCP Connect (Reachability + RTT)</option>
-                  </select>
+                    onChange={(val) => setFormData({ ...formData, probe_method: val })}
+                    options={[
+                      { value: 'ICMP', label: 'ICMP Ping (Loss + Latency)' },
+                      { value: 'TCP', label: 'TCP Connect (Reachability + RTT)' },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 <div>
