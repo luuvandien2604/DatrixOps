@@ -661,7 +661,8 @@ function NetworkQualityPageInner() {
                         window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
                       }
                     }}
-                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-8 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
+                    style={{ paddingLeft: '34px', paddingRight: '32px' }}
+                    className="h-9 max-w-[220px] appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] truncate focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="">All Servers ({servers.length})</option>
                     {servers.map((s) => (
@@ -679,7 +680,8 @@ function NetworkQualityPageInner() {
                   <select
                     value={selectedTag}
                     onChange={(e) => setSelectedTag(e.target.value)}
-                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-8 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
+                    style={{ paddingLeft: '34px', paddingRight: '32px' }}
+                    className="h-9 max-w-[180px] appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] truncate focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="all">All Tags</option>
                     {discoveredTags.map((t) => (
@@ -696,7 +698,8 @@ function NetworkQualityPageInner() {
                   <select
                     value={selectedStatus}
                     onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 pr-8 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
+                    style={{ paddingLeft: '14px', paddingRight: '30px' }}
+                    className="h-9 appearance-none rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer hover:bg-[var(--border-color)]/20"
                   >
                     <option value="all">All Statuses</option>
                     <option value="optimal">Optimal</option>

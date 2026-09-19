@@ -38,7 +38,7 @@ var (
 
 var (
 	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
-	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
+	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9*][a-zA-Z0-9_.@:$ *\-]{0,199}$`)
 )
 
 type queuedAgentTask struct {
@@ -740,13 +740,31 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 	switch payload["source"] {
 	case "journal":
 		args := []string{"-n", lines, "--no-pager", "-o", "short-iso"}
+		if since := strings.TrimSpace(payload["since"]); since != "" {
+			args = append(args, "--since", since)
+		}
 		if unit := strings.TrimSpace(payload["unit"]); unit != "" {
 			if !serviceIdentifierPattern.MatchString(unit) {
 				return "", fmt.Errorf("invalid journal unit")
 			}
 			args = append([]string{"-u", unit}, args...)
 		}
-		out, err := combinedOutput(ctx, "journalctl", args...)
+		grep := strings.TrimSpace(payload["grep"])
+		var out string
+		var err error
+		if grep != "" {
+			grepArgs := append(args, "--grep", grep)
+			out, err = combinedOutput(ctx, "journalctl", grepArgs...)
+			if err != nil && (strings.Contains(out, "unrecognized option") || strings.Contains(out, "invalid option") || strings.Contains(strings.ToLower(out), "unknown option")) {
+				out, err = combinedOutput(ctx, "journalctl", args...)
+				if err == nil {
+					out = filterLinesByKeyword(out, grep)
+				}
+			}
+		} else {
+			out, err = combinedOutput(ctx, "journalctl", args...)
+		}
+
 		if err != nil && strings.TrimSpace(out) == "" {
 			return fmt.Sprintf("journalctl notice: %v", err), nil
 		}
@@ -798,6 +816,18 @@ func firstExistingLogPath(paths ...string) string {
 		}
 	}
 	return ""
+}
+
+func filterLinesByKeyword(output, keyword string) string {
+	lowerKeyword := strings.ToLower(keyword)
+	lines := strings.Split(output, "\n")
+	var matched []string
+	for _, l := range lines {
+		if strings.Contains(strings.ToLower(l), lowerKeyword) {
+			matched = append(matched, l)
+		}
+	}
+	return strings.Join(matched, "\n")
 }
 
 func limitTaskOutput(output string, limit int) string {

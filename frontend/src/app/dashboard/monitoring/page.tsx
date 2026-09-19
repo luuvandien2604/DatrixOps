@@ -1081,13 +1081,14 @@ function ExpandedRamChartCard({
             <Tooltip content={<MetricsTooltip />} />
 
             {activeSeries.ram_other && (
-              <Line
+              <Area
                 type="monotone"
+                stackId="ramStack"
                 dataKey="ram_other"
                 name="Other Processes & OS"
                 stroke="#64748b"
+                fill="url(#ramOtherGrad)"
                 strokeWidth={1.5}
-                dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
               />
@@ -1097,14 +1098,15 @@ function ExpandedRamChartCard({
               const key = `ram_proc_${idx}`;
               if (!activeSeries[key]) return null;
               return (
-                <Line
+                <Area
                   key={key}
                   type="monotone"
+                  stackId="ramStack"
                   dataKey={key}
                   name={`${proc.name} (PID ${proc.pid})`}
                   stroke={PROCESS_COLORS[idx % PROCESS_COLORS.length]}
+                  fill={`url(#ramGrad_${idx})`}
                   strokeWidth={1.5}
-                  dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
                 />

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ArrowDown, ArrowUp, ArrowUpDown, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowDown, ArrowUp, ArrowUpDown, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus, FileText } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -280,6 +280,7 @@ export default function ServerDetailsPage() {
   const [queueingAgentUpdate, setQueueingAgentUpdate] = useState(false);
   const [agentUpdateTask, setAgentUpdateTask] = useState<AgentUpdateTask | null>(null);
   const [netReport, setNetReport] = useState<NetworkDiagnosticReport | null>(null);
+  const [netReportFailed, setNetReportFailed] = useState(false);
   const [netTargetFilter, setNetTargetFilter] = useState<string>('all');
   const [historyTargetProbe, setHistoryTargetProbe] = useState<NetworkTargetProbe | null>(null);
   const [historyData, setHistoryData] = useState<{ id: string; latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number }[]>([]);
@@ -357,9 +358,12 @@ export default function ServerDetailsPage() {
             const data = raw as unknown as NetworkDiagnosticReport;
             if (isMounted && data) {
               setNetReport(data);
+              setNetReportFailed(false);
             }
           })
-          .catch(() => {});
+          .catch(() => {
+            if (isMounted) setNetReportFailed(true);
+          });
       };
 
       fetchDiag();
@@ -1283,27 +1287,24 @@ export default function ServerDetailsPage() {
                                 : 'bg-amber-500'
                         }`}
                       />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-[var(--foreground)] truncate">
-                            {service.display_name || service.name}
-                          </span>
-                          <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${statusStyle}`}>
-                            {statusLabel}
-                          </span>
-                          {service.startup_type && (
-                            <span className="text-[11px] text-[var(--color-muted)] font-mono">
-                              Startup: {service.startup_type}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[var(--color-muted)] truncate mt-0.5 max-w-xl font-mono" title={service.description || service.name}>
-                          {service.name}{service.description ? ` • ${service.description}` : ''}
-                        </p>
+                      <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-[var(--foreground)] truncate">
+                          {service.display_name || service.name}
+                        </span>
+                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${statusStyle}`}>
+                          {statusLabel}
+                        </span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <Link
+                        href={`/dashboard/logs?server_id=${server.id}&source=journal&unit=${encodeURIComponent(service.name)}`}
+                        className="p-1.5 text-xs font-semibold rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/10 transition-all inline-flex items-center justify-center cursor-pointer"
+                        title={`View journal logs for ${service.display_name || service.name}`}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Link>
                       {serviceActions.map(({ action, label, icon: Icon, tone, disabled, unavailableReason }) => (
                         <button
                           key={action}
@@ -1478,8 +1479,17 @@ export default function ServerDetailsPage() {
                   })}
                 </div>
 
+                {/* Loading state while fetching network diagnostics */}
+                {!netReport && !netReportFailed && (
+                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-12 text-center shadow-sm flex flex-col items-center justify-center">
+                    <LoaderCircle className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Evaluating network targets…</p>
+                    <p className="text-xs text-[var(--color-muted)] mt-1">Probing latency and packet loss for configured network targets</p>
+                  </div>
+                )}
+
                 {/* If no targets configured */}
-                {!gateway && groupTags.length === 0 && (
+                {netReport && !gateway && groupTags.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-[var(--border-color)] p-8 text-center bg-[var(--background-card)]">
                     <Network className="w-8 h-8 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
                     <p className="text-sm font-semibold text-[var(--foreground)]">No network targets configured for this server</p>

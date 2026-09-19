@@ -117,6 +117,7 @@ export default function LogsPage() {
   const [toTime, setToTime] = useState('23:59');
   const [timeRangeError, setTimeRangeError] = useState('');
   const [remoteLogSource, setRemoteLogSource] = useState('journal');
+  const [remoteLogUnit, setRemoteLogUnit] = useState('');
   const [remoteLogLines, setRemoteLogLines] = useState('200');
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
@@ -209,6 +210,17 @@ export default function LogsPage() {
 
   useEffect(() => {
     void loadLogs();
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const sId = sp.get('server_id');
+      const src = sp.get('source');
+      const unit = sp.get('unit');
+      const q = sp.get('q');
+      if (sId) setSelectedServerId(sId);
+      if (src) setRemoteLogSource(src);
+      if (unit) setRemoteLogUnit(unit);
+      if (q) setSearchQuery(q);
+    }
   }, [loadLogs]);
 
   const filteredLogs = useMemo(() => {
@@ -339,11 +351,29 @@ export default function LogsPage() {
     }
     setFetchingRemoteLogs(true);
     try {
-      const payload = {
+      let sinceVal = '';
+      if (timeRange === '15m') sinceVal = '15 minutes ago';
+      else if (timeRange === '1h') sinceVal = '1 hour ago';
+      else if (timeRange === '3h') sinceVal = '3 hours ago';
+      else if (timeRange === '6h') sinceVal = '6 hours ago';
+      else if (timeRange === '24h') sinceVal = '24 hours ago';
+      else if (timeRange === '7d') sinceVal = '7 days ago';
+      else if (timeRange === 'custom' && fromDate) {
+        sinceVal = `${fromDate} ${fromTime || '00:00'}:00`;
+      }
+
+      const effectiveUnit = remoteLogUnit.trim() || (remoteLogSource === 'journal' && !searchQuery.includes(' ') && searchQuery.trim() ? searchQuery.trim() : '');
+      const payload: Record<string, string> = {
         source: remoteLogSource,
-        unit: '',
+        unit: effectiveUnit,
         lines: remoteLogLines,
       };
+      if (searchQuery.trim()) {
+        payload.grep = searchQuery.trim();
+      }
+      if (sinceVal) {
+        payload.since = sinceVal;
+      }
       const task = await apiClient(`/servers/${selectedServer.id}/tasks`, {
         method: 'POST',
         body: JSON.stringify({
@@ -375,15 +405,25 @@ export default function LogsPage() {
         toast.error(`Update this agent to ${MIN_LOG_READ_AGENT_VERSION}+ before fetching logs`);
       }
       const now = new Date().toISOString();
-      const remoteEntries = displayText.split('\n').filter(Boolean).slice(-500).map((line, index) => ({
-        id: `remote-${task.id}-${index}`,
-        timestamp: now,
-        server_id: selectedServer.id,
-        server_name: selectedServer.name,
-        level: finalStatus === 'failed' || agentDoesNotSupportLogRead ? 'error' as const : classifyLineLevel(line),
-        source: `agent:${remoteLogSource}`,
-        message: line,
-      }));
+      const remoteEntries = displayText.split('\n').filter(Boolean).slice(-500).map((line, index) => {
+        let entryTs = now;
+        const isoMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\s]*)/);
+        if (isoMatch) {
+          const parsed = new Date(isoMatch[1]);
+          if (!isNaN(parsed.getTime())) {
+            entryTs = parsed.toISOString();
+          }
+        }
+        return {
+          id: `remote-${task.id}-${index}`,
+          timestamp: entryTs,
+          server_id: selectedServer.id,
+          server_name: selectedServer.name,
+          level: finalStatus === 'failed' || agentDoesNotSupportLogRead ? 'error' as const : classifyLineLevel(line),
+          source: `agent:${remoteLogSource}`,
+          message: line,
+        };
+      });
       setLogs((current) => [...remoteEntries, ...current].slice(0, 1000));
       setLogType('all');
       if (timeRange === 'custom') {
@@ -430,7 +470,7 @@ export default function LogsPage() {
       {/* Unified Control & Filter Panel */}
       <div className="ops-panel surface-regular no-hover-lift p-4 space-y-4">
         {/* Main Filter Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${remoteLogSource === 'journal' ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
           {/* Server Selector */}
           <div>
             <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
@@ -460,6 +500,20 @@ export default function LogsPage() {
               className="w-full"
             />
           </div>
+
+          {/* Unit Selector when journal */}
+          {remoteLogSource === 'journal' && (
+            <div>
+              <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Unit / Service</label>
+              <input
+                type="text"
+                placeholder="e.g. apache2, nginx..."
+                value={remoteLogUnit}
+                onChange={e => setRemoteLogUnit(e.target.value)}
+                className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all font-mono"
+              />
+            </div>
+          )}
 
           {/* Time Range Selector */}
           <div>

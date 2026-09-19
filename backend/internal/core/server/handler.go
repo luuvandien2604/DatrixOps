@@ -54,7 +54,7 @@ var serviceTaskTypes = map[string]struct{}{
 
 var (
 	containerIdentifierPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
-	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.@:$ -]{0,199}$`)
+	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9*][a-zA-Z0-9_.@:$ *\-]{0,199}$`)
 )
 
 func NewHandler(svc *Service, enableRemoteScripts, enableServiceControls, enableReadOnlyLogs bool) *Handler {
@@ -545,6 +545,8 @@ func validateServiceTask(server *Server, taskType, rawPayload string) error {
 type logReadTaskPayload struct {
 	Source      string `json:"source"`
 	Unit        string `json:"unit"`
+	Grep        string `json:"grep,omitempty"`
+	Since       string `json:"since,omitempty"`
 	ContainerID string `json:"container_id"`
 	Lines       string `json:"lines"`
 }
@@ -564,6 +566,12 @@ func validateLogReadTask(server *Server, rawPayload string) error {
 	}
 	if payload.Source == "journal" && strings.TrimSpace(payload.Unit) != "" && !serviceIdentifierPattern.MatchString(payload.Unit) {
 		return fmt.Errorf("invalid journal unit")
+	}
+	if len(payload.Grep) > 200 {
+		return fmt.Errorf("grep filter must not exceed 200 characters")
+	}
+	if len(payload.Since) > 60 {
+		return fmt.Errorf("since filter must not exceed 60 characters")
 	}
 	if payload.Source == "docker" {
 		containerID := strings.TrimSpace(payload.ContainerID)
@@ -858,6 +866,17 @@ func (h *Handler) DiagnoseNetwork(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, report)
 }
 
+func (h *Handler) invalidateNetReport(agentIDs ...string) {
+	h.netReportsMu.Lock()
+	defer h.netReportsMu.Unlock()
+	if h.lastNetReports == nil {
+		return
+	}
+	for _, aid := range agentIDs {
+		delete(h.lastNetReports, aid)
+	}
+}
+
 // GetNetworkDiagnostics returns the latest network diagnostic report or generates a fresh one.
 func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
@@ -878,16 +897,39 @@ func (h *Handler) GetNetworkDiagnostics(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	targets, err := h.svc.GetEnabledNetworkTargets(r.Context(), server.ID)
+	if err != nil {
+		slog.Error("failed to get network targets", "server_id", server.ID, "error", err)
+	}
+
 	h.netReportsMu.RLock()
 	report, exists := h.lastNetReports[server.ID]
 	h.netReportsMu.RUnlock()
 
-	if !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute {
-		targets, err := h.svc.GetEnabledNetworkTargets(r.Context(), server.ID)
-		if err != nil {
-			slog.Error("failed to get network targets", "server_id", server.ID, "error", err)
+	needsRefresh := !exists || report == nil || time.Since(report.Timestamp) > 5*time.Minute
+	if !needsRefresh && report != nil {
+		cachedTargetIDs := make(map[string]struct{}, len(report.Probes))
+		for _, p := range report.Probes {
+			if p.TargetID != "" {
+				cachedTargetIDs[p.TargetID] = struct{}{}
+			}
 		}
+		var regularCount int
+		for _, t := range targets {
+			if !t.IsGateway {
+				regularCount++
+				if _, found := cachedTargetIDs[t.ID]; !found {
+					needsRefresh = true
+					break
+				}
+			}
+		}
+		if len(cachedTargetIDs) != regularCount {
+			needsRefresh = true
+		}
+	}
 
+	if needsRefresh {
 		diagCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 
@@ -1060,6 +1102,8 @@ func (h *Handler) CreateNetworkTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateNetReport(targetAgentIDs...)
+
 	// Trigger immediate asynchronous probe for newly created targets
 	if len(created) > 0 {
 		go func(targets []NetworkTarget) {
@@ -1121,10 +1165,15 @@ func (h *Handler) UpdateNetworkTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateNetReport(target.AgentID)
+
 	updated, err := h.svc.GetNetworkTarget(r.Context(), id, userID)
 	if err != nil {
 		response.Success(w, http.StatusOK, target)
 		return
+	}
+	if updated != nil && updated.AgentID != "" {
+		h.invalidateNetReport(updated.AgentID)
 	}
 	response.Success(w, http.StatusOK, updated)
 }
@@ -1138,10 +1187,14 @@ func (h *Handler) DeleteNetworkTarget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.PathValue("id")
+	target, _ := h.svc.GetNetworkTarget(r.Context(), id, userID)
 	if err := h.svc.DeleteNetworkTarget(r.Context(), id, userID); err != nil {
 		slog.Error("failed to delete network target", "id", id, "error", err)
 		response.Error(w, http.StatusBadRequest, "DELETE_FAILED", err.Error())
 		return
+	}
+	if target != nil && target.AgentID != "" {
+		h.invalidateNetReport(target.AgentID)
 	}
 
 	response.Success(w, http.StatusOK, map[string]string{"message": "Network target deleted successfully"})
@@ -1365,6 +1418,8 @@ func (h *Handler) TestNetworkTargetNow(w http.ResponseWriter, r *http.Request) {
 	if saveErr := h.svc.SaveNetworkTargetResults(r.Context(), []NetworkTargetResult{res}); saveErr != nil {
 		slog.Error("failed to save single target result", "target_id", id, "error", saveErr)
 	}
+
+	h.invalidateNetReport(target.AgentID)
 
 	response.Success(w, http.StatusOK, map[string]any{
 		"probe":  probe,
