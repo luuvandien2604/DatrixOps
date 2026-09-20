@@ -747,7 +747,9 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 			if !serviceIdentifierPattern.MatchString(unit) {
 				return "", fmt.Errorf("invalid journal unit")
 			}
-			if !strings.Contains(unit, "*") && !strings.HasSuffix(unit, ".service") {
+			if strings.EqualFold(unit, "apache") {
+				args = append([]string{"-u", "apache2", "-u", "apache", "-u", "apache*"}, args...)
+			} else if !strings.Contains(unit, "*") && !strings.HasSuffix(unit, ".service") {
 				args = append([]string{"-u", unit, "-u", unit + "*"}, args...)
 			} else {
 				args = append([]string{"-u", unit}, args...)
@@ -757,9 +759,13 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 		var out string
 		var err error
 		if grep != "" {
-			grepArgs := append(args, "--grep", grep)
+			grepArgs := append(args, "--grep", grep, "--case-sensitive=no")
 			out, err = combinedOutput(ctx, "journalctl", grepArgs...)
-			if err != nil && (strings.Contains(out, "unrecognized option") || strings.Contains(out, "invalid option") || strings.Contains(strings.ToLower(out), "unknown option")) {
+			if err != nil {
+				grepArgs2 := append(args, "--grep", grep)
+				out, err = combinedOutput(ctx, "journalctl", grepArgs2...)
+			}
+			if err != nil || strings.Contains(out, "Compiled without pattern matching") || strings.Contains(out, "unrecognized option") || strings.Contains(out, "invalid option") {
 				out, err = combinedOutput(ctx, "journalctl", args...)
 				if err == nil {
 					out = filterLinesByKeyword(out, grep)

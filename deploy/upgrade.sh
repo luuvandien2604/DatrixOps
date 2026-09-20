@@ -422,6 +422,10 @@ perform_rollback() {
 
 check_image_availability() {
     local image_ref="$1"
+    if [[ "${DATRIXOPS_SKIP_REGISTRY_CHECK:-0}" == "1" || "${SKIP_REGISTRY_CHECK:-0}" == "1" ]]; then
+        log_info "Skipping registry readiness check for ${image_ref} (override active)."
+        return 0
+    fi
     log_info "Verifying image availability on registry: ${image_ref}..."
     if docker manifest inspect "$image_ref" >/dev/null 2>&1; then
         return 0

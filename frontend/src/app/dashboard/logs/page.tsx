@@ -49,6 +49,9 @@ interface LogServer {
     platform?: string;
     version?: string;
   };
+  snapshot?: string | {
+    services?: Array<{ name: string; status?: string; source?: string }>;
+  };
 }
 
 type LogType = 'all' | 'audit' | 'system' | 'docker' | 'agent';
@@ -300,6 +303,20 @@ export default function LogsPage() {
   const selectedServerAgentVersion = typeof selectedServerOSInfo.version === 'string'
     ? selectedServerOSInfo.version.trim()
     : '';
+  const availableServices = (() => {
+    if (!selectedServer?.snapshot) return [];
+    try {
+      const snap = typeof selectedServer.snapshot === 'string'
+        ? JSON.parse(selectedServer.snapshot)
+        : selectedServer.snapshot;
+      const svcs: Array<{ name: string; status?: string }> = Array.isArray(snap?.services) ? snap.services : [];
+      return svcs
+        .map(s => s.name?.trim())
+        .filter((name): name is string => Boolean(name));
+    } catch {
+      return [];
+    }
+  })();
   const selectedServerIsLinux = ['linux', 'ubuntu', 'debian', 'centos', 'rocky', 'alma', 'fedora', 'alpine']
     .some(marker => selectedServerOS.includes(marker));
   const selectedServerSupportsLogRead = versionAtLeast(selectedServerAgentVersion, MIN_LOG_READ_AGENT_VERSION);
@@ -362,14 +379,38 @@ export default function LogsPage() {
         sinceVal = `${fromDate} ${fromTime || '00:00'}:00`;
       }
 
-      const effectiveUnit = remoteLogUnit.trim();
+      let effectiveUnit = remoteLogUnit.trim();
+      const q = searchQuery.trim();
+
+      // If unit is blank, but user entered a search query (e.g. "apache"), auto-derive unit if it matches known services
+      if (!effectiveUnit && q) {
+        const qLower = q.toLowerCase();
+        const matched = availableServices.find(s => {
+          const sLower = s.toLowerCase();
+          return sLower === qLower || sLower.startsWith(qLower) || qLower.startsWith(sLower);
+        });
+        if (matched) {
+          effectiveUnit = matched;
+          setRemoteLogUnit(matched);
+        } else if (qLower === 'apache' || qLower === 'httpd') {
+          effectiveUnit = 'apache2';
+          setRemoteLogUnit('apache2');
+        } else if (qLower === 'mysql' || qLower === 'mariadb') {
+          effectiveUnit = 'mariadb';
+          setRemoteLogUnit('mariadb');
+        }
+      } else if (effectiveUnit.toLowerCase() === 'apache') {
+        effectiveUnit = 'apache2';
+        setRemoteLogUnit('apache2');
+      }
+
       const payload: Record<string, string> = {
         source: remoteLogSource,
         unit: effectiveUnit,
         lines: remoteLogLines,
       };
-      if (searchQuery.trim()) {
-        payload.grep = searchQuery.trim();
+      if (q) {
+        payload.grep = q;
       }
       if (sinceVal) {
         payload.since = sinceVal;
@@ -420,7 +461,7 @@ export default function LogsPage() {
           server_id: selectedServer.id,
           server_name: selectedServer.name,
           level: finalStatus === 'failed' || agentDoesNotSupportLogRead ? 'error' as const : classifyLineLevel(line),
-          source: `agent:${remoteLogSource}`,
+          source: `agent:${remoteLogSource}${effectiveUnit ? `:${effectiveUnit}` : ''}`,
           message: line,
         };
       });
@@ -507,6 +548,7 @@ export default function LogsPage() {
               <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Unit / Service</label>
               <input
                 type="text"
+                list="server-services-list"
                 placeholder="e.g. apache2, nginx..."
                 value={remoteLogUnit}
                 onChange={e => setRemoteLogUnit(e.target.value)}
@@ -518,6 +560,11 @@ export default function LogsPage() {
                 }}
                 className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all font-mono"
               />
+              <datalist id="server-services-list">
+                {availableServices.map(svc => (
+                  <option key={svc} value={svc} />
+                ))}
+              </datalist>
             </div>
           )}
 
@@ -709,7 +756,7 @@ export default function LogsPage() {
             <div className="py-12 text-center text-slate-400 font-sans space-y-3">
               <p className="text-sm">
                 {searchQuery.trim()
-                  ? `No log lines matching "${searchQuery.trim()}" found in current view.`
+                  ? `No log lines matching "${searchQuery.trim()}" found in current view. Tip: ensure Unit/Service is specified (e.g. apache2, nginx) or widen the time range.`
                   : selectedServer
                   ? `No ${remoteLogSource.replace('_', ' ')} logs loaded yet for ${selectedServer.name}.`
                   : 'No log records match the current filters.'}

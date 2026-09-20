@@ -387,6 +387,14 @@ export default function WebsitesPage() {
     return '< 1m downtime';
   };
 
+  const formatPercent = (val: number | string | null | undefined): string => {
+    if (val == null) return '0%';
+    const num = typeof val === 'string' ? parseFloat(val) : Number(val);
+    if (isNaN(num)) return '0%';
+    if (num % 1 === 0) return `${Math.round(num)}%`;
+    return `${parseFloat(num.toFixed(1))}%`;
+  };
+
   // Aggregated KPI numbers
   const upWebsites = websites.filter(w => w.status?.toUpperCase() === 'UP' || w.status?.toLowerCase() === 'online');
   const downWebsites = websites.filter(w => !upWebsites.includes(w));
@@ -397,9 +405,10 @@ export default function WebsitesPage() {
   const avgServerAvailability = servers.length > 0
     ? (servers.reduce((acc, s) => acc + (s.availability_30d ?? (s.status?.toLowerCase() === 'online' ? 100 : 0)), 0) / servers.length)
     : 100;
-  const overallAvailability = totalMonitored > 0
-    ? (((upWebsites.length * 100) + (avgServerAvailability * servers.length)) / (totalMonitored * 100) * 100).toFixed(1)
-    : '100.0';
+  const overallAvailabilityRaw = totalMonitored > 0
+    ? (((upWebsites.length * 100) + (avgServerAvailability * servers.length)) / (totalMonitored * 100) * 100)
+    : 100;
+  const overallAvailability = formatPercent(overallAvailabilityRaw);
 
   const expiringSslCount = websites.filter(w => (w.ssl_days_remaining ?? 999) <= 14).length;
 
@@ -502,7 +511,7 @@ export default function WebsitesPage() {
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[var(--foreground)]">{overallAvailability}%</span>
+            <span className="text-2xl font-black text-[var(--foreground)]">{overallAvailability}</span>
           </div>
           <p className="mt-1 text-xs text-[var(--color-muted)]">
             Aggregated real-time probe & heartbeat ratio
@@ -848,7 +857,7 @@ export default function WebsitesPage() {
                             <div className="relative flex-1 flex items-center justify-center">
                               <div className="w-full border-t border-[var(--border-color)]" />
                               <span className="absolute bg-[var(--background-card)] px-2.5 text-[11px] font-semibold text-[var(--color-muted)]">
-                                {item.overall_uptime_pct === 100 ? '100 % uptime' : `${item.overall_uptime_pct.toFixed(2)} % uptime`}
+                                {item.overall_uptime_pct % 1 === 0 ? `${Math.round(item.overall_uptime_pct)}% uptime` : `${parseFloat(item.overall_uptime_pct.toFixed(2))}% uptime`}
                               </span>
                             </div>
                             <span className="shrink-0">{!selectedEndDate ? 'Today' : item.days[item.days.length - 1]?.date || 'Today'}</span>
@@ -1279,7 +1288,7 @@ export default function WebsitesPage() {
                             <div className="relative flex-1 flex items-center justify-center">
                               <div className="w-full border-t border-[var(--border-color)]" />
                               <span className="absolute bg-[var(--background-card)] px-2.5 text-[11px] font-semibold text-[var(--color-muted)]">
-                                {availability.toFixed(1)} % availability
+                                {formatPercent(availability)} availability
                               </span>
                             </div>
                             <span className="shrink-0">{!selectedEndDate ? 'Today' : serverBars[serverBars.length - 1]?.date || 'Today'}</span>
@@ -1354,7 +1363,7 @@ export default function WebsitesPage() {
                                         ? 'text-amber-700 dark:text-amber-400'
                                         : 'text-rose-700 dark:text-rose-400'
                                   }`}>
-                                    {availability.toFixed(1)}%
+                                    {formatPercent(availability)}
                                   </span>
                                 </div>
                                 <span className="text-[11px] text-[var(--color-muted)]">
