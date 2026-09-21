@@ -737,9 +737,14 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 	}
 	lines := strconv.Itoa(linesNum)
 
+	grep := strings.TrimSpace(payload["grep"])
+
+	var out string
+	var err error
+
 	switch payload["source"] {
 	case "journal":
-		args := []string{"-n", lines, "--no-pager", "-o", "short-iso"}
+		args := []string{"--no-pager", "-o", "short-iso"}
 		if since := strings.TrimSpace(payload["since"]); since != "" {
 			args = append(args, "--since", since)
 		}
@@ -747,50 +752,72 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 			if !serviceIdentifierPattern.MatchString(unit) {
 				return "", fmt.Errorf("invalid journal unit")
 			}
-			if strings.EqualFold(unit, "apache") {
-				args = append([]string{"-u", "apache2", "-u", "apache", "-u", "apache*"}, args...)
-			} else if !strings.Contains(unit, "*") && !strings.HasSuffix(unit, ".service") {
+			if !strings.Contains(unit, "*") && !strings.HasSuffix(unit, ".service") {
 				args = append([]string{"-u", unit, "-u", unit + "*"}, args...)
 			} else {
 				args = append([]string{"-u", unit}, args...)
 			}
 		}
-		grep := strings.TrimSpace(payload["grep"])
-		var out string
-		var err error
+
 		if grep != "" {
-			grepArgs := append(args, "--grep", grep, "--case-sensitive=no")
-			out, err = combinedOutput(ctx, "journalctl", grepArgs...)
+			// Scan backwards with -r so systemd searches history until `lines` matches are found
+			grepArgs := append([]string{"-r", "-n", lines}, args...)
+			grepArgsWithPattern := append(grepArgs, "--grep", grep, "--case-sensitive=no")
+			out, err = combinedOutput(ctx, "journalctl", grepArgsWithPattern...)
 			if err != nil {
-				grepArgs2 := append(args, "--grep", grep)
+				// Retry without --case-sensitive=no
+				grepArgs2 := append(grepArgs, "--grep", grep)
 				out, err = combinedOutput(ctx, "journalctl", grepArgs2...)
 			}
 			if err != nil || strings.Contains(out, "Compiled without pattern matching") || strings.Contains(out, "unrecognized option") || strings.Contains(out, "invalid option") {
-				out, err = combinedOutput(ctx, "journalctl", args...)
+				fallbackArgs := append([]string{"-r", "-n", "5000"}, args...)
+				out, err = combinedOutput(ctx, "journalctl", fallbackArgs...)
 				if err == nil {
-					out = filterLinesByKeyword(out, grep)
+					out = filterLinesByKeyword(out, grep, linesNum)
 				}
+			} else {
+				out = reverseLogLines(out)
 			}
 		} else {
-			out, err = combinedOutput(ctx, "journalctl", args...)
+			standardArgs := append([]string{"-n", lines}, args...)
+			out, err = combinedOutput(ctx, "journalctl", standardArgs...)
 		}
 
 		if err != nil && strings.TrimSpace(out) == "" {
 			return fmt.Sprintf("journalctl notice: %v", err), nil
 		}
 		return out, nil
+
 	case "nginx_access":
 		path := firstExistingLogPath("/var/log/nginx/access.log", "/var/log/nginx-access.log")
 		if path == "" {
 			return "Notice: Nginx access log (/var/log/nginx/access.log) not found on this server. Nginx may not be installed or is logging to a custom path.", nil
 		}
-		return combinedOutput(ctx, "tail", "-n", lines, path)
+		tailLines := lines
+		if grep != "" {
+			tailLines = "2000"
+		}
+		out, err = combinedOutput(ctx, "tail", "-n", tailLines, path)
+		if err == nil && grep != "" {
+			out = filterLinesByKeyword(out, grep, linesNum)
+		}
+		return out, err
+
 	case "nginx_error":
 		path := firstExistingLogPath("/var/log/nginx/error.log", "/var/log/nginx-error.log")
 		if path == "" {
 			return "Notice: Nginx error log (/var/log/nginx/error.log) not found on this server. Nginx may not be installed or is logging to a custom path.", nil
 		}
-		return combinedOutput(ctx, "tail", "-n", lines, path)
+		tailLines := lines
+		if grep != "" {
+			tailLines = "2000"
+		}
+		out, err = combinedOutput(ctx, "tail", "-n", tailLines, path)
+		if err == nil && grep != "" {
+			out = filterLinesByKeyword(out, grep, linesNum)
+		}
+		return out, err
+
 	case "mysql_error":
 		path := firstExistingLogPath(
 			"/var/log/mysql/error.log",
@@ -800,13 +827,31 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 		if path == "" {
 			return "Notice: No MySQL or MariaDB error log found in standard paths (/var/log/mysql/error.log, /var/log/mysqld.log, /var/log/mariadb/mariadb.log).", nil
 		}
-		return combinedOutput(ctx, "tail", "-n", lines, path)
+		tailLines := lines
+		if grep != "" {
+			tailLines = "2000"
+		}
+		out, err = combinedOutput(ctx, "tail", "-n", tailLines, path)
+		if err == nil && grep != "" {
+			out = filterLinesByKeyword(out, grep, linesNum)
+		}
+		return out, err
+
 	case "docker":
 		containerID := payload["container_id"]
 		if !containerIdentifierPattern.MatchString(containerID) {
 			return "", fmt.Errorf("invalid or missing container identifier")
 		}
-		return combinedOutput(ctx, "docker", "logs", "--tail", lines, containerID)
+		tailLines := lines
+		if grep != "" {
+			tailLines = "2000"
+		}
+		out, err = combinedOutput(ctx, "docker", "logs", "--tail", tailLines, containerID)
+		if err == nil && grep != "" {
+			out = filterLinesByKeyword(out, grep, linesNum)
+		}
+		return out, err
+
 	default:
 		return "", fmt.Errorf("unsupported read-only log source")
 	}
@@ -828,13 +873,30 @@ func firstExistingLogPath(paths ...string) string {
 	return ""
 }
 
-func filterLinesByKeyword(output, keyword string) string {
+func reverseLogLines(output string) string {
+	lines := strings.Split(output, "\n")
+	var nonEmpty []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			nonEmpty = append(nonEmpty, l)
+		}
+	}
+	for i, j := 0, len(nonEmpty)-1; i < j; i, j = i+1, j-1 {
+		nonEmpty[i], nonEmpty[j] = nonEmpty[j], nonEmpty[i]
+	}
+	return strings.Join(nonEmpty, "\n")
+}
+
+func filterLinesByKeyword(output, keyword string, maxLines int) string {
 	lowerKeyword := strings.ToLower(keyword)
 	lines := strings.Split(output, "\n")
 	var matched []string
 	for _, l := range lines {
 		if strings.Contains(strings.ToLower(l), lowerKeyword) {
 			matched = append(matched, l)
+			if maxLines > 0 && len(matched) >= maxLines {
+				break
+			}
 		}
 	}
 	return strings.Join(matched, "\n")

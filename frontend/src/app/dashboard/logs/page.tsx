@@ -379,30 +379,8 @@ export default function LogsPage() {
         sinceVal = `${fromDate} ${fromTime || '00:00'}:00`;
       }
 
-      let effectiveUnit = remoteLogUnit.trim();
+      const effectiveUnit = remoteLogUnit.trim();
       const q = searchQuery.trim();
-
-      // If unit is blank, but user entered a search query (e.g. "apache"), auto-derive unit if it matches known services
-      if (!effectiveUnit && q) {
-        const qLower = q.toLowerCase();
-        const matched = availableServices.find(s => {
-          const sLower = s.toLowerCase();
-          return sLower === qLower || sLower.startsWith(qLower) || qLower.startsWith(sLower);
-        });
-        if (matched) {
-          effectiveUnit = matched;
-          setRemoteLogUnit(matched);
-        } else if (qLower === 'apache' || qLower === 'httpd') {
-          effectiveUnit = 'apache2';
-          setRemoteLogUnit('apache2');
-        } else if (qLower === 'mysql' || qLower === 'mariadb') {
-          effectiveUnit = 'mariadb';
-          setRemoteLogUnit('mariadb');
-        }
-      } else if (effectiveUnit.toLowerCase() === 'apache') {
-        effectiveUnit = 'apache2';
-        setRemoteLogUnit('apache2');
-      }
 
       const payload: Record<string, string> = {
         source: remoteLogSource,
