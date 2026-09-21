@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -760,24 +761,7 @@ func executeReadOnlyLog(ctx context.Context, payload map[string]string) (string,
 		}
 
 		if grep != "" {
-			// Scan backwards with -r so systemd searches history until `lines` matches are found
-			grepArgs := append([]string{"-r", "-n", lines}, args...)
-			grepArgsWithPattern := append(grepArgs, "--grep", grep, "--case-sensitive=no")
-			out, err = combinedOutput(ctx, "journalctl", grepArgsWithPattern...)
-			if err != nil {
-				// Retry without --case-sensitive=no
-				grepArgs2 := append(grepArgs, "--grep", grep)
-				out, err = combinedOutput(ctx, "journalctl", grepArgs2...)
-			}
-			if err != nil || strings.Contains(out, "Compiled without pattern matching") || strings.Contains(out, "unrecognized option") || strings.Contains(out, "invalid option") {
-				fallbackArgs := append([]string{"-r", "-n", "5000"}, args...)
-				out, err = combinedOutput(ctx, "journalctl", fallbackArgs...)
-				if err == nil {
-					out = filterLinesByKeyword(out, grep, linesNum)
-				}
-			} else {
-				out = reverseLogLines(out)
-			}
+			out, err = scanJournalctlWithKeyword(ctx, args, grep, linesNum)
 		} else {
 			standardArgs := append([]string{"-n", lines}, args...)
 			out, err = combinedOutput(ctx, "journalctl", standardArgs...)
@@ -871,6 +855,46 @@ func firstExistingLogPath(paths ...string) string {
 		}
 	}
 	return ""
+}
+
+func scanJournalctlWithKeyword(ctx context.Context, args []string, keyword string, maxLines int) (string, error) {
+	scanArgs := append([]string{"-r"}, args...)
+	cmd := exec.CommandContext(ctx, "journalctl", scanArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	lowerKeyword := strings.ToLower(keyword)
+	var matched []string
+	scanner := bufio.NewScanner(stdout)
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(strings.ToLower(line), lowerKeyword) {
+			matched = append(matched, line)
+			if maxLines > 0 && len(matched) >= maxLines {
+				break
+			}
+		}
+	}
+
+	if cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	_ = cmd.Wait()
+
+	// Reverse to restore chronological order (oldest to newest)
+	for i, j := 0, len(matched)-1; i < j; i, j = i+1, j-1 {
+		matched[i], matched[j] = matched[j], matched[i]
+	}
+	return strings.Join(matched, "\n"), nil
 }
 
 func reverseLogLines(output string) string {

@@ -185,7 +185,20 @@ type websiteProbeResult struct {
 
 func probeWebsite(ctx context.Context, rawURL string, timeout time.Duration, now time.Time) websiteProbeResult {
 	client := notifier.NewPublicHTTPClient(timeout, 10)
-	return probeWebsiteWithClient(ctx, rawURL, client, now)
+	res := probeWebsiteWithClient(ctx, rawURL, client, now)
+	if res.status == "DOWN" {
+		// Retry once after 3 seconds to avoid transient false alarms (e.g. 2s container restarts during deploy)
+		select {
+		case <-ctx.Done():
+			return res
+		case <-time.After(3 * time.Second):
+		}
+		retryRes := probeWebsiteWithClient(ctx, rawURL, client, time.Now())
+		if retryRes.status == "UP" {
+			return retryRes
+		}
+	}
+	return res
 }
 
 func probeWebsiteWithClient(ctx context.Context, rawURL string, client *http.Client, now time.Time) (result websiteProbeResult) {
