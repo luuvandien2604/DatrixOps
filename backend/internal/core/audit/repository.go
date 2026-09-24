@@ -51,7 +51,7 @@ func (r *Repository) ListLogs(ctx context.Context, userID string) ([]AuditLog, e
 }
 
 func (r *Repository) ListLogsFiltered(ctx context.Context, userID string, filter ListFilter) ([]AuditLog, error) {
-	query := `SELECT id, user_id, action, resource_type, resource_id, details, created_at 
+	query := `SELECT id, user_id, action, COALESCE(resource_type, ''), COALESCE(resource_id, ''), details, created_at 
 		 FROM audit_logs 
 		 WHERE user_id = $1`
 	args := []interface{}{userID}

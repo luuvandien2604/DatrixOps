@@ -48,8 +48,8 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Valid email address is required")
 		return
 	}
-	if len(req.Password) < 12 || len(req.Password) > 128 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 128 characters")
+	if len(req.Password) < 12 || len([]byte(req.Password)) > 72 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 72 bytes")
 		return
 	}
 	if req.Role != "admin" && req.Role != "operator" && req.Role != "viewer" {
@@ -58,6 +58,10 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must not exceed 72 bytes")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to hash password")
 		return
 	}
@@ -139,13 +143,17 @@ func (h *Handler) UpdateUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Password) < 12 || len(req.Password) > 128 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 128 characters")
+	if len(req.Password) < 12 || len([]byte(req.Password)) > 72 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must contain between 12 and 72 bytes")
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Password must not exceed 72 bytes")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to hash password")
 		return
 	}

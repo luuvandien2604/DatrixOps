@@ -23,6 +23,7 @@ const (
 
 type Handler struct {
 	svc                   *Service
+	isCloud               bool
 	enableRemoteScripts   bool
 	enableServiceControls bool
 	enableReadOnlyLogs    bool
@@ -57,9 +58,10 @@ var (
 	serviceIdentifierPattern   = regexp.MustCompile(`^[a-zA-Z0-9*][a-zA-Z0-9_.@:$ *\-]{0,199}$`)
 )
 
-func NewHandler(svc *Service, enableRemoteScripts, enableServiceControls, enableReadOnlyLogs bool) *Handler {
+func NewHandler(svc *Service, isCloud, enableRemoteScripts, enableServiceControls, enableReadOnlyLogs bool) *Handler {
 	return &Handler{
 		svc:                   svc,
+		isCloud:               isCloud,
 		enableRemoteScripts:   enableRemoteScripts,
 		enableServiceControls: enableServiceControls,
 		enableReadOnlyLogs:    enableReadOnlyLogs,
@@ -1020,8 +1022,8 @@ func (h *Handler) CreateNetworkTarget(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Target name is required")
 		return
 	}
-	if host == "" && !req.IsGateway {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Host is required")
+	if err := ValidateNetworkTargetHost(r.Context(), host, req.IsGateway, h.isCloud); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 	if req.IsGateway && host == "" {
@@ -1147,6 +1149,18 @@ func (h *Handler) UpdateNetworkTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target.ID = id
+
+	if strings.TrimSpace(target.Name) == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Target name is required")
+		return
+	}
+	if err := ValidateNetworkTargetHost(r.Context(), target.Host, target.IsGateway, h.isCloud); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+	if target.IsGateway && strings.TrimSpace(target.Host) == "" {
+		target.Host = "gateway"
+	}
 
 	if err := h.svc.UpdateNetworkTarget(r.Context(), &target, userID); err != nil {
 		slog.Error("failed to update network target", "id", id, "error", err)

@@ -74,11 +74,17 @@ func dialPublicAddress(ctx context.Context, network, address string) (net.Conn, 
 	return nil, fmt.Errorf("connect to webhook destination: %w", lastErr)
 }
 
-func isPublicIP(ip net.IP) bool {
+// IsPublicIP verifies an IP address is a globally routable public address,
+// excluding private subnets, loopback, link-local (cloud metadata), and unspecified addresses.
+func IsPublicIP(ip net.IP) bool {
 	return ip != nil && ip.IsGlobalUnicast() &&
 		!ip.IsPrivate() && !ip.IsLoopback() &&
 		!ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() &&
 		!ip.IsUnspecified()
+}
+
+func isPublicIP(ip net.IP) bool {
+	return IsPublicIP(ip)
 }
 
 // ValidatePublicHTTPSURL rejects credentials and literal non-public addresses.

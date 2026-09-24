@@ -49,8 +49,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || len(req.Password) < 12 {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Email is required and password must be at least 12 characters")
+	if req.Email == "" || len(req.Password) < 12 || len([]byte(req.Password)) > 72 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Email is required and password must contain between 12 and 72 bytes")
 		return
 	}
 

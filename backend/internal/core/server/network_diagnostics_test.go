@@ -471,3 +471,71 @@ func TestBuildDiagnosticReportFromTargets(t *testing.T) {
 	}
 }
 
+// ---------- TestValidateNetworkTargetHost ----------
+// Verify host validation on CE and Cloud modes.
+
+func TestValidateNetworkTargetHost(t *testing.T) {
+	ctx := context.Background()
+
+	// 1. Gateway targets
+	if err := ValidateNetworkTargetHost(ctx, "", true, false); err != nil {
+		t.Fatalf("expected empty host for gateway on CE to be valid, got %v", err)
+	}
+	if err := ValidateNetworkTargetHost(ctx, "gateway", true, false); err != nil {
+		t.Fatalf("expected 'gateway' host on CE to be valid, got %v", err)
+	}
+	if err := ValidateNetworkTargetHost(ctx, "gateway", true, true); err != nil {
+		t.Fatalf("expected 'gateway' host on Cloud to be valid, got %v", err)
+	}
+	if err := ValidateNetworkTargetHost(ctx, "192.168.1.1", true, true); err == nil {
+		t.Fatal("expected custom IP for gateway on Cloud to be rejected")
+	}
+
+	// 2. Loopback and Localhost (blocked on both)
+	for _, invalid := range []string{"127.0.0.1", "127.0.0.2", "localhost", "test.localhost", "::1"} {
+		if err := ValidateNetworkTargetHost(ctx, invalid, false, false); err == nil {
+			t.Fatalf("expected loopback/localhost %q on CE to be rejected", invalid)
+		}
+		if err := ValidateNetworkTargetHost(ctx, invalid, false, true); err == nil {
+			t.Fatalf("expected loopback/localhost %q on Cloud to be rejected", invalid)
+		}
+	}
+
+	// 3. Cloud Metadata (169.254.169.254 and link-local)
+	for _, invalid := range []string{"169.254.169.254", "169.254.1.1", "fe80::1"} {
+		if err := ValidateNetworkTargetHost(ctx, invalid, false, false); err == nil {
+			t.Fatalf("expected metadata %q on CE to be rejected", invalid)
+		}
+		if err := ValidateNetworkTargetHost(ctx, invalid, false, true); err == nil {
+			t.Fatalf("expected metadata %q on Cloud to be rejected", invalid)
+		}
+	}
+
+	// 4. Invalid schemes / credentials / paths
+	for _, invalid := range []string{"http://example.com", "https://1.1.1.1", "user@example.com", "example.com/path", "example.com:8080"} {
+		if err := ValidateNetworkTargetHost(ctx, invalid, false, false); err == nil {
+			t.Fatalf("expected invalid format %q to be rejected", invalid)
+		}
+	}
+
+	// 5. Private IP subnets: Allowed on CE, strictly blocked on Cloud
+	for _, privateIP := range []string{"10.0.0.1", "172.16.0.1", "192.168.1.1", "10.254.0.5"} {
+		if err := ValidateNetworkTargetHost(ctx, privateIP, false, false); err != nil {
+			t.Fatalf("expected private IP %q on CE to be allowed, got %v", privateIP, err)
+		}
+		if err := ValidateNetworkTargetHost(ctx, privateIP, false, true); err == nil {
+			t.Fatalf("expected private IP %q on Cloud to be rejected", privateIP)
+		}
+	}
+
+	// 6. Public IPs: Allowed on both CE and Cloud
+	for _, publicIP := range []string{"1.1.1.1", "8.8.8.8", "203.162.4.190"} {
+		if err := ValidateNetworkTargetHost(ctx, publicIP, false, false); err != nil {
+			t.Fatalf("expected public IP %q on CE to be allowed, got %v", publicIP, err)
+		}
+		if err := ValidateNetworkTargetHost(ctx, publicIP, false, true); err != nil {
+			t.Fatalf("expected public IP %q on Cloud to be allowed, got %v", publicIP, err)
+		}
+	}
+}
+

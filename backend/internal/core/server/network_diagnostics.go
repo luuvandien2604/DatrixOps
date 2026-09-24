@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -13,7 +14,101 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 )
+
+var (
+	isCloudDeploymentMu sync.RWMutex
+	isCloudDeployment   bool
+)
+
+// SetCloudDeployment configures whether network diagnostics run in a multi-tenant Cloud environment.
+func SetCloudDeployment(isCloud bool) {
+	isCloudDeploymentMu.Lock()
+	defer isCloudDeploymentMu.Unlock()
+	isCloudDeployment = isCloud
+}
+
+// IsCloudDeployment reports whether Cloud SSRF rules apply to network diagnostic probes.
+func IsCloudDeployment() bool {
+	isCloudDeploymentMu.RLock()
+	defer isCloudDeploymentMu.RUnlock()
+	return isCloudDeployment
+}
+
+// ValidateNetworkTargetHost checks if the target host is valid and safe to probe.
+// In Cloud mode (isCloud = true), target hosts are strictly restricted to public IPs or hostnames
+// that resolve only to public IPs, preventing internal SSRF probes against cloud/container infrastructure.
+// On Community Edition (self-hosted), LAN targets are permitted, but loopback, localhost, and
+// cloud metadata services (169.254.169.254 / link-local) are strictly prohibited.
+func ValidateNetworkTargetHost(ctx context.Context, host string, isGateway bool, isCloud bool) error {
+	trimmed := strings.TrimSpace(host)
+	if isGateway {
+		if trimmed == "" || strings.EqualFold(trimmed, "gateway") {
+			return nil
+		}
+		if isCloud {
+			return errors.New("gateway target cannot use custom IP address in Cloud mode")
+		}
+	}
+
+	if trimmed == "" {
+		return errors.New("target host is required")
+	}
+
+	if strings.Contains(trimmed, "://") || strings.Contains(trimmed, "/") || strings.Contains(trimmed, "@") {
+		return errors.New("target host must be a hostname or IP address without protocol, credentials, or path")
+	}
+
+	if strings.Contains(trimmed, ":") {
+		if !strings.HasPrefix(trimmed, "[") && strings.Count(trimmed, ":") == 1 {
+			return errors.New("target host must not include a port; specify port in the port field")
+		}
+	}
+
+	cleanHost := strings.Trim(trimmed, "[]")
+	cleanHost = strings.TrimSuffix(strings.ToLower(cleanHost), ".")
+
+	if cleanHost == "localhost" || strings.HasSuffix(cleanHost, ".localhost") {
+		return errors.New("target host must not target localhost")
+	}
+
+	if ip := net.ParseIP(cleanHost); ip != nil {
+		if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || cleanHost == "169.254.169.254" {
+			return errors.New("target host must not target loopback, unspecified, or link-local/cloud metadata addresses")
+		}
+		if isCloud && !notifier.IsPublicIP(ip) {
+			return errors.New("target host must be a public IP address in Cloud mode")
+		}
+		return nil
+	}
+
+	var validHostname = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-\.]*[a-z0-9])?$`)
+	if !validHostname.MatchString(cleanHost) {
+		return errors.New("target host contains invalid characters")
+	}
+
+	if isCloud {
+		resolver := net.DefaultResolver
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		addrs, err := resolver.LookupIPAddr(lookupCtx, cleanHost)
+		if err != nil {
+			return fmt.Errorf("unable to resolve target host: %w", err)
+		}
+		if len(addrs) == 0 {
+			return errors.New("target host does not resolve to any IP address")
+		}
+		for _, addr := range addrs {
+			if !notifier.IsPublicIP(addr.IP) {
+				return errors.New("target host resolves to a non-public or internal IP address")
+			}
+		}
+	}
+
+	return nil
+}
 
 // ---------- Configuration Constants ----------
 
@@ -194,6 +289,26 @@ type icmpPingResult struct {
 
 // runICMPPing shells out to the OS ping command. Returns parsed result.
 func runICMPPing(ctx context.Context, host string, count int, timeoutSec int) icmpPingResult {
+	cleanHost := strings.Trim(strings.TrimSpace(host), "[]")
+	if parsed := net.ParseIP(cleanHost); parsed != nil {
+		if parsed.IsLoopback() || parsed.IsLinkLocalUnicast() || cleanHost == "169.254.169.254" {
+			return icmpPingResult{available: false}
+		}
+		if IsCloudDeployment() && !notifier.IsPublicIP(parsed) {
+			return icmpPingResult{available: false}
+		}
+	} else if IsCloudDeployment() {
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, cleanHost)
+		if err != nil || len(ips) == 0 {
+			return icmpPingResult{available: false}
+		}
+		for _, addr := range ips {
+			if !notifier.IsPublicIP(addr.IP) {
+				return icmpPingResult{available: false}
+			}
+		}
+	}
+
 	var cmd *exec.Cmd
 	countStr := strconv.Itoa(count)
 	timeoutStr := strconv.Itoa(timeoutSec)
@@ -311,6 +426,20 @@ func runTCPProbe(ctx context.Context, host string, port int, count int) tcpProbe
 			return result
 		}
 		ip = ips[0]
+	}
+
+	cleanIP := strings.Trim(strings.TrimSpace(ip), "[]")
+	if parsed := net.ParseIP(cleanIP); parsed != nil {
+		if parsed.IsLoopback() || parsed.IsLinkLocalUnicast() || cleanIP == "169.254.169.254" {
+			result.failed = count
+			result.lastError = "probe destination is not allowed"
+			return result
+		}
+		if IsCloudDeployment() && !notifier.IsPublicIP(parsed) {
+			result.failed = count
+			result.lastError = "probe destination is not a public IP address"
+			return result
+		}
 	}
 
 	addr := net.JoinHostPort(ip, strconv.Itoa(port))
@@ -706,6 +835,13 @@ func probeGateway(ctx context.Context, telemetry *ServerNetworkTelemetry, gwTarg
 	}
 
 	// Fallback: run ICMP from the backend server itself to telemetry.DefaultGateway
+	// In Cloud mode, backend must not probe private agent gateways directly.
+	if IsCloudDeployment() {
+		result.Status = "unavailable"
+		result.Summary = "Default gateway telemetry is not available from the agent."
+		return result
+	}
+
 	icmpResult := runICMPPing(ctx, telemetry.DefaultGateway, ProbesPerTarget, ICMPTimeoutSec)
 	if !icmpResult.available {
 		result.Status = "unavailable"

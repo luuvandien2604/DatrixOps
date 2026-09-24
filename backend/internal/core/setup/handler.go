@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -104,6 +105,10 @@ func (h *Handler) Complete(w http.ResponseWriter, r *http.Request) {
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Administrator password must not exceed 72 bytes")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to secure administrator password")
 		return
 	}
@@ -205,8 +210,8 @@ func validateCompleteRequest(req completeRequest, cfg *config.Config) string {
 	if len(req.Password) < 12 {
 		return "Administrator password must be at least 12 characters"
 	}
-	if len(req.Password) > 128 {
-		return "Administrator password must not exceed 128 characters"
+	if len([]byte(req.Password)) > 72 {
+		return "Administrator password must not exceed 72 bytes"
 	}
 	if req.SystemName == "" || len(req.SystemName) > 120 {
 		return "System name is required and must not exceed 120 characters"

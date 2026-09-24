@@ -10,9 +10,12 @@ import (
 
 // RegisterRoutes sets up the HTTP routes for the server module.
 func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
+	isCloud := cfg.Edition == "cloud" || cfg.DeploymentMode == "managed"
+	SetCloudDeployment(isCloud)
+
 	repo := NewRepository(db)
 	svc := NewService(repo, cfg.AgentVersion, cfg.PublicURL, cfg.AgentReleaseURL, cfg.AgentReleaseLayout)
-	h := NewHandler(svc, cfg.EnableRemoteScripts, cfg.EnableServiceControls, cfg.EnableReadOnlyLogs)
+	h := NewHandler(svc, isCloud, cfg.EnableRemoteScripts, cfg.EnableServiceControls, cfg.EnableReadOnlyLogs)
 
 	authMiddleware := middleware.RequireAuth([]byte(cfg.JWTSecret), db)
 
@@ -29,6 +32,11 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 		}
 	}
 
+	targetManageRoles := []string{"admin"}
+	if !isCloud {
+		targetManageRoles = []string{"admin", "operator"}
+	}
+
 	mux.HandleFunc("GET /api/v1/servers", withAuth(h.List))
 	mux.HandleFunc("GET /api/v1/dashboard/overview", withAuth(h.DashboardOverview))
 	mux.HandleFunc("GET /api/v1/servers/{id}", withAuth(h.Get))
@@ -42,18 +50,18 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", withRoles(h.Delete, "admin"))
 	mux.HandleFunc("PUT /api/v1/servers/{id}/meta", withRoles(h.UpdateMeta, "admin"))
 	mux.HandleFunc("PUT /api/v1/servers/{id}/agent-update-policy", withRoles(h.UpdateAgentUpdatePolicy, "admin"))
-	mux.HandleFunc("POST /api/v1/servers/{id}/diagnose-network", withAuth(h.DiagnoseNetwork))
+	mux.HandleFunc("POST /api/v1/servers/{id}/diagnose-network", withRoles(h.DiagnoseNetwork, targetManageRoles...))
 	mux.HandleFunc("GET /api/v1/servers/{id}/diagnose-network", withAuth(h.GetNetworkDiagnostics))
 
 	// Network Targets Endpoints
 	mux.HandleFunc("GET /api/v1/network-targets", withAuth(h.ListNetworkTargets))
-	mux.HandleFunc("POST /api/v1/network-targets", withAuth(h.CreateNetworkTarget))
+	mux.HandleFunc("POST /api/v1/network-targets", withRoles(h.CreateNetworkTarget, targetManageRoles...))
 	mux.HandleFunc("GET /api/v1/network-targets/presets", withAuth(h.GetNetworkTargetPresets))
 	mux.HandleFunc("GET /api/v1/network-targets/overview", withAuth(h.GetNetworkQualityOverview))
 	mux.HandleFunc("GET /api/v1/network-targets/{id}", withAuth(h.GetNetworkTarget))
-	mux.HandleFunc("PUT /api/v1/network-targets/{id}", withAuth(h.UpdateNetworkTarget))
-	mux.HandleFunc("DELETE /api/v1/network-targets/{id}", withAuth(h.DeleteNetworkTarget))
+	mux.HandleFunc("PUT /api/v1/network-targets/{id}", withRoles(h.UpdateNetworkTarget, targetManageRoles...))
+	mux.HandleFunc("DELETE /api/v1/network-targets/{id}", withRoles(h.DeleteNetworkTarget, targetManageRoles...))
 	mux.HandleFunc("GET /api/v1/network-targets/{id}/history", withAuth(h.GetNetworkTargetHistory))
-	mux.HandleFunc("POST /api/v1/network-targets/{id}/test-now", withAuth(h.TestNetworkTargetNow))
+	mux.HandleFunc("POST /api/v1/network-targets/{id}/test-now", withRoles(h.TestNetworkTargetNow, targetManageRoles...))
 }
 
