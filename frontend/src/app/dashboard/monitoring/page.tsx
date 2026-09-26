@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import {
   Activity, CircleAlert, Clock3, Cpu, DatabaseBackup,
-  HardDrive, Maximize2, Minimize2, RefreshCw, Server as ServerIcon, Wifi,
+  Eye, EyeOff, HardDrive, Maximize2, Minimize2, RefreshCw, Server as ServerIcon, Wifi,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Line, LineChart,
@@ -802,7 +802,333 @@ function MetricChartCard({
 }
 
 /* =========================================================================
-   1. EXPANDED CPU CHART CARD (Real Top Process Breakdown)
+   PROCESS RESOURCE BREAKDOWN (Unstacked Visual Breakdown & Allocation Bar)
+   ========================================================================= */
+type ProcessResourceBreakdownProps = {
+  title: string;
+  metricType: 'cpu' | 'ram';
+  currentTotal: number;
+  processes: TopProcess[];
+  activeSeries: Record<string, boolean>;
+  onToggleSeries: (key: string) => void;
+  seriesPrefix: 'cpu_proc' | 'ram_proc';
+  otherKey: 'cpu_other' | 'ram_other';
+  totalKey: 'totalCpu' | 'totalRam';
+  totalColor: string;
+};
+
+function ProcessResourceBreakdown({
+  title,
+  metricType,
+  currentTotal,
+  processes,
+  activeSeries,
+  onToggleSeries,
+  seriesPrefix,
+  otherKey,
+  totalKey,
+  totalColor,
+}: ProcessResourceBreakdownProps) {
+  const processItems = useMemo(() => {
+    return processes.map((p, idx) => {
+      const val = metricType === 'cpu' ? p.cpu : p.ram;
+      const key = `${seriesPrefix}_${idx}`;
+      const color = PROCESS_COLORS[idx % PROCESS_COLORS.length];
+      const isVisible = activeSeries[key] !== false;
+      return {
+        ...p,
+        val: Number((val || 0).toFixed(1)),
+        key,
+        color,
+        isVisible,
+        idx,
+      };
+    });
+  }, [processes, metricType, seriesPrefix, activeSeries]);
+
+  const topSum = useMemo(() => {
+    return Number(processItems.reduce((acc, p) => acc + p.val, 0).toFixed(1));
+  }, [processItems]);
+
+  const otherVal = Math.max(0, Number((currentTotal - topSum).toFixed(1)));
+  const idleVal = Math.max(0, Number((100 - currentTotal).toFixed(1)));
+  const isOtherVisible = activeSeries[otherKey] !== false;
+  const isTotalVisible = activeSeries[totalKey] !== false;
+
+  return (
+    <div className="mt-6 space-y-3.5">
+      {/* 1. Resource Allocation Bar (Thanh phân bổ tỷ trọng tài nguyên tổng quan) */}
+      <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--foreground)]">
+              {title}
+            </span>
+            <span className="text-[11px] text-[var(--color-muted)] font-mono">
+              (Live Breakdown)
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
+            <span className="flex items-center gap-1.5 text-[var(--foreground)] font-semibold">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: totalColor }} />
+              Used: {currentTotal.toFixed(1)}%
+            </span>
+            <span className="text-[var(--color-muted)]">·</span>
+            <span className="text-[var(--color-muted)]">
+              Top 5: <strong className="text-[var(--foreground)]">{topSum.toFixed(1)}%</strong>
+            </span>
+            <span className="text-[var(--color-muted)]">·</span>
+            <span className="text-[var(--color-muted)]">
+              Other: <strong className="text-slate-400">{otherVal.toFixed(1)}%</strong>
+            </span>
+            <span className="text-[var(--color-muted)]">·</span>
+            <span className="text-[var(--color-muted)]">
+              {metricType === 'cpu' ? 'Idle' : 'Free'}: <strong className="text-emerald-400">{idleVal.toFixed(1)}%</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Segmented Progress Bar */}
+        <div className="h-3.5 w-full bg-white/[0.04] rounded-full overflow-hidden flex p-0.5 border border-white/[0.08] shadow-inner">
+          {processItems.map((p) => {
+            if (p.val <= 0) return null;
+            return (
+              <div
+                key={p.key}
+                style={{
+                  width: `${(p.val / 100) * 100}%`,
+                  backgroundColor: p.color,
+                }}
+                className="h-full rounded-sm transition-all duration-300 hover:brightness-125 cursor-pointer relative"
+                title={`${p.name} (PID ${p.pid}): ${p.val.toFixed(1)}%`}
+                onClick={() => onToggleSeries(p.key)}
+              />
+            );
+          })}
+          {otherVal > 0 && (
+            <div
+              style={{ width: `${(otherVal / 100) * 100}%` }}
+              className="h-full bg-slate-500 rounded-sm transition-all duration-300 hover:brightness-125 cursor-pointer"
+              title={`Other Processes & OS: ${otherVal.toFixed(1)}%`}
+              onClick={() => onToggleSeries(otherKey)}
+            />
+          )}
+          {idleVal > 0 && (
+            <div
+              style={{ width: `${(idleVal / 100) * 100}%` }}
+              className="h-full bg-transparent opacity-25"
+              title={`${metricType === 'cpu' ? 'Idle CPU' : 'Free Memory'}: ${idleVal.toFixed(1)}%`}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* 2. Ranked Process Cards Table (Danh sách tiến trình độc lập trực quan) */}
+      <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border-color)] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+          <div className="flex items-center gap-2">
+            <span>Active Processes</span>
+            <span className="text-[10px] lowercase font-normal text-[var(--color-muted)]">
+              (click row to toggle on chart)
+            </span>
+          </div>
+          <div className="flex items-center gap-6">
+            <span className="w-28 hidden sm:inline-block">Share</span>
+            <span className="w-16 text-right">Usage</span>
+            <span className="w-20 text-center">Chart View</span>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          {processItems.map((p) => (
+            <div
+              key={p.key}
+              onClick={() => onToggleSeries(p.key)}
+              className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+                p.isVisible
+                  ? 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20'
+                  : 'border-white/[0.03] bg-transparent opacity-40 hover:opacity-70'
+              }`}
+            >
+              {/* Process Identity */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+                  #{p.idx + 1}
+                </span>
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm"
+                  style={{ backgroundColor: p.color }}
+                />
+                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-[var(--foreground)] truncate max-w-[200px] sm:max-w-[280px]">
+                    {p.name}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/[0.06] text-[var(--color-muted)] border border-white/[0.08]">
+                    PID {p.pid}
+                  </span>
+                  {p.user && (
+                    <span className="text-[10px] text-[var(--color-muted)] hidden md:inline">
+                      ({p.user})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Bar & Value */}
+              <div className="flex items-center gap-6 flex-shrink-0">
+                <div className="w-28 hidden sm:block">
+                  <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(100, (p.val / Math.max(1, currentTotal)) * 100)}%`,
+                        backgroundColor: p.color,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <span className="w-16 text-right font-mono text-xs font-bold" style={{ color: p.color }}>
+                  {p.val.toFixed(1)}%
+                </span>
+
+                <div className="w-20 flex justify-center">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      p.isVisible
+                        ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
+                        : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                    }`}
+                  >
+                    {p.isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                    {p.isVisible ? 'Show' : 'Hide'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Other Processes & OS row */}
+          <div
+            onClick={() => onToggleSeries(otherKey)}
+            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+              isOtherVisible
+                ? 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20'
+                : 'border-white/[0.03] bg-transparent opacity-40 hover:opacity-70'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+                —
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-slate-500 shadow-sm" />
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-[var(--foreground)] truncate">
+                  Other Processes & OS
+                </span>
+                <span className="text-[10px] text-[var(--color-muted)] ml-2 hidden sm:inline">
+                  (Kernel & background tasks)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 flex-shrink-0">
+              <div className="w-28 hidden sm:block">
+                <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-slate-500 transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, (otherVal / Math.max(1, currentTotal)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <span className="w-16 text-right font-mono text-xs font-bold text-slate-400">
+                {otherVal.toFixed(1)}%
+              </span>
+
+              <div className="w-20 flex justify-center">
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    isOtherVisible
+                      ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
+                      : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                  }`}
+                >
+                  {isOtherVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  {isOtherVisible ? 'Show' : 'Hide'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Total Reference Ceiling Row */}
+          <div
+            onClick={() => onToggleSeries(totalKey)}
+            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-dashed transition-all cursor-pointer ${
+              isTotalVisible
+                ? 'border-white/20 bg-white/[0.02] hover:bg-white/[0.05]'
+                : 'border-white/5 bg-transparent opacity-40 hover:opacity-70'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+                REF
+              </span>
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm"
+                style={{ backgroundColor: totalColor }}
+              />
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-[var(--foreground)] truncate">
+                  {metricType === 'cpu' ? 'Total CPU Reference' : 'Total Memory Reference'}
+                </span>
+                <span className="text-[10px] text-[var(--color-muted)] ml-2 hidden sm:inline">
+                  (Dashed reference line on chart)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 flex-shrink-0">
+              <div className="w-28 hidden sm:block">
+                <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, currentTotal)}%`,
+                      backgroundColor: totalColor,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <span className="w-16 text-right font-mono text-xs font-bold" style={{ color: totalColor }}>
+                {currentTotal.toFixed(1)}%
+              </span>
+
+              <div className="w-20 flex justify-center">
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    isTotalVisible
+                      ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
+                      : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                  }`}
+                >
+                  {isTotalVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  {isTotalVisible ? 'Show' : 'Hide'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   1. EXPANDED CPU CHART CARD (Independent Process Curves - NO Stacking)
    ========================================================================= */
 function ExpandedCpuChartCard({
   onCollapse,
@@ -826,6 +1152,10 @@ function ExpandedCpuChartCard({
   loading: boolean;
 }) {
   const stats = useMemo(() => calculateStats(timeline, 'cpu', '%'), [timeline]);
+  const currentCpuNum = useMemo(() => {
+    const val = timeline.filter((p) => p.hasData && p.cpu != null).map((p) => Number(p.cpu)).at(-1);
+    return val ?? 0;
+  }, [timeline]);
 
   return (
     <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
@@ -859,29 +1189,44 @@ function ExpandedCpuChartCard({
         </button>
       </div>
 
-      {/* Chart Canvas */}
-      <div className="mt-6 h-[380px] w-full relative">
+      {/* Chart Canvas - Independent Process Curves (NO stackId) */}
+      <div className="mt-6 h-[360px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
             <defs>
               {cpuProcesses.map((proc, idx) => (
                 <linearGradient key={`cpuGrad_${idx}`} id={`cpuGrad_${idx}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.5} />
-                  <stop offset="95%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.05} />
+                  <stop offset="5%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.01} />
                 </linearGradient>
               ))}
               <linearGradient id="cpuOtherGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#64748b" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
+                <stop offset="5%" stopColor="#64748b" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#64748b" stopOpacity={0.01} />
               </linearGradient>
             </defs>
             <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
             <Tooltip content={<MetricsTooltip />} />
 
+            {/* Total CPU Reference - Clean Dashed Line */}
+            {activeSeries.totalCpu && (
+              <Line
+                type="monotone"
+                dataKey="cpu"
+                name="Total CPU Reference"
+                stroke="#a855f7"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            )}
+
+            {/* Other Processes & OS - Independent Area */}
             {activeSeries.cpu_other && (
               <Area
                 type="monotone"
-                stackId="cpuStack"
                 dataKey="cpu_other"
                 name="Other Processes & OS"
                 stroke="#64748b"
@@ -892,6 +1237,7 @@ function ExpandedCpuChartCard({
               />
             )}
 
+            {/* Top Processes - Independent Curves (No stacking) */}
             {cpuProcesses.map((proc, idx) => {
               const key = `cpu_proc_${idx}`;
               if (!activeSeries[key]) return null;
@@ -899,30 +1245,16 @@ function ExpandedCpuChartCard({
                 <Area
                   key={key}
                   type="monotone"
-                  stackId="cpuStack"
                   dataKey={key}
                   name={`${proc.name} (PID ${proc.pid})`}
                   stroke={PROCESS_COLORS[idx % PROCESS_COLORS.length]}
                   fill={`url(#cpuGrad_${idx})`}
-                  strokeWidth={1.5}
+                  strokeWidth={2}
                   connectNulls={false}
                   isAnimationActive={false}
                 />
               );
             })}
-
-            {activeSeries.totalCpu && (
-              <Line
-                type="monotone"
-                dataKey="cpu"
-                name="Total CPU Reference"
-                stroke="#a855f7"
-                strokeWidth={2.5}
-                dot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            )}
 
             <Line
               type="linear"
@@ -947,38 +1279,19 @@ function ExpandedCpuChartCard({
         )}
       </div>
 
-      {/* Interactive Legend Badges */}
-      <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Active Process Layers (Click to toggle process):
-        </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          {cpuProcesses.map((proc, idx) => {
-            const key = `cpu_proc_${idx}`;
-            return (
-              <LegendBadge
-                key={key}
-                label={`${proc.name} (${proc.cpu.toFixed(1)}% · PID ${proc.pid})`}
-                color={PROCESS_COLORS[idx % PROCESS_COLORS.length]}
-                active={activeSeries[key] !== false}
-                onClick={() => onToggleSeries(key)}
-              />
-            );
-          })}
-          <LegendBadge
-            label="Other Processes & OS"
-            color="#64748b"
-            active={activeSeries.cpu_other !== false}
-            onClick={() => onToggleSeries('cpu_other')}
-          />
-          <LegendBadge
-            label="Total CPU Reference"
-            color="#a855f7"
-            active={activeSeries.totalCpu !== false}
-            onClick={() => onToggleSeries('totalCpu')}
-          />
-        </div>
-      </div>
+      {/* Visual Resource Breakdown & Ranked Process Cards */}
+      <ProcessResourceBreakdown
+        title="CPU Allocation Breakdown"
+        metricType="cpu"
+        currentTotal={currentCpuNum}
+        processes={cpuProcesses}
+        activeSeries={activeSeries}
+        onToggleSeries={onToggleSeries}
+        seriesPrefix="cpu_proc"
+        otherKey="cpu_other"
+        totalKey="totalCpu"
+        totalColor="#a855f7"
+      />
 
       {/* KPI Stats Grid */}
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1004,7 +1317,7 @@ function ExpandedCpuChartCard({
 }
 
 /* =========================================================================
-   2. EXPANDED RAM CHART CARD (Matching CPU Style)
+   2. EXPANDED RAM CHART CARD (Independent Process Curves - NO Stacking)
    ========================================================================= */
 function ExpandedRamChartCard({
   onCollapse,
@@ -1028,6 +1341,10 @@ function ExpandedRamChartCard({
   loading: boolean;
 }) {
   const stats = useMemo(() => calculateStats(timeline, 'ram', '%'), [timeline]);
+  const currentRamNum = useMemo(() => {
+    const val = timeline.filter((p) => p.hasData && p.ram != null).map((p) => Number(p.ram)).at(-1);
+    return val ?? 0;
+  }, [timeline]);
 
   return (
     <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
@@ -1061,29 +1378,44 @@ function ExpandedRamChartCard({
         </button>
       </div>
 
-      {/* Chart Canvas */}
-      <div className="mt-6 h-[380px] w-full relative">
+      {/* Chart Canvas - Independent Process Curves (NO stackId) */}
+      <div className="mt-6 h-[360px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
             <defs>
               {ramProcesses.map((proc, idx) => (
                 <linearGradient key={`ramGrad_${idx}`} id={`ramGrad_${idx}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.5} />
-                  <stop offset="95%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.05} />
+                  <stop offset="5%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={PROCESS_COLORS[idx % PROCESS_COLORS.length]} stopOpacity={0.01} />
                 </linearGradient>
               ))}
               <linearGradient id="ramOtherGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#64748b" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#64748b" stopOpacity={0.02} />
+                <stop offset="5%" stopColor="#64748b" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#64748b" stopOpacity={0.01} />
               </linearGradient>
             </defs>
             <ChartScaffolding {...chartContext} percentAxis fixedPercentDomain />
             <Tooltip content={<MetricsTooltip />} />
 
+            {/* Total Memory Reference - Clean Dashed Line */}
+            {activeSeries.totalRam && (
+              <Line
+                type="monotone"
+                dataKey="ram"
+                name="Total Memory Reference"
+                stroke="#10b981"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            )}
+
+            {/* Other Processes & OS - Independent Area */}
             {activeSeries.ram_other && (
               <Area
                 type="monotone"
-                stackId="ramStack"
                 dataKey="ram_other"
                 name="Other Processes & OS"
                 stroke="#64748b"
@@ -1094,6 +1426,7 @@ function ExpandedRamChartCard({
               />
             )}
 
+            {/* Top Processes - Independent Curves (No stacking) */}
             {ramProcesses.map((proc, idx) => {
               const key = `ram_proc_${idx}`;
               if (!activeSeries[key]) return null;
@@ -1101,30 +1434,16 @@ function ExpandedRamChartCard({
                 <Area
                   key={key}
                   type="monotone"
-                  stackId="ramStack"
                   dataKey={key}
                   name={`${proc.name} (PID ${proc.pid})`}
                   stroke={PROCESS_COLORS[idx % PROCESS_COLORS.length]}
                   fill={`url(#ramGrad_${idx})`}
-                  strokeWidth={1.5}
+                  strokeWidth={2}
                   connectNulls={false}
                   isAnimationActive={false}
                 />
               );
             })}
-
-            {activeSeries.totalRam && (
-              <Line
-                type="monotone"
-                dataKey="ram"
-                name="Total Memory Reference"
-                stroke="#10b981"
-                strokeWidth={2.5}
-                dot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            )}
 
             <Line
               type="linear"
@@ -1149,38 +1468,19 @@ function ExpandedRamChartCard({
         )}
       </div>
 
-      {/* Interactive Legend Badges */}
-      <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Active Process Layers (Click to toggle process):
-        </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          {ramProcesses.map((proc, idx) => {
-            const key = `ram_proc_${idx}`;
-            return (
-              <LegendBadge
-                key={key}
-                label={`${proc.name} (${proc.ram.toFixed(1)}% · PID ${proc.pid})`}
-                color={PROCESS_COLORS[idx % PROCESS_COLORS.length]}
-                active={activeSeries[key] !== false}
-                onClick={() => onToggleSeries(key)}
-              />
-            );
-          })}
-          <LegendBadge
-            label="Other Processes & OS"
-            color="#64748b"
-            active={activeSeries.ram_other !== false}
-            onClick={() => onToggleSeries('ram_other')}
-          />
-          <LegendBadge
-            label="Total Memory Reference"
-            color="#10b981"
-            active={activeSeries.totalRam !== false}
-            onClick={() => onToggleSeries('totalRam')}
-          />
-        </div>
-      </div>
+      {/* Visual Resource Breakdown & Ranked Process Cards */}
+      <ProcessResourceBreakdown
+        title="Memory Allocation Breakdown"
+        metricType="ram"
+        currentTotal={currentRamNum}
+        processes={ramProcesses}
+        activeSeries={activeSeries}
+        onToggleSeries={onToggleSeries}
+        seriesPrefix="ram_proc"
+        otherKey="ram_other"
+        totalKey="totalRam"
+        totalColor="#10b981"
+      />
 
       {/* KPI Stats Grid */}
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1578,9 +1878,9 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
   if (!active) return null;
   const timestamp = Number(label);
   const point = payload?.[0]?.payload;
-  const visibleItems = (payload ?? []).filter(
-    (item) => item.value != null && item.name !== 'No metrics',
-  );
+  const visibleItems = (payload ?? [])
+    .filter((item) => item.value != null && item.name !== 'No metrics')
+    .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
 
   return (
     <div className="monitoring-tooltip">
