@@ -12,6 +12,7 @@ import (
 
 type Service interface {
 	CreateWebsite(ctx context.Context, userID string, req CreateWebsiteRequest) (*Website, error)
+	UpdateWebsite(ctx context.Context, id string, userID string, req UpdateWebsiteRequest) (*Website, error)
 	ListWebsites(ctx context.Context, userID string) ([]Website, error)
 	DeleteWebsite(ctx context.Context, id string, userID string) error
 	GetUptimeSummary(ctx context.Context, userID string, days int, endDateStr string) (*UptimeSummaryResponse, error)
@@ -46,6 +47,34 @@ func (s *service) CreateWebsite(ctx context.Context, userID string, req CreateWe
 	}
 
 	if err := s.repo.Create(ctx, w); err != nil {
+		return nil, err
+	}
+
+	return w, nil
+}
+
+func (s *service) UpdateWebsite(ctx context.Context, id string, userID string, req UpdateWebsiteRequest) (*Website, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	req.URL = strings.TrimSpace(req.URL)
+	if req.Name == "" || req.URL == "" {
+		return nil, errors.New("name and url are required")
+	}
+	if len(req.Name) > 120 {
+		return nil, errors.New("name must not exceed 120 characters")
+	}
+	if err := notifier.ValidatePublicWebsiteURL(req.URL); err != nil {
+		return nil, err
+	}
+
+	w := &Website{
+		ID:         id,
+		UserID:     userID,
+		Name:       req.Name,
+		URL:        req.URL,
+		ChannelIDs: req.ChannelIDs,
+	}
+
+	if err := s.repo.Update(ctx, w); err != nil {
 		return nil, err
 	}
 

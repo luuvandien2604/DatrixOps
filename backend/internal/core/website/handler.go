@@ -51,6 +51,38 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, website)
 }
 
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		response.Error(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found in context")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Website ID is required")
+		return
+	}
+
+	var req UpdateWebsiteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	website, err := h.svc.UpdateWebsite(r.Context(), id, userID, req)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	auditlog.Record(r.Context(), h.db, userID, "UPDATE_WEBSITE", "WEBSITE", website.ID, map[string]any{
+		"name": website.Name,
+		"url":  website.URL,
+	})
+	response.Success(w, http.StatusOK, website)
+}
+
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {

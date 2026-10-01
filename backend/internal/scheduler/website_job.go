@@ -302,46 +302,23 @@ func (j *WebsiteJob) getWebsiteChannels(ctx context.Context, websiteID, userID s
 	if j.db == nil {
 		return nil
 	}
-	// 1. Try explicit website_channels
+	// Only return channels explicitly configured by user for this website
 	rows, err := j.db.Pool.Query(ctx, `
 		SELECT c.id, c.user_id, c.name, c.type, c.config, c.enabled
 		FROM website_channels wc
 		JOIN alert_channels c ON c.id = wc.alert_channel_id
 		WHERE wc.website_id = $1 AND c.enabled = true
 	`, websiteID)
-	if err == nil {
-		defer rows.Close()
-		channels := make([]alert.AlertChannel, 0)
-		for rows.Next() {
-			var ch alert.AlertChannel
-			var configBytes []byte
-			if err := rows.Scan(&ch.ID, &ch.UserID, &ch.Name, &ch.Type, &configBytes, &ch.Enabled); err == nil {
-				ch.Config = make(map[string]interface{})
-				_ = json.Unmarshal(configBytes, &ch.Config)
-				channels = append(channels, ch)
-			}
-		}
-		if len(channels) > 0 {
-			return channels
-		}
-	}
-
-	// 2. Fallback: all enabled channels of the user
-	fallbackRows, err := j.db.Pool.Query(ctx, `
-		SELECT id, user_id, name, type, config, enabled
-		FROM alert_channels
-		WHERE user_id = $1 AND enabled = true
-	`, userID)
 	if err != nil {
 		return nil
 	}
-	defer fallbackRows.Close()
+	defer rows.Close()
 
 	channels := make([]alert.AlertChannel, 0)
-	for fallbackRows.Next() {
+	for rows.Next() {
 		var ch alert.AlertChannel
 		var configBytes []byte
-		if err := fallbackRows.Scan(&ch.ID, &ch.UserID, &ch.Name, &ch.Type, &configBytes, &ch.Enabled); err == nil {
+		if err := rows.Scan(&ch.ID, &ch.UserID, &ch.Name, &ch.Type, &configBytes, &ch.Enabled); err == nil {
 			ch.Config = make(map[string]interface{})
 			_ = json.Unmarshal(configBytes, &ch.Config)
 			channels = append(channels, ch)
@@ -378,7 +355,7 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 			"failure_kind":     res.failureKind,
 			"response_time_ms": res.responseTimeMS,
 			"failed_at":        nowStr,
-			"rule_name":        "Website Uptime Alert",
+			"rule_name":        "Website Availability",
 			"server_name":      w.Name,
 			"target_name":      w.URL,
 		})
@@ -388,16 +365,20 @@ func (j *WebsiteJob) notifyWebsiteDown(w website.Website, res websiteProbeResult
 		`, w.UserID, title, dashMsg, metadata)
 	}
 
+	if len(channels) == 0 {
+		return
+	}
+
 	// Telegram
 	teleMsg := fmt.Sprintf(
-		"🔴 <b>%s down</b>\nRule: <i>Website Uptime Alert</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>URL:</b> %s\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		"🔴 <b>%s down</b>\nSystem: <i>Website Availability Monitor</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>URL:</b> %s\n<b>Failed at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
 		w.Name, w.Name, w.URL, nowStr,
 	)
 
 	// Discord
 	discord := notifier.DiscordEmbed{
 		Title:       fmt.Sprintf("%s down", w.Name),
-		Description: "Rule: Website Uptime Alert",
+		Description: "Website Availability Monitor",
 		Color:       0xEF4444,
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Website", Value: w.Name, Inline: true},
@@ -444,7 +425,7 @@ func (j *WebsiteJob) notifyWebsiteUp(w website.Website, res websiteProbeResult, 
 			"failed_at":         failedAtStr,
 			"recovered_at":      nowStr,
 			"response_time_ms":  res.responseTimeMS,
-			"rule_name":         "Website Uptime Alert",
+			"rule_name":         "Website Availability",
 			"server_name":       w.Name,
 			"target_name":       w.URL,
 		})
@@ -454,16 +435,20 @@ func (j *WebsiteJob) notifyWebsiteUp(w website.Website, res websiteProbeResult, 
 		`, w.UserID, title, dashMsg, metadata)
 	}
 
+	if len(channels) == 0 {
+		return
+	}
+
 	// Telegram
 	teleMsg := fmt.Sprintf(
-		"🟢 <b>%s recovered</b>\nRule: <i>Website Uptime Alert</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
+		"🟢 <b>%s recovered</b>\nSystem: <i>Website Availability Monitor</i>\n─────────────────────────────\n<b>Website:</b> <code>%s</code>\n<b>Downtime:</b> <code>%s</code>\n<b>Failed at:</b> %s\n<b>Recovered at:</b> %s\n\n<i>DatrixOps Monitoring</i>",
 		w.Name, w.Name, downtimeStr, failedAtStr, nowStr,
 	)
 
 	// Discord
 	discord := notifier.DiscordEmbed{
 		Title:       fmt.Sprintf("%s recovered", w.Name),
-		Description: "Rule: Website Uptime Alert",
+		Description: "Website Availability Monitor",
 		Color:       0x10B981,
 		Fields: []notifier.DiscordEmbedField{
 			{Name: "Website", Value: w.Name, Inline: true},
@@ -520,6 +505,10 @@ func (j *WebsiteJob) notifyWebsiteSSL(w website.Website, res websiteProbeResult)
 			INSERT INTO dashboard_notifications (user_id, kind, severity, title, message, metadata)
 			VALUES ($1, 'website_ssl_warning', 'warning', $2, $3, $4)
 		`, w.UserID, title, dashMsg, metadata)
+	}
+
+	if len(channels) == 0 {
+		return
 	}
 
 	// Telegram

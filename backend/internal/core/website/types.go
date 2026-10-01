@@ -25,6 +25,12 @@ type CreateWebsiteRequest struct {
 	ChannelIDs []string `json:"channel_ids,omitempty"`
 }
 
+type UpdateWebsiteRequest struct {
+	Name       string   `json:"name" validate:"required"`
+	URL        string   `json:"url" validate:"required,url"`
+	ChannelIDs []string `json:"channel_ids,omitempty"`
+}
+
 type CheckResult struct {
 	WebsiteID        string
 	Status           string
