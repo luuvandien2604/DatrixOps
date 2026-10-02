@@ -320,4 +320,3 @@ func (s *Service) GetNetworkTargetHistory(ctx context.Context, targetID string, 
 func (s *Service) GetNetworkQualityOverview(ctx context.Context, userID, agentID string) ([]TagQualityOverview, error) {
 	return s.repo.GetNetworkQualityOverview(ctx, userID, agentID)
 }
-

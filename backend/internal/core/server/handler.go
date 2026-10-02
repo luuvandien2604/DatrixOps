@@ -1429,4 +1429,3 @@ func (h *Handler) TestNetworkTargetNow(w http.ResponseWriter, r *http.Request) {
 		"result": res,
 	})
 }
-

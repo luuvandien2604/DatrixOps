@@ -64,4 +64,3 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 	mux.HandleFunc("GET /api/v1/network-targets/{id}/history", withAuth(h.GetNetworkTargetHistory))
 	mux.HandleFunc("POST /api/v1/network-targets/{id}/test-now", withRoles(h.TestNetworkTargetNow, targetManageRoles...))
 }
-

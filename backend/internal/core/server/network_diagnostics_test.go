@@ -538,4 +538,3 @@ func TestValidateNetworkTargetHost(t *testing.T) {
 		}
 	}
 }
-
