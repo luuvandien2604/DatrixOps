@@ -353,6 +353,45 @@ when the current shell is not root.
 EOF
 }
 
+cleanup_storage() {
+    require_installation
+    require_root
+    printf "Optimizing storage and pruning obsolete DatrixOps images & build cache...\n"
+    local active_imgs
+    active_imgs="$(docker ps -a --format '{{.Image}}' | sort -u)"
+    local current_ver
+    current_ver="$(sed -n 's/^[[:space:]]*DATRIXOPS_VERSION=//p' "$ENV_FILE" 2>/dev/null | tail -n 1 | tr -d ' "\r\n')"
+    local ce_repos=(
+        "ghcr.io/luuvandien2604/datrixops-backend"
+        "ghcr.io/luuvandien2604/datrixops-worker"
+        "ghcr.io/luuvandien2604/datrixops-migrate"
+        "ghcr.io/luuvandien2604/datrixops-frontend"
+        "datrixops-backend"
+        "datrixops-worker"
+        "datrixops-migrate"
+        "datrixops-frontend"
+    )
+    local pruned_count=0
+    for repo in "${ce_repos[@]}"; do
+        for img in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^${repo}:" || true); do
+            local img_tag="${img#*:}"
+            if [[ -n "$current_ver" && "$img_tag" == "$current_ver" ]]; then
+                continue
+            fi
+            if echo "$active_imgs" | grep -Fqx "$img"; then
+                continue
+            fi
+            if docker rmi "$img" >/dev/null 2>&1; then
+                pruned_count=$((pruned_count + 1))
+            fi
+        done
+    done
+    printf "Pruned %d obsolete DatrixOps image(s).\n" "$pruned_count"
+    docker image prune -f >/dev/null 2>&1 || true
+    docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
+    printf "Storage optimization complete.\n"
+}
+
 menu() {
     local choice action_status
     require_installation
@@ -371,6 +410,7 @@ menu() {
         printf '%s\n' '  7) Create backup'
         printf '%s\n' '  8) Repair Self-Monitor service'
         printf '%s\n' '  9) Check network diagnostics'
+        printf '%s\n' '  10) Prune old DatrixOps images & cache'
         printf '%s\n' '  0) Exit'
         printf '%s\n' '============================================================'
         printf 'Select: '
@@ -390,6 +430,7 @@ menu() {
             7) (trap - INT; create_backup) || action_status=$? ;;
             8) (trap - INT; repair_self_monitor) || action_status=$? ;;
             9) (trap - INT; check_network) || action_status=$? ;;
+            10) (trap - INT; cleanup_storage) || action_status=$? ;;
             0) printf 'Exited DatrixOps Management.\n'; return 0 ;;
             *) printf 'ERROR: Invalid selection.\n' >&2; action_status=2 ;;
         esac
@@ -413,6 +454,7 @@ case "${1:-}" in
     backup) create_backup ;;
     repair-self-monitor|self-monitor) repair_self_monitor ;;
     check-network|test-network|network) check_network ;;
+    cleanup|prune) cleanup_storage ;;
     help|-h|--help) show_help ;;
     *) show_help; exit 2 ;;
 esac

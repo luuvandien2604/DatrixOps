@@ -627,6 +627,47 @@ if [[ "$healthy" == "true" ]]; then
         log_success "Removed the legacy plaintext administrator password from ${credentials_file}."
     fi
 
+    # Post-upgrade storage optimization (Options 1, 2, 4: Label filter, N-1 retention, build cache cleanup)
+    log_info "Performing post-upgrade storage optimization (safe N-1 retention policy)..."
+    active_imgs="$(docker ps -a --format '{{.Image}}' | sort -u)"
+    ce_repos=(
+        "ghcr.io/luuvandien2604/datrixops-backend"
+        "ghcr.io/luuvandien2604/datrixops-worker"
+        "ghcr.io/luuvandien2604/datrixops-migrate"
+        "ghcr.io/luuvandien2604/datrixops-frontend"
+        "datrixops-backend"
+        "datrixops-worker"
+        "datrixops-migrate"
+        "datrixops-frontend"
+    )
+    pruned_count=0
+    for repo in "${ce_repos[@]}"; do
+        for img in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^${repo}:" || true); do
+            img_tag="${img#*:}"
+            # Option 2: Preserve current target version and previous version for instant offline rollback
+            if [[ -n "${target_app_ver:-}" && "$img_tag" == "${target_app_ver}" ]]; then
+                continue
+            fi
+            if [[ -n "${PREV_APP_VERSION:-}" && "$img_tag" == "${PREV_APP_VERSION}" ]]; then
+                continue
+            fi
+            # Option 1: Never delete if any container is currently bound to this image
+            if echo "$active_imgs" | grep -Fqx "$img"; then
+                continue
+            fi
+            if docker rmi "$img" >/dev/null 2>&1; then
+                pruned_count=$((pruned_count + 1))
+            fi
+        done
+    done
+    if [[ "$pruned_count" -gt 0 ]]; then
+        log_info "Safely pruned ${pruned_count} obsolete DatrixOps image(s)."
+    fi
+    # Option 4: Prune untagged dangling layers (<none>:<none>) safely
+    docker image prune -f >/dev/null 2>&1 || true
+    # Option 4: Prune stale build cache older than 7 days
+    docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
+
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"
     printf "${GREEN}✔ DatrixOps Upgraded Successfully!                          ${NC}\n"
