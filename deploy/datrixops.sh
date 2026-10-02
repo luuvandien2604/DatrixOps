@@ -346,6 +346,7 @@ Commands:
   backup               Create a backup
   repair-self-monitor  Repair and restart Host Self-Monitoring service
   check-network        Run comprehensive 6-step network diagnostics
+  cleanup, prune       Prune obsolete DatrixOps images & build cache
   help                 Show this help
 
 Run `datrix` without a command to open the management menu. Use `sudo datrix`
@@ -454,7 +455,7 @@ case "${1:-}" in
     backup) create_backup ;;
     repair-self-monitor|self-monitor) repair_self_monitor ;;
     check-network|test-network|network) check_network ;;
-    cleanup|prune) cleanup_storage ;;
     help|-h|--help) show_help ;;
+    cleanup|prune) cleanup_storage ;;
     *) show_help; exit 2 ;;
 esac
