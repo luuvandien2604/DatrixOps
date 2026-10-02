@@ -459,13 +459,12 @@ export default function LogsPage() {
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-3">
             <FileText className="w-6 h-6 text-blue-400" />
             Log Explorer
           </h1>
-          <p className="text-sm text-[var(--color-muted)]">Search and inspect agent, system and container log streams.</p>
         </div>
 
         <div className="flex items-center gap-3">

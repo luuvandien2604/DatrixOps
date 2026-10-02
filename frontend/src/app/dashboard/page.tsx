@@ -172,25 +172,22 @@ export default function OverviewDashboard() {
 
   return (
     <div className="mx-auto max-w-[1540px] space-y-6">
-      <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
             <Activity className="h-3 w-3" />
             Live telemetry
             <span className="live-data-dot" aria-hidden="true" />
           </div>
-          <h1 className="page-title">Infrastructure Overview</h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-white/42">
-            Current fleet health, resource pressure and incident state from agent heartbeats.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-white/35" aria-live="polite">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Infrastructure Overview</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40 font-mono" aria-live="polite">
             <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
             <span aria-hidden="true">·</span>
             <span>{refreshing ? 'Receiving fresh data…' : 'Auto-refresh is on'}</span>
             {error && <span className="text-[var(--rose)]">Latest refresh failed: {error}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary" disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
           </button>

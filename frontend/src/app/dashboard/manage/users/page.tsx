@@ -179,11 +179,10 @@ export default function ManageUsersPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="panel-kicker">Administration</p>
-          <h1>Team & <em>User Management.</em></h1>
-          <p className="mt-3 text-[var(--color-muted)]">Manage local accounts, assign roles (Admin, Operator, Viewer), and control instance permissions.</p>
+          <p className="panel-kicker text-xs font-semibold text-blue-400 mb-1">Administration</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Team & User Management</h1>
         </div>
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => void fetchUsers()} className="ops-button secondary" disabled={loading}>

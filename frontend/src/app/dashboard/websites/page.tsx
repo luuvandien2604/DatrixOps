@@ -487,13 +487,10 @@ export default function WebsitesPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] tracking-tight flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[var(--foreground)] tracking-tight flex items-center gap-3">
             <Globe className="w-6 h-6 text-blue-400" />
             Uptime & Availability
           </h1>
-          <p className="text-[var(--color-muted)] text-sm mt-1">
-            Real-time availability monitoring, continuous host uptime tracking, and SSL health across web endpoints and servers
-          </p>
         </div>
         <div className="flex items-center gap-2.5">
           <button
@@ -561,8 +558,8 @@ export default function WebsitesPage() {
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl font-black text-[var(--foreground)]">{overallAvailability}</span>
           </div>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">
-            Aggregated real-time probe & heartbeat ratio
+          <p className="mt-1 text-xs text-cyan-600 dark:text-cyan-400 font-semibold">
+            Fleet probe average
           </p>
         </div>
 

@@ -279,13 +279,10 @@ export default function AuditLogPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--foreground)] mb-1 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-3">
             <Shield className="w-6 h-6 text-blue-400" />
             Audit Trail
           </h1>
-          <p className="text-sm text-[var(--color-muted)]">
-            Transparent security log of administrative actions, task executions, and server events.
-          </p>
         </div>
 
         <button

@@ -619,34 +619,36 @@ export default function MonitoringPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="panel-kicker mb-2 flex items-center gap-2">
+          <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold text-blue-400">
             <Activity className="h-3.5 w-3.5" />
             Continuous telemetry
-          </p>
-          <h1>Resource Monitoring</h1>
-          <p className="mt-3 text-sm text-[var(--color-muted)]">
-            Click the expand icon on any chart to view live process breakdown. Expanded charts stay full-width at the top, while collapsed charts remain in a neat grid below.
-          </p>
-          <p className="mt-2 font-mono text-xs text-[var(--text-tertiary)]">
+            <span className="live-data-dot" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Resource Monitoring</h1>
+          <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">
             Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · {refreshInterval === 'off' ? 'Auto-refresh: Off' : `Auto-refresh: ${refreshInterval}`}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-nowrap shrink-0 overflow-x-auto py-1 scrollbar-none">
           <CustomSelect
             value={selectedServerId}
             onChange={setSelectedServerId}
-            icon={<ServerIcon className="w-4 h-4 text-blue-400" />}
+            icon={<ServerIcon className="w-4 h-4 text-blue-400 shrink-0" />}
             placeholder="No servers available"
             options={servers.map((s) => ({ value: s.id, label: s.name }))}
-            className="w-56"
+            className="w-44 sm:w-48 shrink-0"
           />
 
           {selectedServer && (
-            <span className={`monitoring-server-status ${serverOnline ? 'is-online' : 'is-offline'}`}>
-              <span className={`status-dot ${serverOnline ? 'online' : 'offline'}`} />
+            <span className={`inline-flex items-center gap-1.5 h-[38px] px-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider shrink-0 transition-colors ${
+              serverOnline
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+            }`}>
+              <span className={`h-2 w-2 rounded-full ${serverOnline ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-rose-400'}`} />
               {serverOnline ? 'Online' : 'Offline'}
             </span>
           )}
@@ -654,28 +656,28 @@ export default function MonitoringPage() {
           <CustomSelect
             value={timeRange}
             onChange={(val) => setTimeRange(val as TimeRange)}
-            icon={<Clock3 className="w-4 h-4 text-slate-400" />}
+            icon={<Clock3 className="w-4 h-4 text-slate-400 shrink-0" />}
             options={RANGE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-            className="w-48"
+            className="w-38 sm:w-42 shrink-0"
           />
 
           <CustomSelect
             value={refreshInterval}
             onChange={(val) => setRefreshInterval(val as RefreshInterval)}
-            icon={<RefreshCw className={`w-4 h-4 text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />}
+            icon={<RefreshCw className={`w-3.5 h-3.5 text-slate-400 shrink-0 ${refreshing ? 'animate-spin' : ''}`} />}
             options={REFRESH_INTERVAL_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-            className="w-28"
+            className="w-24 sm:w-28 shrink-0"
           />
 
           <button
             type="button"
             onClick={() => void fetchMetrics(false, true)}
-            className="monitoring-refresh"
+            className="h-[38px] w-[38px] rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer disabled:opacity-50"
             title="Refresh metrics now"
             aria-label="Refresh metrics now"
             disabled={!selectedServerId || initialLoading}
           >
-            <RefreshCw className={`h-4 w-4 ${initialLoading || refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${initialLoading || refreshing ? 'animate-spin text-blue-400' : ''}`} />
           </button>
         </div>
       </header>

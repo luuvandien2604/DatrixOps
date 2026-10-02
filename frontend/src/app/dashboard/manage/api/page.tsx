@@ -87,11 +87,10 @@ export default function APIKeyPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold mb-2 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-3">
             <Key className="w-6 h-6 text-emerald-500" />
             API Keys
           </h1>
-          <p className="text-[var(--color-muted)]">Manage your Public REST API Keys for third-party integrations.</p>
         </div>
         <button 
           onClick={() => setShowCreateModal(true)}

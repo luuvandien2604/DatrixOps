@@ -604,18 +604,14 @@ export default function ServersPage() {
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="page-title">Server Management</h1>
-          <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">
-            {servers.length} agents · {onlineCount} online · {offlineCount} offline
-          </p>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">Manage agent state, versions, connectivity and operational actions.</p>
-          <p className="mt-2 text-xs text-[var(--text-tertiary)]">
-            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for data'} · Auto-refresh 20s
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Server Management</h1>
+          <p className="mt-1 font-mono text-xs text-[var(--text-secondary)]">
+            {servers.length} agents · {onlineCount} online · {offlineCount} offline · Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for data'}
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
             onClick={handleSelfMonitorClick}
