@@ -1,196 +1,138 @@
 ---
 title: "Self-Hosted Deployment"
-description: "Comprehensive guide to installing, managing via datrix CLI, upgrading, backing up, and restoring DatrixOps Community Edition."
+description: "Installation guide, datrix CLI management, Caddy Gateway architecture, unified .env configuration, and storage cleanup for Community Edition."
 ---
 
-DatrixOps Community Edition (CE) is a complete self-hosted monitoring platform consisting of a centralized **Control Plane** and lightweight **DatrixOps Agents** deployed on target infrastructure. All PostgreSQL database records, telemetry metrics, logs, and audit trails reside entirely within your own infrastructure.
+DatrixOps Community Edition (CE) is a fully self-hosted, open-source server monitoring control plane. All PostgreSQL database records, telemetry time-series, logs, and audit histories remain strictly on your own infrastructure.
 
 ---
 
 ## 1. System Requirements
 
-| Resource | Minimum Recommended | Notes |
+| Resource | Recommended Minimum | Notes |
 | :--- | :--- | :--- |
-| **Operating System** | Ubuntu 20.04+, Debian 11+, CentOS/RHEL 8+, AlmaLinux | Architecture: `x86_64` (amd64) or `aarch64` (arm64) |
-| **CPU** | 1 Core | 2 Cores recommended for monitoring > 50 servers |
-| **RAM** | 2 GB | Minimum 1.5 GB available memory |
-| **Disk** | 20 GB SSD | Depends on telemetry retention policies |
-| **Inbound Ports** | `80/TCP`, `443/TCP` | Open on host firewall and cloud Security Groups |
+| **Operating System** | Ubuntu 20.04+, Debian 11+, CentOS/RHEL 8+, AlmaLinux, Rocky Linux | `x86_64` (amd64) or `aarch64` (arm64) architecture |
+| **CPU** | 1 Core | 2 Cores if monitoring > 50 servers |
+| **RAM** | 2 GB | Minimum 1.5 GB available |
+| **Disk** | 20 GB SSD | Depends on metrics retention settings |
+| **Network Ports (Inbound)**| `80/TCP`, `443/TCP` | Open on your firewall or cloud security group |
 
 ---
 
 ## 2. Automated 1-Line Installation
 
-Connect to your Linux host via SSH with `root` or `sudo` privileges and run:
+Log into your server as `root` (or with `sudo`) and run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deploy/bootstrap.sh | sudo bash
 ```
 
-### What the installer handles automatically:
-1. **Dependency Verification:** Automatically installs `docker`, `docker compose`, `curl`, `openssl`, and `jq` if missing.
+### The automated installer handles:
+1. **Prerequisites Verification:** Installs `docker`, `docker compose`, `curl`, `openssl`, and `jq` if missing.
 2. **Access Mode Selection:**
-   * **Public IP (Default):** Accessible immediately at `http://<VPS_IP>` (standard port 80).
-   * **Custom Domain:** Enter your domain (e.g., `monitor.example.com`). The built-in Caddy Gateway automatically provisions and renews **free Let's Encrypt TLS / SSL certificates**.
-3. **Administrator Credentials:** Configure your administrative username (default `admin`) and set or auto-generate a secure 32-character password.
-4. **Self-Monitoring Auto-Enrollment:** Installs the DatrixOps Agent locally and connects the Control Plane host directly to your dashboard for instant real-time telemetry.
-5. **CLI Registration:** Installs the global `datrix` management command in `/usr/local/bin/datrix`.
+   * **Public IP (Default):** Accessible via `http://<SERVER_IP>` on standard port 80.
+   * **Custom Domain:** Provide a custom domain (e.g. `monitor.example.com`). The system automatically provisions and renews **free HTTPS/SSL certificates** via Caddy Gateway.
+3. **Administrator Credentials:** Configures the primary administrator account securely.
+4. **Automated Host Self-Monitoring:** Enrolls the Control Plane VPS itself as the first monitored node.
+5. **Registers `datrix` CLI:** Creates a system-wide binary shortcut at `/usr/local/bin/datrix`.
 
 ---
 
-## 3. System Management with the `datrix` CLI
+## 3. Caddy Gateway Architecture & Automatic HTTPS
 
-After installation, manage the entire platform using the unified `datrix` command.
+DatrixOps uses **Caddy 2** as the sole ingress reverse proxy for all external traffic:
 
-### 📋 Interactive Management Menu
+```mermaid
+flowchart LR
+    Browser["👤 Browser"] -->|Port 80/443| Gateway["🛡️ Gateway (Caddy)"]
+    Agent["🤖 Agent"] -->|Port 80/443| Gateway
+    Gateway -->|/api/* & /ws/*| Backend["Backend (8080)"]
+    Gateway -->|Web UI| Frontend["Frontend (3000)"]
+```
 
-Run `datrix` without arguments to open the terminal management interface:
+### Key Gateway Advantages:
+- **Zero-Config Automatic HTTPS:** By configuring `CADDY_SITE_ADDRESS` with your domain, Caddy interfaces directly with Let's Encrypt or ZeroSSL using the ACME protocol. No certbot cronjobs required.
+- **Seamless Renewal:** Renews certificates automatically 30 days prior to expiration in memory with zero downtime.
+- **Persistent Volume:** Certificates and keys are stored safely inside the `caddy_data` volume (`/data/caddy/certificates/...`) and preserved across container upgrades.
+- **HTTP/3 (QUIC) Enabled:** Caddy exposes `443/udp` for high-throughput, low-latency dashboard and WebSocket connectivity.
+
+---
+
+## 4. Configuration: Single `.env` Source of Truth
+
+DatrixOps enforces an immutable **Single Source of Truth** for configuration:
+
+- **Master Configuration File:** `/opt/datrixops/.env`
+- **Automatic Symlink:** The deploy directory symlink points directly to the root `.env`:
+  ```text
+  /opt/datrixops/deploy/.env -> /opt/datrixops/.env
+  ```
+- **Benefits:**
+  - All services (Caddy, Backend, Frontend, Worker, Database) consume the identical configuration.
+  - Whether running `datrix` commands or native `docker compose` commands inside `deploy/`, configuration drift is completely eliminated.
+
+---
+
+## 5. System Administration with `datrix` CLI
+
+Manage the entire installation directly from your terminal:
 
 ```bash
-datrix
-```
-*(Or `sudo datrix` if running under a standard user account)*
-
-The interactive dashboard displays:
-
-```text
-============================================================
-  DatrixOps Management
-============================================================
-  1) Show login information
-  2) Show service status
-  3) Reset administrator password
-  4) Follow service logs
-  5) Restart services
-  6) Upgrade DatrixOps
-  7) Create backup
-  0) Exit
-============================================================
-Select:
+sudo datrix
 ```
 
-### ⚡ Direct Non-Interactive CLI Commands
+### Direct CLI Commands
 
-Execute platform tasks directly without entering the menu:
-
-| Command | Purpose | Example |
+| Command | Description | Example |
 | :--- | :--- | :--- |
-| `datrix info` | Display login URL, CE Server & Agent versions, and administrator username | `datrix info` |
-| `datrix status` | Inspect Docker container health and local Agent service status | `datrix status` |
-| `datrix reset-password` | Securely reset the administrator password | `datrix reset-password admin` |
-| `datrix logs` | Follow live real-time container log output (press Ctrl+C to exit) | `datrix logs` |
-| `datrix restart` | Restart all platform containers and the local Agent service | `datrix restart` |
-| `datrix update` | Create an automatic pre-upgrade backup and upgrade to the latest CE release | `datrix update` |
-| `datrix backup` | Generate a full compressed backup (PostgreSQL dump + `.env` secrets) | `datrix backup` |
-| `datrix help` | Show command usage and options | `datrix help` |
+| `datrix info` | Show login URL, server & agent versions, admin username | `datrix info` |
+| `datrix status` | Inspect status of all Docker containers and Agent service | `datrix status` |
+| `datrix reset-password` | Safely change the administrator password | `datrix reset-password admin` |
+| `datrix logs` | Tail real-time service logs (Ctrl+C to exit) | `datrix logs` |
+| `datrix restart` | Restart all containers and the local Agent service | `datrix restart` |
+| `datrix update` | Perform automated backup and upgrade to the latest CE release | `datrix update` |
+| `datrix backup` | Generate a full backup archive (Database + `.env`) | `datrix backup` |
 
 ---
 
-## 4. Version Upgrades
+## 6. Upgrades & Storage Optimization
 
-DatrixOps features an automated, atomic upgrade process with **mandatory automated pre-upgrade backups**.
-
-### Method 1: Direct Upgrade via CLI
+Upgrades run seamlessly with automatic pre-upgrade backups:
 
 ```bash
 sudo datrix update
 ```
 
-### Method 2: Check for Updates Without Upgrading
-
-```bash
-sudo /opt/datrixops/deploy/upgrade.sh --check
-```
-*Sample Output:*
-```text
-============================================================
-  DatrixOps Release Update Check
-============================================================
-  Installed Version : v1.8.2
-  Latest Version    : v1.8.3
-============================================================
-[WARN] New version v1.8.3 is available! Run upgrade to apply.
-```
-
-### Method 3: Forced Reinstallation (`--force`)
-
-To rebuild corrupted containers or re-synchronize codebase files:
-
-```bash
-sudo /opt/datrixops/deploy/upgrade.sh --force
-```
-
-### Method 4: Daily Automated Upgrades (Auto-Update Cron)
-
-Enable unattended daily upgrades scheduled at 03:00 AM system time:
-
-```bash
-# Enable daily automated upgrades
-sudo /opt/datrixops/deploy/upgrade.sh --setup-cron
-
-# Disable daily automated upgrades
-sudo /opt/datrixops/deploy/upgrade.sh --disable-auto-update
-```
-*(Cron configuration is stored in `/etc/cron.d/datrixops-auto-update`, logging to `/var/log/datrixops-auto-upgrade.log`).*
+### Post-Upgrade Storage Cleanup:
+1. **Compose Project Label Filtering:** Only touches images matching `com.docker.compose.project=datrixops`, protecting unrelated containers on the host.
+2. **Safe $N-1$ Image Retention:** Retains the immediately preceding release image to enable instant rollback if needed.
+3. **Build Cache & Dangling Layer Pruning:** Cleans dangling layers and build caches older than 7 days, freeing 10 GB - 30 GB of disk space.
+4. **Worker Metrics Retention:** Automatically purges metrics older than `METRICS_RETENTION_DAYS` (default 7 days).
 
 ---
 
-## 5. Backup & Disaster Recovery
+## 7. Backup & Disaster Recovery
 
 ### Creating a Backup
-
-Run:
 ```bash
 sudo datrix backup
 ```
-* Compressed `.tar.gz` archives are saved in `/opt/datrixops/backups/`.
-* The archive contains:
-  1. `database.dump`: Binary PostgreSQL dump containing all users, server records, audit logs, and metrics.
-  2. `environment.env`: Copy of your `.env` configuration (`JWT_SECRET`, `POSTGRES_PASSWORD`, etc.).
-  3. `manifest.txt`: Timestamps and Git commit metadata.
+The archive is saved under `/opt/datrixops/backups/`, containing `database.dump`, `environment.env`, and `manifest.txt`.
 
 ### Restoring from Backup
-
-When migrating to a new host or recovering from an outage:
-
 ```bash
 sudo /opt/datrixops/deploy/restore.sh /opt/datrixops/backups/datrixops-backup-YYYY-MM-DD-HHMMSS.tar.gz --yes
 ```
 
-> [!WARNING]
-> Restoring replaces the active PostgreSQL database with the backup archive data. The `--yes` flag is mandatory.
-
 ---
 
-## 6. Administrator Password Reset
-
-If you lose access to the administrative dashboard:
-
-```bash
-sudo datrix reset-password
-```
-Enter a new password (min 12 characters). It will be securely hashed and updated immediately in the PostgreSQL database.
-
----
-
-## 7. Advanced Configuration & Environment Variables
-
-Platform configuration is stored in `/opt/datrixops/.env` (or `/opt/datrixops/deploy/.env`):
-
-```bash
-# Edit configuration
-sudo nano /opt/datrixops/.env
-
-# Restart services to apply changes
-sudo datrix restart
-```
-
-### Key Environment Variables:
+## 8. Important Environment Variables (`.env`)
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `PUBLIC_URL` | `http://<IP>` or `https://<domain>` | Canonical base URL used for dashboard access and Agent callbacks |
-| `CADDY_SITE_ADDRESS` | `http://<IP>` or `<domain>` | Host configuration for Caddy automated reverse proxy and SSL |
-| `DATRIXOPS_HTTP_PORT` | `80` | Host external HTTP port |
-| `DATRIXOPS_HTTPS_PORT` | `443` | Host external HTTPS port |
-| `AGENT_VERSION` | `1.5.9` | Default Agent release distributed by the server |
+| `PUBLIC_URL` | `http://<IP>` or `https://<domain>` | Canonical base URL for dashboard access |
+| `CADDY_SITE_ADDRESS` | `http://<IP>` or `<domain>` | Domain/IP configuration for Caddy Gateway |
+| `DATRIXOPS_HTTP_PORT` | `80` | Host port for HTTP traffic |
+| `DATRIXOPS_HTTPS_PORT` | `443` | Host port for HTTPS traffic |
+| `METRICS_RETENTION_DAYS` | `7` | Retention window for CPU, RAM, and network metrics |
+| `OPERATIONAL_RETENTION_DAYS`| `90` | Retention window for audit logs and incidents |

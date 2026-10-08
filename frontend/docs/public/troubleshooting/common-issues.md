@@ -47,6 +47,59 @@ Version ở UI phải đến từ heartbeat. Restart Agent và kiểm tra log st
 4. Kiểm tra host truy cập được `/releases/<version>/manifest.json`, `manifest.sig` và artifact đúng OS/arch.
 5. Thành công chỉ được xác nhận khi Agent restart và heartbeat báo đúng target version.
 
+## Lỗi cấp phát SSL hoặc Caddy Gateway không hoạt động
+
+1. **Trùng cổng 80 hoặc 443 trên máy chủ Host:**
+   - Nếu máy chủ đã cài sẵn Nginx, Apache hoặc dịch vụ khác đang chiếm port 80/443, Caddy sẽ không thể khởi động.
+   - Kiểm tra tiến trình đang chiếm cổng:
+     ```bash
+     sudo ss -tulpn | grep -E ':(80|443)'
+     ```
+   - Xử lý: Tắt dịch vụ cũ (`sudo systemctl stop nginx`) hoặc đổi port ngoài của DatrixOps trong file `/opt/datrixops/.env` (`DATRIXOPS_HTTP_PORT` và `DATRIXOPS_HTTPS_PORT`).
+
+2. **Tên miền chưa trỏ đúng IP hoặc DNS chưa nhận diện:**
+   - Caddy sử dụng Let's Encrypt / ZeroSSL qua giao thức ACME HTTP-01 challenge. CA bắt buộc phải kết nối được tới IP máy chủ qua port 80.
+   - Kiểm tra DNS domain:
+     ```bash
+     dig +short your-domain.com
+     ```
+   - Xem log chi tiết quá trình xin cert của Caddy:
+     ```bash
+     cd /opt/datrixops && docker compose -f deploy/docker-compose.yml logs -f gateway
+     ```
+
+3. **Kiểm tra chứng chỉ SSL đã được cấp trong Caddy:**
+   ```bash
+   docker exec -it $(docker ps -qf name=gateway) find /data/caddy/certificates -type f
+   ```
+
+## Đầy ổ cứng VPS do Docker Cache & Images
+
+Nếu dung lượng ổ cứng tăng cao sau nhiều lần vận hành hoặc nâng cấp:
+1. **Kiểm tra dung lượng Docker đang chiếm:**
+   ```bash
+   docker system df
+   ```
+2. **Dọn dẹp an toàn cho DatrixOps (Không xóa container khác):**
+   ```bash
+   # Dọn layer rác không gắn thẻ
+   docker image prune -f
+   # Dọn build cache cũ hơn 7 ngày
+   docker builder prune -f --filter "until=168h"
+   ```
+
+## Xác nhận cấu hình Single `.env` File
+
+Đảm bảo file `/opt/datrixops/deploy/.env` luôn là symlink trỏ về `/opt/datrixops/.env`:
+```bash
+ls -l /opt/datrixops/deploy/.env
+# Kết quả mong đợi: .env -> /opt/datrixops/.env
+```
+Nếu là file thường, chuẩn hóa lại bằng lệnh:
+```bash
+cd /opt/datrixops/deploy && rm -f .env && ln -s ../.env .env
+```
+
 ## Permission denied hoặc service không khởi động
 
 Installer cần root/Administrator. Kiểm tra owner và executable bit của binary trên Linux/macOS, sau đó xem log service. Không chạy installer lặp lại trước khi hiểu lỗi vì việc đó có thể che mất nguyên nhân ban đầu.

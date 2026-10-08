@@ -47,6 +47,50 @@ The UI version must come from a heartbeat. Restart the Agent and inspect its sta
 4. Verify `/releases/<version>/manifest.json`, `manifest.sig`, and the artifact are reachable.
 5. For a legacy Agent, perform the one-time update described in [Versions and updates](/docs/en/agent-management/updates).
 
+## SSL Issuance Failures or Caddy Gateway Offline
+
+1. **Port 80 or 443 Conflicts on Host:**
+   - If an existing web server (Nginx/Apache) occupies port 80/443, Caddy cannot bind to the host ports.
+   - Inspect listening ports:
+     ```bash
+     sudo ss -tulpn | grep -E ':(80|443)'
+     ```
+   - Resolve by stopping the conflicting service or remapping external ports in `/opt/datrixops/.env` (`DATRIXOPS_HTTP_PORT`, `DATRIXOPS_HTTPS_PORT`).
+
+2. **Domain DNS Not Propagated:**
+   - Caddy requires inbound HTTP-01 challenge reachability on port 80 from Let's Encrypt / ZeroSSL.
+   - Verify public DNS:
+     ```bash
+     dig +short your-domain.com
+     ```
+   - Inspect Caddy logs:
+     ```bash
+     cd /opt/datrixops && docker compose -f deploy/docker-compose.yml logs -f gateway
+     ```
+
+3. **Verify Stored Certificates in Container:**
+   ```bash
+   docker exec -it $(docker ps -qf name=gateway) find /data/caddy/certificates -type f
+   ```
+
+## VPS Disk Space Full from Docker Cache
+
+To clean unused images and build caches safely:
+```bash
+# Prune untagged dangling layers
+docker image prune -f
+# Prune build cache older than 7 days
+docker builder prune -f --filter "until=168h"
+```
+
+## Verify Single `.env` File Symlink
+
+Ensure `/opt/datrixops/deploy/.env` remains a valid symlink pointing to `/opt/datrixops/.env`:
+```bash
+ls -l /opt/datrixops/deploy/.env
+# Expected: .env -> /opt/datrixops/.env
+```
+
 ## Permission denied or service failure
 
 The installer needs root/Administrator privileges. Check binary ownership and executable permissions on Linux/macOS, then inspect native service logs. Repeated reinstall attempts can hide the original failure.

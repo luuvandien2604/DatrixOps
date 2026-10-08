@@ -1,51 +1,69 @@
 ---
 title: "What is DatrixOps?"
-description: "Learn the architecture, components, supported Agent platforms, and system requirements for DatrixOps."
+description: "Overall architecture, core components, supported platforms, and infrastructure monitoring capabilities."
 ---
 
-DatrixOps is a control plane for monitoring and operating servers. It brings CPU, memory, disk, network, process, service, and Docker visibility into one dashboard instead of requiring an individual login to every host.
+**DatrixOps** is a modern, distributed server monitoring and control plane platform designed for DevOps engineers, system administrators, and infrastructure teams. Instead of manually SSHing into individual servers, DatrixOps unifies system resource telemetry, network quality diagnostics, processes, OS services, Docker containers, and alerting into a single intuitive dashboard.
 
-## Problems DatrixOps solves
+---
 
-- Identify which machines are online or have stopped sending heartbeats.
-- Review real telemetry over time and preserve gaps while an Agent is offline.
-- Inspect inventory, processes, native services, and containers remotely.
-- Create CPU, memory, or offline alerts delivered through Telegram or Discord.
-- Monitor websites, HTTPS state, and certificate lifetime.
-- Distribute approved Agent releases from the control plane.
+## 1. Core Capabilities
 
-## Core components
+- **Real-Time Resource Telemetry:** Live tracking of CPU load, RAM utilization, Disk capacity, Disk I/O, and Network throughput.
+- **Network Quality Diagnostics:** Dedicated ICMP/TCP latency measurements, packet loss analysis, local gateway uplink tracking, and dynamic tag grouping (Domestic, International, DNS, Database).
+- **Multi-Channel Alert Center:** Instant notifications via Telegram Bot, Discord Webhooks, or SMTP Email when resource thresholds are breached or heartbeats are lost, featuring automatic recovery (Auto-Resolve) notifications.
+- **Website & SSL Certificate Monitoring:** Continuously tracks HTTP availability, response times, and certificate expiry countdowns.
+- **Secure Web Terminal & Remote Operations:** Headless Linux shell directly in your browser over secure Reverse WebSockets without requiring open inbound SSH ports on client hosts.
+- **Docker & Service Management:** Container lifecycle controls (restart, stop) and native OS service discovery (systemd, launchd, Windows services).
+- **Cryptographically Signed Agent Updates:** Streamlined remote agent fleet upgrades verified via Ed25519 signatures and SHA-256 checksums.
+
+---
+
+## 2. Architecture Overview
+
+DatrixOps uses a clean separation between the central Control Plane and distributed Edge Agents:
+
+```mermaid
+flowchart LR
+    Agent["🤖 Datrix Agent<br/>(Monitored Node)"] -->|HTTPS / WSS| Gateway["🛡️ Gateway (Caddy 2)<br/>Ports 80 / 443"]
+    User["👤 Operator Browser"] -->|HTTPS / WSS| Gateway
+
+    Gateway --> Backend["Backend API (Go)"]
+    Gateway --> Frontend["Frontend (Next.js)"]
+    Backend --> DB[(PostgreSQL 16)]
+    Worker["Worker Engine (Go)"] --> DB
+    Worker --> Alerts["Telegram / Discord / Email"]
+```
 
 | Component | Responsibility |
-|---|---|
-| Dashboard | Web interface for telemetry and explicitly approved operations. |
-| Backend API | Authentication, heartbeats, storage, task queues, and schedulers. |
-| PostgreSQL | Servers, metrics, tasks, alerts, websites, and audit data. |
-| Agent | A Go binary that runs on each monitored host and connects outbound. |
+| :--- | :--- |
+| **Gateway (Caddy 2)** | Single external entrypoint on ports 80/443. Manages automatic SSL/TLS certificate lifecycle and securely proxies internal traffic. |
+| **Frontend (Next.js 16)** | High-performance dashboard, real-time charts, server administration, web terminal, and alert management. |
+| **Backend API (Go)** | User authentication, Agent API, metric and network probe ingestion, enrollment token lifecycle, and WebSocket terminal relay. |
+| **Worker Engine (Go)** | Background asynchronous jobs: website health probing, alert rule evaluation, notification dispatch, and metrics retention cleanup. |
+| **Database (PostgreSQL 16)** | Stores relational configuration, telemetry time-series, network probe results, incidents, and audit trails. |
+| **Datrix Agent (Go Daemon)** | Ultra-lightweight background service running on client nodes, communicating exclusively via outbound HTTPS/WSS connections. |
 
-The Agent sends regular heartbeats over HTTPS. The Backend returns pending tasks in the heartbeat response, and the Agent validates and executes supported task types. Basic monitoring therefore does not require an inbound port on the managed host.
+> **Important:** The Datrix Agent is **strictly outbound-only**. You **do not need to open any inbound ports** on monitored client machines.
 
-> **Important:** Every server has a unique Agent Token. It identifies the server during heartbeat authentication and must be protected like a password.
+---
 
-## Supported Agent platforms
+## 3. Supported Platforms
 
-Current releases produce artifacts for:
+The Datrix Agent is cross-compiled as a native static binary:
+- **Linux:** `amd64` (x86_64) and `arm64` (aarch64). Fully compatible with Ubuntu, Debian, CentOS, RHEL, AlmaLinux, Rocky Linux, and Alpine Linux.
+- **macOS:** Intel (`amd64`) and Apple Silicon (`arm64`).
+- **Windows:** `amd64` (Windows Server, Windows 10/11 via Service Control Manager).
 
-- Linux `amd64` and `arm64`.
-- macOS Intel (`amd64`) and Apple Silicon (`arm64`).
-- Windows `amd64`.
+---
 
-Features vary by operating system. Linux uses systemd, macOS uses launchd, and Windows uses Service Control Manager. Web Terminal is enabled by default for headless Linux servers. macOS, Windows, and Linux hosts with an active display manager or X11/Wayland session are disabled by policy.
+## 4. System Requirements
 
-## System requirements
+### Control Plane Server (DatrixOps Server)
+- 1 CPU, 2 GB RAM, 20 GB SSD.
+- Ports `80/TCP` and `443/TCP` reachable on public interfaces.
+- Linux OS with Docker & Docker Compose installed.
 
-The Agent host needs:
-
-1. Outbound HTTPS access to DatrixOps.
-2. `root` privileges on Linux/macOS or Administrator privileges on Windows for installation.
-3. A supported CPU architecture.
-4. An accurate system clock for TLS and timeline data.
-
-The Dashboard requires a modern browser with JavaScript and local storage. Docker data requires an available Docker CLI/daemon. Native service data depends on the operating system service manager.
-
-> **Note:** Some Network, Performance, Security, and Logs areas remain in development. Public documentation does not describe placeholder screens as completed features.
+### Monitored Client Server (Agent)
+- Outbound HTTPS network access to the DatrixOps Control Plane.
+- `root` (Linux/macOS) or Administrator (Windows) privileges for background service installation.

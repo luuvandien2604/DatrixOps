@@ -1,45 +1,49 @@
 ---
-title: "Read the Dashboard"
-description: "Understand server states and CPU, memory, disk, and network metrics in DatrixOps."
+title: "Dashboard Overview"
+description: "Understand server state, telemetry metrics (CPU, RAM, disk, network), and navigation areas in DatrixOps."
 ---
 
-The Dashboard summarizes real Agent heartbeats and data stored in PostgreSQL. DatrixOps does not generate synthetic metrics when there is no Agent or recent heartbeat.
+The DatrixOps Dashboard aggregates real telemetry reported periodically by Datrix Agents and persisted in PostgreSQL. It never fabricates simulated data during agent offline periods.
 
-## Server states
+---
 
-- **Online:** the Backend received a heartbeat inside the current presence window.
-- **Offline:** heartbeats are no longer recent enough. Historical data remains available.
-- **Degraded:** this is not yet a normalized server state in the Backend. Resource alerts and feature-specific failures are shown separately, so **Online** does not mean every service is healthy.
+## 1. Server States
 
-When an Agent is offline, charts should keep advancing in real time while leaving the missing interval empty. This makes the loss and return of metrics visible.
+- **Online (Green):** The backend received a valid heartbeat within the expected time window (typically 30 - 60 seconds).
+- **Offline (Gray/Red):** No heartbeat received within the threshold. Historical data is preserved intact.
+- **Timeline Gaps:** Periods when an agent was offline are rendered as clean gaps on time-series charts, clearly indicating when connectivity ceased and resumed.
 
-## CPU, memory, disk, and network
+---
 
-| Metric | Interpretation |
-|---|---|
-| CPU | Whole-system CPU percentage at the heartbeat. Evaluate short spikes with the surrounding trend. |
-| Memory | Used memory compared with the total reported by the Agent. |
-| Disk | Used capacity on the system disk; this is different from Disk I/O. |
-| Network | Inbound/outbound bytes or throughput derived from consecutive samples. |
-| Disk I/O | Read/write activity rather than capacity percentage. |
+## 2. Resource Telemetry Metrics
 
-> **Note:** A reported value of `0` is different from a missing point. A gap means no metric was received; zero is a real Agent report.
+| Metric | Meaning & Interpretation |
+| :--- | :--- |
+| **CPU Usage** | Instantaneous overall system CPU load percentage. Transient spikes should be evaluated against historical averages. |
+| **RAM Utilization** | Actual memory in use compared to total physical memory detected by the Agent. |
+| **Disk Capacity** | Root filesystem capacity percentage and absolute gigabytes utilized. |
+| **Disk I/O** | Read/write throughput rates over time (MB/s or IOPS), distinct from disk capacity. |
+| **Network Throughput** | Inbound (Rx) and outbound (Tx) byte rates derived between consecutive probe samples. |
 
-## Server list
+---
 
-**Servers** shows the name, last known IP, OS/specification, CPU, memory, disk, status, and quick actions. Select the server row/card to open its details. The last snapshot can preserve an IP while the Agent is offline.
+## 3. Navigation Sections
 
-## Server details
+1. **Servers (`/dashboard/servers`):** Fleet overview displaying server IP, OS, resource utilization cards, and quick actions.
+2. **Network Quality (`/dashboard/network`):** Central hub for network diagnostics, ICMP/TCP probe targets, and fleet-wide ISP health.
+3. **Websites (`/dashboard/websites`):** Availability (Uptime) monitoring and SSL/TLS certificate expiry tracking.
+4. **Alert Center (`/dashboard/alerts`):** Alert rule definitions, active incidents, and Telegram/Discord/Email channel configurations.
+5. **Audit Logs (`/dashboard/audit`):** Immutable operational audit trail of user actions.
 
-- **Overview:** OS, Agent version, kernel, virtualization, uptime, package updates, and system disk.
-- **Inventory:** hardware and software information collected by the Agent.
-- **Cron Monitoring:** available on supported platforms.
-- **Processes:** whole-system CPU/memory totals and top consumers.
-- **System/Windows/Launch Services:** native services for the detected OS.
-- **Docker/Containers:** container state and supported actions when Docker is available.
-- **Terminal:** reverse terminal subject to server eligibility and security policy.
+---
 
-## Refresh timing
+## 4. Server Detail Tabs (`/dashboard/servers/[id]`)
 
-The Agent sends heartbeats according to `DATRIXOPS_INTERVAL`; standard installers currently leave it at the Agent default. Detailed snapshots are sent roughly every 60 seconds. Remote tasks are delivered through heartbeat polling, so not every action responds immediately.
-
+Clicking any server provides deep-dive contextual tabs:
+- **Overview:** Operating system, kernel, agent version, system uptime, and CPU specs.
+- **Resources:** Time-series charts for CPU, RAM, Disk, Disk I/O, and Network over 1h, 24h, and 7d horizons.
+- **Network Quality:** Local gateway uplink status, dynamic tag cards, and historical latency/loss charts.
+- **Docker:** Discovered container states with remote start/stop/restart controls.
+- **Processes:** Live top processes sorted by CPU and memory consumption.
+- **Services:** Native OS service controls (systemd, launchd, Windows services).
+- **Web Terminal:** Browser-based interactive shell connected via secure Reverse WebSockets.

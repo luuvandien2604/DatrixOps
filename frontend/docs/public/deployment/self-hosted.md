@@ -1,6 +1,6 @@
 ---
 title: "Triển khai Self-Hosted"
-description: "Hướng dẫn cài đặt, quản trị bằng CLI datrix, nâng cấp, sao lưu và khôi phục DatrixOps Community Edition."
+description: "Hướng dẫn cài đặt, quản trị bằng CLI datrix, kiến trúc Gateway Caddy, cấu hình .env chuẩn, nâng cấp và sao lưu DatrixOps Community Edition."
 ---
 
 DatrixOps Community Edition (CE) là phiên bản mã nguồn mở tự host hoàn chỉnh, bao gồm **Control Plane** quản trị tập trung và **DatrixOps Agent** cài đặt trên các máy chủ cần giám sát. Toàn bộ cơ sở dữ liệu PostgreSQL, số liệu telemetry, logs và lịch sử audit hoàn toàn nằm trên hạ tầng của bạn.
@@ -11,11 +11,11 @@ DatrixOps Community Edition (CE) là phiên bản mã nguồn mở tự host ho�
 
 | Tài nguyên | Khuyến nghị tối thiểu | Ghi chú |
 | :--- | :--- | :--- |
-| **Hệ điều hành** | Ubuntu 20.04+, Debian 11+, CentOS/RHEL 8+, AlmaLinux | Kiến trúc `x86_64` (amd64) hoặc `aarch64` (arm64) |
+| **Hệ điều hành** | Ubuntu 20.04+, Debian 11+, CentOS/RHEL 8+, AlmaLinux, Rocky Linux | Kiến trúc `x86_64` (amd64) hoặc `aarch64` (arm64) |
 | **CPU** | 1 Core | 2 Cores nếu giám sát > 50 máy chủ |
 | **RAM** | 2 GB | Tối thiểu 1.5 GB khả dụng |
 | **Ổ cứng** | 20 GB SSD | Tùy thuộc vào thời gian lưu trữ metrics |
-| **Cổng mạng (Inbound)** | `80/TCP`, `443/TCP` | Mở trên Firewall / Security Group (AWS/GCP/DigitalOcean) |
+| **Cổng mạng (Inbound)** | `80/TCP`, `443/TCP` | Mở trên Firewall / Security Group (AWS/GCP/DigitalOcean/Vietnix) |
 
 ---
 
@@ -38,7 +38,42 @@ curl -fsSL https://raw.githubusercontent.com/luuvandien2604/DatrixOps/main/deplo
 
 ---
 
-## 3. Quản trị hệ thống với CLI `datrix`
+## 3. Kiến trúc Caddy Gateway & Quản lý SSL Tự động
+
+Hệ thống sử dụng **Caddy 2** làm cửa ngõ tiếp nhận duy nhất cho toàn bộ traffic bên ngoài:
+
+```mermaid
+flowchart LR
+    Browser["👤 Trình duyệt"] -->|Port 80/443| Gateway["🛡️ Gateway (Caddy)"]
+    Agent["🤖 Agent"] -->|Port 80/443| Gateway
+    Gateway -->|/api/* & /ws/*| Backend["Backend (8080)"]
+    Gateway -->|Giao diện Web| Frontend["Frontend (3000)"]
+```
+
+### Điểm đặc biệt của Caddy Gateway:
+- **Zero-Config Automatic HTTPS:** Khi bạn nhập tên miền vào `CADDY_SITE_ADDRESS`, Caddy tự động liên hệ với Let's Encrypt hoặc ZeroSSL qua giao thức ACME để xin chứng chỉ SSL/TLS mà không cần cài Certbot hay cấu hình cronjob.
+- **Tự động gia hạn:** Caddy tự động gia hạn chứng chỉ trước khi hết hạn 30 ngày trong bộ nhớ và nạp lại ngay lập tức mà không gây downtime.
+- **Lưu trữ an toàn:** Chứng chỉ được lưu trong Docker Volume `caddy_data` (tại `/data/caddy/certificates/...`). Khi nâng cấp hoặc khởi động lại container, chứng chỉ vẫn được bảo toàn nguyên vẹn.
+- **Hỗ trợ HTTP/3 (QUIC):** Caddy tự động kích hoạt port `443/udp` giúp giảm độ trễ tối đa cho các kết nối Web Dashboard và WebSocket.
+
+---
+
+## 4. Quản lý cấu hình: Cơ chế Single `.env` File (Source of Truth)
+
+DatrixOps áp dụng nguyên tắc **Duy nhất một file cấu hình gốc**:
+
+- **File gốc chính thức:** `/opt/datrixops/.env`
+- **Cơ chế Symlink tự động:** Thư mục `/opt/datrixops/deploy/.env` được liên kết bằng symlink trỏ về `/opt/datrixops/.env`:
+  ```text
+  /opt/datrixops/deploy/.env -> /opt/datrixops/.env
+  ```
+- **Lợi ích:**
+  - Toàn bộ dịch vụ (Caddy, Backend, Frontend, Worker, Database) đều đọc chung một file `.env` duy nhất.
+  - Bất kể bạn chạy lệnh `datrix` ở thư mục gốc hay gõ lệnh tay `docker compose` trong thư mục `deploy/`, hệ thống đều nạp cùng một cấu hình, triệt tiêu hoàn toàn nguy cơ lệch biến môi trường.
+
+---
+
+## 5. Quản trị hệ thống với CLI `datrix`
 
 Sau khi cài đặt xong, bạn có thể quản trị toàn bộ hệ thống bằng lệnh `datrix` trực tiếp trong terminal.
 
@@ -51,27 +86,7 @@ datrix
 ```
 *(Hoặc `sudo datrix` nếu đang dùng tài khoản user thường)*
 
-Giao diện trực quan xuất hiện:
-
-```text
-============================================================
-  DatrixOps Management
-============================================================
-  1) Show login information
-  2) Show service status
-  3) Reset administrator password
-  4) Follow service logs
-  5) Restart services
-  6) Upgrade DatrixOps
-  7) Create backup
-  0) Exit
-============================================================
-Select:
-```
-
 ### ⚡ Các lệnh CLI trực tiếp (Non-interactive)
-
-Bạn có thể chạy trực tiếp từng tác vụ mà không cần mở menu:
 
 | Lệnh CLI | Chức năng | Ví dụ |
 | :--- | :--- | :--- |
@@ -86,111 +101,48 @@ Bạn có thể chạy trực tiếp từng tác vụ mà không cần mở menu
 
 ---
 
-## 4. Nâng cấp phiên bản (Upgrades)
+## 6. Nâng cấp phiên bản & Tối ưu dung lượng (Upgrades & Cleanup)
 
 Quy trình nâng cấp của DatrixOps hoàn toàn tự động và luôn **tạo backup an toàn trước khi nâng cấp**.
 
-### Cách 1: Nâng cấp trực tiếp qua CLI
-
+### Nâng cấp trực tiếp qua CLI:
 ```bash
 sudo datrix update
 ```
 
-### Cách 2: Kiểm tra phiên bản mới mà không nâng cấp
-
-```bash
-sudo /opt/datrixops/deploy/upgrade.sh --check
-```
-*Output mẫu:*
-```text
-============================================================
-  DatrixOps Release Update Check
-============================================================
-  Installed Version : v1.8.2
-  Latest Version    : v1.8.3
-============================================================
-[WARN] New version v1.8.3 is available! Run upgrade to apply.
-```
-
-### Cách 3: Buộc cài đặt lại / Nâng cấp cưỡng bức (`--force`)
-
-Nếu container gặp sự cố hoặc muốn đồng bộ lại mã nguồn:
-
-```bash
-sudo /opt/datrixops/deploy/upgrade.sh --force
-```
-
-### Cách 4: Bật lịch tự động nâng cấp hàng ngày (Auto-update Cron)
-
-Hệ thống hỗ trợ tự động kiểm tra và nâng cấp hàng ngày vào lúc 03:00 sáng:
-
-```bash
-# Bật tự động nâng cấp hàng ngày
-sudo /opt/datrixops/deploy/upgrade.sh --setup-cron
-
-# Tắt tự động nâng cấp
-sudo /opt/datrixops/deploy/upgrade.sh --disable-auto-update
-```
-*(File cấu hình cron được lưu tại `/etc/cron.d/datrixops-auto-update` và log ghi tại `/var/log/datrixops-auto-upgrade.log`).*
+### Cơ chế dọn dẹp dung lượng tự động sau nâng cấp:
+1. **Lọc theo nhãn Compose (Docker Label Filter):** Chỉ xử lý các container và image thuộc nhãn `com.docker.compose.project=datrixops`, tuyệt đối không ảnh hưởng đến các container khác của người dùng trên cùng VPS.
+2. **Bảo tồn an toàn N-1 (Safe Retention):** Giữ lại image phiên bản liền trước ($N-1$) để hỗ trợ rollback tức thì nếu có sự cố, đồng thời dọn dẹp các bản build image cũ hơn.
+3. **Dọn dẹp Build Cache & Dangling Layers:** Tự động giải phóng các tầng layer rác và cache cũ hơn 7 ngày, giúp tiết kiệm từ 10 GB - 30 GB dung lượng ổ cứng.
+4. **Worker Retention Job:** Worker tự động dọn dẹp định kỳ các bản ghi telemetry cũ dựa trên tham số `METRICS_RETENTION_DAYS` (mặc định 7 ngày).
 
 ---
 
-## 5. Sao lưu & Khôi phục (Backup & Disaster Recovery)
+## 7. Sao lưu & Khôi phục (Backup & Disaster Recovery)
 
 ### Tạo bản sao lưu (Backup)
-
-Chạy lệnh:
 ```bash
 sudo datrix backup
 ```
-* Bản backup nén dạng `.tar.gz` được lưu tại `/opt/datrixops/backups/`.
-* File backup chứa toàn bộ:
-  1. `database.dump`: Dump nhị phân toàn bộ cơ sở dữ liệu PostgreSQL (người dùng, servers, audit log, metrics).
-  2. `environment.env`: Bản sao cấu hình bí mật (`JWT_SECRET`, `POSTGRES_PASSWORD`, `SETUP_TOKEN`...).
-  3. `manifest.txt`: Metadata thời gian và commit git tương ứng.
+File backup `.tar.gz` được lưu tại `/opt/datrixops/backups/`, chứa toàn bộ:
+1. `database.dump`: Dump nhị phân toàn bộ cơ sở dữ liệu PostgreSQL.
+2. `environment.env`: Bản sao cấu hình bí mật (`JWT_SECRET`, `POSTGRES_PASSWORD`, `SETUP_TOKEN`...).
+3. `manifest.txt`: Metadata thời gian và version git.
 
 ### Khôi phục dữ liệu (Restore)
-
-Khi chuyển sang máy chủ mới hoặc phục hồi sau sự cố:
-
 ```bash
 sudo /opt/datrixops/deploy/restore.sh /opt/datrixops/backups/datrixops-backup-YYYY-MM-DD-HHMMSS.tar.gz --yes
 ```
 
-> [!WARNING]
-> Quá trình khôi phục sẽ ghi đè dữ liệu cơ sở dữ liệu hiện tại bằng dữ liệu trong bản backup. Tham số `--yes` là bắt buộc để xác nhận hành động.
-
 ---
 
-## 6. Đổi mật khẩu Quản trị viên (Password Reset)
-
-Nếu quên mật khẩu đăng nhập Dashboard:
-
-```bash
-sudo datrix reset-password
-```
-Nhập mật khẩu mới (tối thiểu 12 ký tự). Hệ thống sẽ băm mật khẩu bằng thuật toán an toàn và lưu trữ trực tiếp vào cơ sở dữ liệu.
-
----
-
-## 7. Cấu hình Nâng cao & Tùy biến
-
-Toàn bộ cấu hình hệ thống được lưu tại file `/opt/datrixops/.env` (hoặc `/opt/datrixops/deploy/.env`):
-
-```bash
-# Chỉnh sửa cấu hình
-sudo nano /opt/datrixops/.env
-
-# Áp dụng cấu hình mới
-sudo datrix restart
-```
-
-### Các biến môi trường quan trọng:
+## 8. Các biến môi trường quan trọng (`.env`)
 
 | Biến môi trường | Mặc định | Mô tả |
 | :--- | :--- | :--- |
 | `PUBLIC_URL` | `http://<IP>` hoặc `https://<domain>` | URL chính thức để truy cập Dashboard |
 | `CADDY_SITE_ADDRESS` | `http://<IP>` hoặc `<domain>` | Cấu hình cho Caddy Gateway tự động cấp SSL |
-| `DATRIXOPS_HTTP_PORT` | `80` | Cổng HTTP lắng nghe bên ngoài host |
-| `DATRIXOPS_HTTPS_PORT` | `443` | Cổng HTTPS lắng nghe bên ngoài host |
-| `AGENT_VERSION` | `1.5.9` | Phiên bản Agent mặc định được phân phối |
+| `DATRIXOPS_HTTP_PORT` | `80` | Cổng HTTP lắng nghe bên ngoài host VPS |
+| `DATRIXOPS_HTTPS_PORT` | `443` | Cổng HTTPS lắng nghe bên ngoài host VPS |
+| `METRICS_RETENTION_DAYS` | `7` | Số ngày lưu trữ chuỗi chỉ số CPU/RAM/Network |
+| `OPERATIONAL_RETENTION_DAYS`| `90` | Số ngày lưu trữ nhật ký kiểm toán và sự cố |

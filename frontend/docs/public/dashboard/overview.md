@@ -1,45 +1,49 @@
 ---
-title: "Đọc Dashboard"
-description: "Hiểu trạng thái server và các chỉ số CPU, RAM, disk, network trên DatrixOps."
+title: "Tổng quan Dashboard"
+description: "Hiểu trạng thái server, đọc các chỉ số CPU, RAM, disk, network và cấu trúc các khu vực giám sát trên DatrixOps."
 ---
 
-Dashboard tổng hợp heartbeat thật từ Agent và dữ liệu lưu trong PostgreSQL. Không có Agent hoặc heartbeat mới thì DatrixOps không tạo số liệu giả.
+Bảng điều khiển (Dashboard) của DatrixOps tổng hợp số liệu thực tế được gửi định kỳ từ Agent và lưu trữ trong cơ sở dữ liệu PostgreSQL. Hệ thống không tạo số liệu giả lập khi Agent offline.
 
-## Trạng thái server
+---
 
-- **Online:** Backend vừa nhận heartbeat trong cửa sổ trạng thái hiện hành.
-- **Offline:** Không còn heartbeat đủ mới. Dữ liệu lịch sử vẫn được giữ.
-- **Degraded:** Hiện chưa phải trạng thái server chuẩn hóa trong backend. Cảnh báo tài nguyên và sự cố từng chức năng được thể hiện riêng; không nên diễn giải **Online** là mọi dịch vụ đều khỏe.
+## 1. Trạng thái máy chủ (Server State)
 
-Các khoảng Agent offline phải xuất hiện như khoảng thiếu metrics trên biểu đồ. Timeline vẫn tiến theo thời gian thực để bạn nhìn thấy chính xác lúc dữ liệu dừng và quay lại.
+- **Online (Xanh lá):** Backend vừa nhận heartbeat hợp lệ trong cửa sổ thời gian gần nhất (thường trong vòng 30 - 60 giây).
+- **Offline (Xám/Đỏ):** Quá thời gian quy định không nhận được tín hiệu heartbeat. Lịch sử dữ liệu cũ vẫn được bảo toàn nguyên vẹn.
+- **Biểu diễn trên biểu đồ:** Các khoảng thời gian Agent offline sẽ xuất hiện dưới dạng khoảng trống (gaps) trên biểu đồ thời gian thực, giúp quản trị viên nhận biết chính xác thời điểm máy chủ mất kết nối và thời điểm phục hồi.
 
-## CPU, RAM, disk và network
+---
 
-| Chỉ số | Cách đọc |
-|---|---|
-| CPU | Phần trăm CPU toàn hệ thống tại heartbeat. Spike ngắn cần được đánh giá cùng xu hướng. |
-| RAM | Bộ nhớ đang dùng so với tổng bộ nhớ Agent báo cáo. |
-| Disk | Dung lượng system disk đã dùng; khác với Disk I/O theo thời gian. |
-| Network | Số byte vào/ra hoặc throughput được suy ra từ các mẫu liên tiếp. |
-| Disk I/O | Hoạt động đọc/ghi, không phải phần trăm dung lượng. |
+## 2. Các chỉ số tài nguyên hệ thống
 
-> **Note:** Một điểm dữ liệu bằng `0` và một khoảng không có dữ liệu mang ý nghĩa khác nhau. Khoảng trống cho biết không có metrics; `0` là giá trị Agent thực sự báo cáo.
+| Chỉ số | Ý nghĩa & Cách đọc |
+| :--- | :--- |
+| **CPU Usage** | Tỷ lệ phần trăm tải CPU toàn hệ thống tại thời điểm gửi heartbeat. Các đợt tăng vọt ngắn hạn (spikes) cần được đối chiếu với biểu đồ lịch sử. |
+| **RAM Utilization** | Dung lượng bộ nhớ thực tế đang sử dụng so với tổng RAM vật lý mà Agent báo cáo. |
+| **Disk Capacity** | Phần trăm và dung lượng ổ cứng hệ thống (root filesystem) đã sử dụng. |
+| **Disk I/O** | Tốc độ đọc / ghi dữ liệu trên ổ cứng theo thời gian (MB/s hoặc IOPS), phân biệt với dung lượng lưu trữ. |
+| **Network Throughput** | Băng thông mạng gửi (Tx) và nhận (Rx) tính theo byte/giây giữa hai mẫu đo liên tiếp. |
 
-## Danh sách server
+---
 
-Trang **Servers** hiển thị tên, IP tốt nhất đã biết, OS/CPU, CPU, RAM, disk, trạng thái và quick actions. Nhấn vào thẻ/hàng server để mở chi tiết. IP được giữ từ snapshot gần nhất nên vẫn có thể xuất hiện khi Agent offline.
+## 3. Các phân hệ chức năng trên thanh điều hướng
 
-## Trang chi tiết server
+1. **Servers (`/dashboard/servers`):** Danh sách tất cả máy chủ trong hạ tầng kèm IP, hệ điều hành, mức sử dụng tài nguyên và nút thao tác nhanh.
+2. **Network Quality (`/dashboard/network`):** Trung tâm quản lý mục tiêu đo lường chất lượng mạng, kiểm tra độ trễ ICMP/TCP tới các cụm Gateway, DNS và server quốc tế.
+3. **Websites (`/dashboard/websites`):** Giám sát tính khả dụng (Uptime) và ngày hết hạn chứng chỉ SSL/TLS của các trang web/API bên ngoài.
+4. **Alert Center (`/dashboard/alerts`):** Quản lý quy tắc cảnh báo, danh sách sự cố và tích hợp kênh thông báo Telegram, Discord, Email.
+5. **Audit Logs (`/dashboard/audit`):** Nhật ký ghi nhận toàn bộ thao tác của người dùng trên hệ thống nhằm đảm bảo an toàn thông tin.
 
-- **Overview:** OS, phiên bản Agent, kernel, virtualization, uptime, package updates và system disk.
-- **Inventory:** dữ liệu phần cứng/phần mềm Agent đã thu thập.
-- **Cron Monitoring:** có trên nền tảng được hỗ trợ.
-- **Processes:** tổng CPU/RAM và nhóm tiến trình tiêu thụ cao.
-- **System/Windows/Launch Services:** service manager theo OS.
-- **Docker/Containers:** trạng thái và thao tác container nếu Docker khả dụng.
-- **Terminal:** reverse terminal theo điều kiện an toàn của server.
+---
 
-## Dữ liệu cập nhật khi nào?
+## 4. Trang chi tiết máy chủ (`/dashboard/servers/[id]`)
 
-Agent gửi heartbeat theo `DATRIXOPS_INTERVAL`; installer hiện không đặt biến này nên dùng mặc định trong Agent. Snapshot chi tiết được gửi khoảng mỗi 60 giây. Task remote được Agent nhận theo mô hình poll qua heartbeat, vì vậy không phải mọi thao tác đều phản hồi ngay lập tức.
-
+Khi nhấp vào một máy chủ trong danh sách, trang chi tiết cung cấp các tab chuyên sâu:
+- **Overview:** Thông tin hệ điều hành, kernel, phiên bản Agent, thời gian uptime, CPU model và dung lượng ổ cứng.
+- **Resources:** Biểu đồ lịch sử chi tiết về CPU, Memory, Disk, Disk I/O và Network theo nhiều khung giờ (1 giờ, 24 giờ, 7 ngày).
+- **Network Quality:** Thẻ đo độ trễ Gateway nội bộ, các nhóm thẻ tag chẩn đoán mạng và biểu đồ time-series độ trễ / mất gói.
+- **Docker:** Quản lý danh sách container, trạng thái chạy và nút khởi động lại/dừng container từ xa.
+- **Processes:** Danh sách các tiến trình đang chiếm dụng tài nguyên cao nhất trên máy chủ.
+- **Services:** Quản lý các dịch vụ hệ thống (systemd, launchd, windows services).
+- **Web Terminal:** Mở giao diện dòng lệnh (shell) tương tác trực tiếp lên máy chủ từ xa một cách bảo mật.

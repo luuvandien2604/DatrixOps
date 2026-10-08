@@ -16,8 +16,9 @@ const legacyRoutes: Record<string, string> = {
   'agent-service-management': 'agent-management/updates',
   'troubleshooting-user': 'troubleshooting/common-issues',
   'features': 'introduction/what-is-datrixops',
-  'alerts': 'dashboard/overview',
-  'websites': 'dashboard/overview',
+  'alerts': 'dashboard/alerts-and-notifications',
+  'websites': 'dashboard/website-monitoring',
+  'network': 'dashboard/network-quality',
   'api-keys': 'security/agent-and-updates',
   'audit-log': 'security/agent-and-updates',
 };

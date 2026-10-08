@@ -19,12 +19,16 @@ RELEASE_URL="https://github.com/luuvandien2604/DatrixOps/releases/download/${REL
 
 set_env_value() {
     local key="$1" value="$2" escaped
+    local target_file="$ENV_FILE"
+    if [[ -L "$target_file" ]]; then
+        target_file="$(readlink -f "$target_file" 2>/dev/null || readlink "$target_file" || echo "$target_file")"
+    fi
     escaped="${value//&/\\&}"
-    if grep -q "^${key}=" "$ENV_FILE"; then
-        sed -i.bak "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
-        rm -f -- "${ENV_FILE}.bak"
+    if grep -q "^${key}=" "$target_file"; then
+        sed -i.bak "s|^${key}=.*|${key}=${escaped}|" "$target_file"
+        rm -f -- "${target_file}.bak"
     else
-        printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+        printf '%s=%s\n' "$key" "$value" >>"$target_file"
     fi
 }
 

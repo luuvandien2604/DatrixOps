@@ -52,6 +52,9 @@ set_env_value() {
     local value="$3"
 
     [[ -f "$file" ]] || return 0
+    if [[ -L "$file" ]]; then
+        file="$(readlink -f "$file" 2>/dev/null || readlink "$file" || echo "$file")"
+    fi
     if grep -q "^[[:space:]]*${key}=" "$file"; then
         sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
     else
@@ -487,8 +490,11 @@ if [[ -z "$(sed -n 's/^SETUP_TOKEN=//p' "$ENV_FILE" | tail -n 1)" ]]; then
     chmod 0600 "$ENV_FILE"
 fi
 
-if [[ -f "${PROJECT_ROOT}/.env" && ! -e "${SCRIPT_DIR}/.env" ]]; then
-    ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+if [[ -f "${PROJECT_ROOT}/.env" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
+    if [[ ! -L "${SCRIPT_DIR}/.env" || "$(readlink -f "${SCRIPT_DIR}/.env" 2>/dev/null)" != "$(readlink -f "${PROJECT_ROOT}/.env" 2>/dev/null)" ]]; then
+        rm -f "${SCRIPT_DIR}/.env"
+        ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+    fi
 fi
 
 target_app_ver="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -505,7 +511,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.71"
+    target_app_ver="1.8.72"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -666,7 +672,12 @@ if [[ "$healthy" == "true" ]]; then
     # Option 4: Prune untagged dangling layers (<none>:<none>) safely
     docker image prune -f >/dev/null 2>&1 || true
     # Option 4: Prune stale build cache older than 7 days
-    docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
+    if [[ -f "${PROJECT_ROOT}/.env" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
+        if [[ ! -L "${SCRIPT_DIR}/.env" || "$(readlink -f "${SCRIPT_DIR}/.env" 2>/dev/null)" != "$(readlink -f "${PROJECT_ROOT}/.env" 2>/dev/null)" ]]; then
+            rm -f "${SCRIPT_DIR}/.env"
+            ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+        fi
+    fi
 
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
     printf "\n${GREEN}============================================================${NC}\n"

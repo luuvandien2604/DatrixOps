@@ -55,10 +55,13 @@ const viNavigation: DocsNavigation = [
     ],
   },
   {
-    label: 'Dashboard',
+    label: 'Dashboard & Giám sát',
     slug: 'dashboard',
     items: [
-      { slug: 'dashboard/overview', title: 'Đọc Dashboard', description: 'Trạng thái và các chỉ số CPU, RAM, disk, network.', group: 'dashboard', order: 40 },
+      { slug: 'dashboard/overview', title: 'Tổng quan Dashboard', description: 'Trạng thái server và các chỉ số CPU, RAM, disk, network.', group: 'dashboard', order: 40 },
+      { slug: 'dashboard/network-quality', title: 'Chẩn đoán chất lượng mạng', description: 'Đo lường độ trễ ICMP/TCP, Gateway uplink và tag targets.', group: 'dashboard', order: 42 },
+      { slug: 'dashboard/alerts-and-notifications', title: 'Cảnh báo & Kênh thông báo', description: 'Cấu hình quy tắc cảnh báo, kênh Telegram, Discord, Email và theo dõi sự cố.', group: 'dashboard', order: 44 },
+      { slug: 'dashboard/website-monitoring', title: 'Giám sát Website & SSL', description: 'Theo dõi Uptime, HTTP status code và thời hạn chứng chỉ SSL tự động.', group: 'dashboard', order: 46 },
     ],
   },
   {
@@ -119,10 +122,13 @@ const enNavigation: DocsNavigation = [
     ],
   },
   {
-    label: 'Dashboard',
+    label: 'Dashboard & Monitoring',
     slug: 'dashboard',
     items: [
-      { slug: 'dashboard/overview', title: 'Read the Dashboard', description: 'Understand server state, CPU, memory, disk, and network.', group: 'dashboard', order: 40 },
+      { slug: 'dashboard/overview', title: 'Dashboard Overview', description: 'Understand server state, CPU, memory, disk, and network.', group: 'dashboard', order: 40 },
+      { slug: 'dashboard/network-quality', title: 'Network Quality Diagnostics', description: 'Measure ICMP/TCP latency, Gateway uplink, and dynamic tag targets.', group: 'dashboard', order: 42 },
+      { slug: 'dashboard/alerts-and-notifications', title: 'Alerts & Notifications', description: 'Configure alert rules, Telegram, Discord, and Email channels.', group: 'dashboard', order: 44 },
+      { slug: 'dashboard/website-monitoring', title: 'Website & SSL Monitoring', description: 'Monitor website uptime, HTTP status, and automatic SSL certificate validity.', group: 'dashboard', order: 46 },
     ],
   },
   {

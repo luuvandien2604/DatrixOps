@@ -1,48 +1,77 @@
 ---
 title: "Câu hỏi thường gặp"
-description: "Giải đáp theo các chức năng đã tồn tại trong source DatrixOps."
+description: "Giải đáp chi tiết về kiến trúc hệ thống, Caddy Gateway, SSL, cơ chế .env, Agent và các tính năng của DatrixOps."
 ---
 
-## DatrixOps có cần mở cổng SSH không?
+## 1. Khi Agent đẩy metrics về thì đẩy về Gateway hay Backend bên trong?
 
-Không cho việc gửi metrics hoặc dùng Web Terminal. Agent chủ động kết nối HTTPS/WSS outbound; DatrixOps không cần lưu SSH password/private key và không yêu cầu mở cổng 22 inbound. SSH vẫn nên được giữ như kênh cứu hộ khi Agent hoặc control plane không hoạt động. Web Terminal hiện được ưu tiên cho Linux headless/server.
+**Agent LUÔN đẩy về GATEWAY (Caddy), KHÔNG đẩy trực tiếp về Backend.**
+- **Bảo mật:** Backend chỉ chạy trong mạng nội bộ của Docker (`expose: 8080`), hoàn toàn không mở port ra Internet.
+- **Reverse Proxy & SSL:** Gateway (Caddy) là cổng duy nhất mở ra Internet (Port 80/443). Gateway chịu trách nhiệm mã hóa/giải mã SSL, sau đó mới định tuyến các request `/api/*` và `/ws/*` vào Backend bên trong mạng Docker.
 
-## Agent hỗ trợ hệ điều hành nào?
+---
 
-Linux amd64/arm64, macOS Intel/Apple Silicon và Windows amd64 có artifact release. Dịch vụ, cron, Docker và terminal có mức hỗ trợ khác nhau theo OS.
+## 2. Gateway Caddy cấp và gia hạn SSL như thế nào? File cert lưu ở đâu?
 
-## Bao lâu dữ liệu cập nhật một lần?
+- **Cơ chế cấp & gia hạn:** Caddy tích hợp sẵn ACME client. Khi biến `CADDY_SITE_ADDRESS` là một tên miền công khai hợp lệ, Caddy tự động liên hệ với Let's Encrypt hoặc ZeroSSL để xin cert qua cổng 80/443. Quá trình gia hạn diễn ra tự động 30 ngày trước khi hết hạn mà không gây gián đoạn dịch vụ.
+- **Vị trí lưu Cert:**
+  - *Bên trong Container:* `/data/caddy/certificates/...`
+  - *Trên máy chủ Host VPS:* Nằm trong Docker Volume `caddy_data` tại `/var/lib/docker/volumes/datrixops_caddy_data/_data/caddy/certificates/`.
 
-Heartbeat dùng interval cấu hình của Agent; snapshot tiến trình, dịch vụ và Docker khoảng mỗi 60 giây. Task remote được nhận qua heartbeat nên có độ trễ theo mô hình poll.
+---
 
-## Vì sao biểu đồ có khoảng trống?
+## 3. Hệ thống có mấy Docker container và chức năng của chúng là gì?
 
-Khoảng trống cho biết không có metric trong thời gian đó, thường do Agent offline hoặc heartbeat lỗi. DatrixOps không nội suy để biến khoảng mất dữ liệu thành đường liên tục giả.
+Hệ thống gồm tổng cộng **6 container Docker** (5 container chạy thường trực và 1 container chạy 1 lần khi khởi động):
+1. **`gateway` (Caddy):** Cửa ngõ Reverse Proxy tiếp nhận traffic (Port 80/443), tự động SSL.
+2. **`database` (PostgreSQL 16):** Cơ sở dữ liệu chính lưu trữ metrics, người dùng, cài đặt.
+3. **`migrate` (Init Job):** Chạy cập nhật schema database khi khởi động rồi tự tắt an toàn.
+4. **`backend` (Go API):** Xử lý API REST, WebSocket, xác thực và điều khiển hệ thống.
+5. **`worker` (Go Engine):** Xử lý ngầm kiểm tra website/SSL, đánh giá cảnh báo và dọn dẹp data cũ.
+6. **`frontend` (Next.js 16):** Ứng dụng Web Dashboard phục vụ người dùng.
 
-## Bấm update có nghĩa là đã cập nhật xong chưa?
+---
 
-Không. Queued hoặc claimed chỉ cho biết task đã được tạo/nhận. Thành công chỉ được xác nhận khi Agent restart và heartbeat báo đúng target version.
+## 4. File `.env` của Caddy là riêng hay chung? Tại sao có symlink?
 
-## Update all agents có dùng chung token không?
+- **Dùng chung 1 file `.env` duy nhất:** Toàn bộ dịch vụ (Caddy, Backend, Frontend, Worker, Database) đều đọc chung file `/opt/datrixops/.env`.
+- **Cơ chế Symlink:** File `/opt/datrixops/deploy/.env` được liên kết tự động (symlink) trỏ về `/opt/datrixops/.env` (`deploy/.env -> ../.env`). Nhờ đó, bất kể bạn dùng CLI `datrix` hay gõ lệnh tay `docker compose` trong thư mục `deploy/`, hệ thống đều nạp cùng một cấu hình duy nhất.
 
-Không. Backend tạo task trên từng server record; mỗi Agent vẫn xác thực bằng token hiện có của chính nó.
+---
 
-## Có tự rollback Agent không?
+## 5. DatrixOps có cần mở cổng SSH (port 22) trên máy chủ khách không?
 
-Chưa hoàn chỉnh. Update xác minh artifact trước khi thay binary và service manager cố khởi động lại, nhưng chưa có watchdog rollback đầy đủ khi bản mới không heartbeat. Người vận hành cần giữ release cũ và kế hoạch phục hồi thủ công.
+**Hoàn toàn không.** Agent hoạt động theo cơ chế **Outbound-only** (chủ động kết nối HTTPS/WSS ra ngoài về Control Plane). Bạn không cần mở bất kỳ port inbound nào trên máy chủ khách, kể cả port SSH 22. Tính năng Web Terminal hoạt động qua Reverse WebSocket an toàn.
 
-## Xóa server có gỡ Agent khỏi máy không?
+---
 
-Có khi bạn chọn **Uninstall Agent & Delete** trên một Linux Agent đang online và báo hỗ trợ remote uninstall. Backend giữ server record, Agent chạy helper gỡ service/binary, rồi Backend chỉ xóa record sau khi nhận xác nhận hoàn tất.
+## 6. Chẩn đoán chất lượng mạng (Network Quality) đo lường những gì?
 
-**Delete Record Only** chỉ xóa dữ liệu DatrixOps và có thể để lại Agent trên máy. Tùy chọn này dành cho máy đã mất, Agent offline, hệ điều hành chưa hỗ trợ hoặc trường hợp cần recovery. Xem [Gỡ Agent và xóa server](/docs/server-management/delete-server).
+Hệ thống đo lường:
+- **ICMP Ping:** Độ trễ khứ hồi (RTT) và tỷ lệ mất gói (`packet_loss: %`).
+- **TCP Socket Connect:** Thời gian bắt tay TCP tới port dịch vụ mà không trộn lẫn packet loss giả lập.
+- **Gateway Uplink:** Độ trễ tới default gateway của card mạng chính trên Agent.
+- **Nhóm Tag linh hoạt:** Phân loại theo Trong nước, Quốc tế, DNS, Database...
 
+---
 
-## Vì sao Web Terminal báo `can't access tty`?
+## 7. Alert Center hỗ trợ gửi cảnh báo qua những kênh nào?
 
-Shell đã nối vào PTY nhưng chưa có controlling terminal đúng chuẩn. Chạy `tty` và `ps -o pid,ppid,sid,pgid,tpgid,tty,stat,cmd -p $$`; nếu `TT` là `?` hoặc `TPGID=-1`, cập nhật Agent lên bản có PTY Linux hoàn chỉnh. Xem [Web Terminal](/docs/server-management/web-terminal).
+Hỗ trợ 3 kênh phổ biến nhất:
+1. **Telegram:** Qua Telegram Bot và Chat ID nhóm/cá nhân.
+2. **Discord:** Qua Webhook URL của channel Discord.
+3. **Email:** Qua giao thức chuẩn SMTP (hỗ trợ Gmail, Outlook, SMTP server riêng).
+Hệ thống có tính năng **Auto-Resolve**, tự động gửi thông báo xanh báo tin hệ thống đã phục hồi.
 
-## DatrixOps có thay thế Prometheus hoặc SIEM không?
+---
 
-Không nên giả định như vậy. DatrixOps hiện tập trung vào fleet monitoring, task vận hành, alert cơ bản, website/SSL và Agent lifecycle. Một số màn hình Network, Performance, Security và Logs còn đang phát triển.
+## 8. Làm sao để giải phóng dung lượng ổ cứng VPS do Docker chiếm dụng?
 
+Chạy 2 lệnh dọn dẹp an toàn sau trên VPS:
+```bash
+# Dọn các layer rác không gắn thẻ
+docker image prune -f
+# Dọn build cache cũ hơn 7 ngày
+docker builder prune -f --filter "until=168h"
+```
+Khi nâng cấp bằng lệnh `datrix update`, hệ thống cũng tự động kích hoạt quy trình dọn dẹp này kèm cơ chế lọc theo nhãn `datrixops`.

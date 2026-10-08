@@ -23,7 +23,7 @@ fi
 
 if [[ ! -f "${SCRIPT_DIR}/docker-compose.yml" || ! -f "${SCRIPT_DIR}/generate-secrets.sh" ]]; then
     INSTALL_DIR="${DATRIXOPS_INSTALL_DIR:-/opt/datrixops}"
-    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.71}"
+    INSTALL_VERSION="${DATRIXOPS_INSTALL_VERSION:-1.8.72}"
     if [[ ! "$INSTALL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_error "DATRIXOPS_INSTALL_VERSION must use X.Y.Z format."
         exit 1
@@ -129,14 +129,18 @@ detect_public_ip() {
 set_env_value() {
     local key="$1"
     local value="$2"
+    local target_file="${ENV_FILE}"
+    if [[ -L "$target_file" ]]; then
+        target_file="$(readlink -f "$target_file" 2>/dev/null || readlink "$target_file" || echo "$target_file")"
+    fi
     local escaped="${value//\\/\\\\}"
     escaped="${escaped//&/\\&}"
     escaped="${escaped//|/\\|}"
-    if grep -q "^${key}=" "$ENV_FILE"; then
-        sed -i.bak "s|^${key}=.*|${key}=${escaped}|" "$ENV_FILE"
-        rm -f -- "${ENV_FILE}.bak"
+    if grep -q "^${key}=" "$target_file"; then
+        sed -i.bak "s|^${key}=.*|${key}=${escaped}|" "$target_file"
+        rm -f -- "${target_file}.bak"
     else
-        printf '%s=%s\n' "$key" "$value" >>"$ENV_FILE"
+        printf '%s=%s\n' "$key" "$value" >>"$target_file"
     fi
 }
 
@@ -388,8 +392,11 @@ check_and_install_docker
 log_step "Step 2/6: Generating environment configuration and security secrets"
 "${SCRIPT_DIR}/generate-secrets.sh" "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
-if [[ -f "${PROJECT_ROOT}/.env" && ! -e "${SCRIPT_DIR}/.env" ]]; then
-    ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+if [[ -f "${PROJECT_ROOT}/.env" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
+    if [[ ! -L "${SCRIPT_DIR}/.env" || "$(readlink -f "${SCRIPT_DIR}/.env" 2>/dev/null)" != "$(readlink -f "${PROJECT_ROOT}/.env" 2>/dev/null)" ]]; then
+        rm -f "${SCRIPT_DIR}/.env"
+        ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+    fi
 fi
 if [[ -n "${INSTALL_VERSION:-}" ]]; then
     # A bootstrap retry may reuse .env from an earlier failed installation.
@@ -769,6 +776,12 @@ if [[ -d "${PROJECT_ROOT}" && "${PROJECT_ROOT}" != "${SCRIPT_DIR}" ]]; then
     ln -sf "${SCRIPT_DIR}/upgrade.sh" "${PROJECT_ROOT}/upgrade.sh" 2>/dev/null || true
     ln -sf "${SCRIPT_DIR}/backup.sh" "${PROJECT_ROOT}/backup.sh" 2>/dev/null || true
     ln -sf "${SCRIPT_DIR}/restore.sh" "${PROJECT_ROOT}/restore.sh" 2>/dev/null || true
+    if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+        if [[ ! -L "${SCRIPT_DIR}/.env" || "$(readlink -f "${SCRIPT_DIR}/.env" 2>/dev/null)" != "$(readlink -f "${PROJECT_ROOT}/.env" 2>/dev/null)" ]]; then
+            rm -f "${SCRIPT_DIR}/.env"
+            ln -sf "${PROJECT_ROOT}/.env" "${SCRIPT_DIR}/.env"
+        fi
+    fi
 fi
 
 pub_url="$(sed -n 's/^PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)"
