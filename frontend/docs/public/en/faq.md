@@ -1,76 +1,67 @@
 ---
 title: "Frequently Asked Questions"
-description: "Detailed answers on system architecture, Caddy Gateway, SSL certificates, single .env configuration, and DatrixOps features."
+description: "Answers to common questions regarding DatrixOps architecture, security, operations, and platform capabilities."
 ---
 
-## 1. Does the Agent push traffic to the Gateway or directly to the internal Backend?
+## 1. Does DatrixOps require any inbound ports (like SSH) open on monitored servers?
 
-**The Agent ALWAYS connects to the GATEWAY (Caddy), NEVER directly to the Backend.**
-- **Security:** The backend container runs purely within Docker's internal bridge network (`expose: 8080`) and is never published directly to the Internet.
-- **Reverse Proxy & SSL:** The Gateway (Caddy) is the sole public ingress point (Ports 80/443). It terminates SSL and proxies `/api/*` and `/ws/*` traffic into the internal backend.
-
----
-
-## 2. How does Caddy issue and renew SSL certificates? Where are certs stored?
-
-- **Issuance & Renewal:** Caddy features an embedded ACME client. When `CADDY_SITE_ADDRESS` is set to a public domain, Caddy automatically obtains free certificates from Let's Encrypt or ZeroSSL. It automatically renews certificates in-memory 30 days before expiration without service downtime.
-- **Certificate Storage:**
-  - *Inside Container:* `/data/caddy/certificates/...`
-  - *On Host VPS:* Stored within the `caddy_data` volume at `/var/lib/docker/volumes/datrixops_caddy_data/_data/caddy/certificates/`.
+**No.** The Datrix Agent operates strictly on an **Outbound-only** model:
+- The Agent initiates all outbound connections over HTTPS and Reverse WebSocket to the Control Plane.
+- You do not need to open any incoming firewall ports on monitored client machines, including SSH port 22.
+- Servers behind NAT, internal firewalls, or private enterprise VPCs connect seamlessly without port-forwarding.
 
 ---
 
-## 3. How many Docker containers are running and what are their roles?
+## 2. Which operating systems and architectures are supported by the Agent?
 
-The stack consists of **6 Docker containers** (5 long-running services and 1 one-time migration job):
-1. **`gateway` (Caddy):** Ingress reverse proxy on ports 80/443 with automatic HTTPS.
-2. **`database` (PostgreSQL 16):** Primary relational and time-series database.
-3. **`migrate` (Init Job):** Applies database schema migrations on startup, then exits cleanly.
-4. **`backend` (Go API):** Core REST API, WebSocket relay, authentication, and task queue.
-5. **`worker` (Go Engine):** Asynchronous background engine for website probing, alerts, and retention pruning.
-6. **`frontend` (Next.js 16):** Operator web application interface.
+The Datrix Agent is cross-compiled into native static binaries:
+- **Linux:** `amd64` (x86_64) and `arm64` (aarch64) — Compatible with Ubuntu, Debian, CentOS, RHEL, AlmaLinux, Rocky Linux, and Alpine Linux.
+- **macOS:** Intel (`amd64`) and Apple Silicon (`arm64`).
+- **Windows:** `amd64` (running natively as a Windows Service).
 
 ---
 
-## 4. Is the `.env` file shared or separate for Caddy? Why is there a symlink?
+## 3. How frequently is monitoring telemetry collected and updated?
 
-- **One Single `.env` File:** All services (Caddy, Backend, Frontend, Worker, Database) read from the central `/opt/datrixops/.env` file.
-- **Automatic Symlink:** `/opt/datrixops/deploy/.env` is symlinked to the root `.env` (`deploy/.env -> ../.env`). This guarantees that whether running `datrix` or native `docker compose` commands, the configuration remains 100% unified.
-
----
-
-## 5. Does DatrixOps require open inbound SSH ports (port 22) on client servers?
-
-**No.** The Agent operates strictly **Outbound-only**. No inbound ports need to be opened on client machines. Web Terminal connects via secure Reverse WebSockets.
+- **Heartbeat & System Metrics (CPU, RAM, Disk, Network):** Dispatched every 5 to 10 seconds.
+- **Detailed Snapshots (Processes, OS Services, Docker Containers):** Collected and reported every 60 seconds.
+- **Network Quality Diagnostics:** Measurement intervals are user-configurable per target group (typically 10s to 60s).
 
 ---
 
-## 6. What does Network Quality Diagnostics measure?
+## 4. Why are there gaps in the charts instead of a continuous line?
 
-- **ICMP Ping:** Round-trip latency (RTT) and packet loss percentage (`packet_loss: %`).
-- **TCP Socket Connect:** Pure TCP handshake connection latency without synthetic packet loss.
-- **Gateway Uplink:** Local default gateway latency to detect local physical switch/cable bottlenecks.
-- **Dynamic Tag Groups:** Flexible tag categorization (Domestic, International, DNS, Database).
+DatrixOps is engineered to report **accurate, unmanipulated metrics**. When a server is shut down, reboots, or loses internet connectivity, the system renders an intentional gap on the timeline. This ensures engineering teams can identify the exact onset and resolution window of an outage rather than looking at interpolated artificial metrics.
 
 ---
 
-## 7. Which channels are supported by the Alert Center?
+## 5. Where is monitoring data stored? Is any telemetry sent externally?
 
-DatrixOps supports 3 primary notification channels:
-1. **Telegram:** Via Telegram Bot Token and Chat ID.
-2. **Discord:** Via Discord Webhook URLs.
-3. **Email:** Standard SMTP (Gmail, Outlook, custom mail servers).
-Features automated **Auto-Resolve** notifications when systems recover.
+In the **Community Edition (Self-Hosted)**, all server inventories, telemetry time-series, diagnostic results, alerting configurations, and audit trails remain **100% on your own infrastructure** in PostgreSQL. No telemetry or operational data is ever transmitted to external servers.
 
 ---
 
-## 8. How to free up VPS disk space consumed by Docker?
+## 6. How does the browser-based Web Terminal function securely?
 
-Run these safe cleanup commands on the host:
-```bash
-# Prune dangling untagged layers
-docker image prune -f
-# Prune build cache older than 7 days
-docker builder prune -f --filter "until=168h"
-```
-The `datrix update` command automatically runs this cleanup while filtering specifically for DatrixOps project labels.
+When an administrator opens the Web Terminal on the Dashboard:
+1. The browser initiates an authenticated WebSocket session to the Control Plane.
+2. The Control Plane bridges this request across an existing secure Reverse WebSocket established by the Agent.
+3. The Agent allocates a local pseudo-terminal (PTY) session (bash/sh on Linux) and streams bidirectional I/O in real time.
+4. All terminal interactions are authenticated against your role and recorded in the audit log.
+
+---
+
+## 7. What is the difference between "Uninstall Agent & Delete" and "Delete Record Only"?
+
+When removing a server from the Control Plane:
+- **Uninstall Agent & Delete (Recommended):** Used when the server is currently Online. The Control Plane signals the Agent to gracefully stop its daemon, purge local binaries, and confirm completion before removing the server record from the dashboard.
+- **Delete Record Only:** Instantly removes the server entry from the dashboard without contacting the machine. Used when the host has already been permanently decommissioned, destroyed in the cloud, or unreachable.
+
+---
+
+## 8. What is the resource overhead of running the Datrix Agent?
+
+The Datrix Agent is written in Go and optimized for minimal footprint:
+- Memory: Typically uses **10 MB – 15 MB** of RAM.
+- CPU: Consistently consumes less than **0.5%** CPU under normal telemetry collection.
+- Zero runtime dependencies: No Python, Node.js, or Java runtime is required on the host.

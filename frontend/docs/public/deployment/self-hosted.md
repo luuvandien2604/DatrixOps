@@ -58,18 +58,15 @@ flowchart LR
 
 ---
 
-## 4. Quản lý cấu hình: Cơ chế Single `.env` File (Source of Truth)
+## 4. Quản lý cấu hình hệ thống (`.env`)
 
-DatrixOps áp dụng nguyên tắc **Duy nhất một file cấu hình gốc**:
-
-- **File gốc chính thức:** `/opt/datrixops/.env`
-- **Cơ chế Symlink tự động:** Thư mục `/opt/datrixops/deploy/.env` được liên kết bằng symlink trỏ về `/opt/datrixops/.env`:
-  ```text
-  /opt/datrixops/deploy/.env -> /opt/datrixops/.env
+Toàn bộ cấu hình của DatrixOps được quản lý tập trung tại file `/opt/datrixops/.env`:
+- Tất cả các dịch vụ (Gateway Caddy, Backend API, Frontend, Worker, Database) đồng bộ đọc cấu hình từ file duy nhất này.
+- Bất cứ khi nào bạn cập nhật các biến môi trường (như port, domain, token, retention), hãy chạy lệnh:
+  ```bash
+  sudo datrix restart
   ```
-- **Lợi ích:**
-  - Toàn bộ dịch vụ (Caddy, Backend, Frontend, Worker, Database) đều đọc chung một file `.env` duy nhất.
-  - Bất kể bạn chạy lệnh `datrix` ở thư mục gốc hay gõ lệnh tay `docker compose` trong thư mục `deploy/`, hệ thống đều nạp cùng một cấu hình, triệt tiêu hoàn toàn nguy cơ lệch biến môi trường.
+  để áp dụng các thay đổi mới ngay lập tức.
 
 ---
 

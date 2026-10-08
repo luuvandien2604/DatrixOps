@@ -83,14 +83,6 @@ docker image prune -f
 docker builder prune -f --filter "until=168h"
 ```
 
-## Verify Single `.env` File Symlink
-
-Ensure `/opt/datrixops/deploy/.env` remains a valid symlink pointing to `/opt/datrixops/.env`:
-```bash
-ls -l /opt/datrixops/deploy/.env
-# Expected: .env -> /opt/datrixops/.env
-```
-
 ## Permission denied or service failure
 
 The installer needs root/Administrator privileges. Check binary ownership and executable permissions on Linux/macOS, then inspect native service logs. Repeated reinstall attempts can hide the original failure.

@@ -88,18 +88,6 @@ Nếu dung lượng ổ cứng tăng cao sau nhiều lần vận hành hoặc n�
    docker builder prune -f --filter "until=168h"
    ```
 
-## Xác nhận cấu hình Single `.env` File
-
-Đảm bảo file `/opt/datrixops/deploy/.env` luôn là symlink trỏ về `/opt/datrixops/.env`:
-```bash
-ls -l /opt/datrixops/deploy/.env
-# Kết quả mong đợi: .env -> /opt/datrixops/.env
-```
-Nếu là file thường, chuẩn hóa lại bằng lệnh:
-```bash
-cd /opt/datrixops/deploy && rm -f .env && ln -s ../.env .env
-```
-
 ## Permission denied hoặc service không khởi động
 
 Installer cần root/Administrator. Kiểm tra owner và executable bit của binary trên Linux/macOS, sau đó xem log service. Không chạy installer lặp lại trước khi hiểu lỗi vì việc đó có thể che mất nguyên nhân ban đầu.

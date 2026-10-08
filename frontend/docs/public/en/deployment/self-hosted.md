@@ -58,18 +58,15 @@ flowchart LR
 
 ---
 
-## 4. Configuration: Single `.env` Source of Truth
+## 4. System Configuration (`.env`)
 
-DatrixOps enforces an immutable **Single Source of Truth** for configuration:
-
-- **Master Configuration File:** `/opt/datrixops/.env`
-- **Automatic Symlink:** The deploy directory symlink points directly to the root `.env`:
-  ```text
-  /opt/datrixops/deploy/.env -> /opt/datrixops/.env
+All DatrixOps settings are managed centrally in `/opt/datrixops/.env`:
+- All components (Caddy Gateway, Backend API, Frontend, Worker, Database) read from this single configuration file.
+- Whenever you modify environment variables (ports, domain, tokens, retention), restart services with:
+  ```bash
+  sudo datrix restart
   ```
-- **Benefits:**
-  - All services (Caddy, Backend, Frontend, Worker, Database) consume the identical configuration.
-  - Whether running `datrix` commands or native `docker compose` commands inside `deploy/`, configuration drift is completely eliminated.
+  to apply your changes immediately.
 
 ---
 
