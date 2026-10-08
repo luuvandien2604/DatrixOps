@@ -1,112 +1,144 @@
 ---
-title: "Troubleshooting"
-description: "Diagnose offline Agents, missing data, version errors, failed updates, permissions, and networking."
+title: Common Issues & Solutions
+description: Diagnose offline agents, network probe errors, web terminal timeouts, and SSL renewal.
 ---
 
-Start with three facts: is the Agent service running, what do its logs report, and can the host reach DatrixOps?
+# Common Issues & Solutions
 
-## Agent is offline
+This guide provides practical troubleshooting steps for the most common operational issues encountered when deploying, connecting, and managing servers with DatrixOps.
 
-Linux:
+---
+
+## 1. Agent Shows "Offline" or Disconnected
+
+### Symptoms
+- A newly enrolled server stays in `Offline` or `Pending` status.
+- An existing server stops sending telemetry and turns red.
+
+### Troubleshooting Steps
+
+#### Step 1: Check the Agent Service Status on the Host
+SSH into the monitored host and check if the agent daemon is active:
 
 ```bash
-sudo systemctl status datrixops-agent
-sudo journalctl -u datrixops-agent -n 200 --no-pager
-curl -I https://monitor.example.com
+sudo systemctl status datrix-agent
 ```
 
-macOS:
+If the service is stopped or failed, restart it:
 
 ```bash
-sudo launchctl print system/com.datrixops.agent
-tail -n 200 /var/log/datrixops-agent.log
+sudo systemctl restart datrix-agent
 ```
 
-Windows PowerShell:
+#### Step 2: Inspect Agent Service Logs
+View the latest error logs:
 
-```powershell
-Get-ScheduledTask -TaskName "DatrixOpsAgent"
-Get-Content "C:\Program Files\DatrixOps\agent.log" -Tail 200
+```bash
+sudo journalctl -u datrix-agent -n 50 --no-pager
 ```
 
-A heartbeat `401` normally means the Agent Token does not match; it is not a browser JWT error.
+#### Step 3: Test Outbound Connectivity to DatrixOps
+Ensure the host can reach your DatrixOps control plane over HTTPS/WSS:
 
-## Server is missing or has no IP
+```bash
+curl -Iv https://<your-datrix-domain>/health
+```
 
-Confirm the correct account/workspace and make sure installation used the token for that server record. IP and inventory arrive in a detailed snapshot, so allow another snapshot cycle after the first heartbeat.
+- If the command hangs or times out, your host firewall, VPC egress rule, or corporate proxy is blocking outbound traffic to port `443`.
+- If you see an SSL certificate error (`certificate signed by unknown authority`), verify that your DatrixOps server has a valid SSL certificate.
 
-## Wrong version or no update notice
+---
 
-The UI version must come from a heartbeat. Restart the Agent and inspect its startup log. If the latest version is wrong, an administrator must verify the running Backend `AGENT_VERSION` and published release. Rebuilding the Frontend is not always required for a version-only change, but artifact serving depends on the deployment image/volume.
+## 2. Web Terminal Fails to Connect or Times Out
 
-## Update failed or is stuck
+### Symptoms
+- The Web Terminal window displays `Connecting to server…` and eventually times out.
+- The browser console shows `WebSocket connection to 'wss://.../ws/terminal' failed`.
 
-1. Read the task state in Overview instead of relying on a toast.
-2. Wait for task timeout and stale-task cleanup.
-3. Search Agent logs for `manifest`, `signature`, `checksum`, `permission`, or restart failures.
-4. Verify `/releases/<version>/manifest.json`, `manifest.sig`, and the artifact are reachable.
-5. For a legacy Agent, perform the one-time update described in [Versions and updates](/docs/en/agent-management/updates).
+### Common Causes & Fixes
 
-## SSL Issuance Failures or Caddy Gateway Offline
+#### Issue: Reverse Proxy Missing WebSocket Headers
+If you placed an external reverse proxy (e.g., Nginx, Traefik, or AWS ALB) in front of DatrixOps:
+Ensure WebSocket upgrade headers are passed through:
 
-1. **Port 80 or 443 Conflicts on Host:**
-   - If an existing web server (Nginx/Apache) occupies port 80/443, Caddy cannot bind to the host ports.
-   - Inspect listening ports:
-     ```bash
-     sudo ss -tulpn | grep -E ':(80|443)'
-     ```
-   - Resolve by stopping the conflicting service or remapping external ports in `/opt/datrixops/.env` (`DATRIXOPS_HTTP_PORT`, `DATRIXOPS_HTTPS_PORT`).
+```nginx
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_set_header Host $host;
+```
 
-2. **Domain DNS Not Propagated:**
-   - Caddy requires inbound HTTP-01 challenge reachability on port 80 from Let's Encrypt / ZeroSSL.
-   - Verify public DNS:
-     ```bash
-     dig +short your-domain.com
-     ```
-   - Inspect Caddy logs:
-     ```bash
-     cd /opt/datrixops && docker compose -f deploy/docker-compose.yml logs -f gateway
-     ```
+*(Note: The built-in Caddy gateway in DatrixOps handles WebSocket upgrades automatically).*
 
-3. **Verify Stored Certificates in Container:**
+#### Issue: Cloudflare Proxy Buffering
+If your domain uses Cloudflare (orange-cloud proxy enabled):
+1. Log in to the Cloudflare Dashboard.
+2. Go to **Network** settings.
+3. Ensure **WebSockets** is toggled to **ON**.
+
+---
+
+## 3. Network Quality Probes Report 100% Packet Loss
+
+### Symptoms
+- ICMP targets report `100% packet loss` or `Critical` status while the host has regular internet access.
+
+### Common Causes & Fixes
+
+#### Issue: Monitored Target Blocks ICMP Ping
+Many enterprise firewalls, CDNs, and cloud gateways drop ICMP echo requests by default.
+- **Fix**: Switch the probe method from `ICMP (Ping)` to `TCP (Socket)` targeting an open port (e.g., port `443` or `80`).
+
+#### Issue: Linux Raw Socket Permissions
+On minimal Linux containers (such as Alpine or Docker containers running without `NET_RAW` capability), ping utilities require raw socket permissions:
+
+```bash
+sudo setcap cap_net_raw+ep /usr/local/bin/datrix-agent
+```
+
+---
+
+## 4. Custom Domain SSL Provisioning Fails (Caddy)
+
+### Symptoms
+- When setting `CADDY_SITE_ADDRESS=ops.example.com`, the browser shows `SSL Connection Error` or `Connection Refused`.
+
+### Troubleshooting Steps
+
+1. **Verify DNS Propagation**:
+   Ensure your domain's DNS `A` or `AAAA` record points directly to your server's public IP address:
    ```bash
-   docker exec -it $(docker ps -qf name=gateway) find /data/caddy/certificates -type f
+   dig +short ops.example.com
    ```
+2. **Verify Inbound Ports 80 and 443**:
+   Let's Encrypt requires ports `80` (HTTP-01 challenge) and `443` to reach Caddy:
+   ```bash
+   sudo ufw status
+   # If ports are closed, allow them:
+   sudo ufw allow 80/tcp
+   sudo ufw allow 443/tcp
+   ```
+3. **Inspect Caddy Container Logs**:
+   ```bash
+   sudo datrix logs
+   ```
+   Look for lines tagged `[caddy]` describing ACME challenge results.
 
-## VPS Disk Space Full from Docker Cache
+---
 
-To clean unused images and build caches safely:
-```bash
-# Prune untagged dangling layers
-docker image prune -f
-# Prune build cache older than 7 days
-docker builder prune -f --filter "until=168h"
-```
+## 5. Resetting Lost Administrator Password
 
-## Permission denied or service failure
+If you are locked out of the web dashboard:
 
-The installer needs root/Administrator privileges. Check binary ownership and executable permissions on Linux/macOS, then inspect native service logs. Repeated reinstall attempts can hide the original failure.
+1. SSH into the server hosting the DatrixOps control plane.
+2. Run the interactive management utility:
+   ```bash
+   sudo datrix reset-password
+   ```
+3. Follow the on-screen prompt to specify your username and enter a new password. The update takes effect immediately without restarting containers.
 
-## Network timeout and firewall
+---
 
-Allow outbound DNS and HTTPS to DatrixOps. Reverse terminal also requires WebSocket upgrade support through the reverse proxy. Check whether an enterprise proxy blocks WebSockets or replaces TLS certificates.
+## Next Steps
 
-## Agent online but terminal channel disconnected
-
-Agents with terminal diagnostics include the latest handshake failure in their heartbeat, allowing the Dashboard to distinguish `401`, `403`, `404/200`, `502/503`, TLS, and timeout failures. You can still select **Start terminal**: the Backend hub performs the authoritative connection check instead of the UI locking the button because of a stale heartbeat.
-
-Inspect Agent logs:
-
-```bash
-sudo journalctl -u datrixops-agent -n 200 --no-pager | grep -i terminal
-```
-
-The reverse proxy must route `/api/v1/agent/terminal` directly to the Backend with `Upgrade` and `Connection` headers. A `401` without a token is expected; HTML `200` or `404` indicates that the request reached the Frontend or a wrong upstream.
-
-## Chart gaps
-
-Gaps while an Agent is offline are intentional: DatrixOps does not draw an invented line between missing samples. If the Agent is online, inspect heartbeat errors and system time. Process/service snapshots update less frequently than basic metrics.
-
-## Collect logs for a report
-
-Include OS/architecture, startup Agent version, time and timezone, redacted task state, and a short relevant log excerpt. Never include an Agent Token, JWT, private signing key, database URL, or complete environment file.
+- Consult the [Frequently Asked Questions](/docs/troubleshooting/faq) for answers to architectural and operational queries.
+- Check configuration parameters in [Environment Variables (.env)](/docs/reference/configuration).

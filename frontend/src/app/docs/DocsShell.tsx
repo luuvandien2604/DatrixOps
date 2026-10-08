@@ -59,6 +59,9 @@ export default function DocsShell({
     const target = nextLocale === 'vi'
       ? `/docs/vi${contentPath ? `/${contentPath}` : ''}`
       : `/docs${contentPath ? `/${contentPath}` : ''}`;
+    try {
+      localStorage.setItem('datrixops_docs_lang', nextLocale);
+    } catch {}
     router.push(target);
   };
 

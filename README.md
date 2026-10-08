@@ -42,8 +42,7 @@ pulls version-pinned container images, runs migrations and starts the stack.
 DatrixOps publishes CE Server and Agent independently. A CE Server release uses
 `vX.Y.Z` and pins one immutable signed Agent release, which uses
 `agent-vX.Y.Z`. The two version numbers do not need to match. Promoting an
-Agent does not rebuild or change CE Server images; see
-[Upgrade](docs/UPGRADE.md).
+Agent does not rebuild or change CE Server images.
 
 The installer creates the first administrator according to your input (or generates a random secure password).
 The password is not stored in plaintext; `/opt/datrixops/.admin-credentials` contains only the username.
@@ -88,13 +87,16 @@ sudo docker compose --env-file .env -f deploy/docker-compose.yml ps
 
 ## Documentation
 
-- [Installation](docs/INSTALLATION.md)
-- [Upgrade](docs/UPGRADE.md)
-- [Backup and restore](docs/BACKUP_RESTORE.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Security](docs/SECURITY.md)
-- [REST API](docs/api/rest-api.md)
-- [Dashboard user guide](frontend/docs/public/dashboard/overview.md)
+Full bilingual documentation (English and Tiếng Việt) is integrated directly into the web interface at `/docs`:
+
+- **Quickstart Guide**: Deploy DatrixOps on Ubuntu, Debian, or Rocky Linux in minutes.
+- **Server Monitoring**: Real-time metrics, systemd services, and Docker container tracking.
+- **Network Quality**: Diagnostic ping/TCP probes, Gateway uplink, and ISP latency comparison.
+- **Website & SSL Monitoring**: Uptime verification, HTTP response status, and SSL certificate expiration alerts.
+- **Alert Channels**: Instant alerts via Telegram, Discord, and Email.
+- **Remote Web Terminal**: In-browser secure reverse shell without opening inbound ports.
+
+Access the docs locally in your deployment at `http://<your-server-ip>/docs` (or `https://<your-domain>/docs`).
 
 ## License
 

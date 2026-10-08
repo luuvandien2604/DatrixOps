@@ -28,7 +28,7 @@ export default function DocsHomeContent({ locale }: { locale: DocLocale }) {
         <h1>{copy.title}</h1>
         <p>{copy.description}</p>
         <div className="docs-home-actions">
-          <Link href={`${prefix}/getting-started/account-and-first-server`}>{copy.start} <ArrowRight /></Link>
+          <Link href={`${prefix}/getting-started/quickstart`}>{copy.start} <ArrowRight /></Link>
           <Link href={`${prefix}/troubleshooting/common-issues`}>{copy.troubleshoot}</Link>
         </div>
       </div>

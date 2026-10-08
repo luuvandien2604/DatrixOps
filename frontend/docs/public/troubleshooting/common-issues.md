@@ -1,263 +1,144 @@
 ---
-title: "Xử lý sự cố"
-description: "Chẩn đoán Agent offline, update, Web Terminal, remote uninstall, quyền và kết nối mạng."
+title: Xử lý sự cố thường gặp
+description: Khắc phục lỗi Agent offline, lỗi kết nối mạng, terminal và cấp phát chứng chỉ.
 ---
 
-Luôn bắt đầu bằng ba dữ kiện: Agent service có chạy không, log nói gì, và host có kết nối được endpoint DatrixOps không.
+# Xử lý sự cố thường gặp
 
-## Agent không online
+Tài liệu này tổng hợp các bước chẩn đoán và khắc phục nhanh những sự cố thường gặp nhất trong quá trình cài đặt, kết nối máy chủ và vận hành DatrixOps.
 
-Linux:
+---
+
+## 1. Máy chủ báo trạng thái "Offline" hoặc mất tín hiệu
+
+### Hiện tượng
+- Máy chủ mới cài Agent nhưng vẫn ở trạng thái `Offline` hoặc `Pending`.
+- Máy chủ đang theo dõi bình thường đột ngột chuyển sang màu đỏ báo mất tín hiệu.
+
+### Các bước chẩn đoán & khắc phục
+
+#### Bước 1: Kiểm tra dịch vụ Agent trên máy chủ
+Truy cập SSH vào máy chủ đang bị offline và kiểm tra dịch vụ ngầm:
 
 ```bash
-sudo systemctl status datrixops-agent --no-pager
-sudo journalctl -u datrixops-agent -n 200 --no-pager
-curl -I https://monitor.example.com
+sudo systemctl status datrix-agent
 ```
 
-macOS:
+Nếu dịch vụ đang ở trạng thái dừng (`inactive`) hoặc bị lỗi (`failed`), hãy khởi động lại:
 
 ```bash
-sudo launchctl print system/com.datrixops.agent
-tail -n 200 /var/log/datrixops-agent.log
+sudo systemctl restart datrix-agent
 ```
 
-Windows PowerShell:
+#### Bước 2: Xem nhật ký lỗi gần nhất
+Kiểm tra chi tiết thông báo lỗi của dịch vụ:
 
-```powershell
-Get-ScheduledTask -TaskName "DatrixOpsAgent"
-Get-Content "C:\Program Files\DatrixOps\agent.log" -Tail 200
+```bash
+sudo journalctl -u datrix-agent -n 50 --no-pager
 ```
 
-Lỗi `401` ở heartbeat thường là Agent Token không khớp hoặc server record đã bị xóa, không phải JWT của trình duyệt.
+#### Bước 3: Kiểm tra kết nối mạng chiều đi (Outbound) tới DatrixOps
+Đảm bảo máy chủ có thể gửi tín hiệu ra ngoài tới DatrixOps server qua cổng HTTPS/WSS:
 
-## Server không xuất hiện hoặc thiếu IP
+```bash
+curl -Iv https://<ten-mien-datrix-cua-ban>/health
+```
 
-Xác nhận bạn đang ở đúng tài khoản/workspace và đã cài bằng token của server record vừa tạo. IP và inventory đến từ snapshot chi tiết, nên chờ lần snapshot tiếp theo sau heartbeat đầu tiên.
+- Nếu lệnh bị treo (timed out), tường lửa máy chủ, Security Group hoặc proxy nội bộ đang chặn lưu lượng chiều đi cổng `443`.
+- Nếu báo lỗi chứng chỉ SSL (`certificate signed by unknown authority`), hãy kiểm tra lại chứng chỉ HTTPS trên máy chủ DatrixOps trung tâm.
 
-## Sai version hoặc không có thông báo update
+---
 
-Version ở UI phải đến từ heartbeat. Restart Agent và kiểm tra log startup. Nếu latest version sai, người quản trị cần kiểm tra `AGENT_VERSION` trong Backend đang chạy và release đã publish. Khi source Backend/Frontend thay đổi, phải build lại image tương ứng.
+## 2. Web Terminal không kết nối được hoặc bị Time Out
 
-## Update failed hoặc bị kẹt
+### Hiện tượng
+- Màn hình Web Terminal hiện dòng chữ `Connecting to server…` một lúc rồi báo lỗi timeout.
+- Console của trình duyệt báo lỗi `WebSocket connection failed`.
 
-1. Đọc trạng thái task trên Overview thay vì chỉ nhìn toast.
-2. Chờ tối đa timeout của task; task stale sẽ được đánh dấu failed/timed out.
-3. Tìm lỗi `manifest`, `signature`, `checksum`, `permission` hoặc restart trong Agent log.
-4. Kiểm tra host truy cập được `/releases/<version>/manifest.json`, `manifest.sig` và artifact đúng OS/arch.
-5. Thành công chỉ được xác nhận khi Agent restart và heartbeat báo đúng target version.
+### Nguyên nhân & Cách khắc phục
 
-## Lỗi cấp phát SSL hoặc Caddy Gateway không hoạt động
+#### Nguyên nhân: Reverse Proxy bên ngoài thiếu cấu hình WebSocket
+Nếu bạn đặt máy chủ sau một Reverse Proxy bên ngoài (như Nginx, Traefik, HAProxy hoặc AWS ALB):
+Hãy chắc chắn proxy đã cấu hình chuyển tiếp đầy đủ header WebSocket:
 
-1. **Trùng cổng 80 hoặc 443 trên máy chủ Host:**
-   - Nếu máy chủ đã cài sẵn Nginx, Apache hoặc dịch vụ khác đang chiếm port 80/443, Caddy sẽ không thể khởi động.
-   - Kiểm tra tiến trình đang chiếm cổng:
-     ```bash
-     sudo ss -tulpn | grep -E ':(80|443)'
-     ```
-   - Xử lý: Tắt dịch vụ cũ (`sudo systemctl stop nginx`) hoặc đổi port ngoài của DatrixOps trong file `/opt/datrixops/.env` (`DATRIXOPS_HTTP_PORT` và `DATRIXOPS_HTTPS_PORT`).
+```nginx
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_set_header Host $host;
+```
 
-2. **Tên miền chưa trỏ đúng IP hoặc DNS chưa nhận diện:**
-   - Caddy sử dụng Let's Encrypt / ZeroSSL qua giao thức ACME HTTP-01 challenge. CA bắt buộc phải kết nối được tới IP máy chủ qua port 80.
-   - Kiểm tra DNS domain:
-     ```bash
-     dig +short your-domain.com
-     ```
-   - Xem log chi tiết quá trình xin cert của Caddy:
-     ```bash
-     cd /opt/datrixops && docker compose -f deploy/docker-compose.yml logs -f gateway
-     ```
+*(Lưu ý: Cổng Caddy tích hợp sẵn trong DatrixOps đã tự động hỗ trợ WebSocket).*
 
-3. **Kiểm tra chứng chỉ SSL đã được cấp trong Caddy:**
+#### Nguyên nhân: Cloudflare chưa bật chế độ WebSocket
+Nếu tên miền của bạn đang bật đám mây màu cam (Proxy) qua Cloudflare:
+1. Đăng nhập vào bảng điều khiển Cloudflare.
+2. Vào mục cấu hình **Network**.
+3. Đảm bảo tùy chọn **WebSockets** đang được gạt sang **ON**.
+
+---
+
+## 3. Đo kiểm chất lượng mạng báo mất gói 100% (Packet Loss)
+
+### Hiện tượng
+- Các mục tiêu ICMP ping báo `100% packet loss` hoặc nhãn `Critical` dù máy chủ vẫn truy cập Internet bình thường.
+
+### Nguyên nhân & Cách khắc phục
+
+#### Nguyên nhân: Mục tiêu đích chặn gói tin ICMP Ping
+Nhiều hệ thống tường lửa doanh nghiệp hoặc CDN quốc tế mặc định chặn hoàn toàn các gói tin ICMP echo request.
+- **Cách khắc phục**: Chuyển phương thức kiểm tra từ `ICMP (Ping)` sang `TCP (Socket)` và điền cổng đang mở của đích đến (ví dụ: cổng `443` hoặc `80`).
+
+#### Nguyên nhân: Quyền tạo Socket thô trên Linux (Raw Socket)
+Trên một số môi trường Linux tối giản (như Alpine Linux hoặc Docker container chạy không có quyền `NET_RAW`), tiện ích ping cần được cấp quyền:
+
+```bash
+sudo setcap cap_net_raw+ep /usr/local/bin/datrix-agent
+```
+
+---
+
+## 4. Lỗi tự động cấp phát chứng chỉ SSL tên miền (Caddy)
+
+### Hiện tượng
+- Khi điền `CADDY_SITE_ADDRESS=ops.tenmien.com`, trình duyệt báo `Lỗi kết nối SSL` hoặc `Không thể truy cập trang web`.
+
+### Các bước kiểm tra
+
+1. **Kiểm tra bản ghi DNS**:
+   Đảm bảo bản ghi `A` hoặc `AAAA` của tên miền đã trỏ chính xác về địa chỉ IP công khai của máy chủ:
    ```bash
-   docker exec -it $(docker ps -qf name=gateway) find /data/caddy/certificates -type f
+   dig +short ops.tenmien.com
    ```
-
-## Đầy ổ cứng VPS do Docker Cache & Images
-
-Nếu dung lượng ổ cứng tăng cao sau nhiều lần vận hành hoặc nâng cấp:
-1. **Kiểm tra dung lượng Docker đang chiếm:**
+2. **Kiểm tra mở cổng Inbound 80 và 443**:
+   Let's Encrypt bắt buộc cổng `80` (HTTP-01 challenge) và `443` phải thông suốt để xác thực tên miền:
    ```bash
-   docker system df
+   sudo ufw status
+   # Nếu cổng đang đóng, hãy mở:
+   sudo ufw allow 80/tcp
+   sudo ufw allow 443/tcp
    ```
-2. **Dọn dẹp an toàn cho DatrixOps (Không xóa container khác):**
+3. **Xem nhật ký hoạt động của Caddy**:
    ```bash
-   # Dọn layer rác không gắn thẻ
-   docker image prune -f
-   # Dọn build cache cũ hơn 7 ngày
-   docker builder prune -f --filter "until=168h"
+   sudo datrix logs
    ```
+   Tìm các dòng có tiền tố `[caddy]` để xem chi tiết thông báo lỗi từ nhà cấp chứng chỉ ACME.
 
-## Permission denied hoặc service không khởi động
+---
 
-Installer cần root/Administrator. Kiểm tra owner và executable bit của binary trên Linux/macOS, sau đó xem log service. Không chạy installer lặp lại trước khi hiểu lỗi vì việc đó có thể che mất nguyên nhân ban đầu.
+## 5. Quên mật khẩu quản trị viên (Admin)
 
-## Network timeout và firewall
+Nếu bạn bị mất mật khẩu đăng nhập vào bảng điều khiển:
 
-Cho phép DNS, HTTPS và WSS outbound tới domain DatrixOps. Reverse terminal cần WebSocket Upgrade xuyên qua Cloudflare/Nginx/Caddy. Kiểm tra proxy doanh nghiệp có chặn WebSocket hoặc thay chứng thư TLS hay không.
+1. Truy cập SSH vào máy chủ cài đặt DatrixOps trung tâm.
+2. Chạy công cụ quản trị CLI:
+   ```bash
+   sudo datrix reset-password
+   ```
+3. Nhập tên tài khoản và gõ mật khẩu mới theo hướng dẫn trên màn hình. Mật khẩu mới sẽ có hiệu lực ngay lập tức mà không cần khởi động lại container.
 
-## Agent online nhưng Terminal channel disconnected
+---
 
-Kiểm tra log Agent:
+## Bước tiếp theo
 
-```bash
-sudo journalctl \
-  -u datrixops-agent \
-  -n 200 \
-  --no-pager |
-grep -Ei 'terminal|websocket|connected|disabled|401|426|error'
-```
-
-Public origin phải đưa toàn bộ traffic vào Caddy gateway (cổng 80/443). Không để reverse proxy bên ngoài có block `/api/` trỏ trực tiếp tới Backend `127.0.0.1:8080` làm mất header nâng cấp WebSocket.
-
-Kiểm tra trực tiếp gateway:
-
-```bash
-curl --http1.1 -i \
-  -H 'Connection: Upgrade' \
-  -H 'Upgrade: websocket' \
-  -H 'Sec-WebSocket-Version: 13' \
-  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  http://127.0.0.1/api/v1/agent/terminal
-```
-
-Kiểm tra public domain:
-
-```bash
-curl --http1.1 -i \
-  -H 'Connection: Upgrade' \
-  -H 'Upgrade: websocket' \
-  -H 'Sec-WebSocket-Version: 13' \
-  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-  https://<domain>/api/v1/agent/terminal
-```
-
-Không gửi Agent Token. Cả hai request phải trả `401 Unauthorized` và có `Via: 1.1 Caddy`.
-
-| Kết quả | Diễn giải |
-|---|---|
-| `401` + `Via: 1.1 Caddy` | Gateway và WebSocket Upgrade đúng; request test chỉ thiếu Agent Token |
-| `426` | Public origin bypass gateway hoặc mất Upgrade header |
-| `200` HTML/`404` | Request rơi vào Frontend hoặc sai upstream |
-| `502/503` | Gateway không kết nối được Backend |
-| TLS/timeout | DNS, certificate, clock, firewall hoặc proxy timeout |
-
-Xem hướng dẫn đầy đủ tại [Web Terminal](/docs/server-management/web-terminal).
-
-## Terminal mở được nhưng cảnh báo `can't access tty`
-
-Chạy trong Web Terminal:
-
-```bash
-tty
-ps -o pid,ppid,sid,pgid,tpgid,tty,stat,cmd -p $$
-```
-
-Nếu `tty` là `/dev/pts/...` nhưng `TT` vẫn là `?` hoặc `TPGID=-1`, Agent chưa tạo controlling terminal đúng chuẩn. Cập nhật Agent lên bản PTY Linux mới. Kết quả đúng phải có `TT=pts/...` và `TPGID` là process group foreground.
-
-## Terminal bị tắt do nhận diện desktop
-
-Kiểm tra log có dòng `Terminal reverse channel disabled`. Với Linux headless bị nhận diện nhầm, có thể ép chế độ server:
-
-```bash
-sudo mkdir -p /etc/systemd/system/datrixops-agent.service.d
-
-sudo tee \
-  /etc/systemd/system/datrixops-agent.service.d/terminal.conf \
-  >/dev/null <<'SYSTEMD'
-[Service]
-Environment="DATRIXOPS_TERMINAL_MODE=server"
-SYSTEMD
-
-sudo systemctl daemon-reload
-sudo systemctl restart datrixops-agent
-```
-
-Cơ chế auto đúng chỉ coi là desktop khi có phiên X11/Wayland người dùng đang active, không chỉ vì display manager tồn tại.
-
-## Gỡ Agent và xóa server bị kẹt
-
-Khi bấm **Uninstall Agent & Delete**, request đúng phải trả `202 Accepted`. Server phải đi qua các trạng thái:
-
-```text
-Waiting for Agent uninstall
-→ Uninstalling Agent
-→ server biến mất sau callback xác nhận
-```
-
-Xem Agent log:
-
-```bash
-sudo journalctl \
-  -u datrixops-agent \
-  -n 200 \
-  --no-pager |
-grep -Ei 'agent_uninstall|uninstall|received task|shutting down'
-```
-
-Log mong đợi:
-
-```text
-Received task ...: agent_uninstall
-Received agent_uninstall task. Preparing detached Linux helper...
-Agent shutting down gracefully...
-```
-
-Kiểm tra helper tách rời:
-
-```bash
-sudo journalctl \
-  --since "15 minutes ago" \
-  --no-pager |
-grep -Ei 'datrixops-agent-uninstall|uninstall helper|confirm'
-```
-
-Kiểm tra Backend callback:
-
-```bash
-docker compose \
-  --env-file .env \
-  -f docker-compose.prod.yml \
-  logs --since=15m backend |
-grep -Ei 'uninstall/confirm|agent_uninstall|DELETE'
-```
-
-Luồng thành công có:
-
-```text
-DELETE /api/v1/servers/<id>                status 202
-POST /api/v1/agent/uninstall/confirm       status 200
-```
-
-Nếu Agent dừng nhưng service/binary vẫn còn, helper bị lỗi sau bước stop. Nếu máy đã gỡ sạch nhưng server vẫn hiện `Uninstalling Agent`, callback xác nhận thất bại. Xem [Gỡ Agent và xóa server](/docs/server-management/delete-server).
-
-## Server biến mất nhưng Agent vẫn chạy và heartbeat trả `401`
-
-Đây là dấu hiệu server record đã bị force delete hoặc backend cũ đã xóa record trước khi Agent nhận task. Agent Token không còn hợp lệ nên Agent không thể nhận lệnh uninstall nữa. Gỡ thủ công:
-
-```bash
-sudo systemctl disable --now datrixops-agent.service
-sudo rm -f /etc/systemd/system/datrixops-agent.service
-sudo rm -rf /etc/systemd/system/datrixops-agent.service.d
-sudo rm -f /usr/local/bin/datrixops-agent
-sudo rm -f /usr/local/bin/datrixops-agent.update
-sudo rm -f /usr/local/bin/.datrixops-agent.update
-sudo systemctl daemon-reload
-sudo systemctl reset-failed datrixops-agent.service
-```
-
-## Dữ liệu biểu đồ bị đứt
-
-Khoảng đứt khi Agent offline là hành vi đúng: hệ thống không nối giả giữa hai điểm không có heartbeat. Nếu Agent vẫn online, kiểm tra log lỗi gửi heartbeat và thời gian hệ thống. Snapshot tiến trình/dịch vụ cập nhật chậm hơn metrics cơ bản.
-
-## Lấy log và báo lỗi
-
-Khi báo lỗi, cung cấp:
-
-- OS và architecture;
-- Agent version hiển thị trong log startup;
-- thời điểm xảy ra kèm timezone;
-- task state/error đã được che token;
-- đoạn log ngắn liên quan.
-
-Không gửi Agent Token, JWT, private signing key, uninstall one-time token, database URL hoặc toàn bộ file environment.
+- Xem thêm các giải đáp thắc mắc tại [Câu hỏi thường gặp (FAQ)](/docs/vi/troubleshooting/faq).
+- Tra cứu danh mục biến môi trường trong [Biến môi trường .env](/docs/vi/reference/configuration).

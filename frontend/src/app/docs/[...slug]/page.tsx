@@ -8,19 +8,23 @@ import MarkdownArticle from '../MarkdownArticle';
 export const dynamic = 'force-dynamic';
 
 const legacyRoutes: Record<string, string> = {
-  'introduction': 'introduction/what-is-datrixops',
-  'agent-installation': 'getting-started/installation',
-  'dashboard-overview': 'dashboard/overview',
-  'servers': 'server-management/servers',
-  'service-monitoring': 'server-management/servers',
-  'agent-service-management': 'agent-management/updates',
-  'troubleshooting-user': 'troubleshooting/common-issues',
-  'features': 'introduction/what-is-datrixops',
-  'alerts': 'dashboard/alerts-and-notifications',
-  'websites': 'dashboard/website-monitoring',
-  'network': 'dashboard/network-quality',
-  'api-keys': 'security/agent-and-updates',
-  'audit-log': 'security/agent-and-updates',
+  'introduction': 'introduction/overview',
+  'introduction/what-is-datrixops': 'introduction/overview',
+  'deployment/self-hosted': 'getting-started/quickstart',
+  'getting-started/account-and-first-server': 'getting-started/add-server',
+  'getting-started/installation': 'getting-started/add-server',
+  'dashboard/overview': 'features/servers',
+  'dashboard/network-quality': 'features/network-quality',
+  'dashboard/alerts-and-notifications': 'features/alerts',
+  'dashboard/website-monitoring': 'features/uptime',
+  'server-management/servers': 'features/servers',
+  'server-management/web-terminal': 'features/web-terminal',
+  'server-management/delete-server': 'guides/uninstall-server',
+  'server-management/cron-telemetry': 'features/cron-monitoring',
+  'agent-management/updates': 'guides/agent-updates',
+  'security/agent-and-updates': 'reference/configuration',
+  'troubleshooting/common-issues': 'troubleshooting/common-issues',
+  'faq': 'troubleshooting/faq',
 };
 
 function localizedParams(slug: string[]): { locale: DocLocale; contentSlug: string[]; prefix: string } {
