@@ -107,7 +107,6 @@ export default function WebTerminal({
     setError('');
 
     try {
-      const styles = getComputedStyle(document.documentElement);
       const terminal = new Terminal({
         cursorBlink: true,
         cursorStyle: 'bar',

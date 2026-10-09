@@ -533,7 +533,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.79"
+    target_app_ver="1.8.80"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -597,6 +597,9 @@ fi
 
 log_info "Pre-pulling all container images from registry..."
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null; then
+    perform_rollback "Failed to pull new container images."
+fi
+
 # Trap termination signals to guarantee automated rollback
 trap 'perform_rollback "Interrupted by signal (SIGINT/SIGTERM/SIGHUP)"' INT TERM HUP
 

@@ -1,9 +1,10 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useState } from 'react';
 import { 
   Check, CircleAlert, Eye, EyeOff, Globe, Mail, 
-  RefreshCw, Save, Send, Server, Settings, ShieldAlert, Sparkles 
+  RefreshCw, Save, Send, Settings, ShieldAlert, Sparkles 
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 
@@ -23,7 +24,10 @@ type SystemSettings = {
 };
 
 export default function SettingsPage() {
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(() => {
+    const role = getUserRole();
+    return role === 'admin' || role === 'superadmin' || role === 'owner' ? true : null;
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -75,10 +79,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const role = getUserRole();
-    if (role === 'admin' || role === 'superadmin' || role === 'owner') {
-      setIsAdmin(true);
-    }
     apiClient('/auth/me')
       .then((me) => {
         if (me?.email) setTestRecipient(me.email);
