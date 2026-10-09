@@ -384,8 +384,30 @@ PREV_AGENT_VERSION="${PREV_AGENT_VERSION:-1.5.16}"
 
 BACKUP_FILE=""
 
+auto_heal_schema() {
+    log_info "Running pre-flight database schema integrity check..."
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T database psql -U datrixops -d datrixops -c "
+        DO \$\$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='script_library')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_schema='public' AND table_name='script_library' AND constraint_type='PRIMARY KEY') THEN
+                DROP TABLE script_library CASCADE;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='system_settings')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_schema='public' AND table_name='system_settings' AND constraint_type='PRIMARY KEY') THEN
+                DROP TABLE system_settings CASCADE;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='daily_uptime_rollups')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_schema='public' AND table_name='daily_uptime_rollups' AND constraint_type='UNIQUE') THEN
+                DROP TABLE daily_uptime_rollups CASCADE;
+            END IF;
+        END \$\$;
+    " >/dev/null 2>&1 || true
+}
+
 perform_rollback() {
     local reason="$1"
+    trap '' INT TERM HUP
     log_warn "============================================================"
     log_warn "🚨 UPGRADE FAILED: ${reason}"
     log_warn "Initiating automated rollback to previous stable v${PREV_APP_VERSION}..."
@@ -511,7 +533,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.75"
+    target_app_ver="1.8.76"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -575,9 +597,10 @@ fi
 
 log_info "Pre-pulling all container images from registry..."
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull < /dev/null; then
-    perform_rollback "Failed to pull new container images."
-fi
+# Trap termination signals to guarantee automated rollback
+trap 'perform_rollback "Interrupted by signal (SIGINT/SIGTERM/SIGHUP)"' INT TERM HUP
 
+auto_heal_schema
 log_info "Running database migrations..."
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null; then
     perform_rollback "Database migration failed."

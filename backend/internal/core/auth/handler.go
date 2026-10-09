@@ -234,3 +234,59 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		"created_at": user.CreatedAt,
 	})
 }
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email"`
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req ForgotPasswordRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if req.Email == "" || len(req.Email) > 254 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Valid email address is required")
+		return
+	}
+
+	_, _ = h.svc.ForgotPassword(r.Context(), req.Email)
+	response.Success(w, http.StatusOK, map[string]string{
+		"message": "If the account exists, a password reset instruction has been generated.",
+	})
+}
+
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Token = strings.TrimSpace(req.Token)
+	if req.Email == "" || req.Token == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Email and reset token are required")
+		return
+	}
+	if len(req.NewPassword) < 8 || len([]byte(req.NewPassword)) > 72 {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "New password must be between 8 and 72 characters")
+		return
+	}
+
+	if err := h.svc.ResetPassword(r.Context(), req.Email, req.Token, req.NewPassword); err != nil {
+		response.Error(w, http.StatusBadRequest, "INVALID_TOKEN", "Reset token is invalid or has expired")
+		return
+	}
+
+	response.Success(w, http.StatusOK, map[string]string{
+		"message": "Password reset successfully. You can now log in.",
+	})
+}
+

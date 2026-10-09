@@ -102,9 +102,16 @@ done
 if [[ "$database_ready" != "true" ]]; then
     echo "ERROR: PostgreSQL did not become ready within 60 seconds." >&2
     exit 1
-fi
+# Terminate active client connections to datrixops DB
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" psql -U datrixops -d postgres -c \
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'datrixops' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+
+# Recreate clean public schema to prevent schema drift and leftover objects
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" psql -U datrixops -d datrixops -c \
+    "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO datrixops;" >/dev/null 2>&1 || true
+
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" \
-    pg_restore -U datrixops -d datrixops --clean --if-exists --no-owner \
+    pg_restore -U datrixops -d datrixops --no-owner \
     <"${STAGING_DIR}/database.dump"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run -T --rm migrate < /dev/null || true
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d

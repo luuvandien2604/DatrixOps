@@ -7,6 +7,19 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Command, LockKeyhole } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
+const formatAuthError = (err: unknown): string => {
+  if (!(err instanceof Error)) return 'Tên đăng nhập hoặc mật khẩu không chính xác.';
+  const raw = err.message.replace(/^\[[A-Za-z0-9_]+\]\s*/, '').trim();
+  const lower = raw.toLowerCase();
+  if (lower.includes('invalid') || lower.includes('unauthorized') || lower.includes('credential')) {
+    return 'Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.';
+  }
+  if (lower.includes('rate limit') || lower.includes('too many')) {
+    return 'Quá nhiều lần thử đăng nhập. Vui lòng đợi trong giây lát.';
+  }
+  return raw || 'Không thể đăng nhập. Vui lòng thử lại sau.';
+};
+
 export default function LoginPage() {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
@@ -37,7 +50,7 @@ export default function LoginPage() {
       // Redirect to dashboard
       router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Invalid credentials');
+      setError(formatAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -82,7 +95,12 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="login-password" className="auth-label">Password</label>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="login-password" className="auth-label mb-0">Password</label>
+              <Link href="/forgot-password" className="text-xs text-[var(--mint)] hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <input
               id="login-password"
               name="password"

@@ -68,7 +68,6 @@ func main() {
 		UPDATE users
 		SET password_hash = $1
 		WHERE (lower(username) = $2 OR lower(email) = $2)
-		  AND role IN ('superadmin', 'admin')
 		RETURNING id
 	`, string(passwordHash), identifier).Scan(&userID)
 	if err != nil {

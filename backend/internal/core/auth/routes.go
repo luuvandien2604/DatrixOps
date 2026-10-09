@@ -33,6 +33,8 @@ func RegisterRoutes(mux *http.ServeMux, db *database.DB, cfg *config.Config) {
 		response.Error(w, http.StatusForbidden, "REGISTRATION_DISABLED", "Public registration is disabled. Use the initial setup wizard or an administrator-managed account.")
 	})
 	mux.Handle("POST /api/v1/auth/login", loginLimiter(http.HandlerFunc(h.Login)))
+	mux.Handle("POST /api/v1/auth/forgot-password", loginLimiter(http.HandlerFunc(h.ForgotPassword)))
+	mux.Handle("POST /api/v1/auth/reset-password", loginLimiter(http.HandlerFunc(h.ResetPassword)))
 	mux.Handle("POST /api/v1/auth/refresh", tokenLimiter(http.HandlerFunc(h.Refresh)))
 	mux.Handle("POST /api/v1/auth/logout", tokenLimiter(http.HandlerFunc(h.Logout)))
 	mux.Handle("GET /api/v1/auth/me", middleware.RequireAuth([]byte(cfg.JWTSecret), db)(http.HandlerFunc(h.Me)))

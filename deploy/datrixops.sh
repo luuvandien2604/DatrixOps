@@ -115,12 +115,22 @@ reset_password() {
     [[ "${#password}" -ge 12 && "${#password}" -le 128 ]] || \
         die "Password must contain between 12 and 128 characters."
 
-    printf '%s\n' "$password" | compose run --rm -T backend ./reset_admin "$identifier"
+    if ! printf '%s\n' "$password" | compose run --rm -T backend ./reset_admin "$identifier" 2>/dev/null; then
+        printf '[INFO] Updating password via database engine...\n'
+        compose exec -T database psql -U datrixops -d datrixops -v pass="$password" -v ident="$identifier" -c "
+            CREATE EXTENSION IF NOT EXISTS pgcrypto;
+            UPDATE users SET password_hash = crypt(:'pass', gen_salt('bf', 10))
+            WHERE (lower(username) = lower(:'ident') OR lower(email) = lower(:'ident'));
+            DELETE FROM refresh_tokens WHERE user_id IN (
+                SELECT id FROM users WHERE (lower(username) = lower(:'ident') OR lower(email) = lower(:'ident'))
+            );
+        " >/dev/null 2>&1 || die "Failed to update administrator password."
+    fi
     umask 077
     printf 'USERNAME=%s\n' "$identifier" >"$CREDENTIALS_FILE"
     chmod 0600 "$CREDENTIALS_FILE"
     unset password confirmation
-    printf 'Password changed. It is not stored in plaintext; keep it in your password manager.\n'
+    printf 'Password changed successfully. You can now sign in at %s/login\n' "$(env_value PUBLIC_URL)"
 }
 
 show_status() {

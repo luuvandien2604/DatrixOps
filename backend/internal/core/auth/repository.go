@@ -202,3 +202,59 @@ func (r *Repository) ClaimSelfHostServer(ctx context.Context, userID string) err
 	)
 	return err
 }
+
+func (r *Repository) CreatePasswordResetToken(ctx context.Context, email, tokenHash string, expiresAt time.Time) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS password_resets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			email VARCHAR(255) NOT NULL,
+			token_hash VARCHAR(128) NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			used_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_password_resets_email_token ON password_resets(email, token_hash);
+	`)
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO password_resets (email, token_hash, expires_at)
+		VALUES (lower($1), $2, $3)
+	`, email, tokenHash, expiresAt)
+	return err
+}
+
+func (r *Repository) ValidateAndConsumePasswordResetToken(ctx context.Context, email, tokenHash string) (bool, error) {
+	var id string
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE password_resets
+		SET used_at = NOW()
+		WHERE id = (
+			SELECT id FROM password_resets
+			WHERE lower(email) = lower($1)
+			  AND token_hash = $2
+			  AND used_at IS NULL
+			  AND expires_at > NOW()
+			ORDER BY created_at DESC
+			LIMIT 1
+		)
+		RETURNING id
+	`, email, tokenHash).Scan(&id)
+	if err != nil {
+		return false, nil
+	}
+	return id != "", nil
+}
+
+func (r *Repository) UpdateUserPassword(ctx context.Context, userID, newHash string) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		UPDATE users SET password_hash = $1 WHERE id = $2
+	`, newHash, userID)
+	return err
+}
+
+func (r *Repository) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		DELETE FROM refresh_tokens WHERE user_id = $1
+	`, userID)
+	return err
+}
+

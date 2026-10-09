@@ -3,9 +3,11 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -160,3 +162,63 @@ func (s *Service) issueTokens(ctx context.Context, userID, role string) (*AuthRe
 		UserID:       userID,
 	}, nil
 }
+
+// ForgotPassword generates a time-limited password reset token.
+func (s *Service) ForgotPassword(ctx context.Context, email string) (string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return "", nil
+	}
+	user, err := s.repo.FindUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return "", nil
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate reset token: %w", err)
+	}
+	rawToken := hex.EncodeToString(b)
+	sum := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(sum[:])
+	expiresAt := time.Now().Add(1 * time.Hour)
+
+	if err := s.repo.CreatePasswordResetToken(ctx, email, tokenHash, expiresAt); err != nil {
+		return "", fmt.Errorf("store reset token: %w", err)
+	}
+	return rawToken, nil
+}
+
+// ResetPassword verifies the token and updates the user's password.
+func (s *Service) ResetPassword(ctx context.Context, email, rawToken, newPassword string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	rawToken = strings.TrimSpace(rawToken)
+	if len(newPassword) < 8 || len([]byte(newPassword)) > 72 {
+		return errors.New("password must be between 8 and 72 characters")
+	}
+
+	sum := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(sum[:])
+
+	valid, err := s.repo.ValidateAndConsumePasswordResetToken(ctx, email, tokenHash)
+	if err != nil || !valid {
+		return ErrInvalidToken
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+
+	user, err := s.repo.FindUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return ErrInvalidToken
+	}
+
+	if err := s.repo.UpdateUserPassword(ctx, user.ID, string(newHash)); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	_ = s.repo.RevokeAllRefreshTokens(ctx, user.ID)
+	return nil
+}
+
