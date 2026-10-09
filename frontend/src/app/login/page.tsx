@@ -8,16 +8,16 @@ import { ArrowLeft, ArrowRight, Command, LockKeyhole } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const formatAuthError = (err: unknown): string => {
-  if (!(err instanceof Error)) return 'Tên đăng nhập hoặc mật khẩu không chính xác.';
+  if (!(err instanceof Error)) return 'Invalid username or password. Please try again.';
   const raw = err.message.replace(/^\[[A-Za-z0-9_]+\]\s*/, '').trim();
   const lower = raw.toLowerCase();
   if (lower.includes('invalid') || lower.includes('unauthorized') || lower.includes('credential')) {
-    return 'Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.';
+    return 'Invalid username or password. Please check your credentials and try again.';
   }
   if (lower.includes('rate limit') || lower.includes('too many')) {
-    return 'Quá nhiều lần thử đăng nhập. Vui lòng đợi trong giây lát.';
+    return 'Too many login attempts. Please wait a moment and try again.';
   }
-  return raw || 'Không thể đăng nhập. Vui lòng thử lại sau.';
+  return raw || 'Unable to sign in. Please try again later.';
 };
 
 export default function LoginPage() {

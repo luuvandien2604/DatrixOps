@@ -23,9 +23,9 @@ export default function ForgotPasswordPage() {
       });
       setSubmitted(true);
     } catch (err: unknown) {
-      // For security, still show success message unless server error
+      // For security, still show success message unless rate limited
       if (err instanceof Error && err.message.includes('rate limit')) {
-        setError('Quá nhiều yêu cầu. Vui lòng đợi trong giây lát.');
+        setError('Too many requests. Please wait a moment and try again.');
       } else {
         setSubmitted(true);
       }
@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
   return (
     <main id="main-content" className="auth-shell">
       <Link href="/login" className="auth-back">
-        <ArrowLeft className="h-4 w-4" /> Quay lại đăng nhập
+        <ArrowLeft className="h-4 w-4" /> Back to sign in
       </Link>
       <ThemeToggle className="auth-theme-toggle" />
       <div className="auth-card ops-panel">
@@ -47,8 +47,8 @@ export default function ForgotPasswordPage() {
             <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--mint)]">OPS</span></span>
           </Link>
           <div className="auth-icon"><KeyRound className="h-5 w-5" /></div>
-          <h1>Đặt lại mật khẩu</h1>
-          <p>Khôi phục quyền truy cập vào tài khoản quản trị của bạn.</p>
+          <h1>Reset your password</h1>
+          <p>Recover access to your account.</p>
         </div>
 
         {error && (
@@ -63,20 +63,20 @@ export default function ForgotPasswordPage() {
             <div className="p-4 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-sm space-y-3">
               <div className="flex items-center gap-2 text-[var(--mint)] font-medium">
                 <CheckCircle2 className="h-5 w-5" />
-                <span>Yêu cầu đặt lại đã được tiếp nhận</span>
+                <span>Password reset request submitted</span>
               </div>
               <p className="text-[var(--color-muted)] leading-relaxed">
-                Nếu tài khoản <strong>{email}</strong> tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi đến email này (nếu đã cấu hình gửi mail SMTP).
+                If an account exists for <strong>{email}</strong>, password reset instructions have been dispatched (requires configured SMTP).
               </p>
             </div>
 
             <div className="p-4 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-xs text-[var(--color-muted)] space-y-2">
               <div className="flex items-center gap-2 font-medium text-[var(--color-foreground)]">
                 <Terminal className="h-4 w-4 text-[var(--mint)]" />
-                <span>Quản trị viên máy chủ (Server Admin):</span>
+                <span>Server Administrator:</span>
               </div>
               <p>
-                Bạn có thể đặt lại mật khẩu ngay lập tức từ terminal máy chủ mà không cần email bằng lệnh:
+                You can reset any user password directly from your server terminal via SSH:
               </p>
               <pre className="p-2 rounded bg-black/40 text-[var(--mint)] font-mono text-xs overflow-x-auto">
                 datrix reset-password
@@ -84,13 +84,13 @@ export default function ForgotPasswordPage() {
             </div>
 
             <Link href="/login" className="auth-submit flex items-center justify-center gap-2">
-              Quay lại trang Đăng nhập <ArrowRight className="h-4 w-4" />
+              Back to sign in <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="reset-email" className="auth-label">Email tài khoản</label>
+              <label htmlFor="reset-email" className="auth-label">Account email</label>
               <input
                 id="reset-email"
                 name="email"
@@ -105,21 +105,21 @@ export default function ForgotPasswordPage() {
             </div>
 
             <button type="submit" disabled={loading} className="auth-submit">
-              {loading ? 'Đang xử lý...' : <>Tiếp tục <ArrowRight className="h-4 w-4" /></>}
+              {loading ? 'Processing...' : <>Continue <ArrowRight className="h-4 w-4" /></>}
             </button>
 
             <div className="p-4 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-xs text-[var(--color-muted)] space-y-1 mt-4">
               <div className="flex items-center gap-1.5 font-medium text-[var(--color-foreground)]">
                 <Terminal className="h-3.5 w-3.5 text-[var(--mint)]" />
-                <span>Đặt lại mật khẩu trực tiếp qua SSH:</span>
+                <span>Reset password directly via SSH:</span>
               </div>
               <p>
-                Trên terminal máy chủ, gõ <code>datrix</code> và chọn <strong>Reset user password</strong> để đổi mật khẩu trong 5 giây.
+                On the server host, run <code>datrix</code> and select <strong>Reset user password</strong> to update credentials instantly.
               </p>
             </div>
 
             <p className="pt-2 text-center text-sm text-[var(--color-muted)]">
-              Nhớ mật khẩu? <Link href="/login" className="auth-link">Đăng nhập</Link>
+              Remember your password? <Link href="/login" className="auth-link">Sign in</Link>
             </p>
           </form>
         )}
