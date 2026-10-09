@@ -191,6 +191,99 @@ create_backup() {
     "${PROJECT_ROOT}/deploy/backup.sh"
 }
 
+restore_backup() {
+    require_installation
+    require_root
+
+    local backup_dir="${PROJECT_ROOT}/backups"
+    if [[ ! -d "$backup_dir" && -d "/opt/datrixops/backups" ]]; then
+        backup_dir="/opt/datrixops/backups"
+    fi
+
+    if [[ ! -d "$backup_dir" ]]; then
+        printf "ERROR: Backup directory does not exist at %s\n" "$backup_dir" >&2
+        return 1
+    fi
+
+    local specific_file="${1:-}"
+    if [[ -n "$specific_file" ]]; then
+        if [[ ! -f "$specific_file" && -f "${backup_dir}/${specific_file}" ]]; then
+            specific_file="${backup_dir}/${specific_file}"
+        fi
+        if [[ ! -f "$specific_file" ]]; then
+            printf "ERROR: Backup file not found: %s\n" "$specific_file" >&2
+            return 1
+        fi
+    else
+        local files=()
+        while IFS= read -r f; do
+            [[ -n "$f" ]] && files+=("$f")
+        done < <(find "$backup_dir" -maxdepth 1 -type f -name "datrixops-*.tar.gz" 2>/dev/null | sort -r)
+
+        local total_files="${#files[@]}"
+        if [[ "$total_files" -eq 0 ]]; then
+            printf "\nNo backup archives found in %s\n" "$backup_dir"
+            return 1
+        fi
+
+        printf "\n============================================================\n"
+        printf "  DatrixOps CE - Available Backups\n"
+        printf "============================================================\n"
+        for i in "${!files[@]}"; do
+            local file_path="${files[$i]}"
+            local file_name
+            file_name="$(basename "$file_path")"
+            local file_size
+            file_size="$(du -h "$file_path" 2>/dev/null | cut -f1)"
+            local file_date
+            file_date="$(date -r "$file_path" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || stat -c "%y" "$file_path" 2>/dev/null | cut -d'.' -f1 || echo "unknown")"
+            printf "  %2d) %-50s  [%4s]  (%s)\n" "$((i + 1))" "$file_name" "$file_size" "$file_date"
+        done
+        printf "   0) Cancel\n"
+        printf "============================================================\n"
+
+        printf "Select a backup to restore [1-%d, or 0 to cancel]: " "$total_files"
+        local selection
+        read -r selection
+        if [[ "$selection" == "0" || -z "$selection" ]]; then
+            printf "Cancelled.\n"
+            return 0
+        fi
+
+        if ! [[ "$selection" =~ ^[0-9]+$ ]] || [[ "$selection" -lt 1 || "$selection" -gt "$total_files" ]]; then
+            printf "ERROR: Invalid selection: %s\n" "$selection" >&2
+            return 1
+        fi
+
+        specific_file="${files[$((selection - 1))]}"
+    fi
+
+    printf "\n⚠️  CAUTION: Restoring will overwrite the active database with:\n"
+    printf "   %s (%s)\n" "$(basename "$specific_file")" "$(du -h "$specific_file" 2>/dev/null | cut -f1)"
+    printf "Type YES to confirm restoration: "
+    local confirm
+    read -r confirm
+    if [[ "$confirm" != "YES" ]]; then
+        printf "Restore cancelled.\n"
+        return 0
+    fi
+
+    printf "\n[INFO] Restoring database snapshot...\n"
+    "${PROJECT_ROOT}/deploy/restore.sh" "$specific_file" --yes
+    local restore_exit=$?
+
+    if [[ "$restore_exit" -eq 0 ]]; then
+        printf "\n[SUCCESS] Database restored successfully from %s!\n" "$(basename "$specific_file")"
+        printf "Checking accounts in restored database:\n"
+        compose exec -T database psql -U datrixops -d datrixops -c \
+            "SELECT id, username, email, role, created_at FROM users ORDER BY created_at ASC;" 2>/dev/null || true
+    else
+        printf "\n[ERROR] Database restore failed (exit code %d).\n" "$restore_exit" >&2
+        return "$restore_exit"
+    fi
+}
+
+
 repair_self_monitor() {
     require_installation
     require_root
@@ -433,9 +526,10 @@ menu() {
         printf '%s\n' '  5) Restart services'
         printf '%s\n' '  6) Upgrade DatrixOps'
         printf '%s\n' '  7) Create backup'
-        printf '%s\n' '  8) Repair Self-Monitor service'
-        printf '%s\n' '  9) Check network diagnostics'
-        printf '%s\n' '  10) Prune old DatrixOps images & cache'
+        printf '%s\n' '  8) Restore database backup'
+        printf '%s\n' '  9) Repair Self-Monitor service'
+        printf '%s\n' '  10) Check network diagnostics'
+        printf '%s\n' '  11) Prune old DatrixOps images & cache'
         printf '%s\n' '  0) Exit'
         printf '%s\n' '============================================================'
         printf 'Select: '
@@ -453,9 +547,10 @@ menu() {
             5) (trap - INT; restart_services) || action_status=$? ;;
             6) (trap - INT; upgrade_server) || action_status=$? ;;
             7) (trap - INT; create_backup) || action_status=$? ;;
-            8) (trap - INT; repair_self_monitor) || action_status=$? ;;
-            9) (trap - INT; check_network) || action_status=$? ;;
-            10) (trap - INT; cleanup_storage) || action_status=$? ;;
+            8) (trap - INT; restore_backup) || action_status=$? ;;
+            9) (trap - INT; repair_self_monitor) || action_status=$? ;;
+            10) (trap - INT; check_network) || action_status=$? ;;
+            11) (trap - INT; cleanup_storage) || action_status=$? ;;
             0) printf 'Exited DatrixOps Management.\n'; return 0 ;;
             *) printf 'ERROR: Invalid selection.\n' >&2; action_status=2 ;;
         esac
@@ -477,6 +572,7 @@ case "${1:-}" in
     restart) restart_services ;;
     update|upgrade) upgrade_server ;;
     backup) create_backup ;;
+    restore) shift; restore_backup "${1:-}" ;;
     repair-self-monitor|self-monitor) repair_self_monitor ;;
     check-network|test-network|network) check_network ;;
     help|-h|--help) show_help ;;
