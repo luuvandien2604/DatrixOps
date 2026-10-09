@@ -282,5 +282,3 @@ func (r *Repository) GetSystemSMTPSettings(ctx context.Context) (*SystemSMTPSett
 	}
 	return &s, nil
 }
-
-

@@ -273,4 +273,3 @@ func (s *Service) ResetPassword(ctx context.Context, email, rawToken, newPasswor
 	_ = s.repo.RevokeAllRefreshTokens(ctx, user.ID)
 	return nil
 }
-

@@ -461,6 +461,7 @@ check_image_availability() {
     return 1
 }
 
+if [[ "${DATRIXOPS_SKIP_CODEBASE_UPDATE:-0}" != "1" ]]; then
 log_step "Step 1/4: Creating automated pre-upgrade backup"
 if [[ -x "${SCRIPT_DIR}/backup.sh" ]]; then
     BACKUP_FILE="$("${SCRIPT_DIR}/backup.sh" < /dev/null)" || true
@@ -494,6 +495,17 @@ if curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 600 \
                 cp -rf "${EXTRACTED_DIR}/"* "${PROJECT_ROOT}/" 2>/dev/null || true
             fi
             log_success "Extracted and updated codebase files."
+
+            # Seamless re-exec: hand off to newly extracted upgrade engine so Steps 3 & 4
+            # run with the latest release's bugfixes and logic.
+            if [[ "${DATRIXOPS_REEXECED:-0}" != "1" && -f "${PROJECT_ROOT}/deploy/upgrade.sh" ]]; then
+                export DATRIXOPS_REEXECED=1
+                export DATRIXOPS_UPGRADE_IS_COPY=1
+                export DATRIXOPS_SKIP_CODEBASE_UPDATE=1
+                export BACKUP_FILE="${BACKUP_FILE:-}"
+                log_info "Switching to newly updated upgrade engine..."
+                exec /usr/bin/env bash "${PROJECT_ROOT}/deploy/upgrade.sh" "$@"
+            fi
         else
             log_error "Failed to locate extracted files from release tarball."
             exit 1
@@ -501,6 +513,7 @@ if curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 15 --max-time 600 \
 else
 	log_error "Could not download published CE Server v${remote_release_ver}. Existing installation was not changed."
 	exit 1
+fi
 fi
 
 log_step "Step 3/4: Fetching latest Agent release binaries"
@@ -533,7 +546,7 @@ if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 if [[ ! "$target_app_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    target_app_ver="1.8.80"
+    target_app_ver="1.8.81"
 fi
 
 target_agent_ver="$(sed -n 's/.*"agent_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \

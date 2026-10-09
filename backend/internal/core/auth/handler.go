@@ -289,4 +289,3 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		"message": "Password reset successfully. You can now log in.",
 	})
 }
-

@@ -308,8 +308,6 @@ func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
 		</div>
 	`, time.Now().UTC().Format(time.RFC3339))
 
-
-
 	if err := notifier.SendEmail(emailConfig, "[DatrixOps] Test Email Delivery", htmlBody); err != nil {
 		response.Error(w, http.StatusBadGateway, "SMTP_DELIVERY_FAILED", fmt.Sprintf("Failed to send test email: %v", err))
 		return
