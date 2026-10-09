@@ -118,18 +118,28 @@ export default function WebTerminal({
         scrollback: 5000,
         allowProposedApi: false,
         theme: {
-          background: '#050608',
-          foreground: styles.getPropertyValue('--paper').trim() || '#f7f7f4',
-          cursor: styles.getPropertyValue('--mint').trim() || '#8bd5c5',
-          selectionBackground: 'rgba(175,188,255,.28)',
-          black: '#050608',
-          red: '#ff8da1',
-          green: '#8bd5c5',
-          yellow: '#f1ca7b',
-          blue: '#79c9f4',
-          magenta: '#afbcff',
-          cyan: '#79c9f4',
-          white: '#f7f7f4',
+          background: '#0a0d14',
+          foreground: '#e6edf3',
+          cursor: '#58a6ff',
+          cursorAccent: '#0a0d14',
+          selectionBackground: 'rgba(56, 139, 253, 0.4)',
+          selectionForeground: '#ffffff',
+          black: '#484f58',
+          red: '#ff7b72',
+          green: '#3fb950',
+          yellow: '#d29922',
+          blue: '#58a6ff',
+          magenta: '#bc8cff',
+          cyan: '#39c5cf',
+          white: '#b1bac4',
+          brightBlack: '#6e7681',
+          brightRed: '#ffa198',
+          brightGreen: '#56d364',
+          brightYellow: '#e3b341',
+          brightBlue: '#79c0ff',
+          brightMagenta: '#d2a8ff',
+          brightCyan: '#56d4dd',
+          brightWhite: '#ffffff',
         },
       });
       const fitAddon = new FitAddon();
@@ -204,7 +214,7 @@ export default function WebTerminal({
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#2a3746] bg-[#050608] shadow-sm">
+    <section className="overflow-hidden rounded-xl border border-[#2a3746] bg-[#0a0d14] shadow-sm">
       <header className="flex flex-col gap-4 border-b border-[#243244] bg-[#101926] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-[#f1f5f9]">
