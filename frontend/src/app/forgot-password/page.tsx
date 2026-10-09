@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Command, KeyRound, Terminal, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Command, KeyRound, MailCheck } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { apiClient } from '@/lib/apiClient';
 
@@ -23,10 +23,10 @@ export default function ForgotPasswordPage() {
       });
       setSubmitted(true);
     } catch (err: unknown) {
-      // For security, still show success message unless rate limited
       if (err instanceof Error && err.message.includes('rate limit')) {
         setError('Too many requests. Please wait a moment and try again.');
       } else {
+        // Uniform response to avoid account enumeration
         setSubmitted(true);
       }
     } finally {
@@ -46,9 +46,15 @@ export default function ForgotPasswordPage() {
             <span className="brand-orbit"><Command className="h-4 w-4" /></span>
             <span className="text-sm font-semibold tracking-[.15em]">DATRIX<span className="text-[var(--mint)]">OPS</span></span>
           </Link>
-          <div className="auth-icon"><KeyRound className="h-5 w-5" /></div>
-          <h1>Reset your password</h1>
-          <p>Recover access to your account.</p>
+          <div className="auth-icon">
+            {submitted ? <MailCheck className="h-5 w-5 text-[var(--mint)]" /> : <KeyRound className="h-5 w-5" />}
+          </div>
+          <h1>{submitted ? 'Check your email' : 'Forgot password'}</h1>
+          <p>
+            {submitted
+              ? 'Password reset instructions dispatched'
+              : "Enter your account email and we'll send you reset instructions."}
+          </p>
         </div>
 
         {error && (
@@ -60,37 +66,33 @@ export default function ForgotPasswordPage() {
 
         {submitted ? (
           <div className="space-y-6">
-            <div className="p-4 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-sm space-y-3">
-              <div className="flex items-center gap-2 text-[var(--mint)] font-medium">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>Password reset request submitted</span>
-              </div>
-              <p className="text-[var(--color-muted)] leading-relaxed">
-                If an account exists for <strong>{email}</strong>, password reset instructions have been dispatched (requires configured SMTP).
+            <div className="p-4 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-sm space-y-3 text-center">
+              <p className="text-[var(--color-foreground)] leading-relaxed">
+                If an account exists for <strong className="text-[var(--mint)]">{email}</strong>, you will receive an email with a secure link to reset your password.
               </p>
-            </div>
-
-            <div className="p-4 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-xs text-[var(--color-muted)] space-y-2">
-              <div className="flex items-center gap-2 font-medium text-[var(--color-foreground)]">
-                <Terminal className="h-4 w-4 text-[var(--mint)]" />
-                <span>Server Administrator:</span>
-              </div>
-              <p>
-                You can reset any user password directly from your server terminal via SSH:
+              <p className="text-xs text-[var(--color-muted)]">
+                Please check your inbox as well as your spam folder. The link will expire in 60 minutes.
               </p>
-              <pre className="p-2 rounded bg-black/40 text-[var(--mint)] font-mono text-xs overflow-x-auto">
-                datrix reset-password
-              </pre>
             </div>
 
             <Link href="/login" className="auth-submit flex items-center justify-center gap-2">
               Back to sign in <ArrowRight className="h-4 w-4" />
             </Link>
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setSubmitted(false)}
+                className="text-xs text-[var(--color-muted)] hover:text-[var(--color-foreground)] transition-colors underline"
+              >
+                Didn&apos;t receive an email? Try another address
+              </button>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="reset-email" className="auth-label">Account email</label>
+              <label htmlFor="reset-email" className="auth-label">Email address</label>
               <input
                 id="reset-email"
                 name="email"
@@ -100,23 +102,13 @@ export default function ForgotPasswordPage() {
                 required
                 autoComplete="email"
                 className="auth-input"
-                placeholder="admin@example.com"
+                placeholder="you@example.com"
               />
             </div>
 
             <button type="submit" disabled={loading} className="auth-submit">
-              {loading ? 'Processing...' : <>Continue <ArrowRight className="h-4 w-4" /></>}
+              {loading ? 'Sending instructions...' : <>Send reset instructions <ArrowRight className="h-4 w-4" /></>}
             </button>
-
-            <div className="p-4 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-xs text-[var(--color-muted)] space-y-1 mt-4">
-              <div className="flex items-center gap-1.5 font-medium text-[var(--color-foreground)]">
-                <Terminal className="h-3.5 w-3.5 text-[var(--mint)]" />
-                <span>Reset password directly via SSH:</span>
-              </div>
-              <p>
-                On the server host, run <code>datrix</code> and select <strong>Reset user password</strong> to update credentials instantly.
-              </p>
-            </div>
 
             <p className="pt-2 text-center text-sm text-[var(--color-muted)]">
               Remember your password? <Link href="/login" className="auth-link">Sign in</Link>

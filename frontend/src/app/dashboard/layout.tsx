@@ -8,7 +8,7 @@ import {
   Activity, Bell, BookOpen, Bot, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
   Command, FileText, Gauge, Globe2, KeyRound,
   Loader2, LogOut, Menu, Network, ScrollText, Search, Server,
-  ShieldAlert, Sparkles, Users, X,
+  ShieldAlert, Sparkles, Users, X, Settings,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
@@ -62,6 +62,7 @@ const adminNav: NavDefinition[] = [
   { label: 'Team access', href: '/dashboard/manage/users', icon: Users },
   { label: 'Audit trail', href: '/dashboard/manage/audit', icon: ScrollText },
   { label: 'API keys', href: '/dashboard/manage/api', icon: KeyRound },
+  { label: 'System settings', href: '/dashboard/manage/settings', icon: Settings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

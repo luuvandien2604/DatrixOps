@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/luuvandien2604/DatrixOps/backend/internal/platform/notifier"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -185,6 +187,56 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) (string, err
 	if err := s.repo.CreatePasswordResetToken(ctx, email, tokenHash, expiresAt); err != nil {
 		return "", fmt.Errorf("store reset token: %w", err)
 	}
+
+	// Dispatch email asynchronously if SMTP is enabled
+	go func(targetEmail, token string) {
+		ctxBg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		settings, err := s.repo.GetSystemSMTPSettings(ctxBg)
+		if err != nil || settings == nil || !settings.Enabled || settings.Host == "" || settings.FromEmail == "" {
+			return
+		}
+
+		baseURL := strings.TrimRight(settings.PublicURL, "/")
+		if baseURL == "" {
+			baseURL = "http://localhost:3000"
+		}
+
+		resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", baseURL, token, url.QueryEscape(targetEmail))
+
+		fromHeader := settings.FromEmail
+		if settings.FromName != "" {
+			fromHeader = fmt.Sprintf("%s <%s>", settings.FromName, settings.FromEmail)
+		}
+
+		emailConfig := notifier.EmailConfig{
+			Host:     settings.Host,
+			Port:     settings.Port,
+			Username: settings.Username,
+			Password: settings.Password,
+			From:     fromHeader,
+			To:       targetEmail,
+			UseTLS:   settings.Encryption == "ssl" || settings.Port == 465,
+		}
+
+		subject := "[DatrixOps] Password Reset Request"
+		htmlBody := fmt.Sprintf(`
+			<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 8px;">
+				<h2 style="color: #38bdf8; margin-top: 0;">Password Reset Request</h2>
+				<p>We received a request to reset the password for your DatrixOps account (<strong>%s</strong>).</p>
+				<p style="margin: 24px 0;">
+					<a href="%s" style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 14px;">Reset Password</a>
+				</p>
+				<p style="font-size: 12px; color: #94a3b8;">If the button does not work, copy and paste this link into your browser:<br /><a href="%s" style="color: #38bdf8; word-break: break-all;">%s</a></p>
+				<hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;" />
+				<p style="font-size: 11px; color: #64748b; margin-bottom: 0;">This link is valid for 60 minutes. If you did not request this, please disregard this email.</p>
+			</div>
+		`, targetEmail, resetURL, resetURL, resetURL)
+
+		_ = notifier.SendEmail(emailConfig, subject, htmlBody)
+	}(email, rawToken)
+
 	return rawToken, nil
 }
 

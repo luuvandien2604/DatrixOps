@@ -83,7 +83,17 @@ choose_admin_identifier() {
     local identifiers count identifier
     identifiers="$(admin_identifiers)"
     count="$(printf '%s\n' "$identifiers" | sed '/^$/d' | wc -l | tr -d ' ')"
-    [[ "$count" -gt 0 ]] || die "No administrator account was found."
+    if [[ "$count" -eq 0 ]]; then
+        printf 'No administrator account was found in the database.\n' >&2
+        printf 'Would you like to initialize and create an administrator account now? [Y/n]: ' >&2
+        read -r init_choice
+        init_choice="$(echo "${init_choice:-y}" | tr '[:upper:]' '[:lower:]')"
+        if [[ "$init_choice" != "y" && "$init_choice" != "yes" ]]; then
+            return 1
+        fi
+        printf 'admin\n'
+        return 0
+    fi
 
     if [[ "$count" -eq 1 ]]; then
         printf '%s\n' "$identifiers"
@@ -119,11 +129,15 @@ reset_password() {
         printf '[INFO] Updating password via database engine...\n'
         compose exec -T database psql -U datrixops -d datrixops -v pass="$password" -v ident="$identifier" -c "
             CREATE EXTENSION IF NOT EXISTS pgcrypto;
+            INSERT INTO users (username, email, password_hash, role)
+            VALUES (lower(:'ident'), lower(:'ident') || '@example.com', crypt(:'pass', gen_salt('bf', 10)), 'superadmin')
+            ON CONFLICT DO NOTHING;
             UPDATE users SET password_hash = crypt(:'pass', gen_salt('bf', 10))
             WHERE (lower(username) = lower(:'ident') OR lower(email) = lower(:'ident'));
             DELETE FROM refresh_tokens WHERE user_id IN (
                 SELECT id FROM users WHERE (lower(username) = lower(:'ident') OR lower(email) = lower(:'ident'))
             );
+            UPDATE system_settings SET setup_completed_at = COALESCE(setup_completed_at, NOW()) WHERE id = 1;
         " >/dev/null 2>&1 || die "Failed to update administrator password."
     fi
     umask 077

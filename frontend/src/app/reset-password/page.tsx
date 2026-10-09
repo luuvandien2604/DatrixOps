@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Command, KeyRound, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Command, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { apiClient } from '@/lib/apiClient';
 
@@ -91,19 +91,22 @@ function ResetPasswordForm() {
           </Link>
         </div>
       ) : !token ? (
-        <div className="space-y-4 text-sm text-[var(--color-muted)]">
-          <div className="p-4 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] space-y-2">
-            <p className="font-medium text-[var(--color-foreground)]">Missing reset token</p>
-            <p>
-              This link is missing a valid security token. Please request a new link from the forgot password page or reset your password directly on the server host:
+        <div className="space-y-5 text-sm text-center">
+          <div className="p-5 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] space-y-3">
+            <div className="flex items-center justify-center gap-2 text-rose-400 font-medium">
+              <AlertCircle className="h-5 w-5" />
+              <span>Invalid or expired link</span>
+            </div>
+            <p className="text-[var(--color-muted)] text-xs leading-relaxed">
+              This password reset link is missing a security token or has already expired. Please request a new link to continue.
             </p>
-            <pre className="p-2 rounded bg-black/40 text-[var(--mint)] font-mono text-xs overflow-x-auto">
-              datrix reset-password
-            </pre>
           </div>
-          <Link href="/login" className="auth-submit flex items-center justify-center gap-2">
-            Back to sign in
+          <Link href="/forgot-password" className="auth-submit flex items-center justify-center gap-2">
+            Request new reset link <ArrowRight className="h-4 w-4" />
           </Link>
+          <p className="pt-2 text-center text-sm text-[var(--color-muted)]">
+            <Link href="/login" className="auth-link">Back to sign in</Link>
+          </p>
         </div>
       ) : (
         <form onSubmit={handleReset} className="space-y-5">

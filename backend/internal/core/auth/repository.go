@@ -258,3 +258,29 @@ func (r *Repository) RevokeAllRefreshTokens(ctx context.Context, userID string) 
 	return err
 }
 
+type SystemSMTPSettings struct {
+	Enabled    bool
+	Host       string
+	Port       int
+	Username   string
+	Password   string
+	FromEmail  string
+	FromName   string
+	Encryption string
+	PublicURL  string
+}
+
+func (r *Repository) GetSystemSMTPSettings(ctx context.Context) (*SystemSMTPSettings, error) {
+	var s SystemSMTPSettings
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT smtp_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_email, smtp_from_name, smtp_encryption, public_url
+		FROM system_settings
+		WHERE id = 1
+	`).Scan(&s.Enabled, &s.Host, &s.Port, &s.Username, &s.Password, &s.FromEmail, &s.FromName, &s.Encryption, &s.PublicURL)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+
