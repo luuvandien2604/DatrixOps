@@ -40,10 +40,9 @@ func (s *service) CreateWebsite(ctx context.Context, userID string, req CreateWe
 	}
 
 	w := &Website{
-		UserID:     userID,
-		Name:       req.Name,
-		URL:        req.URL,
-		ChannelIDs: req.ChannelIDs,
+		UserID: userID,
+		Name:   req.Name,
+		URL:    req.URL,
 	}
 
 	if err := s.repo.Create(ctx, w); err != nil {
@@ -67,11 +66,10 @@ func (s *service) UpdateWebsite(ctx context.Context, id string, userID string, r
 	}
 
 	w := &Website{
-		ID:         id,
-		UserID:     userID,
-		Name:       req.Name,
-		URL:        req.URL,
-		ChannelIDs: req.ChannelIDs,
+		ID:     id,
+		UserID: userID,
+		Name:   req.Name,
+		URL:    req.URL,
 	}
 
 	if err := s.repo.Update(ctx, w); err != nil {

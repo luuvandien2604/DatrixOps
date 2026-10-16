@@ -28,73 +28,23 @@ func NewRepository(db *database.DB) Repository {
 }
 
 func (r *repository) Create(ctx context.Context, w *Website) error {
-	tx, err := r.db.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
 	query := `
 		INSERT INTO websites (user_id, name, url)
 		VALUES ($1, $2, $3)
 		RETURNING id, status, created_at, updated_at
 	`
-	if err := tx.QueryRow(ctx, query, w.UserID, w.Name, w.URL).
-		Scan(&w.ID, &w.Status, &w.CreatedAt, &w.UpdatedAt); err != nil {
-		return err
-	}
-
-	for _, channelID := range w.ChannelIDs {
-		if channelID == "" {
-			continue
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO website_channels (website_id, alert_channel_id)
-			VALUES ($1, $2)
-			ON CONFLICT DO NOTHING
-		`, w.ID, channelID); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit(ctx)
+	return r.db.Pool.QueryRow(ctx, query, w.UserID, w.Name, w.URL).
+		Scan(&w.ID, &w.Status, &w.CreatedAt, &w.UpdatedAt)
 }
 
 func (r *repository) Update(ctx context.Context, w *Website) error {
-	tx, err := r.db.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
 	query := `
 		UPDATE websites
 		SET name = $1, url = $2, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $3 AND user_id = $4
 		RETURNING updated_at
 	`
-	if err := tx.QueryRow(ctx, query, w.Name, w.URL, w.ID, w.UserID).Scan(&w.UpdatedAt); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(ctx, `DELETE FROM website_channels WHERE website_id = $1`, w.ID); err != nil {
-		return err
-	}
-
-	for _, channelID := range w.ChannelIDs {
-		if channelID == "" {
-			continue
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO website_channels (website_id, alert_channel_id)
-			VALUES ($1, $2)
-			ON CONFLICT DO NOTHING
-		`, w.ID, channelID); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit(ctx)
+	return r.db.Pool.QueryRow(ctx, query, w.Name, w.URL, w.ID, w.UserID).Scan(&w.UpdatedAt)
 }
 
 func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website, error) {
@@ -121,32 +71,7 @@ func (r *repository) ListByUserID(ctx context.Context, userID string) ([]Website
 		); err != nil {
 			return nil, err
 		}
-		w.ChannelIDs = make([]string, 0)
 		websites = append(websites, w)
-	}
-
-	// Fetch linked channels for user's websites
-	if len(websites) > 0 {
-		chRows, err := r.db.Pool.Query(ctx, `
-			SELECT wc.website_id, wc.alert_channel_id
-			FROM website_channels wc
-			JOIN websites w ON w.id = wc.website_id
-			WHERE w.user_id = $1
-		`, userID)
-		if err == nil {
-			defer chRows.Close()
-			for chRows.Next() {
-				var webID, chID string
-				if err := chRows.Scan(&webID, &chID); err == nil {
-					for i := range websites {
-						if websites[i].ID == webID {
-							websites[i].ChannelIDs = append(websites[i].ChannelIDs, chID)
-							break
-						}
-					}
-				}
-			}
-		}
 	}
 
 	return websites, nil
@@ -186,7 +111,6 @@ func (r *repository) ListAll(ctx context.Context) ([]Website, error) {
 		); err != nil {
 			return nil, err
 		}
-		w.ChannelIDs = make([]string, 0)
 		websites = append(websites, w)
 	}
 	return websites, nil
