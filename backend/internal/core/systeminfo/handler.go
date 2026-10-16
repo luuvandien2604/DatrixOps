@@ -243,7 +243,14 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type TestSMTPPayload struct {
-	ToEmail string `json:"to_email"`
+	ToEmail        string `json:"to_email"`
+	SMTPHost       string `json:"smtp_host,omitempty"`
+	SMTPPort       int    `json:"smtp_port,omitempty"`
+	SMTPUsername   string `json:"smtp_username,omitempty"`
+	SMTPPassword   string `json:"smtp_password,omitempty"`
+	SMTPFromEmail  string `json:"smtp_from_email,omitempty"`
+	SMTPFromName   string `json:"smtp_from_name,omitempty"`
+	SMTPEncryption string `json:"smtp_encryption,omitempty"`
 }
 
 func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +283,29 @@ func (h *Handler) TestSMTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unable to read SMTP settings")
 		return
+	}
+
+	// Override with parameters from the test payload if provided (allows live testing before saving)
+	if strings.TrimSpace(payload.SMTPHost) != "" {
+		smtpHost = strings.TrimSpace(payload.SMTPHost)
+	}
+	if payload.SMTPPort > 0 && payload.SMTPPort <= 65535 {
+		smtpPort = payload.SMTPPort
+	}
+	if payload.SMTPUsername != "" {
+		smtpUsername = strings.TrimSpace(payload.SMTPUsername)
+	}
+	if payload.SMTPPassword != "" {
+		smtpPassword = payload.SMTPPassword
+	}
+	if strings.TrimSpace(payload.SMTPFromEmail) != "" {
+		smtpFromEmail = strings.TrimSpace(payload.SMTPFromEmail)
+	}
+	if strings.TrimSpace(payload.SMTPFromName) != "" {
+		smtpFromName = strings.TrimSpace(payload.SMTPFromName)
+	}
+	if strings.TrimSpace(payload.SMTPEncryption) != "" {
+		smtpEncryption = strings.ToLower(strings.TrimSpace(payload.SMTPEncryption))
 	}
 
 	if smtpHost == "" || smtpFromEmail == "" {

@@ -161,13 +161,26 @@ export default function SettingsPage() {
       setTestResult({ success: false, message: 'Please enter a recipient email address' });
       return;
     }
+    if (!smtpHost) {
+      setTestResult({ success: false, message: 'Please enter an SMTP Host before running connection test' });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
 
     try {
       const res = await apiClient('/system/settings/test-smtp', {
         method: 'POST',
-        data: { to_email: testRecipient },
+        data: {
+          to_email: testRecipient,
+          smtp_host: smtpHost,
+          smtp_port: Number(smtpPort),
+          smtp_username: smtpUsername,
+          smtp_password: smtpPassword,
+          smtp_from_email: smtpFromEmail,
+          smtp_from_name: smtpFromName,
+          smtp_encryption: smtpEncryption,
+        },
       });
       setTestResult({
         success: true,
@@ -484,8 +497,8 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleTestEmail}
-                disabled={testing || !smtpEnabled}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-sm font-medium hover:border-[var(--mint)] disabled:opacity-50 transition-colors"
+                disabled={testing || !testRecipient || !smtpHost}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-sm font-medium hover:border-[var(--mint)] disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {testing ? (
                   <>

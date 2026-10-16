@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ArrowDown, ArrowUp, ArrowUpDown, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus, FileText } from 'lucide-react';
+import { ArrowLeft, ArrowDown, ArrowUp, ArrowUpDown, Bell, Cpu, Activity, ShieldCheck, Box, Server as ServerIcon, Network, Search, CircleCheck, CircleX, CircleHelp, Play, Square, RotateCw, RefreshCw, LoaderCircle, Layers, Radio, Zap, ExternalLink, X, Plus, FileText } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
@@ -1378,13 +1378,22 @@ export default function ServerDetailsPage() {
                 {(gateway || groupTags.length > 0) && (
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <h3 className="text-base font-bold text-[var(--foreground)]">Network Quality</h3>
-                    <Link
-                      href={`/dashboard/network?agent_id=${params.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
-                      title="Open centralized network targets manager"
-                    >
-                      <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/dashboard/alerts?tab=create&category=network&server_id=${params.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3.5 py-2 text-xs font-bold transition"
+                        title="Set alert rules for this server's network targets"
+                      >
+                        <Bell className="w-3.5 h-3.5" /> Set Alert Rule
+                      </Link>
+                      <Link
+                        href={`/dashboard/network?agent_id=${params.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
+                        title="Open centralized network targets manager"
+                      >
+                        <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </div>
                   </div>
                 )}
 
@@ -1636,17 +1645,27 @@ export default function ServerDetailsPage() {
                                   {renderStatusBadge(probe.status)}
                                 </td>
                                 <td className="px-4 py-3 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openProbeHistory(probe);
-                                    }}
-                                    className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-blue-400 transition cursor-pointer"
-                                    title="View latency history chart"
-                                  >
-                                    <Activity className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Link
+                                      href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(probe.name)}&server_id=${params.id}&metric=network_latency`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition cursor-pointer"
+                                      title={`Create alert rule for target "${probe.name}"`}
+                                    >
+                                      <Bell className="w-3.5 h-3.5" />
+                                    </Link>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openProbeHistory(probe);
+                                      }}
+                                      className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-blue-400 transition cursor-pointer"
+                                      title="View latency history chart"
+                                    >
+                                      <Activity className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );

@@ -234,6 +234,21 @@ select:-webkit-autofill:focus {
   transition: background-color 5000s ease-in-out 0s !important;
 }
 
+html.light input:-webkit-autofill,
+html.light input:-webkit-autofill:hover,
+html.light input:-webkit-autofill:focus,
+html.light textarea:-webkit-autofill,
+html.light textarea:-webkit-autofill:hover,
+html.light textarea:-webkit-autofill:focus,
+html.light select:-webkit-autofill,
+html.light select:-webkit-autofill:hover,
+html.light select:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-primary) !important;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -2556,14 +2571,14 @@ html.light .auth-back:hover {
 
 html.light .auth-input {
   border-color: var(--border-color);
-  background: var(--control-background);
-  color: var(--foreground);
+  background: #ffffff;
+  color: var(--text-primary);
   box-shadow: none;
 }
 
 html.light .auth-input:focus {
-  border-color: rgba(64, 88, 214, .52);
-  background: var(--surface-2);
+  border-color: var(--focus-ring);
+  background: #ffffff;
   box-shadow: var(--focus-ring-shadow);
 }
 

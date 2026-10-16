@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
+  Bell,
   Filter,
   LoaderCircle,
   Network,
@@ -100,6 +101,17 @@ interface NetworkTargetPreset {
   description: string;
 }
 
+interface NetworkAlertRule {
+  id: string;
+  name: string;
+  metric: string;
+  operator: string;
+  threshold: number;
+  target_name?: string | null;
+  server_id?: string | null;
+  enabled: boolean;
+}
+
 function NetworkQualityPageInner() {
   const searchParams = useSearchParams();
   const initialAgentFilter = searchParams.get('agent_id') || '';
@@ -109,6 +121,7 @@ function NetworkQualityPageInner() {
   const [targets, setTargets] = useState<NetworkTargetWithLatest[]>([]);
   const [overviews, setOverviews] = useState<TagQualityOverview[]>([]);
   const [presets, setPresets] = useState<NetworkTargetPreset[]>([]);
+  const [alertRules, setAlertRules] = useState<NetworkAlertRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -159,17 +172,19 @@ function NetworkQualityPageInner() {
         ? `/network-targets/overview?agent_id=${encodeURIComponent(activeAgent)}`
         : '/network-targets/overview';
 
-      const [serversRes, targetsRes, overviewRes, presetsRes] = await Promise.all([
+      const [serversRes, targetsRes, overviewRes, presetsRes, rulesRes] = await Promise.all([
         apiClient('/servers') as Promise<ServerOption[]>,
         apiClient('/network-targets') as Promise<NetworkTargetWithLatest[]>,
         apiClient(overviewUrl) as Promise<TagQualityOverview[]>,
         apiClient('/network-targets/presets') as Promise<NetworkTargetPreset[]>,
+        (apiClient('/alerts/rules').catch(() => [])) as Promise<NetworkAlertRule[]>,
       ]);
 
       setServers(serversRes || []);
       setTargets(targetsRes || []);
       setOverviews(overviewRes || []);
       setPresets(presetsRes || []);
+      setAlertRules(Array.isArray(rulesRes) ? rulesRes : []);
       if (showToast) toast.success('Network quality data refreshed');
     } catch (err) {
       toast.error('Failed to load network targets: ' + (err as Error).message);
@@ -235,6 +250,34 @@ function NetworkQualityPageInner() {
 
   // Currently selected server for title / header scoping
   const selectedServer = useMemo(() => servers.find((s) => s.id === selectedAgentId), [servers, selectedAgentId]);
+
+  // Network alert rules for targets and tags
+  const networkAlertRules = useMemo(() => {
+    return alertRules.filter((r) => r.metric === 'network_latency' || r.metric === 'network_loss');
+  }, [alertRules]);
+
+  const getTargetAlerts = useCallback((target: NetworkTargetWithLatest) => {
+    return networkAlertRules.filter((r) => {
+      if (!r.enabled) return false;
+      if (r.server_id && r.server_id !== target.agent_id) return false;
+      if (!r.target_name || r.target_name.trim() === '') return true; // universal
+      const filter = r.target_name.toLowerCase().trim();
+      return (
+        target.name.toLowerCase().includes(filter) ||
+        target.tag.toLowerCase().includes(filter) ||
+        target.host.toLowerCase().includes(filter)
+      );
+    });
+  }, [networkAlertRules]);
+
+  const getTagAlerts = useCallback((tag: string) => {
+    return networkAlertRules.filter((r) => {
+      if (!r.enabled) return false;
+      if (!r.target_name || r.target_name.trim() === '') return true;
+      const filter = r.target_name.toLowerCase().trim();
+      return tag.toLowerCase().includes(filter) || filter.includes(tag.toLowerCase());
+    });
+  }, [networkAlertRules]);
 
   // Filtered targets
   const filteredTargets = useMemo(() => {
@@ -520,6 +563,20 @@ function NetworkQualityPageInner() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            href="/dashboard/alerts?tab=rules&category=network"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition cursor-pointer"
+            title="View alert rules configured for network quality"
+          >
+            <Bell className="w-3.5 h-3.5 text-indigo-400" />
+            Alert Rules
+            {networkAlertRules.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                {networkAlertRules.length}
+              </span>
+            )}
+          </Link>
+
           <button
             type="button"
             onClick={() => {
@@ -641,7 +698,7 @@ function NetworkQualityPageInner() {
                           </div>
                         </div>
 
-                        <div className="mt-3 flex items-center justify-end text-[11px]">
+                        <div className="mt-3 pt-2.5 border-t border-[var(--border-color)]/60 flex items-center justify-between text-[11px]">
                           <button
                             type="button"
                             onClick={() => {
@@ -651,6 +708,32 @@ function NetworkQualityPageInner() {
                           >
                             Filter tag →
                           </button>
+
+                          {(() => {
+                            const tagAlerts = getTagAlerts(ov.tag);
+                            if (tagAlerts.length > 0) {
+                              return (
+                                <Link
+                                  href="/dashboard/alerts?tab=rules&category=network"
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-400 hover:underline"
+                                  title={`${tagAlerts.length} alert rule(s) active for tag ${ov.tag}`}
+                                >
+                                  <Bell className="w-3 h-3 text-indigo-400" />
+                                  <span>{tagAlerts.length} Alert{tagAlerts.length > 1 ? 's' : ''}</span>
+                                </Link>
+                              );
+                            }
+                            return (
+                              <Link
+                                href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(ov.tag)}&metric=network_latency`}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-muted)] hover:text-indigo-400 hover:underline"
+                                title={`Set alert rule for tag ${ov.tag}`}
+                              >
+                                <Bell className="w-3 h-3" />
+                                <span>+ Set Alert</span>
+                              </Link>
+                            );
+                          })()}
                         </div>
                       </div>
                     );
@@ -775,16 +858,28 @@ function NetworkQualityPageInner() {
                   const lat = res?.latency_ms;
                   const isTesting = testingTargetId === target.id;
 
+                  const targetAlerts = getTargetAlerts(target);
+
                   return (
                     <tr key={target.id} className="hover:bg-[var(--border-color)]/20 transition-colors">
                       {/* Name & Host */}
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-[var(--foreground)]">{target.name}</span>
                           {target.is_gateway && (
                             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
                               Gateway
                             </span>
+                          )}
+                          {targetAlerts.length > 0 && (
+                            <Link
+                              href="/dashboard/alerts?tab=rules&category=network"
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/25 inline-flex items-center gap-1 transition"
+                              title={`${targetAlerts.length} alert rule(s) active: ${targetAlerts.map(a => a.name).join(', ')}`}
+                            >
+                              <Bell className="w-2.5 h-2.5" />
+                              <span>{targetAlerts.length} Alert{targetAlerts.length > 1 ? 's' : ''}</span>
+                            </Link>
                           )}
                         </div>
                         <div className="text-[11px] font-mono text-[var(--color-muted)] mt-0.5">
@@ -856,6 +951,14 @@ function NetworkQualityPageInner() {
                       {/* Actions */}
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(target.name)}&server_id=${target.agent_id}&metric=network_latency`}
+                            title={`Create or manage alert rule for target "${target.name}"`}
+                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition cursor-pointer"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                          </Link>
+
                           <button
                             type="button"
                             onClick={() => handleTestTargetNow(target)}

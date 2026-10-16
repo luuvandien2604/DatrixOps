@@ -1,7 +1,9 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Activity,
   AlertCircle,
@@ -17,6 +19,7 @@ import {
   Layers,
   Loader2,
   Mail,
+  Network,
   Pencil,
   Plus,
   Radio,
@@ -27,10 +30,25 @@ import {
   Trash2,
   Wifi,
   X,
+  Zap,
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 import ConfirmModal from '@/components/ConfirmModal';
+
+interface NetworkTargetOption {
+  id: string;
+  agent_id: string;
+  server_name?: string;
+  name: string;
+  host: string;
+  port: number;
+  tag: string;
+  probe_method: string;
+  probes_per_run?: number;
+  is_gateway: boolean;
+  enabled: boolean;
+}
 
 interface RuleChannel {
   id: string;
@@ -150,13 +168,21 @@ function TelegramIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
-export default function AlertsPage() {
+function AlertsPageInner() {
+  const searchParams = useSearchParams();
+  const paramTab = searchParams.get('tab');
+  const paramCategory = searchParams.get('category');
+  const paramTarget = searchParams.get('target');
+  const paramServerId = searchParams.get('server_id');
+  const paramMetric = searchParams.get('metric');
+
   const [activeTab, setActiveTab] = useState<AlertTab>('rules');
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [channels, setChannels] = useState<AlertChannel[]>([]);
   const [servers, setServers] = useState<AlertServer[]>([]);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [incidents, setIncidents] = useState<IncidentNotification[]>([]);
+  const [networkTargets, setNetworkTargets] = useState<NetworkTargetOption[]>([]);
   const [unreadIncidentsCount, setUnreadIncidentsCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
@@ -208,6 +234,36 @@ export default function AlertsPage() {
   const [ruleDuration, setRuleDuration] = useState('1');
   const [selectedServerId, setSelectedServerId] = useState('all');
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+
+  // Sync with URL query parameters (e.g. from /dashboard/network or /dashboard/servers/[id])
+  useEffect(() => {
+    if (paramTab === 'create' || paramTab === 'rules' || paramTab === 'channels' || paramTab === 'incidents') {
+      setActiveTab(paramTab as AlertTab);
+    }
+    if (
+      paramCategory === 'network' ||
+      paramCategory === 'status' ||
+      paramCategory === 'metric' ||
+      paramCategory === 'container' ||
+      paramCategory === 'service' ||
+      paramCategory === 'website'
+    ) {
+      setSelectedCategory(paramCategory as AlertCategory);
+      if (paramCategory === 'network') {
+        const met = paramMetric === 'network_loss' ? 'network_loss' : 'network_latency';
+        setRuleMetric(met);
+        const tgt = paramTarget || '';
+        setRuleTargetName(tgt);
+        if (paramServerId) setSelectedServerId(paramServerId);
+        if (tgt) {
+          setRuleName(`Network ${met === 'network_loss' ? 'Packet Loss' : 'Latency'}: ${tgt}`);
+        }
+      } else if (paramCategory === 'website') {
+        setRuleMetric(paramMetric === 'ssl' ? 'ssl' : 'website');
+        if (paramTarget) setRuleTargetName(paramTarget);
+      }
+    }
+  }, [paramTab, paramCategory, paramTarget, paramServerId, paramMetric]);
 
   // Channel form state
   const [channelName, setChannelName] = useState('');
@@ -323,10 +379,80 @@ export default function AlertsPage() {
     }
   }
 
+  async function fetchNetworkTargets() {
+    try {
+      const data = await apiClient('/network-targets');
+      setNetworkTargets(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load network targets:', error);
+    }
+  }
+
+  // Discovered tags and targets for Network Quality
+  const discoveredNetworkTags = useMemo(() => {
+    const set = new Set<string>();
+    networkTargets.forEach((t) => {
+      if (t.tag) set.add(t.tag);
+    });
+    return Array.from(set);
+  }, [networkTargets]);
+
+  const relevantNetworkTargets = useMemo(() => {
+    if (selectedServerId && selectedServerId !== 'all') {
+      return networkTargets.filter((t) => t.agent_id === selectedServerId);
+    }
+    return networkTargets;
+  }, [networkTargets, selectedServerId]);
+
+  const matchedNetworkTargets = useMemo(() => {
+    if (selectedCategory !== 'network') return [];
+    const filter = ruleTargetName.trim().toLowerCase();
+    return relevantNetworkTargets.filter((t) => {
+      if (!filter) return true;
+      return (
+        t.name.toLowerCase().includes(filter) ||
+        t.tag.toLowerCase().includes(filter) ||
+        t.host.toLowerCase().includes(filter)
+      );
+    });
+  }, [selectedCategory, ruleTargetName, relevantNetworkTargets]);
+
+  const ruleSummaryText = useMemo(() => {
+    const scopeStr = selectedServerId === 'all' ? 'All servers' : (servers.find((s) => s.id === selectedServerId)?.name || 'Selected server');
+    const chCount = selectedChannelIds.length;
+    const chStr = chCount === 0 ? 'No channels selected' : `${chCount} channel(s)`;
+
+    if (selectedCategory === 'status') {
+      return `Alert if heartbeat is missing for > ${ruleDuration}m on ${scopeStr} → Notify via ${chStr}`;
+    }
+    if (selectedCategory === 'network') {
+      const metricStr = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+      const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+      const targetStr = ruleTargetName ? `target/tag "${ruleTargetName}"` : 'all targets';
+      return `Alert if Network ${metricStr} on ${targetStr} is ${ruleOperator} ${ruleThreshold}${unit} for ${ruleDuration}m on ${scopeStr} → Notify via ${chStr}`;
+    }
+    if (selectedCategory === 'metric') {
+      return `Alert if ${ruleMetric.toUpperCase()} usage is ${ruleOperator} ${ruleThreshold}% for ${ruleDuration}m on ${scopeStr} → Notify via ${chStr}`;
+    }
+    if (selectedCategory === 'container') {
+      return `Alert if container "${ruleTargetName || '...'}" stops running on ${scopeStr} → Notify via ${chStr}`;
+    }
+    if (selectedCategory === 'service') {
+      return `Alert if systemd service "${ruleTargetName || '...'}" fails on ${scopeStr} → Notify via ${chStr}`;
+    }
+    if (selectedCategory === 'website') {
+      const siteStr = ruleTargetName || 'all websites';
+      return ruleMetric === 'ssl'
+        ? `Alert if SSL certificate expires in ≤ ${ruleThreshold} days for ${siteStr} → Notify via ${chStr}`
+        : `Alert if website "${siteStr}" goes down → Notify via ${chStr}`;
+    }
+    return '';
+  }, [selectedCategory, selectedServerId, servers, selectedChannelIds, ruleDuration, ruleMetric, ruleTargetName, ruleOperator, ruleThreshold]);
+
   const refreshAllData = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents(), fetchNetworkTargets()]);
       setSuccessMessage('Alert Center data refreshed.');
     } finally {
       setRefreshing(false);
@@ -335,7 +461,7 @@ export default function AlertsPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents()]);
+      await Promise.all([fetchRules(), fetchChannels(), fetchServers(), fetchWebsites(), fetchIncidents(), fetchNetworkTargets()]);
       setLoading(false);
     };
     void loadData();
@@ -1124,7 +1250,46 @@ export default function AlertsPage() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-semibold text-[var(--foreground)] truncate text-sm sm:text-base">{rule.name}</h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-[var(--foreground)] truncate text-sm sm:text-base">{rule.name}</h4>
+                        {isNetwork && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                            <Wifi className="w-2.5 h-2.5" />
+                            {rule.target_name ? `Target: ${rule.target_name}` : 'All Targets'}
+                          </span>
+                        )}
+                        {rule.server_name && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] text-[var(--color-muted)] border border-[var(--border-color)]">
+                            <Server className="w-2.5 h-2.5" />
+                            {rule.server_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-[var(--color-muted)] flex-wrap">
+                        <span>
+                          Condition: <strong className="text-[var(--foreground)] font-mono">{rule.metric} {rule.operator} {rule.threshold}{rule.metric === 'network_latency' ? 'ms' : '%'}</strong>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Duration: <strong className="text-[var(--foreground)] font-mono">{rule.duration_minutes}m</strong>
+                        </span>
+                        {rule.channels && rule.channels.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-[11px]">
+                              {rule.channels.length} channel{rule.channels.length > 1 ? 's' : ''} ({rule.channels.map(c => c.name).join(', ')})
+                            </span>
+                          </>
+                        )}
+                        {isNetwork && (
+                          <>
+                            <span>•</span>
+                            <Link href="/dashboard/network" className="text-blue-400 hover:underline inline-flex items-center gap-0.5 text-[11px]">
+                              Network Targets ↗
+                            </Link>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1212,86 +1377,87 @@ export default function AlertsPage() {
         </div>
       ) : activeTab === 'create' ? (
         /* ========================================================================= */
-        /* TAB 2: CREATE ALERT RULE STUDIO (REDESIGNED UX) */
+        /* TAB 2: CREATE ALERT RULE STUDIO (STREAMLINED & CLUTTER-FREE UX) */
         /* ========================================================================= */
         <div className="space-y-6">
-          {/* Studio Navigation & Breadcrumbs */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {/* Header & Back Action */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-[var(--border-color)]">
             <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-blue-500">
+              <div className="flex items-center gap-2 text-xs font-semibold text-blue-500 mb-1">
                 <button
                   type="button"
                   onClick={() => setActiveTab('rules')}
-                  className="hover:underline flex items-center gap-1"
+                  className="hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" /> Back to Alert Rules
                 </button>
-                <span>/</span>
-                <span className="text-[var(--color-muted)]">Rule Builder</span>
               </div>
-              <h2 className="text-xl font-bold tracking-tight text-[var(--foreground)] mt-1 sm:text-2xl">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
                 Create Alert Rule
               </h2>
+              <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                Configure metric thresholds, choose target scopes, and assign notification delivery channels.
+              </p>
             </div>
 
             <button
               type="button"
               onClick={() => setActiveTab('rules')}
-              className="ops-button secondary text-xs self-start sm:self-auto"
+              className="ops-button secondary text-xs self-start sm:self-auto cursor-pointer"
             >
               Cancel
             </button>
           </div>
 
+          {/* Category Tabs: Clean Segmented Pill Navigation */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {[
+              { id: 'status', label: 'Server Offline', icon: Server, color: 'text-cyan-400' },
+              { id: 'metric', label: 'Resource Usage', icon: Activity, color: 'text-amber-400' },
+              { id: 'network', label: 'Network Quality', icon: Wifi, color: 'text-indigo-400' },
+              { id: 'container', label: 'Docker Container', icon: Box, color: 'text-blue-400' },
+              { id: 'service', label: 'Systemd Service', icon: Layers, color: 'text-purple-400' },
+              { id: 'website', label: 'Website & SSL', icon: Globe2, color: 'text-emerald-400' },
+            ].map((cat) => {
+              const isSelected = selectedCategory === cat.id;
+              const Icon = cat.icon;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleSelectCategory(cat.id as AlertCategory)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer select-none ${
+                    isSelected
+                      ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/50'
+                      : 'bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)] border border-[var(--border-color)]'
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 ${isSelected ? 'text-white' : cat.color}`} />
+                  <span>{cat.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <form onSubmit={createRule} className="space-y-6">
-            {/* SECTION 1: ALERT TYPE & CONDITIONS */}
-            <div className="ops-panel surface-regular p-6 space-y-5">
-              <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
-                  1. Alert Type & Conditions
-                </h3>
-              </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+              {/* CARD 1: Trigger Condition & Threshold (7 cols) */}
+              <div className="ops-panel surface-regular p-5 sm:p-6 lg:col-span-7 space-y-5">
+                <div className="border-b border-[var(--border-color)] pb-3">
+                  <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-blue-500 text-xs font-bold">1</span>
+                    Trigger Condition & Threshold
+                  </h3>
+                  <p className="text-xs text-[var(--color-muted)] mt-1">
+                    Define the threshold and metric criteria that will trigger this alert.
+                  </p>
+                </div>
 
-              {/* Category Selection Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                {[
-                  { id: 'status', label: 'Server Offline', icon: Server, color: 'text-cyan-500', badgeColor: 'bg-cyan-500/15 text-cyan-400' },
-                  { id: 'metric', label: 'Resource Usage', icon: Activity, color: 'text-amber-500', badgeColor: 'bg-amber-500/15 text-amber-400' },
-                  { id: 'network', label: 'Network Quality', icon: Wifi, color: 'text-indigo-500', badgeColor: 'bg-indigo-500/15 text-indigo-400' },
-                  { id: 'container', label: 'Docker Container', icon: Box, color: 'text-blue-500', badgeColor: 'bg-blue-500/15 text-blue-400' },
-                  { id: 'service', label: 'Systemd Service', icon: Layers, color: 'text-purple-500', badgeColor: 'bg-purple-500/15 text-purple-400' },
-                  { id: 'website', label: 'Website & SSL', icon: Globe2, color: 'text-emerald-500', badgeColor: 'bg-emerald-500/15 text-emerald-400' },
-                ].map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  const Icon = cat.icon;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => handleSelectCategory(cat.id as AlertCategory)}
-                      className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-center transition-all cursor-pointer select-none ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 font-semibold text-blue-400 shadow-xs'
-                          : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:border-blue-500/40 hover:bg-[var(--surface-hover)]'
-                      }`}
-                    >
-                      <div className={`p-2 rounded-lg mb-2 ${cat.badgeColor}`}>
-                        <Icon className={`h-5 w-5 ${cat.color}`} />
-                      </div>
-                      <span className="text-xs font-medium">{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Condition Configuration Cards */}
-              <div className="pt-2">
-                {/* Server Offline */}
+                {/* Condition Body: Status (Server Offline) */}
                 {selectedCategory === 'status' && (
-                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-                    <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-2">
-                      <Server className="h-4 w-4 text-cyan-500" />
-                      Heartbeat Loss Timeout
+                  <div className="space-y-4">
+                    <label className="text-xs font-semibold text-[var(--foreground)] block">
+                      Trigger alert if heartbeat is missing for:
                     </label>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                       {[
@@ -1305,23 +1471,26 @@ export default function AlertsPage() {
                           key={opt.val}
                           type="button"
                           onClick={() => setRuleDuration(opt.val)}
-                          className={`flex items-center justify-center rounded-xl border py-2 px-3 text-center transition-all cursor-pointer ${
+                          className={`flex items-center justify-center rounded-xl border py-2.5 px-3 text-center transition cursor-pointer ${
                             ruleDuration === opt.val
-                              ? 'border-cyan-500 bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 font-bold ring-1 ring-cyan-500 shadow-xs'
-                              : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-cyan-500/40'
+                              ? 'border-blue-500 bg-blue-500/15 text-blue-400 font-bold ring-1 ring-blue-500 shadow-xs'
+                              : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                           }`}
                         >
                           <span className="text-xs font-semibold">{opt.label}</span>
                         </button>
                       ))}
                     </div>
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      Agents dispatch heartbeats every 10 seconds. An alert is triggered once missed heartbeats exceed this duration.
+                    </p>
                   </div>
                 )}
 
-                {/* Resource Usage */}
+                {/* Condition Body: Resource Usage (CPU, RAM, Disk) */}
                 {selectedCategory === 'metric' && (
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                           Resource Metric
@@ -1355,40 +1524,28 @@ export default function AlertsPage() {
                           className="w-full"
                         />
                       </div>
+                    </div>
 
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-semibold text-[var(--foreground)]">
-                            Threshold: <span className="font-mono font-bold text-amber-500">{ruleThreshold}%</span>
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="range"
-                            min="10"
-                            max="100"
-                            step="5"
-                            value={ruleThreshold}
-                            onChange={(e) => {
-                              setRuleThreshold(e.target.value);
-                              setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
-                            }}
-                            className="w-full accent-amber-500 cursor-pointer"
-                          />
-                          <input
-                            required
-                            min="0"
-                            max="100"
-                            value={ruleThreshold}
-                            onChange={(e) => {
-                              setRuleThreshold(e.target.value);
-                              setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
-                            }}
-                            type="number"
-                            className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] p-1 text-center font-mono text-xs text-[var(--foreground)]"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-2">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-[var(--foreground)]">
+                          Threshold: <span className="font-mono font-bold text-amber-500">{ruleThreshold}%</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          required
+                          min="0"
+                          max="100"
+                          value={ruleThreshold}
+                          onChange={(e) => {
+                            setRuleThreshold(e.target.value);
+                            setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${e.target.value}%)`);
+                          }}
+                          type="number"
+                          className="w-24 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-center font-mono text-xs text-[var(--foreground)] outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {['70', '80', '85', '90', '95'].map((preset) => (
                             <button
                               key={preset}
@@ -1397,10 +1554,10 @@ export default function AlertsPage() {
                                 setRuleThreshold(preset);
                                 setRuleName(`High ${ruleMetric.toUpperCase()} Alert (> ${preset}%)`);
                               }}
-                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                                 ruleThreshold === preset
-                                  ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
-                                  : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                                  ? 'bg-amber-500/20 text-amber-500 border-amber-500/40 shadow-xs'
+                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
                               {preset}%
@@ -1410,29 +1567,47 @@ export default function AlertsPage() {
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-amber-500/20">
-                      <label htmlFor="metric-duration" className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                    <div className="pt-3 border-t border-[var(--border-color)]">
+                      <label htmlFor="metric-duration" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
                         <Clock className="h-3.5 w-3.5 text-amber-500" />
                         Continuous Duration (Minutes)
                       </label>
-                      <input
-                        id="metric-duration"
-                        required
-                        min="1"
-                        max="1440"
-                        value={ruleDuration}
-                        onChange={(e) => setRuleDuration(e.target.value)}
-                        type="number"
-                        className="w-32 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)]"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="metric-duration"
+                          required
+                          min="1"
+                          max="1440"
+                          value={ruleDuration}
+                          onChange={(e) => setRuleDuration(e.target.value)}
+                          type="number"
+                          className="w-24 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs font-mono text-[var(--foreground)] outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          {['1', '2', '5', '10', '15'].map((min) => (
+                            <button
+                              key={min}
+                              type="button"
+                              onClick={() => setRuleDuration(min)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                                ruleDuration === min
+                                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                              }`}
+                            >
+                              {min}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Network Quality */}
+                {/* Condition Body: Network Quality (Latency & Packet Loss) */}
                 {selectedCategory === 'network' && (
-                  <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                           Network Metric
@@ -1443,15 +1618,15 @@ export default function AlertsPage() {
                             setRuleMetric(val);
                             if (val === 'network_latency') {
                               setRuleThreshold('100');
-                              setRuleName('High Network Latency (> 100ms)');
+                              setRuleName(ruleTargetName ? `Network Latency: ${ruleTargetName} (> 100ms)` : 'High Network Latency (> 100ms)');
                             } else {
                               setRuleThreshold('10');
-                              setRuleName('High Packet Loss (> 10%)');
+                              setRuleName(ruleTargetName ? `Packet Loss: ${ruleTargetName} (> 10%)` : 'High Packet Loss (> 10%)');
                             }
                           }}
                           options={[
-                            { value: 'network_latency', label: 'Latency (ms)' },
-                            { value: 'network_loss', label: 'Packet Loss (%)' },
+                            { value: 'network_latency', label: 'Round-Trip Latency (ms)', subLabel: 'Socket / Ping response time' },
+                            { value: 'network_loss', label: 'Packet Loss (%)', subLabel: 'ICMP probe drop percentage' },
                           ]}
                           className="w-full"
                         />
@@ -1471,13 +1646,18 @@ export default function AlertsPage() {
                           className="w-full"
                         />
                       </div>
+                    </div>
 
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-semibold text-[var(--foreground)]">
-                            Threshold: <span className="font-mono font-bold text-indigo-500">{ruleThreshold}{ruleMetric === 'network_latency' ? 'ms' : '%'}</span>
-                          </label>
-                        </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-[var(--foreground)]">
+                          Threshold: <span className="font-mono font-bold text-indigo-400">{ruleThreshold}{ruleMetric === 'network_latency' ? 'ms' : '%'}</span>
+                        </label>
+                        <span className="text-[11px] text-[var(--color-muted)]">
+                          {ruleMetric === 'network_latency' ? 'Allowed latency in milliseconds' : 'Allowed loss percentage'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
                         <input
                           required
                           min="0"
@@ -1486,14 +1666,14 @@ export default function AlertsPage() {
                           onChange={(e) => {
                             setRuleThreshold(e.target.value);
                             const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
-                            const metricName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
-                            setRuleName(`Network ${metricName} Alert (${ruleOperator} ${e.target.value}${unit})`);
+                            const mName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                            setRuleName(ruleTargetName ? `Network ${mName}: ${ruleTargetName} (${ruleOperator} ${e.target.value}${unit})` : `Network ${mName} Alert (${ruleOperator} ${e.target.value}${unit})`);
                           }}
                           type="number"
-                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs font-mono text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder={ruleMetric === 'network_latency' ? 'e.g. 100' : 'e.g. 10'}
+                          className="w-28 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs font-mono text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder={ruleMetric === 'network_latency' ? '100' : '10'}
                         />
-                        <div className="flex items-center gap-1.5 mt-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {(ruleMetric === 'network_latency' ? ['30', '50', '100', '200', '500'] : ['5', '10', '20', '50']).map((preset) => (
                             <button
                               key={preset}
@@ -1501,13 +1681,13 @@ export default function AlertsPage() {
                               onClick={() => {
                                 setRuleThreshold(preset);
                                 const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
-                                const metricName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
-                                setRuleName(`Network ${metricName} Alert (${ruleOperator} ${preset}${unit})`);
+                                const mName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                                setRuleName(ruleTargetName ? `Network ${mName}: ${ruleTargetName} (${ruleOperator} ${preset}${unit})` : `Network ${mName} Alert (${ruleOperator} ${preset}${unit})`);
                               }}
-                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition cursor-pointer ${
                                 ruleThreshold === preset
-                                  ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
-                                  : 'border-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                                  ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40 shadow-xs'
+                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
                               {preset}{ruleMetric === 'network_latency' ? 'ms' : '%'}
@@ -1517,26 +1697,127 @@ export default function AlertsPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-2 border-t border-indigo-500/20">
-                      <div>
-                        <label htmlFor="network-target-filter" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                          Target / Tag Filter (Optional)
+                    {/* Target & Tag Filter (The Key Connection to Network Quality!) */}
+                    <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+                          <Network className="h-3.5 w-3.5 text-indigo-400" />
+                          Monitored Target or Tag Group
                         </label>
-                        <input
-                          id="network-target-filter"
-                          type="text"
-                          value={ruleTargetName}
-                          onChange={(e) => setRuleTargetName(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Target name, tag, or host (leave blank for all)"
-                        />
+                        <Link
+                          href="/dashboard/network"
+                          className="text-[11px] font-semibold text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          Manage Targets ↗
+                        </Link>
                       </div>
 
-                      <div>
-                        <label htmlFor="network-duration" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                          <Clock className="h-3.5 w-3.5 text-indigo-400" />
-                          Continuous Duration (Minutes)
-                        </label>
+                      <div className="space-y-2">
+                        <CustomSelect
+                          value={
+                            ruleTargetName === ''
+                              ? '__ALL__'
+                              : discoveredNetworkTags.includes(ruleTargetName)
+                              ? `tag:${ruleTargetName}`
+                              : relevantNetworkTargets.some(t => t.name === ruleTargetName)
+                              ? `target:${ruleTargetName}`
+                              : '__CUSTOM__'
+                          }
+                          onChange={(val) => {
+                            if (val === '__ALL__') {
+                              setRuleTargetName('');
+                              const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+                              const mName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                              setRuleName(`Network ${mName} Alert (${ruleOperator} ${ruleThreshold}${unit})`);
+                            } else if (val.startsWith('tag:')) {
+                              const tag = val.replace('tag:', '');
+                              setRuleTargetName(tag);
+                              const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+                              const mName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                              setRuleName(`Network ${mName}: Tag [${tag}] (${ruleOperator} ${ruleThreshold}${unit})`);
+                            } else if (val.startsWith('target:')) {
+                              const targetName = val.replace('target:', '');
+                              setRuleTargetName(targetName);
+                              const unit = ruleMetric === 'network_latency' ? 'ms' : '%';
+                              const mName = ruleMetric === 'network_latency' ? 'Latency' : 'Packet Loss';
+                              setRuleName(`Network ${mName}: ${targetName} (${ruleOperator} ${ruleThreshold}${unit})`);
+                            }
+                          }}
+                          options={[
+                            {
+                              value: '__ALL__',
+                              label: `All Network Targets (${relevantNetworkTargets.length} active)`,
+                              subLabel: 'Universal — monitors all probe targets across the fleet',
+                            },
+                            ...discoveredNetworkTags.map((tag) => {
+                              const count = relevantNetworkTargets.filter(t => t.tag === tag).length;
+                              return {
+                                value: `tag:${tag}`,
+                                label: `Tag Group: ${tag}`,
+                                subLabel: `${count} target(s) with this tag`,
+                              };
+                            }),
+                            ...relevantNetworkTargets.map((t) => ({
+                              value: `target:${t.name}`,
+                              label: `Target: ${t.name} (${t.host}${t.port ? `:${t.port}` : ''})`,
+                              subLabel: `${t.probe_method} • Tag: ${t.tag} • ${t.server_name || 'Server'}`,
+                            })),
+                          ]}
+                          className="w-full"
+                        />
+
+                        {/* Live Target Match Feedback */}
+                        <div className="p-2.5 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-xs">
+                          {matchedNetworkTargets.length > 0 ? (
+                            <div className="flex items-start gap-2">
+                              <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                              <div className="space-y-1">
+                                <p className="text-[var(--foreground)] font-medium">
+                                  {ruleTargetName === '' ? (
+                                    <span>Rule applies to <strong>all {matchedNetworkTargets.length} targets</strong> on the selected fleet.</span>
+                                  ) : (
+                                    <span>Matches <strong>{matchedNetworkTargets.length} target(s)</strong>:</span>
+                                  )}
+                                </p>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {matchedNetworkTargets.slice(0, 4).map((t) => (
+                                    <span
+                                      key={t.id}
+                                      className="px-2 py-0.5 rounded text-[10px] font-mono bg-[var(--background-card)] border border-[var(--border-color)] text-[var(--color-muted)]"
+                                    >
+                                      {t.name} ({t.host})
+                                    </span>
+                                  ))}
+                                  {matchedNetworkTargets.length > 4 && (
+                                    <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                                      +{matchedNetworkTargets.length - 4} more
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2 text-amber-400">
+                              <div className="flex items-center gap-1.5">
+                                <AlertTriangle className="h-4 w-4 shrink-0" />
+                                <span>No targets currently match &quot;{ruleTargetName}&quot;.</span>
+                              </div>
+                              <Link href="/dashboard/network" className="text-blue-400 hover:underline font-semibold shrink-0">
+                                Add target →
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Continuous Duration */}
+                    <div className="pt-3 border-t border-[var(--border-color)]">
+                      <label htmlFor="network-duration" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                        <Clock className="h-3.5 w-3.5 text-indigo-400" />
+                        Continuous Duration Before Firing (Minutes)
+                      </label>
+                      <div className="flex items-center gap-2">
                         <input
                           id="network-duration"
                           required
@@ -1545,58 +1826,84 @@ export default function AlertsPage() {
                           value={ruleDuration}
                           onChange={(e) => setRuleDuration(e.target.value)}
                           type="number"
-                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="w-24 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs font-mono text-[var(--foreground)] outline-none focus:ring-1 focus:ring-indigo-500"
                         />
+                        <div className="flex items-center gap-1.5">
+                          {['1', '2', '5', '10', '15'].map((min) => (
+                            <button
+                              key={min}
+                              type="button"
+                              onClick={() => setRuleDuration(min)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                                ruleDuration === min
+                                  ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40'
+                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                              }`}
+                            >
+                              {min}m
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Docker Container */}
+                {/* Condition Body: Docker Container */}
                 {selectedCategory === 'container' && (
-                  <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
-                    <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
-                      <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      id="rule-target-name"
-                      required
-                      value={ruleTargetName}
-                      onChange={(e) => {
-                        setRuleTargetName(e.target.value);
-                        setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
-                      }}
-                      type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
-                      placeholder="e.g. nginx, postgres, redis, api-gateway"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)] mb-1.5">
+                        <Box className="h-4 w-4 text-blue-500" /> Monitored Docker Container Name <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        id="rule-target-name"
+                        required
+                        value={ruleTargetName}
+                        onChange={(e) => {
+                          setRuleTargetName(e.target.value);
+                          setRuleName(e.target.value ? `Docker: ${e.target.value}` : 'Docker Container Alert');
+                        }}
+                        type="text"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                        placeholder="e.g. nginx, postgres, redis, api-gateway"
+                      />
+                    </div>
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      Triggers immediately if the specified container exits or becomes unhealthy.
+                    </p>
                   </div>
                 )}
 
-                {/* Systemd Service */}
+                {/* Condition Body: Systemd Service */}
                 {selectedCategory === 'service' && (
-                  <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
-                    <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
-                      <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name <span className="text-rose-400">*</span>
-                    </label>
-                    <input
-                      id="rule-target-name"
-                      required
-                      value={ruleTargetName}
-                      onChange={(e) => {
-                        setRuleTargetName(e.target.value);
-                        setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
-                      }}
-                      type="text"
-                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
-                      placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="rule-target-name" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground)] mb-1.5">
+                        <Layers className="h-4 w-4 text-purple-500" /> Monitored Systemd Service Name <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        id="rule-target-name"
+                        required
+                        value={ruleTargetName}
+                        onChange={(e) => {
+                          setRuleTargetName(e.target.value);
+                          setRuleName(e.target.value ? `Service: ${e.target.value}` : 'Systemd Service Alert');
+                        }}
+                        type="text"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-purple-500 outline-none"
+                        placeholder="e.g. nginx, mariadb, docker, sshd, redis-server"
+                      />
+                    </div>
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      Triggers if the systemd unit enters failed or inactive state.
+                    </p>
                   </div>
                 )}
 
-                {/* Website & SSL */}
+                {/* Condition Body: Website & SSL */}
                 {selectedCategory === 'website' && (
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-4">
+                  <div className="space-y-4">
                     <div>
                       <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
                         Endpoint Health Trigger Condition
@@ -1635,13 +1942,13 @@ export default function AlertsPage() {
                                 setRuleThreshold(item.threshold);
                                 setRuleName(item.defaultName);
                               }}
-                              className={`flex items-center justify-center rounded-xl border py-3 px-3.5 text-center transition cursor-pointer ${
+                              className={`flex items-center justify-center rounded-xl border py-2.5 px-3 text-center transition cursor-pointer ${
                                 isSelected
-                                  ? 'border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold ring-1 ring-emerald-500'
-                                  : 'border-[var(--border-color)] bg-[var(--background-card)] text-[var(--color-muted)] hover:border-emerald-500/40'
+                                  ? 'border-emerald-500 bg-emerald-500/15 text-emerald-400 font-bold ring-1 ring-emerald-500 shadow-xs'
+                                  : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
-                              <span className="text-sm font-semibold">{item.label}</span>
+                              <span className="text-xs font-semibold">{item.label}</span>
                             </button>
                           );
                         })}
@@ -1650,15 +1957,80 @@ export default function AlertsPage() {
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* SECTION 2: SCOPE & IDENTITY */}
-            <div className="ops-panel surface-regular p-6 space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
-                2. Scope & Rule Name
-              </h3>
+              {/* CARD 2: Scope & Notification Delivery (5 cols) */}
+              <div className="ops-panel surface-regular p-5 sm:p-6 lg:col-span-5 space-y-5">
+                <div className="border-b border-[var(--border-color)] pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/15 text-blue-500 text-xs font-bold">2</span>
+                      Scope & Delivery
+                    </h3>
+                    <p className="text-xs text-[var(--color-muted)] mt-1">
+                      Choose servers to monitor and select notification channels.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('channels')}
+                    className="text-xs font-semibold text-blue-500 hover:underline cursor-pointer"
+                  >
+                    + New Channel
+                  </button>
+                </div>
 
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                {/* Scope: Server Fleet or Website */}
+                <div>
+                  {selectedCategory === 'website' ? (
+                    <div>
+                      <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                        <Globe2 className="h-4 w-4 text-emerald-500" /> Monitored Website Target
+                      </label>
+                      <CustomSelect
+                        value={ruleTargetName || 'all'}
+                        onChange={(val) => {
+                          const targetVal = val === 'all' ? '' : val;
+                          setRuleTargetName(targetVal);
+                          if (ruleMetric === 'ssl') {
+                            setRuleName(targetVal ? `SSL Expiration: ${targetVal}` : 'SSL Certificate Expiration Alert');
+                          } else {
+                            setRuleName(targetVal ? `Website Down: ${targetVal}` : 'Website Down Alert');
+                          }
+                        }}
+                        options={[
+                          { value: 'all', label: 'All Monitored Websites (Universal)' },
+                          ...websites.map((w) => ({
+                            value: w.name,
+                            label: w.name,
+                            subLabel: w.url,
+                          })),
+                        ]}
+                        className="w-full"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                        <Server className="h-4 w-4 text-blue-500" /> Target Server Fleet
+                      </label>
+                      <CustomSelect
+                        value={selectedServerId}
+                        onChange={setSelectedServerId}
+                        options={[
+                          { value: 'all', label: 'All servers (Entire Agent Fleet)' },
+                          ...servers.map((server) => ({
+                            value: server.id,
+                            label: server.name,
+                            subLabel: server.status === 'online' ? 'Online' : 'Offline',
+                          })),
+                        ]}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Alert Rule Name */}
                 <div>
                   <label htmlFor="rule-name" className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
                     Alert Rule Name <span className="text-rose-400">*</span>
@@ -1670,162 +2042,101 @@ export default function AlertsPage() {
                     onChange={(e) => setRuleName(e.target.value)}
                     type="text"
                     className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none transition"
-                    placeholder="e.g. Production Latency High"
+                    placeholder="e.g. Production Network Latency High"
                   />
+                  <p className="text-[11px] text-[var(--color-muted)] mt-1">
+                    Auto-generated from your condition, or customize as you prefer.
+                  </p>
                 </div>
 
-                {selectedCategory === 'website' ? (
-                  <div>
-                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                      <Globe2 className="h-4 w-4 text-emerald-500" /> Monitored Website Target
-                    </label>
-                    <CustomSelect
-                      value={ruleTargetName || 'all'}
-                      onChange={(val) => {
-                        const targetVal = val === 'all' ? '' : val;
-                        setRuleTargetName(targetVal);
-                        if (ruleMetric === 'ssl') {
-                          setRuleName(targetVal ? `SSL Expiration: ${targetVal}` : 'SSL Certificate Expiration Alert');
-                        } else {
-                          setRuleName(targetVal ? `Website Down: ${targetVal}` : 'Website Down Alert');
-                        }
-                      }}
-                      options={[
-                        { value: 'all', label: 'All Monitored Websites (Universal)' },
-                        ...websites.map((w) => ({
-                          value: w.name,
-                          label: w.name,
-                          subLabel: w.url,
-                        })),
-                      ]}
-                      className="w-full"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                      <Server className="h-4 w-4 text-blue-500" /> Target Server Fleet
-                    </label>
-                    <CustomSelect
-                      value={selectedServerId}
-                      onChange={setSelectedServerId}
-                      options={[
-                        { value: 'all', label: 'All servers (Entire Agent Fleet)' },
-                        ...servers.map((server) => ({
-                          value: server.id,
-                          label: server.name,
-                          subLabel: server.status === 'online' ? 'Online' : 'Offline',
-                        })),
-                      ]}
-                      className="w-full"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+                {/* Delivery Channels */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+                    <Radio className="h-3.5 w-3.5 text-blue-500" />
+                    Delivery Channels ({selectedChannelIds.length} selected) <span className="text-rose-400">*</span>
+                  </label>
 
-            {/* SECTION 3: NOTIFICATION DELIVERY */}
-            <div className="ops-panel surface-regular p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">
-                  3. Notification Delivery & Schedule
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('channels')}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-400 flex items-center gap-1 cursor-pointer"
-                >
-                  + Add New Channel
-                </button>
-              </div>
-
-              <div className="max-w-md">
-                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
-                  <Clock className="h-3.5 w-3.5 text-purple-500" />
-                  Reminder Interval
-                </label>
-                <CustomSelect
-                  value={ruleRepeatInterval}
-                  onChange={setRuleRepeatInterval}
-                  options={[
-                    { value: '0', label: 'Send once (Do not repeat)' },
-                    { value: '15', label: 'Repeat every 15 minutes' },
-                    { value: '30', label: 'Repeat every 30 minutes' },
-                    { value: '60', label: 'Repeat every 1 hour' },
-                    { value: '120', label: 'Repeat every 2 hours' },
-                  ]}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <label className="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
-                  <Radio className="h-3.5 w-3.5 text-blue-500" />
-                  Select Target Delivery Channels ({selectedChannelIds.length} selected) <span className="text-rose-400">*</span>
-                </label>
-
-                {enabledChannels.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-[var(--border-color)] p-6 text-center">
-                    <p className="text-sm text-[var(--color-muted)]">No active notification channels configured.</p>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('channels')}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:underline cursor-pointer"
-                    >
-                      Configure Telegram / Discord / Email →
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {enabledChannels.map((channel) => {
-                      const isSelected = selectedChannelIds.includes(channel.id);
-                      return (
-                        <div
-                          key={channel.id}
-                          onClick={() => toggleChannel(channel.id)}
-                          className={`flex items-center justify-between rounded-xl border p-3.5 transition-all cursor-pointer select-none ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-xs'
-                              : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:border-blue-500/40 hover:bg-[var(--surface-hover)]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <span
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                                isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
-                              }`}
-                            >
-                              {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-[var(--foreground)] truncate">{channel.name}</p>
-                              <span className="inline-flex items-center rounded-full bg-slate-500/15 px-1.5 py-0.2 text-[9px] font-extrabold uppercase text-[var(--color-muted)]">
-                                {channel.type}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            disabled={testingChannelId === channel.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void testExistingChannel(channel.id, channel.name);
-                            }}
-                            title="Send test notification to this channel"
-                            className="ops-button secondary ml-2 shrink-0 px-2.5 py-1 text-[11px] text-blue-500 hover:text-blue-400 cursor-pointer"
+                  {enabledChannels.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-[var(--border-color)] p-4 text-center">
+                      <p className="text-xs text-[var(--color-muted)]">No active notification channels configured.</p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('channels')}
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-blue-500 hover:underline cursor-pointer"
+                      >
+                        Configure Telegram / Discord / Email →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {enabledChannels.map((channel) => {
+                        const isSelected = selectedChannelIds.includes(channel.id);
+                        return (
+                          <div
+                            key={channel.id}
+                            onClick={() => toggleChannel(channel.id)}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500 shadow-xs'
+                                : 'border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--surface-hover)]'
+                            }`}
                           >
-                            {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                  isSelected ? 'border-blue-500 bg-blue-600 text-white' : 'border-[var(--border-color)]'
+                                }`}
+                              >
+                                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-[var(--foreground)] truncate">{channel.name}</p>
+                                <span className="text-[9px] uppercase font-bold text-[var(--color-muted)]">{channel.type}</span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={testingChannelId === channel.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void testExistingChannel(channel.id, channel.name);
+                              }}
+                              className="text-[10px] font-semibold text-blue-400 hover:underline px-1.5 py-0.5 cursor-pointer ml-1"
+                              title="Send test notification"
+                            >
+                              {testingChannelId === channel.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Test'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reminder Interval */}
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                    <Clock className="h-3.5 w-3.5 text-purple-500" />
+                    Reminder Interval
+                  </label>
+                  <CustomSelect
+                    value={ruleRepeatInterval}
+                    onChange={setRuleRepeatInterval}
+                    options={[
+                      { value: '0', label: 'Send once (Do not repeat)' },
+                      { value: '15', label: 'Repeat every 15 minutes' },
+                      { value: '30', label: 'Repeat every 30 minutes' },
+                      { value: '60', label: 'Repeat every 1 hour' },
+                      { value: '120', label: 'Repeat every 2 hours' },
+                    ]}
+                    className="w-full"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* ACTION BAR */}
+            {/* Bottom Action & Live Summary Bar */}
             {(() => {
               const isNameValid = ruleName.trim().length > 0;
               const isChannelValid = selectedChannelIds.length > 0;
@@ -1835,27 +2146,35 @@ export default function AlertsPage() {
               const disabledReason = !isNameValid
                 ? 'Please provide an alert rule name.'
                 : !isTargetValid
-                ? 'Please specify the target container or service name.'
+                ? `Please specify the monitored ${selectedCategory === 'container' ? 'container' : 'service'} name.`
                 : !isChannelValid
                 ? 'Please select at least one notification delivery channel.'
                 : '';
 
               return (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                  <div className="text-xs text-[var(--color-muted)]">
+                <div className="ops-panel surface-regular p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-blue-500/30 bg-blue-500/5">
+                  <div className="text-xs text-[var(--foreground)] flex items-center gap-2 min-w-0 w-full sm:w-auto">
+                    <Zap className="h-4 w-4 text-blue-400 shrink-0" />
+                    <div className="truncate">
+                      <span className="font-bold text-[var(--foreground)]">Summary: </span>
+                      <span className="text-[var(--color-muted)] font-mono text-[11px] sm:text-xs">
+                        {ruleSummaryText}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                     {!isFormValid && (
-                      <span className="text-amber-400 flex items-center gap-1.5 font-medium">
+                      <span className="text-amber-400 text-xs flex items-center gap-1 font-medium hidden md:inline-flex">
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
                         {disabledReason}
                       </span>
                     )}
-                  </div>
 
-                  <div className="flex items-center gap-3 self-end sm:self-auto">
                     <button
                       type="button"
                       onClick={() => setActiveTab('rules')}
-                      className="ops-button secondary px-5 py-2.5 text-sm cursor-pointer"
+                      className="ops-button secondary px-4 py-2 text-xs cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -1864,7 +2183,7 @@ export default function AlertsPage() {
                       type="submit"
                       disabled={savingRule || !isFormValid}
                       title={disabledReason || 'Create alert rule'}
-                      className="ops-button primary flex items-center gap-2 px-6 py-2.5 text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="ops-button primary flex items-center gap-2 px-5 py-2 text-xs font-bold shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       {savingRule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                       Create Alert Rule
@@ -2592,11 +2911,35 @@ export default function AlertsPage() {
                     </label>
                     <input
                       type="text"
+                      list="edit-network-targets-list"
                       value={editTargetName}
                       onChange={(e) => setEditTargetName(e.target.value)}
                       className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
-                      placeholder="Target name, tag, or host (leave blank for all)"
+                      placeholder="Target name, tag, or host (leave blank for all targets)"
                     />
+                    <datalist id="edit-network-targets-list">
+                      {discoveredNetworkTags.map((tag) => (
+                        <option key={tag} value={tag} label={`Tag Group: ${tag}`} />
+                      ))}
+                      {networkTargets.map((t) => (
+                        <option key={t.id} value={t.name} label={`${t.name} (${t.host})`} />
+                      ))}
+                    </datalist>
+                    {discoveredNetworkTags.length > 0 && (
+                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] text-[var(--color-muted)]">Quick tags:</span>
+                        {discoveredNetworkTags.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setEditTargetName(tag)}
+                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-color)] hover:border-blue-500 text-[var(--color-muted)] hover:text-[var(--foreground)] transition cursor-pointer"
+                          >
+                            #{tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2754,3 +3097,12 @@ export default function AlertsPage() {
     </div>
   );
 }
+
+export default function AlertsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-[var(--color-muted)]">Loading Alert Center...</div>}>
+      <AlertsPageInner />
+    </Suspense>
+  );
+}
+
