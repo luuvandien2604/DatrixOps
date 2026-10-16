@@ -55,3 +55,13 @@ This document contains system guidelines, design principles, and architectural s
   - Use Vanilla CSS and Tailwind utilities matching the project's CSS variables (`var(--background-card)`, `var(--border-color)`, `var(--color-muted)`).
   - Use `react-hot-toast` for notifications.
   - Client components using `useSearchParams()` must be wrapped with `<Suspense>` to support Next.js static prerendering.
+
+---
+
+## 3. Release & Tagging Guidelines
+- **Always Use GitHub Actions Workflow for Release**:
+  - Whenever releasing a new CE Server version (e.g. `v1.8.84`), **always trigger the canonical release action** via the maintainer repository `DatrixOps-cloud`:
+    - Push the corresponding release control tag: `ce-server-release-v<X.Y.Z>` to `DatrixOps-cloud` (e.g. `git -C /Users/luuvandien/VIETNIX/DatrixOps-cloud tag -a "ce-server-release-v<X.Y.Z>" && git -C /Users/luuvandien/VIETNIX/DatrixOps-cloud push origin "ce-server-release-v<X.Y.Z>"`).
+    - This triggers the canonical `Publish CE Server` (`ce-release.yml`) GitHub Action workflow on `DatrixOps-cloud` which validates agent binaries, builds & publishes images to GHCR, and publishes the official GitHub Release.
+  - For Cloud releases: Push `cloud-v<X.Y.Z>` to `DatrixOps-cloud` to trigger `DatrixOps Cloud Release` (`cloud-release.yml`).
+
