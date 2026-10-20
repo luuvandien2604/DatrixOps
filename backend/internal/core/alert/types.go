@@ -38,6 +38,7 @@ type AlertRule struct {
 	RepeatIntervalMinutes int                `json:"repeat_interval_minutes"`
 	TargetName            *string            `json:"target_name,omitempty"`
 	ServerID              *string            `json:"server_id"`
+	ServerIDs             []string           `json:"server_ids,omitempty"`
 	ServerName            *string            `json:"server_name,omitempty"`
 	Enabled               bool               `json:"enabled"`
 	ChannelIDs            []string           `json:"channel_ids,omitempty"`

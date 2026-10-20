@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -12,7 +12,6 @@ import {
   Box,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clock,
   Flame,
   Globe2,
@@ -59,6 +58,8 @@ interface AlertServer {
   id: string;
   name: string;
   status: string;
+  ip_address?: string;
+  hostname?: string;
 }
 
 interface AlertRule {
@@ -70,6 +71,7 @@ interface AlertRule {
   duration_minutes: number;
   enabled: boolean;
   server_id?: string | null;
+  server_ids?: string[];
   server_name?: string | null;
   channel_ids: string[];
   channels: RuleChannel[];
@@ -204,6 +206,8 @@ function AlertsPageInner() {
   const [editServerId, setEditServerId] = useState('');
   const [editTargetName, setEditTargetName] = useState('');
   const [editChannelIds, setEditChannelIds] = useState<string[]>([]);
+  const [editServerSearchQuery, setEditServerSearchQuery] = useState('');
+  const [editWebsiteSearchQuery, setEditWebsiteSearchQuery] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
@@ -230,21 +234,35 @@ function AlertsPageInner() {
   const [ruleOperator, setRuleOperator] = useState('>');
   const [ruleThreshold, setRuleThreshold] = useState('90');
   const [ruleDuration, setRuleDuration] = useState('1');
-  const [selectedServerId, setSelectedServerId] = useState('all');
+  const [selectedServerIds, setSelectedServerIds] = useState<string[]>([]);
+  const [scopeSearchQuery, setScopeSearchQuery] = useState('');
+  const [selectedWebsiteIds, setSelectedWebsiteIds] = useState<string[]>([]);
+  const [websiteSearchQuery, setWebsiteSearchQuery] = useState('');
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [showCustomDuration, setShowCustomDuration] = useState(false);
-  const [isScopeOpen, setIsScopeOpen] = useState(false);
-  const scopeDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Auto-initialize selectedServerIds when servers are fetched or paramServerId changes
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (scopeDropdownRef.current && !scopeDropdownRef.current.contains(e.target as Node)) {
-        setIsScopeOpen(false);
+    if (servers.length > 0) {
+      if (paramServerId && servers.some((s) => s.id === paramServerId)) {
+        setSelectedServerIds([paramServerId]);
+      } else {
+        setSelectedServerIds((cur) => (cur.length === 0 ? servers.map((s) => s.id) : cur));
       }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    }
+  }, [servers, paramServerId]);
+
+  // Auto-initialize selectedWebsiteIds when websites are fetched or paramTarget changes
+  useEffect(() => {
+    if (websites.length > 0) {
+      if (paramTarget && websites.some((w) => w.name === paramTarget)) {
+        const found = websites.find((w) => w.name === paramTarget);
+        if (found) setSelectedWebsiteIds([found.id]);
+      } else {
+        setSelectedWebsiteIds((cur) => (cur.length === 0 ? websites.map((w) => w.id) : cur));
+      }
+    }
+  }, [websites, paramTarget]);
 
   // Sync with URL query parameters (e.g. from /dashboard/network or /dashboard/servers/[id])
   useEffect(() => {
@@ -265,16 +283,20 @@ function AlertsPageInner() {
         setRuleMetric(met);
         const tgt = paramTarget || '';
         setRuleTargetName(tgt);
-        if (paramServerId) setSelectedServerId(paramServerId);
+        if (paramServerId) setSelectedServerIds([paramServerId]);
         if (tgt) {
           setRuleName(`Network ${met === 'network_loss' ? 'Packet Loss' : 'Latency'}: ${tgt}`);
         }
       } else if (paramCategory === 'website') {
         setRuleMetric(paramMetric === 'ssl' ? 'ssl' : 'website');
-        if (paramTarget) setRuleTargetName(paramTarget);
+        if (paramTarget) {
+          setRuleTargetName(paramTarget);
+          const found = websites.find((w) => w.name === paramTarget);
+          if (found) setSelectedWebsiteIds([found.id]);
+        }
       }
     }
-  }, [paramTab, paramCategory, paramTarget, paramServerId, paramMetric]);
+  }, [paramTab, paramCategory, paramTarget, paramServerId, paramMetric, websites]);
 
   // Channel form state
   const [channelName, setChannelName] = useState('');
@@ -301,7 +323,8 @@ function AlertsPageInner() {
     setSelectedCategory(cat);
     setErrorMessage('');
     setShowCustomDuration(false);
-    setIsScopeOpen(false);
+    setScopeSearchQuery('');
+    setWebsiteSearchQuery('');
     if (cat === 'status') {
       setRuleMetric('status');
       setRuleName('Server Offline Alert');
@@ -336,7 +359,6 @@ function AlertsPageInner() {
       setRuleThreshold('0');
       setRuleDuration('1');
       setRuleTargetName('');
-      setSelectedServerId('all');
     }
   };
 
@@ -410,12 +432,87 @@ function AlertsPageInner() {
     return Array.from(set);
   }, [networkTargets]);
 
+  const toggleServer = (serverId: string) => {
+    setSelectedServerIds((current) =>
+      current.includes(serverId)
+        ? current.filter((id) => id !== serverId)
+        : [...current, serverId]
+    );
+  };
+
+  const toggleAllServers = () => {
+    if (selectedServerIds.length === servers.length) {
+      setSelectedServerIds([]);
+    } else {
+      setSelectedServerIds(servers.map((s) => s.id));
+    }
+  };
+
+  const filteredServers = useMemo(() => {
+    if (!scopeSearchQuery.trim()) return servers;
+    const q = scopeSearchQuery.trim().toLowerCase();
+    return servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.hostname && s.hostname.toLowerCase().includes(q)) ||
+        (s.ip_address && s.ip_address.toLowerCase().includes(q))
+    );
+  }, [servers, scopeSearchQuery]);
+
+  const toggleWebsite = (websiteId: string) => {
+    setSelectedWebsiteIds((current) =>
+      current.includes(websiteId)
+        ? current.filter((id) => id !== websiteId)
+        : [...current, websiteId]
+    );
+  };
+
+  const toggleAllWebsites = () => {
+    if (selectedWebsiteIds.length === websites.length) {
+      setSelectedWebsiteIds([]);
+    } else {
+      setSelectedWebsiteIds(websites.map((w) => w.id));
+    }
+  };
+
+  const filteredWebsites = useMemo(() => {
+    if (!websiteSearchQuery.trim()) return websites;
+    const q = websiteSearchQuery.trim().toLowerCase();
+    return websites.filter(
+      (w) =>
+        w.name.toLowerCase().includes(q) ||
+        (w.url && w.url.toLowerCase().includes(q))
+    );
+  }, [websites, websiteSearchQuery]);
+
+  const filteredEditServers = useMemo(() => {
+    if (!editServerSearchQuery.trim()) return servers;
+    const q = editServerSearchQuery.trim().toLowerCase();
+    return servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.hostname && s.hostname.toLowerCase().includes(q)) ||
+        (s.ip_address && s.ip_address.toLowerCase().includes(q))
+    );
+  }, [servers, editServerSearchQuery]);
+
+  const filteredEditWebsites = useMemo(() => {
+    if (!editWebsiteSearchQuery.trim()) return websites;
+    const q = editWebsiteSearchQuery.trim().toLowerCase();
+    return websites.filter(
+      (w) =>
+        w.name.toLowerCase().includes(q) ||
+        (w.url && w.url.toLowerCase().includes(q))
+    );
+  }, [websites, editWebsiteSearchQuery]);
+
   const relevantNetworkTargets = useMemo(() => {
-    if (selectedServerId && selectedServerId !== 'all') {
-      return networkTargets.filter((t) => t.agent_id === selectedServerId);
+    if (selectedServerIds.length > 0 && selectedServerIds.length < servers.length) {
+      const serverSet = new Set(selectedServerIds);
+      return networkTargets.filter((t) => serverSet.has(t.agent_id));
     }
     return networkTargets;
-  }, [networkTargets, selectedServerId]);
+  }, [networkTargets, selectedServerIds, servers.length]);
 
   const matchedNetworkTargets = useMemo(() => {
     if (selectedCategory !== 'network') return [];
@@ -457,15 +554,26 @@ function AlertsPageInner() {
     // Scope code
     let scope = '';
     if (selectedCategory === 'website') {
-      scope = ruleTargetName ? `site (${ruleTargetName})` : `all (${websites.length} sites)`;
-    } else {
-      const serverCount = servers.length;
-      const siteCount = websites.length;
-      if (selectedServerId === 'all') {
-        scope = `all (${serverCount} server${serverCount === 1 ? '' : 's'}, ${siteCount} site${siteCount === 1 ? '' : 's'})`;
+      if (selectedWebsiteIds.length === 0) {
+        scope = 'no sites selected';
+      } else if (selectedWebsiteIds.length === websites.length) {
+        scope = `all (${websites.length} site${websites.length === 1 ? '' : 's'})`;
+      } else if (selectedWebsiteIds.length === 1) {
+        const sName = websites.find((w) => w.id === selectedWebsiteIds[0])?.name || '1 site';
+        scope = `site (${sName})`;
       } else {
-        const sName = servers.find((s) => s.id === selectedServerId)?.name || 'server';
-        scope = `server (${sName})`;
+        scope = `${selectedWebsiteIds.length} sites`;
+      }
+    } else {
+      if (selectedServerIds.length === 0) {
+        scope = 'no agents selected';
+      } else if (selectedServerIds.length === servers.length) {
+        scope = `all (${servers.length} agent${servers.length === 1 ? '' : 's'})`;
+      } else if (selectedServerIds.length === 1) {
+        const sName = servers.find((s) => s.id === selectedServerIds[0])?.name || '1 agent';
+        scope = `agent (${sName})`;
+      } else {
+        scope = `${selectedServerIds.length} agents`;
       }
     }
 
@@ -495,7 +603,8 @@ function AlertsPageInner() {
     ruleOperator,
     ruleThreshold,
     ruleTargetName,
-    selectedServerId,
+    selectedServerIds,
+    selectedWebsiteIds,
     servers,
     websites,
     selectedChannelIds,
@@ -633,6 +742,18 @@ function AlertsPageInner() {
       return;
     }
 
+    if (selectedCategory === 'website') {
+      if (selectedWebsiteIds.length === 0) {
+        setErrorMessage('Please select at least one website in scope.');
+        return;
+      }
+    } else {
+      if (selectedServerIds.length === 0) {
+        setErrorMessage('Please select at least one agent in scope.');
+        return;
+      }
+    }
+
     const isSpecialMetric = ruleMetric === 'status' || ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl';
     if (ruleMetric === 'container' || ruleMetric === 'service') {
       if (!ruleTargetName.trim()) {
@@ -663,7 +784,39 @@ function AlertsPageInner() {
 
     setSavingRule(true);
     try {
-      const createdRule = await apiClient('/alerts/rules', {
+      const isFleetWide = selectedServerIds.length === servers.length || selectedServerIds.length === 0;
+      const isSingleServer = selectedServerIds.length === 1;
+
+      const payloadServerId = selectedCategory === 'website'
+        ? null
+        : isSingleServer
+        ? selectedServerIds[0]
+        : null;
+
+      const payloadServerIds = selectedCategory === 'website'
+        ? []
+        : (!isFleetWide && !isSingleServer)
+        ? selectedServerIds
+        : [];
+
+      let payloadTargetName: string | null = null;
+      if (selectedCategory === 'website') {
+        if (selectedWebsiteIds.length === 1) {
+          const site = websites.find((w) => w.id === selectedWebsiteIds[0]);
+          payloadTargetName = site?.name || ruleTargetName.trim() || null;
+        } else {
+          payloadTargetName = ruleTargetName.trim() || null;
+        }
+      } else if (
+        ruleMetric === 'container' ||
+        ruleMetric === 'service' ||
+        ruleMetric === 'network_latency' ||
+        ruleMetric === 'network_loss'
+      ) {
+        payloadTargetName = ruleTargetName.trim() || null;
+      }
+
+      const resData = await apiClient('/alerts/rules', {
         method: 'POST',
         body: JSON.stringify({
           name: ruleName.trim(),
@@ -671,15 +824,21 @@ function AlertsPageInner() {
           operator: isSpecialMetric ? '==' : ruleOperator,
           threshold: ruleMetric === 'ssl' ? (threshold || 14) : isSpecialMetric ? 0 : threshold,
           duration_minutes: duration,
-          server_id: (selectedServerId === 'all' || selectedCategory === 'website') ? null : selectedServerId,
+          server_id: payloadServerId,
+          server_ids: payloadServerIds,
           channel_ids: selectedChannelIds,
           repeat_interval_minutes: Number.parseInt(ruleRepeatInterval, 10) || 0,
-          target_name: (ruleMetric === 'container' || ruleMetric === 'service' || ruleMetric === 'website' || ruleMetric === 'ssl' || ruleMetric === 'network_latency' || ruleMetric === 'network_loss') ? (ruleTargetName.trim() || null) : null,
+          target_name: payloadTargetName,
         }),
       });
 
-      setRules((current) => [createdRule, ...current]);
-      setSuccessMessage(`Alert rule "${createdRule.name}" created successfully!`);
+      if (Array.isArray(resData)) {
+        setRules((current) => [...resData, ...current]);
+        setSuccessMessage(`${resData.length} alert rules created successfully!`);
+      } else {
+        setRules((current) => [resData, ...current]);
+        setSuccessMessage(`Alert rule "${resData?.name || ruleName.trim()}" created successfully!`);
+      }
       setActiveTab('rules');
 
       // Reset form
@@ -690,7 +849,10 @@ function AlertsPageInner() {
       setRuleRepeatInterval('0');
       setRuleThreshold('90');
       setRuleDuration('1');
-      setSelectedServerId('all');
+      setSelectedServerIds(servers.map((s) => s.id));
+      setSelectedWebsiteIds(websites.map((w) => w.id));
+      setScopeSearchQuery('');
+      setWebsiteSearchQuery('');
       setSelectedChannelIds([]);
     } catch (error) {
       console.error(error);
@@ -711,6 +873,8 @@ function AlertsPageInner() {
     setEditServerId(rule.server_id || '');
     setEditTargetName(rule.target_name || '');
     setEditChannelIds(rule.channels && rule.channels.length > 0 ? rule.channels.map((c) => c.id) : rule.channel_ids || []);
+    setEditServerSearchQuery('');
+    setEditWebsiteSearchQuery('');
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -735,7 +899,7 @@ function AlertsPageInner() {
         duration_minutes: Number(editDuration),
         repeat_interval_minutes: Number(editRepeat),
         server_id: editServerId && editServerId !== 'all' ? editServerId : null,
-        target_name: (editMetric === 'container' || editMetric === 'service' || editMetric === 'network_latency' || editMetric === 'network_loss') ? (editTargetName.trim() || null) : null,
+        target_name: (editMetric === 'container' || editMetric === 'service' || editMetric === 'network_latency' || editMetric === 'network_loss' || editMetric === 'website' || editMetric === 'ssl') ? (editTargetName.trim() || null) : null,
         channel_ids: editChannelIds,
       };
       await apiClient(`/alerts/rules/${editingRule.id}`, {
@@ -1305,12 +1469,17 @@ function AlertsPageInner() {
                             {rule.target_name ? `Target: ${rule.target_name}` : 'All Targets'}
                           </span>
                         )}
-                        {rule.server_name && (
+                        {rule.server_name ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] text-[var(--color-muted)] border border-[var(--border-color)]">
                             <Server className="w-2.5 h-2.5" />
                             {rule.server_name}
                           </span>
-                        )}
+                        ) : rule.metric !== 'website' && rule.metric !== 'ssl' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <Server className="w-2.5 h-2.5" />
+                            All servers
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-[var(--color-muted)] flex-wrap">
                         <span>
@@ -1950,124 +2119,215 @@ function AlertsPageInner() {
             )}
 
             {/* 2. SCOPE SECTION */}
-            <div className="p-6 space-y-2">
-              <div className="text-[11px] font-bold tracking-wider uppercase text-[var(--color-muted)] font-mono">
-                SCOPE
+            <div className="p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold tracking-wider uppercase text-[var(--color-muted)] font-mono">
+                  {selectedCategory === 'website'
+                    ? `SCOPE · ${
+                        selectedWebsiteIds.length === websites.length && websites.length > 0
+                          ? 'ALL SITES'
+                          : `${selectedWebsiteIds.length} OF ${websites.length} SITES`
+                      } SELECTED`
+                    : `SCOPE · ${
+                        selectedServerIds.length === servers.length && servers.length > 0
+                          ? 'ALL AGENTS'
+                          : `${selectedServerIds.length} OF ${servers.length} AGENTS`
+                      } SELECTED`}
+                </span>
+                <div className="flex items-center gap-3 text-xs">
+                  {selectedCategory === 'website' ? (
+                    websites.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={toggleAllWebsites}
+                        className="text-blue-500 hover:underline font-medium cursor-pointer"
+                      >
+                        {selectedWebsiteIds.length === websites.length ? 'deselect all' : 'select all'}
+                      </button>
+                    )
+                  ) : (
+                    servers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={toggleAllServers}
+                        className="text-blue-500 hover:underline font-medium cursor-pointer"
+                      >
+                        {selectedServerIds.length === servers.length ? 'deselect all' : 'select all'}
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
 
-              <div className="relative" ref={scopeDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsScopeOpen(!isScopeOpen)}
-                  className="w-full flex items-center justify-between rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] px-4 py-2.5 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] transition cursor-pointer"
-                >
-                  <span className="font-semibold text-sm">
-                    {selectedCategory === 'website'
-                      ? (ruleTargetName ? ruleTargetName : 'All websites')
-                      : (selectedServerId === 'all' ? 'All servers' : (servers.find((s) => s.id === selectedServerId)?.name || 'Selected server'))}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[var(--color-muted)] font-mono text-[11px]">
-                    {selectedCategory === 'website'
-                      ? `${websites.length} site${websites.length === 1 ? '' : 's'}`
-                      : `${servers.length} servers · ${websites.length} site${websites.length === 1 ? '' : 's'}`}
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isScopeOpen ? 'rotate-180 text-blue-500' : ''}`} />
-                  </span>
-                </button>
+              {selectedCategory === 'website' ? (
+                <>
+                  {websites.length > 3 && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)] pointer-events-none" />
+                      <input
+                        type="text"
+                        value={websiteSearchQuery}
+                        onChange={(e) => setWebsiteSearchQuery(e.target.value)}
+                        placeholder="Search websites by name, URL..."
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                      />
+                      {websiteSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setWebsiteSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 rounded cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                {isScopeOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 z-30 ops-popover surface-elevated max-h-60 overflow-y-auto py-1.5 rounded-xl border border-[var(--border-color)] shadow-lg bg-[var(--background-card)]">
-                    {selectedCategory === 'website' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRuleTargetName('');
-                            if (ruleMetric === 'ssl') {
-                              setRuleName('SSL Certificate Expiration Alert');
-                            } else {
-                              setRuleName('Website Down Alert');
-                            }
-                            setIsScopeOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition cursor-pointer ${
-                            ruleTargetName === ''
-                              ? 'bg-blue-500/10 text-blue-500 font-semibold'
-                              : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
-                          }`}
-                        >
-                          <span>All websites ({websites.length} sites)</span>
-                          {ruleTargetName === '' && <Check className="h-3.5 w-3.5 text-blue-500" />}
-                        </button>
-                        {websites.map((w) => (
-                          <button
-                            key={w.id}
-                            type="button"
-                            onClick={() => {
-                              setRuleTargetName(w.name);
-                              if (ruleMetric === 'ssl') {
-                                setRuleName(`SSL Expiration: ${w.name}`);
-                              } else {
-                                setRuleName(`Website Down: ${w.name}`);
-                              }
-                              setIsScopeOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition cursor-pointer ${
-                              ruleTargetName === w.name
-                                ? 'bg-blue-500/10 text-blue-500 font-semibold'
-                                : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                  {websites.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-[var(--border-color)] text-center">
+                      <p className="text-xs text-[var(--color-muted)]">No websites monitored yet.</p>
+                    </div>
+                  ) : filteredWebsites.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-[var(--border-color)] text-center">
+                      <p className="text-xs text-[var(--color-muted)]">No websites matching &quot;{websiteSearchQuery}&quot;</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto divide-y divide-[var(--border-color)] border border-[var(--border-color)] rounded-xl bg-[var(--surface-subtle)]/30">
+                      {filteredWebsites.map((site) => {
+                        const isSelected = selectedWebsiteIds.includes(site.id);
+                        const isUp = site.status === 'up' || site.status === 'online';
+                        return (
+                          <div
+                            key={site.id}
+                            onClick={() => toggleWebsite(site.id)}
+                            className={`flex items-center justify-between px-4 py-2.5 transition cursor-pointer select-none ${
+                              isSelected ? 'bg-blue-500/5' : 'hover:bg-[var(--surface-hover)]'
                             }`}
                           >
-                            <div className="min-w-0">
-                              <p className="truncate font-medium">{w.name}</p>
-                              <p className="text-[10px] text-[var(--color-muted)] truncate font-mono">{w.url}</p>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                  isSelected
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                                }`}
+                              >
+                                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                              </span>
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                  isUp ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-[var(--foreground)] truncate">
+                                  {site.name}
+                                </p>
+                                <p className="text-[10px] text-[var(--color-muted)] font-mono truncate">
+                                  {site.url}
+                                </p>
+                              </div>
                             </div>
-                            {ruleTargetName === w.name && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0 ml-2" />}
-                          </button>
-                        ))}
-                      </>
-                    ) : (
-                      <>
+
+                            <div className="flex items-center gap-4 text-xs font-mono text-[var(--color-muted)] shrink-0 ml-3">
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  isUp ? 'text-emerald-500' : 'text-rose-500'
+                                }`}
+                              >
+                                {site.status || 'unknown'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {servers.length > 3 && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)] pointer-events-none" />
+                      <input
+                        type="text"
+                        value={scopeSearchQuery}
+                        onChange={(e) => setScopeSearchQuery(e.target.value)}
+                        placeholder="Search agents by name, IP, hostname..."
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                      />
+                      {scopeSearchQuery && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedServerId('all');
-                            setIsScopeOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition cursor-pointer ${
-                            selectedServerId === 'all'
-                              ? 'bg-blue-500/10 text-blue-500 font-semibold'
-                              : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
-                          }`}
+                          onClick={() => setScopeSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 rounded cursor-pointer"
                         >
-                          <span>All servers (Entire Agent Fleet)</span>
-                          {selectedServerId === 'all' && <Check className="h-3.5 w-3.5 text-blue-500" />}
+                          <X className="h-3 w-3" />
                         </button>
-                        {servers.map((s) => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedServerId(s.id);
-                              setIsScopeOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left transition cursor-pointer ${
-                              selectedServerId === s.id
-                                ? 'bg-blue-500/10 text-blue-500 font-semibold'
-                                : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                      )}
+                    </div>
+                  )}
+
+                  {servers.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-[var(--border-color)] text-center">
+                      <p className="text-xs text-[var(--color-muted)]">No server agents connected.</p>
+                    </div>
+                  ) : filteredServers.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-dashed border-[var(--border-color)] text-center">
+                      <p className="text-xs text-[var(--color-muted)]">No agents matching &quot;{scopeSearchQuery}&quot;</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto divide-y divide-[var(--border-color)] border border-[var(--border-color)] rounded-xl bg-[var(--surface-subtle)]/30">
+                      {filteredServers.map((server) => {
+                        const isSelected = selectedServerIds.includes(server.id);
+                        const isOnline = server.status === 'online';
+                        return (
+                          <div
+                            key={server.id}
+                            onClick={() => toggleServer(server.id)}
+                            className={`flex items-center justify-between px-4 py-2.5 transition cursor-pointer select-none ${
+                              isSelected ? 'bg-blue-500/5' : 'hover:bg-[var(--surface-hover)]'
                             }`}
                           >
-                            <div className="min-w-0 flex items-center gap-2">
-                              <span className={`h-2 w-2 rounded-full ${s.status === 'online' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                              <span className="truncate font-medium">{s.name}</span>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                  isSelected
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                                }`}
+                              >
+                                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                              </span>
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                  isOnline ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              <span className="text-xs font-semibold text-[var(--foreground)] truncate">
+                                {server.name}
+                              </span>
                             </div>
-                            {selectedServerId === s.id && <Check className="h-3.5 w-3.5 text-blue-500 shrink-0 ml-2" />}
-                          </button>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+
+                            <div className="flex items-center gap-4 text-xs font-mono text-[var(--color-muted)] shrink-0 ml-3">
+                              {server.ip_address && (
+                                <span className="hidden sm:inline text-[11px]">{server.ip_address}</span>
+                              )}
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  isOnline ? 'text-emerald-500' : 'text-rose-500'
+                                }`}
+                              >
+                                {server.status || 'unknown'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* 3. NOTIFY SECTION */}
@@ -2228,16 +2488,23 @@ function AlertsPageInner() {
             {(() => {
               const isNameValid = ruleName.trim().length > 0;
               const isChannelValid = selectedChannelIds.length > 0;
+              const isScopeValid =
+                selectedCategory === 'website'
+                  ? selectedWebsiteIds.length > 0
+                  : selectedServerIds.length > 0;
               const isConditionValid =
                 !(selectedCategory === 'container' || selectedCategory === 'service') ||
                 ruleTargetName.trim().length > 0;
-              const isFormValid = isNameValid && isChannelValid && isConditionValid;
+              const isFormValid = isNameValid && isChannelValid && isScopeValid && isConditionValid;
 
               return (
                 <div className="px-6 py-4 bg-[var(--surface-subtle)]/40 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4 text-xs font-mono">
                     <span className={`inline-flex items-center gap-1 ${isConditionValid ? 'text-emerald-500 font-medium' : 'text-[var(--color-muted)] opacity-60'}`}>
                       ✓ condition
+                    </span>
+                    <span className={`inline-flex items-center gap-1 ${isScopeValid ? 'text-emerald-500 font-medium' : 'text-[var(--color-muted)] opacity-60'}`}>
+                      ✓ scope
                     </span>
                     <span className={`inline-flex items-center gap-1 ${isNameValid ? 'text-emerald-500 font-medium' : 'text-[var(--color-muted)] opacity-60'}`}>
                       ✓ name
@@ -2893,22 +3160,209 @@ function AlertsPageInner() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
-                  Target Server
+                <label className="mb-1.5 flex items-center justify-between text-xs font-semibold text-[var(--foreground)]">
+                  <span>Scope ({['website', 'ssl'].includes(editMetric) ? 'Target Website' : 'Target Server'})</span>
+                  <span className="text-[11px] font-mono text-[var(--color-muted)] font-normal">
+                    {['website', 'ssl'].includes(editMetric)
+                      ? (editTargetName ? `Site: ${editTargetName}` : 'All websites')
+                      : (!editServerId || editServerId === 'all'
+                          ? 'All servers'
+                          : (servers.find((s) => s.id === editServerId)?.name || 'Selected server'))}
+                  </span>
                 </label>
-                <CustomSelect
-                  value={editServerId || 'all'}
-                  onChange={(val) => setEditServerId(val === 'all' ? '' : val)}
-                  options={[
-                    { value: 'all', label: 'All servers (Entire Agent Fleet)' },
-                    ...servers.map((s) => ({
-                      value: s.id,
-                      label: s.name,
-                      subLabel: s.status === 'online' ? 'Online' : 'Offline',
-                    })),
-                  ]}
-                  className="w-full"
-                />
+
+                {['website', 'ssl'].includes(editMetric) ? (
+                  <div className="space-y-2">
+                    {websites.length > 3 && (
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)] pointer-events-none" />
+                        <input
+                          type="text"
+                          value={editWebsiteSearchQuery}
+                          onChange={(e) => setEditWebsiteSearchQuery(e.target.value)}
+                          placeholder="Search websites by name, URL..."
+                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                        />
+                        {editWebsiteSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setEditWebsiteSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 rounded cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="max-h-48 overflow-y-auto divide-y divide-[var(--border-color)] border border-[var(--border-color)] rounded-xl bg-[var(--surface-subtle)]/30">
+                      {/* All websites option */}
+                      <div
+                        onClick={() => setEditTargetName('')}
+                        className={`flex items-center justify-between px-3.5 py-2.5 transition cursor-pointer select-none ${
+                          !editTargetName ? 'bg-blue-500/10 font-semibold' : 'hover:bg-[var(--surface-hover)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                              !editTargetName
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                            }`}
+                          >
+                            {!editTargetName && <Check className="h-3 w-3 stroke-[3]" />}
+                          </span>
+                          <span className="text-xs text-[var(--foreground)]">All websites (Entire Fleet)</span>
+                        </div>
+                        <span className="text-[11px] font-mono text-[var(--color-muted)]">
+                          {websites.length} sites
+                        </span>
+                      </div>
+
+                      {/* Filtered websites */}
+                      {filteredEditWebsites.map((site) => {
+                        const isSelected = editTargetName === site.name;
+                        const isUp = site.status === 'up' || site.status === 'online';
+                        return (
+                          <div
+                            key={site.id}
+                            onClick={() => setEditTargetName(site.name)}
+                            className={`flex items-center justify-between px-3.5 py-2.5 transition cursor-pointer select-none ${
+                              isSelected ? 'bg-blue-500/10 font-semibold' : 'hover:bg-[var(--surface-hover)]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                  isSelected
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                                }`}
+                              >
+                                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                              </span>
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                  isUp ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs text-[var(--foreground)] truncate font-medium">{site.name}</p>
+                                <p className="text-[10px] text-[var(--color-muted)] font-mono truncate">{site.url}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[11px] font-mono ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+                              {site.status || 'unknown'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {servers.length > 3 && (
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)] pointer-events-none" />
+                        <input
+                          type="text"
+                          value={editServerSearchQuery}
+                          onChange={(e) => setEditServerSearchQuery(e.target.value)}
+                          placeholder="Search servers by name, IP, hostname..."
+                          className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] pl-9 pr-8 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                        />
+                        {editServerSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setEditServerSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 rounded cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="max-h-48 overflow-y-auto divide-y divide-[var(--border-color)] border border-[var(--border-color)] rounded-xl bg-[var(--surface-subtle)]/30">
+                      {/* All servers option */}
+                      <div
+                        onClick={() => setEditServerId('')}
+                        className={`flex items-center justify-between px-3.5 py-2.5 transition cursor-pointer select-none ${
+                          !editServerId || editServerId === 'all'
+                            ? 'bg-blue-500/10 font-semibold'
+                            : 'hover:bg-[var(--surface-hover)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                              !editServerId || editServerId === 'all'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                            }`}
+                          >
+                            {(!editServerId || editServerId === 'all') && (
+                              <Check className="h-3 w-3 stroke-[3]" />
+                            )}
+                          </span>
+                          <span className="text-xs text-[var(--foreground)]">All servers (Entire Agent Fleet)</span>
+                        </div>
+                        <span className="text-[11px] font-mono text-[var(--color-muted)]">
+                          {servers.length} agents
+                        </span>
+                      </div>
+
+                      {/* Filtered individual servers */}
+                      {filteredEditServers.map((server) => {
+                        const isSelected = editServerId === server.id;
+                        const isOnline = server.status === 'online';
+                        return (
+                          <div
+                            key={server.id}
+                            onClick={() => setEditServerId(server.id)}
+                            className={`flex items-center justify-between px-3.5 py-2.5 transition cursor-pointer select-none ${
+                              isSelected ? 'bg-blue-500/10 font-semibold' : 'hover:bg-[var(--surface-hover)]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                                  isSelected
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                                }`}
+                              >
+                                {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                              </span>
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                  isOnline ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              <span className="text-xs font-semibold text-[var(--foreground)] truncate">
+                                {server.name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs font-mono text-[var(--color-muted)] shrink-0 ml-3">
+                              {server.ip_address && (
+                                <span className="hidden sm:inline text-[11px]">{server.ip_address}</span>
+                              )}
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  isOnline ? 'text-emerald-500' : 'text-rose-500'
+                                }`}
+                              >
+                                {server.status || 'unknown'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Threshold & condition for metrics */}
@@ -3085,9 +3539,26 @@ function AlertsPageInner() {
 
               {/* Channel selection */}
               <div>
-                <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
-                  Notification Channels
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-[var(--foreground)]">
+                    Notification Channels · {editChannelIds.length} SELECTED
+                  </label>
+                  {channels.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editChannelIds.length === channels.length) {
+                          setEditChannelIds([]);
+                        } else {
+                          setEditChannelIds(channels.map((c) => c.id));
+                        }
+                      }}
+                      className="text-xs text-blue-500 hover:underline font-medium cursor-pointer"
+                    >
+                      {editChannelIds.length === channels.length ? 'deselect all' : 'select all'}
+                    </button>
+                  )}
+                </div>
                 {channels.length === 0 ? (
                   <p className="p-3 text-xs text-[var(--color-muted)] text-center border border-[var(--border-color)] rounded-xl">
                     No notification channels configured.

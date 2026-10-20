@@ -57,7 +57,19 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rule.Name = strings.TrimSpace(rule.Name)
-	if rule.ServerID != nil {
+	cleanedServerIDs := make([]string, 0, len(rule.ServerIDs))
+	for _, id := range rule.ServerIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed != "" {
+			cleanedServerIDs = append(cleanedServerIDs, trimmed)
+		}
+	}
+	rule.ServerIDs = uniqueStrings(cleanedServerIDs)
+
+	if len(rule.ServerIDs) == 1 {
+		rule.ServerID = &rule.ServerIDs[0]
+		rule.ServerIDs = nil
+	} else if len(rule.ServerIDs) == 0 && rule.ServerID != nil {
 		normalizedServerID := strings.TrimSpace(*rule.ServerID)
 		if normalizedServerID == "" {
 			rule.ServerID = nil
@@ -65,6 +77,7 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 			rule.ServerID = &normalizedServerID
 		}
 	}
+
 	if rule.Metric == "status" || rule.Metric == "container" || rule.Metric == "service" {
 		rule.Operator = "=="
 		rule.Threshold = 0
@@ -84,6 +97,43 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 
 	rule.Enabled = true
 	rule.UserID = userID
+
+	// If multiple server IDs are explicitly targeted, create a rule for each server
+	if len(rule.ServerIDs) > 1 {
+		createdRules := make([]AlertRule, 0, len(rule.ServerIDs))
+		for _, sID := range rule.ServerIDs {
+			subRule := rule
+			serverIDCopy := sID
+			subRule.ServerID = &serverIDCopy
+			subRule.ServerIDs = nil
+			if err := h.repo.CreateRule(r.Context(), &subRule); err != nil {
+				switch {
+				case errors.Is(err, ErrInvalidChannelSelection):
+					response.Error(w, http.StatusBadRequest, "INVALID_CHANNEL_SELECTION", "One or more notification channels are invalid, disabled, or unavailable")
+				case errors.Is(err, ErrInvalidServerSelection):
+					response.Error(w, http.StatusBadRequest, "INVALID_AGENT_SELECTION", "One of the selected agents is invalid or unavailable")
+				default:
+					response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create alert rules")
+				}
+				return
+			}
+			auditlog.Record(r.Context(), h.repo.db, userID, "CREATE_ALERT_RULE", "ALERT_RULE", subRule.ID, map[string]any{
+				"name":                    subRule.Name,
+				"metric":                  subRule.Metric,
+				"operator":                subRule.Operator,
+				"threshold":               subRule.Threshold,
+				"duration_minutes":        subRule.DurationMinutes,
+				"repeat_interval_minutes": subRule.RepeatIntervalMinutes,
+				"target_name":             subRule.TargetName,
+				"server_id":               subRule.ServerID,
+				"channel_ids":             subRule.ChannelIDs,
+			})
+			createdRules = append(createdRules, subRule)
+		}
+		response.Success(w, http.StatusCreated, createdRules)
+		return
+	}
+
 	if err := h.repo.CreateRule(r.Context(), &rule); err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidChannelSelection):
