@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -552,6 +553,75 @@ func (r *Repository) GetChannel(ctx context.Context, id, userID string) (*AlertC
 		return nil, fmt.Errorf("decode alert channel config: %w", err)
 	}
 	return &channel, nil
+}
+
+// UpdateChannel cập nhật name, type và config của một notification channel.
+// Nếu các trường secret (như bot_token, webhook_url, password) là rỗng hoặc "configured",
+// giá trị bí mật hiện tại trong cơ sở dữ liệu sẽ được giữ nguyên.
+func (r *Repository) UpdateChannel(ctx context.Context, channel *AlertChannel) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin update alert channel transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var existingType string
+	var existingConfigBytes []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT type, config
+		FROM alert_channels
+		WHERE id = $1 AND user_id = $2
+		FOR UPDATE
+	`, channel.ID, channel.UserID).Scan(&existingType, &existingConfigBytes); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrChannelNotFound
+		}
+		return fmt.Errorf("lock alert channel: %w", err)
+	}
+
+	existingConfig := make(map[string]interface{})
+	if len(existingConfigBytes) > 0 {
+		_ = json.Unmarshal(existingConfigBytes, &existingConfig)
+	}
+
+	// Merge secrets so user doesn't lose existing tokens if left blank or "configured"
+	mergedConfig := make(map[string]interface{})
+	for k, v := range existingConfig {
+		mergedConfig[k] = v
+	}
+	for k, v := range channel.Config {
+		if str, ok := v.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if trimmed == "" || trimmed == "configured" {
+				continue
+			}
+		}
+		mergedConfig[k] = v
+	}
+
+	configBytes, err := json.Marshal(mergedConfig)
+	if err != nil {
+		return fmt.Errorf("encode merged alert channel config: %w", err)
+	}
+
+	if err := tx.QueryRow(ctx, `
+		UPDATE alert_channels
+		SET name = $3,
+		    type = $4,
+		    config = $5,
+		    updated_at = NOW()
+		WHERE id = $1 AND user_id = $2
+		RETURNING updated_at
+	`, channel.ID, channel.UserID, channel.Name, channel.Type, configBytes).Scan(&channel.UpdatedAt); err != nil {
+		return fmt.Errorf("update alert channel: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit update alert channel: %w", err)
+	}
+
+	channel.Config = mergedConfig
+	return nil
 }
 
 // GetRuleWithChannels lấy thông tin một alert rule và các channels đã liên kết.

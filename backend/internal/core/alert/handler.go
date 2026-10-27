@@ -330,6 +330,87 @@ func (h *Handler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusCreated, channel)
 }
 
+// UpdateChannel updates an existing Telegram, Discord, or Email notification channel.
+func (h *Handler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
+	userID, ok := userIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Channel ID is required")
+		return
+	}
+
+	var channel AlertChannel
+	if err := json.NewDecoder(r.Body).Decode(&channel); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request payload")
+		return
+	}
+
+	channel.ID = id
+	channel.UserID = userID
+	channel.Name = strings.TrimSpace(channel.Name)
+	channel.Type = strings.ToLower(strings.TrimSpace(channel.Type))
+
+	existing, err := h.repo.GetChannel(r.Context(), id, userID)
+	if err != nil {
+		if errors.Is(err, ErrChannelNotFound) {
+			response.Error(w, http.StatusNotFound, "CHANNEL_NOT_FOUND", "Notification channel not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve notification channel")
+		return
+	}
+
+	if channel.Type == "" {
+		channel.Type = existing.Type
+	}
+	if channel.Config == nil {
+		channel.Config = make(map[string]interface{})
+	}
+
+	// Merge secrets for validation
+	mergedForValidation := make(map[string]interface{})
+	for k, v := range existing.Config {
+		mergedForValidation[k] = v
+	}
+	for k, v := range channel.Config {
+		if str, ok := v.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if trimmed == "" || trimmed == "configured" {
+				continue
+			}
+		}
+		mergedForValidation[k] = v
+	}
+
+	tempToValidate := channel
+	tempToValidate.Config = mergedForValidation
+	if validationMessage := validateChannel(tempToValidate); validationMessage != "" {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", validationMessage)
+		return
+	}
+
+	if err := h.repo.UpdateChannel(r.Context(), &channel); err != nil {
+		if errors.Is(err, ErrChannelNotFound) {
+			response.Error(w, http.StatusNotFound, "CHANNEL_NOT_FOUND", "Notification channel not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update notification channel")
+		return
+	}
+
+	auditlog.Record(r.Context(), h.repo.db, userID, "UPDATE_ALERT_CHANNEL", "ALERT_CHANNEL", channel.ID, map[string]any{
+		"name": channel.Name,
+		"type": channel.Type,
+	})
+
+	channel.Config = sanitizedChannelConfig(channel)
+	response.Success(w, http.StatusOK, channel)
+}
+
 // DeleteChannel deletes a notification channel if not referenced by active rules.
 func (h *Handler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	userID, ok := userIDFromRequest(w, r)

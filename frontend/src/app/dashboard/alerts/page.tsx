@@ -312,6 +312,23 @@ function AlertsPageInner() {
   const [channelEmailTo, setChannelEmailTo] = useState('');
   const [channelUseTLS, setChannelUseTLS] = useState(false);
 
+  // Channel edit state
+  const [editingChannel, setEditingChannel] = useState<AlertChannel | null>(null);
+  const [editChannelName, setEditChannelName] = useState('');
+  const [editChannelType, setEditChannelType] = useState('telegram');
+  const [editChannelToken, setEditChannelToken] = useState('');
+  const [editChannelChatId, setEditChannelChatId] = useState('');
+  const [editChannelWebhook, setEditChannelWebhook] = useState('');
+  const [editChannelSMTPHost, setEditChannelSMTPHost] = useState('');
+  const [editChannelSMTPPort, setEditChannelSMTPPort] = useState('587');
+  const [editChannelSMTPUsername, setEditChannelSMTPUsername] = useState('');
+  const [editChannelSMTPPassword, setEditChannelSMTPPassword] = useState('');
+  const [editChannelEmailFrom, setEditChannelEmailFrom] = useState('');
+  const [editChannelEmailTo, setEditChannelEmailTo] = useState('');
+  const [editChannelUseTLS, setEditChannelUseTLS] = useState(false);
+  const [savingEditChannel, setSavingEditChannel] = useState(false);
+  const [testingEditChannel, setTestingEditChannel] = useState(false);
+
   const [userRole, setUserRole] = useState<string>(() => getUserRole());
   useEffect(() => {
     apiClient('/auth/me').then(u => { if (u?.role) setUserRole(u.role); }).catch(() => {});
@@ -1037,6 +1054,170 @@ function AlertsPageInner() {
       setErrorMessage(getApiErrorMessage(error, 'Unable to delete notification channel.'));
     } finally {
       setDeletingChannel(false);
+    }
+  };
+
+  const openEditChannelModal = (channel: AlertChannel) => {
+    setEditingChannel(channel);
+    setEditChannelName(channel.name);
+    setEditChannelType(channel.type);
+
+    const cfg = (channel.config || {}) as Record<string, unknown>;
+    setEditChannelToken('');
+    setEditChannelWebhook('');
+    setEditChannelSMTPPassword('');
+
+    if (channel.type === 'telegram') {
+      setEditChannelChatId(typeof cfg.chat_id === 'string' ? cfg.chat_id : '');
+      setEditChannelSMTPHost('');
+      setEditChannelSMTPPort('587');
+      setEditChannelSMTPUsername('');
+      setEditChannelEmailFrom('');
+      setEditChannelEmailTo('');
+      setEditChannelUseTLS(false);
+    } else if (channel.type === 'discord') {
+      setEditChannelChatId('');
+      setEditChannelSMTPHost('');
+      setEditChannelSMTPPort('587');
+      setEditChannelSMTPUsername('');
+      setEditChannelEmailFrom('');
+      setEditChannelEmailTo('');
+      setEditChannelUseTLS(false);
+    } else if (channel.type === 'email') {
+      setEditChannelChatId('');
+      setEditChannelSMTPHost(typeof cfg.smtp_host === 'string' ? cfg.smtp_host : '');
+      setEditChannelSMTPPort(cfg.smtp_port ? String(cfg.smtp_port) : '587');
+      setEditChannelSMTPUsername(typeof cfg.username === 'string' ? cfg.username : '');
+      setEditChannelEmailFrom(typeof cfg.from === 'string' ? cfg.from : '');
+      setEditChannelEmailTo(typeof cfg.to === 'string' ? cfg.to : '');
+      setEditChannelUseTLS(Boolean(cfg.use_tls));
+    }
+  };
+
+  const getEditChannelConfig = () => {
+    if (editChannelType === 'telegram') {
+      const cfg: Record<string, unknown> = {
+        chat_id: editChannelChatId.trim(),
+      };
+      if (editChannelToken.trim()) {
+        cfg.bot_token = editChannelToken.trim();
+      }
+      return cfg;
+    }
+    if (editChannelType === 'discord') {
+      const cfg: Record<string, unknown> = {};
+      if (editChannelWebhook.trim()) {
+        cfg.webhook_url = editChannelWebhook.trim();
+      }
+      return cfg;
+    }
+    const cfg: Record<string, unknown> = {
+      smtp_host: editChannelSMTPHost.trim(),
+      smtp_port: Number.parseInt(editChannelSMTPPort, 10) || 587,
+      username: editChannelSMTPUsername.trim(),
+      from: editChannelEmailFrom.trim(),
+      to: editChannelEmailTo.trim(),
+      use_tls: editChannelUseTLS,
+    };
+    if (editChannelSMTPPassword) {
+      cfg.password = editChannelSMTPPassword;
+    }
+    return cfg;
+  };
+
+  const handleSaveEditChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingChannel) return;
+    if (isViewer) {
+      setErrorMessage('Editing notification channels requires Admin or Operator role.');
+      return;
+    }
+    if (!editChannelName.trim()) {
+      setErrorMessage('Channel display name is required.');
+      return;
+    }
+    if (editChannelType === 'discord' && editChannelWebhook.trim()) {
+      const trimmed = editChannelWebhook.trim();
+      if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
+        setErrorMessage('Please enter a valid Discord Webhook URL (starting with https://discord.com/api/webhooks/...).');
+        return;
+      }
+    }
+    if (editChannelType === 'telegram' && !editChannelChatId.trim()) {
+      setErrorMessage('Telegram Chat ID is required.');
+      return;
+    }
+    if (editChannelType === 'email') {
+      if (!editChannelSMTPHost.trim() || !editChannelEmailFrom.trim() || !editChannelEmailTo.trim()) {
+        setErrorMessage('Please enter SMTP host, From, and Recipient addresses.');
+        return;
+      }
+    }
+
+    setSavingEditChannel(true);
+    setErrorMessage('');
+    try {
+      const payload = {
+        name: editChannelName.trim(),
+        type: editChannelType,
+        config: getEditChannelConfig(),
+      };
+      const updated = await apiClient(`/alerts/channels/${editingChannel.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+
+      setChannels((current) =>
+        current.map((ch) => (ch.id === editingChannel.id ? { ...ch, ...updated } : ch))
+      );
+      setSuccessMessage(`Notification channel "${editChannelName.trim()}" updated successfully!`);
+      setEditingChannel(null);
+    } catch (err: unknown) {
+      setErrorMessage(getApiErrorMessage(err, 'Failed to update notification channel.'));
+    } finally {
+      setSavingEditChannel(false);
+    }
+  };
+
+  const testEditChannel = async () => {
+    if (!editingChannel) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const hasNewSecret = Boolean(
+      (editChannelType === 'telegram' && editChannelToken.trim()) ||
+      (editChannelType === 'discord' && editChannelWebhook.trim()) ||
+      (editChannelType === 'email' && editChannelSMTPPassword)
+    );
+
+    setTestingEditChannel(true);
+    try {
+      if (hasNewSecret) {
+        if (editChannelType === 'discord') {
+          const trimmed = editChannelWebhook.trim();
+          if (!trimmed.startsWith('https://discord.com/api/webhooks/') && !trimmed.startsWith('https://discordapp.com/api/webhooks/')) {
+            setErrorMessage('Please enter a valid Discord Webhook URL (starting with https://discord.com/api/webhooks/...).');
+            setTestingEditChannel(false);
+            return;
+          }
+        }
+        await apiClient('/alerts/channels/test', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: editChannelName.trim() || 'Test Channel',
+            type: editChannelType,
+            config: getEditChannelConfig(),
+          }),
+        });
+      } else {
+        await apiClient(`/alerts/channels/${editingChannel.id}/test`, { method: 'POST' });
+      }
+      setSuccessMessage(`Test notification sent successfully to "${editChannelName || editingChannel.name}"!`);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(getApiErrorMessage(error, 'Failed to send test notification. Please verify channel configuration.'));
+    } finally {
+      setTestingEditChannel(false);
     }
   };
 
@@ -2765,6 +2946,19 @@ function AlertsPageInner() {
                       />
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      id="create_channel_use_tls"
+                      type="checkbox"
+                      checked={channelUseTLS}
+                      onChange={(e) => setChannelUseTLS(e.target.checked)}
+                      className="rounded border-[var(--border-color)] bg-[var(--surface-subtle)] text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="create_channel_use_tls" className="text-xs text-[var(--foreground)] font-medium cursor-pointer">
+                      Use SSL/TLS
+                    </label>
+                  </div>
                 </>
               )}
 
@@ -2890,20 +3084,32 @@ function AlertsPageInner() {
                         Send Test
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (channel.usage_count && channel.usage_count > 0) {
-                            setErrorMessage(`This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`);
-                            return;
-                          }
-                          setDeleteChannelTarget(channel);
-                        }}
-                        className="p-1.5 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
-                        title="Delete channel"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={isViewer}
+                          onClick={() => openEditChannelModal(channel)}
+                          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={isViewer ? 'Editing channels requires Operator or Admin role' : 'Edit channel'}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isViewer}
+                          onClick={() => {
+                            if (channel.usage_count && channel.usage_count > 0) {
+                              setErrorMessage(`This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`);
+                              return;
+                            }
+                            setDeleteChannelTarget(channel);
+                          }}
+                          className="p-1.5 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={isViewer ? 'Deleting channels requires Operator or Admin role' : 'Delete channel'}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -3611,6 +3817,302 @@ function AlertsPageInner() {
                   {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Save Changes
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Notification Channel Modal */}
+      {editingChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-channel-dialog-title"
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl"
+          >
+            <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center">
+              <h3 id="edit-channel-dialog-title" className="font-bold text-lg text-[var(--foreground)] flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-blue-400" />
+                Edit Notification Channel
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingChannel(null)}
+                aria-label="Close dialog"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditChannel} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Channel Type */}
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-[var(--foreground)]">
+                  Channel Type
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditChannelType('discord')}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition cursor-pointer ${
+                      editChannelType === 'discord'
+                        ? 'border-[#5865F2] bg-[#5865F2]/10 text-white font-semibold shadow-xs ring-1 ring-[#5865F2]'
+                        : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:border-[#5865F2]/50 hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <DiscordIcon className={`h-5 w-5 ${editChannelType === 'discord' ? 'text-[#5865F2]' : 'text-[var(--color-muted)]'}`} />
+                    <span className="text-xs font-medium">Discord</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditChannelType('telegram')}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition cursor-pointer ${
+                      editChannelType === 'telegram'
+                        ? 'border-[#0088cc] bg-[#0088cc]/10 text-white font-semibold shadow-xs ring-1 ring-[#0088cc]'
+                        : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:border-[#0088cc]/50 hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <TelegramIcon className={`h-5 w-5 ${editChannelType === 'telegram' ? 'text-[#0088cc]' : 'text-[var(--color-muted)]'}`} />
+                    <span className="text-xs font-medium">Telegram</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditChannelType('email')}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition cursor-pointer ${
+                      editChannelType === 'email'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-white font-semibold shadow-xs ring-1 ring-emerald-500'
+                        : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:border-emerald-500/50 hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    <Mail className={`h-5 w-5 ${editChannelType === 'email' ? 'text-emerald-400' : 'text-[var(--color-muted)]'}`} />
+                    <span className="text-xs font-medium">Email</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Channel Display Name */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                  Channel Display Name
+                </label>
+                <input
+                  required
+                  name="datrix_edit_channel_name"
+                  autoComplete="off"
+                  value={editChannelName}
+                  onChange={(e) => setEditChannelName(e.target.value)}
+                  type="text"
+                  className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                  placeholder="e.g. Incident Telegram Bot"
+                />
+              </div>
+
+              {/* Dynamic Inputs based on Channel Type */}
+              {editChannelType === 'telegram' ? (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-[var(--foreground)]">
+                        Bot Token
+                      </label>
+                      <span className="text-[11px] text-[var(--color-muted)]">
+                        Leave blank to keep existing
+                      </span>
+                    </div>
+                    <input
+                      name="datrix_edit_bot_token"
+                      autoComplete="new-password"
+                      value={editChannelToken}
+                      onChange={(e) => setEditChannelToken(e.target.value)}
+                      type="password"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                      placeholder="••••••••••••••••••••••••••••••••"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                      Chat ID
+                    </label>
+                    <input
+                      required
+                      name="datrix_edit_chat_id"
+                      autoComplete="off"
+                      value={editChannelChatId}
+                      onChange={(e) => setEditChannelChatId(e.target.value)}
+                      type="text"
+                      className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                      placeholder="e.g. -1001234567890 or @channel_name"
+                    />
+                  </div>
+                </>
+              ) : editChannelType === 'discord' ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-[var(--foreground)]">
+                      Discord Webhook URL
+                    </label>
+                    <span className="text-[11px] text-[var(--color-muted)]">
+                      Leave blank to keep existing
+                    </span>
+                  </div>
+                  <input
+                    name="datrix_edit_webhook_url"
+                    autoComplete="off"
+                    value={editChannelWebhook}
+                    onChange={(e) => setEditChannelWebhook(e.target.value)}
+                    type="url"
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                    placeholder="https://discord.com/api/webhooks/... (leave blank to keep)"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div className="col-span-2">
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        SMTP Host
+                      </label>
+                      <input
+                        required
+                        name="datrix_edit_smtp_host"
+                        autoComplete="off"
+                        value={editChannelSMTPHost}
+                        onChange={(e) => setEditChannelSMTPHost(e.target.value)}
+                        type="text"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="smtp.gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        Port
+                      </label>
+                      <input
+                        required
+                        name="datrix_edit_smtp_port"
+                        autoComplete="off"
+                        value={editChannelSMTPPort}
+                        onChange={(e) => setEditChannelSMTPPort(e.target.value)}
+                        type="number"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="587"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">Username</label>
+                      <input
+                        name="datrix_edit_smtp_user"
+                        autoComplete="off"
+                        value={editChannelSMTPUsername}
+                        onChange={(e) => setEditChannelSMTPUsername(e.target.value)}
+                        type="text"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="user@domain.com"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-[var(--foreground)]">Password</label>
+                        <span className="text-[10px] text-[var(--color-muted)]">Leave blank to keep</span>
+                      </div>
+                      <input
+                        name="datrix_edit_smtp_pass"
+                        autoComplete="new-password"
+                        value={editChannelSMTPPassword}
+                        onChange={(e) => setEditChannelSMTPPassword(e.target.value)}
+                        type="password"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="••••••••••••"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        From Email
+                      </label>
+                      <input
+                        required
+                        name="datrix_edit_email_from"
+                        autoComplete="off"
+                        value={editChannelEmailFrom}
+                        onChange={(e) => setEditChannelEmailFrom(e.target.value)}
+                        type="email"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="alerts@domain.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[var(--foreground)]">
+                        To Email
+                      </label>
+                      <input
+                        required
+                        name="datrix_edit_email_to"
+                        autoComplete="off"
+                        value={editChannelEmailTo}
+                        onChange={(e) => setEditChannelEmailTo(e.target.value)}
+                        type="email"
+                        className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                        placeholder="ops@domain.com"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      id="edit_channel_use_tls"
+                      type="checkbox"
+                      checked={editChannelUseTLS}
+                      onChange={(e) => setEditChannelUseTLS(e.target.checked)}
+                      className="rounded border-[var(--border-color)] bg-[var(--surface-subtle)] text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="edit_channel_use_tls" className="text-xs text-[var(--foreground)] font-medium cursor-pointer">
+                      Use SSL/TLS
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {/* Action Buttons: TEST + CANCEL + SAVE */}
+              <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => void testEditChannel()}
+                  disabled={testingEditChannel || savingEditChannel}
+                  className="ops-button secondary px-3 py-2 text-xs flex items-center gap-1.5 text-blue-500 cursor-pointer disabled:opacity-40"
+                >
+                  {testingEditChannel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>Send Test</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingChannel(null)}
+                    className="ops-button secondary px-4 py-2 text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEditChannel || testingEditChannel}
+                    className="ops-button primary px-4 py-2 text-xs flex items-center gap-2 cursor-pointer disabled:opacity-40"
+                  >
+                    {savingEditChannel && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Save Changes
+                  </button>
+                </div>
               </div>
             </form>
           </div>
