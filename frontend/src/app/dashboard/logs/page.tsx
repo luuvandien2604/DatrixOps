@@ -18,7 +18,6 @@ import {
   Terminal,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useLanguage } from '@/components/LanguageContext';
 
 interface LogEntry {
   id: string;
@@ -107,7 +106,6 @@ const formatAuditMessage = (log: AuditLog): string => {
 type LogTimeRange = '15m' | '1h' | '3h' | '6h' | '24h' | '7d' | 'all' | 'custom';
 
 export default function LogsPage() {
-  const { t, isVi } = useLanguage();
   const [servers, setServers] = useState<LogServer[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,24 +135,24 @@ export default function LogsPage() {
 
     if (fromDate) {
       const dt = new Date(`${fromDate}T${fromTime || '00:00'}:00`);
-      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: t('Invalid start date', 'Ngày bắt đầu không hợp lệ') };
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Invalid start date' };
       if (dt.getTime() > Date.now() + 5 * 60 * 1000) {
-        return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: t('Time window cannot be in the future.', 'Khoảng thời gian không thể ở tương lai.') };
+        return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Time window cannot be in the future.' };
       }
       fromTs = dt.getTime();
       fromISO = dt.toISOString();
     }
     if (toDate) {
       const dt = new Date(`${toDate}T${toTime || '23:59'}:59`);
-      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: t('Invalid end date', 'Ngày kết thúc không hợp lệ') };
+      if (isNaN(dt.getTime())) return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Invalid end date' };
       toTs = dt.getTime();
       toISO = dt.toISOString();
     }
     if (fromTs > 0 && toTs < Infinity && fromTs > toTs) {
-      return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: t('Start time cannot be after end time.', 'Thời gian bắt đầu không thể sau thời gian kết thúc.') };
+      return { fromISO: '', toISO: '', fromTs: 0, toTs: Infinity, error: 'Start time cannot be after end time.' };
     }
     return { fromISO, toISO, fromTs, toTs, error: '' };
-  }, [fromDate, fromTime, toDate, toTime, t]);
+  }, [fromDate, fromTime, toDate, toTime]);
 
   const loadLogs = React.useCallback(async () => {
     setTimeRangeError('');
@@ -207,11 +205,11 @@ export default function LogsPage() {
     } catch (err) {
       console.error(err);
       setLogs([]);
-      setLoadError(err instanceof Error ? err.message : t('Failed to load logs', 'Không thể tải nhật ký'));
+      setLoadError(err instanceof Error ? err.message : 'Failed to load logs');
     } finally {
       setLoading(false);
     }
-  }, [timeRange, getCustomRange, t]);
+  }, [timeRange, getCustomRange]);
 
   useEffect(() => {
     void loadLogs();
@@ -326,33 +324,28 @@ export default function LogsPage() {
     && selectedServer?.status === 'online'
     && selectedServerIsLinux
     && selectedServerSupportsLogRead;
-
   const remoteLogReadiness = (() => {
-    if (fetchingRemoteLogs) return t('Fetching log snapshot…', 'Đang truy vấn nhật ký…');
-    if (selectedServerId === 'all') return t('Select a server to fetch logs', 'Chọn một máy chủ để truy vấn nhật ký');
-    if (!selectedServer) return t('Selected server is unavailable', 'Máy chủ được chọn không khả dụng');
-    if (selectedServer.status !== 'online') return t('Selected server is offline', 'Máy chủ đang ngoại tuyến');
-    if (!selectedServerIsLinux) return t('Only online Linux agents are supported', 'Chỉ hỗ trợ agent Linux đang trực tuyến');
+    if (fetchingRemoteLogs) return 'Fetching log snapshot…';
+    if (selectedServerId === 'all') return 'Select a server to fetch logs';
+    if (!selectedServer) return 'Selected server is unavailable';
+    if (selectedServer.status !== 'online') return 'Selected server is offline';
+    if (!selectedServerIsLinux) return 'Only online Linux agents are supported';
     if (!selectedServerSupportsLogRead) {
-      return t(
-        `Update Agent to ${MIN_LOG_READ_AGENT_VERSION}+ before reading logs${selectedServerAgentVersion ? ` (current ${selectedServerAgentVersion})` : ''}`,
-        `Cập nhật Agent lên ${MIN_LOG_READ_AGENT_VERSION}+ để xem nhật ký${selectedServerAgentVersion ? ` (hiện tại ${selectedServerAgentVersion})` : ''}`
-      );
+      return `Update Agent to ${MIN_LOG_READ_AGENT_VERSION}+ before reading logs${selectedServerAgentVersion ? ` (current ${selectedServerAgentVersion})` : ''}`;
     }
-    return t('Ready to fetch read-only logs', 'Sẵn sàng truy vấn nhật ký');
+    return 'Ready to fetch read-only logs';
   })();
-
-  const fetchLogsLabel = t('Fetch logs', 'Truy vấn nhật ký');
+  const fetchLogsLabel = 'Fetch logs';
 
   const copyAllLogs = async () => {
     const text = visibleLogs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] [${l.server_name}] [${l.source}] ${l.message}`).join('\n');
     try {
       await copyTextToClipboard(text);
       setCopied(true);
-      toast.success(t('Logs copied to clipboard', 'Đã sao chép nhật ký vào bộ nhớ tạm'));
+      toast.success('Logs copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error(t('Failed to copy logs', 'Không thể sao chép nhật ký'));
+      toast.error('Failed to copy logs');
     }
   };
 
@@ -365,7 +358,7 @@ export default function LogsPage() {
     a.download = `datrixops-logs-${new Date().toISOString().slice(0, 10)}.log`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(t('Log file downloaded', 'Đã tải xuống tệp nhật ký'));
+    toast.success('Log file downloaded');
   };
 
   const fetchRemoteLogs = async () => {
@@ -418,7 +411,7 @@ export default function LogsPage() {
       }
 
       if (!taskResult || (taskResult.status !== 'completed' && taskResult.status !== 'failed')) {
-        toast.error(t('Log read task is still running. Try again in a few seconds.', 'Tác vụ đọc nhật ký vẫn đang chạy. Thử lại sau vài giây.'));
+        toast.error('Log read task is still running. Try again in a few seconds.');
         return;
       }
       const finalStatus = taskResult.status;
@@ -428,7 +421,7 @@ export default function LogsPage() {
         ? `Agent update required: read-only log fetch needs Agent ${MIN_LOG_READ_AGENT_VERSION} or newer. This agent has not activated the log_read handler yet.`
         : resultText;
       if (agentDoesNotSupportLogRead) {
-        toast.error(t(`Update this agent to ${MIN_LOG_READ_AGENT_VERSION}+ before fetching logs`, `Cập nhật agent lên ${MIN_LOG_READ_AGENT_VERSION}+ trước khi xem nhật ký`));
+        toast.error(`Update this agent to ${MIN_LOG_READ_AGENT_VERSION}+ before fetching logs`);
       }
       const now = new Date().toISOString();
       const remoteEntries = displayText.split('\n').filter(Boolean).slice(-500).map((line, index) => {
@@ -455,81 +448,64 @@ export default function LogsPage() {
       if (timeRange === 'custom') {
         setTimeRange('all');
       }
-      toast.success(t(`Fetched ${remoteEntries.length} log lines`, `Đã nhận ${remoteEntries.length} dòng nhật ký`));
+      toast.success(`Fetched ${remoteEntries.length} log lines`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('Failed to fetch remote logs', 'Không thể truy vấn nhật ký từ xa'));
+      toast.error(err instanceof Error ? err.message : 'Failed to fetch remote logs');
     } finally {
       setFetchingRemoteLogs(false);
     }
   };
 
   return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-6 pb-20">
       {/* Header */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-2.5">
-            <FileText className="w-5 h-5 text-blue-500" />
-            {t('Log Explorer', 'Trình khám phá nhật ký')}
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-3">
+            <FileText className="w-6 h-6 text-blue-400" />
+            Log Explorer
           </h1>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled
-            className="h-8 px-3 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] text-xs font-semibold text-[var(--color-muted)] opacity-60 cursor-not-allowed inline-flex items-center gap-1.5"
-            title={t('Continuous live tail will be enabled after the read-only fetch path is stable', 'Tính năng Live tail sẽ mở sau khi hoàn thiện luồng truy vấn')}
-          >
-            <PauseCircle className="w-3.5 h-3.5" />
-            {t('Live tail next', 'Live tail sắp có')}
+        <div className="flex items-center gap-3">
+          <button type="button" disabled className="ops-button secondary" title="Continuous live tail will be enabled after the read-only fetch path is stable">
+            <PauseCircle className="w-4 h-4" />
+            Live tail next
           </button>
 
-          <button
-            disabled={visibleLogs.length === 0}
-            onClick={copyAllLogs}
-            className="h-8 px-3 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)] transition duration-100 disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? t('Copied', 'Đã chép') : t('Copy', 'Sao chép')}
+          <button disabled={visibleLogs.length === 0} onClick={copyAllLogs} className="ops-button secondary">
+            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            Copy
           </button>
 
-          <button
-            disabled={visibleLogs.length === 0}
-            onClick={downloadLogs}
-            className="h-8 px-3 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)] transition duration-100 disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {t('Export', 'Xuất file')}
+          <button disabled={visibleLogs.length === 0} onClick={downloadLogs} className="ops-button secondary">
+            <Download className="w-4 h-4" />
+            Export
           </button>
         </div>
       </div>
 
       {/* Unified Control & Filter Panel */}
-      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 space-y-3.5">
+      <div className="ops-panel surface-regular no-hover-lift p-4 space-y-4">
         {/* Main Filter Row */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 ${remoteLogSource === 'journal' ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3`}>
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${remoteLogSource === 'journal' ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
           {/* Server Selector */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-              {t('Server Source', 'Nguồn máy chủ')}
-            </label>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Server Source</label>
             <CustomSelect
               value={selectedServerId}
               onChange={setSelectedServerId}
               options={[
-                { value: 'all', label: t('All Servers Fleet', 'Tất cả máy chủ') },
+                { value: 'all', label: 'All Servers Fleet' },
                 ...servers.map(s => ({ value: s.id, label: s.name, subLabel: s.ip_address || 'No IP' }))
               ]}
-              className="w-full text-xs"
+              className="w-full"
             />
           </div>
 
           {/* Log Source Selector */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-              {t('Log Source', 'Nguồn nhật ký')}
-            </label>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Log Source</label>
             <CustomSelect
               value={remoteLogSource}
               onChange={setRemoteLogSource}
@@ -539,16 +515,14 @@ export default function LogsPage() {
                 { value: 'nginx_error', label: 'Nginx error log' },
                 { value: 'mysql_error', label: 'MySQL/MariaDB error log' },
               ]}
-              className="w-full text-xs"
+              className="w-full"
             />
           </div>
 
           {/* Unit Selector when journal */}
           {remoteLogSource === 'journal' && (
             <div>
-              <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-                {t('Unit / Service', 'Unit / Dịch vụ')}
-              </label>
+              <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Unit / Service</label>
               <input
                 type="text"
                 list="server-services-list"
@@ -561,7 +535,7 @@ export default function LogsPage() {
                     void fetchRemoteLogs();
                   }
                 }}
-                className="w-full px-2.5 py-1.5 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-xs text-[var(--foreground)] outline-none focus:border-blue-500 transition duration-100 font-mono"
+                className="w-full px-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all font-mono"
               />
               <datalist id="server-services-list">
                 {availableServices.map(svc => (
@@ -573,55 +547,49 @@ export default function LogsPage() {
 
           {/* Time Range Selector */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-              {t('Time Range', 'Khoảng thời gian')}
-            </label>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Time Range</label>
             <CustomSelect
               value={timeRange}
               onChange={(val) => setTimeRange(val as LogTimeRange)}
               options={[
-                { value: 'all', label: t('All Time Available', 'Tất cả thời gian') },
-                { value: 'custom', label: t('Custom Range', 'Tùy chỉnh khoảng') },
-                { value: '15m', label: t('Last 15 minutes', '15 phút qua') },
-                { value: '1h', label: t('Last 1 hour', '1 giờ qua') },
-                { value: '3h', label: t('Last 3 hours', '3 giờ qua') },
-                { value: '6h', label: t('Last 6 hours', '6 giờ qua') },
-                { value: '24h', label: t('Last 24 hours', '24 giờ qua') },
-                { value: '7d', label: t('Last 7 days', '7 ngày qua') },
+                { value: 'all', label: 'All Time Available' },
+                { value: 'custom', label: 'Custom Range' },
+                { value: '15m', label: 'Last 15 minutes' },
+                { value: '1h', label: 'Last 1 hour' },
+                { value: '3h', label: 'Last 3 hours' },
+                { value: '6h', label: 'Last 6 hours' },
+                { value: '24h', label: 'Last 24 hours' },
+                { value: '7d', label: 'Last 7 days' },
               ]}
-              className="w-full text-xs"
+              className="w-full"
             />
           </div>
 
           {/* Log Level Selector */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-              {t('Log Level', 'Mức độ Log')}
-            </label>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Log Level</label>
             <CustomSelect
               value={logLevel}
               onChange={setLogLevel}
               options={[
-                { value: 'all', label: t('All Levels (INFO, WARN, ERROR)', 'Tất cả (INFO, WARN, ERROR)') },
+                { value: 'all', label: 'All Levels (INFO, WARN, ERROR)' },
                 { value: 'info', label: 'INFO' },
                 { value: 'warn', label: 'WARN' },
                 { value: 'error', label: 'ERROR' },
                 { value: 'debug', label: 'DEBUG' },
               ]}
-              className="w-full text-xs"
+              className="w-full"
             />
           </div>
 
           {/* Search Query */}
           <div>
-            <label className="block text-[11px] font-semibold text-[var(--color-muted)] uppercase mb-1">
-              {t('Filter Keyword', 'Từ khóa lọc')}
-            </label>
+            <label className="block text-xs font-semibold text-[var(--color-muted)] uppercase mb-1">Filter Keyword</label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none z-10" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted)] pointer-events-none z-10" />
               <input
                 type="text"
-                placeholder={t('Search message text (Enter to fetch)...', 'Nội dung tìm kiếm (Enter để tìm)...')}
+                placeholder="Search message text (press Enter to fetch)..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -630,62 +598,62 @@ export default function LogsPage() {
                     void fetchRemoteLogs();
                   }
                 }}
-                style={{ paddingLeft: '32px' }}
-                className="w-full pr-2.5 py-1.5 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-xs text-[var(--foreground)] outline-none focus:border-blue-500 transition duration-100"
+                style={{ paddingLeft: '44px' }}
+                className="w-full pr-3 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-sm text-[var(--foreground)] outline-none focus:border-blue-500 transition-all"
               />
             </div>
           </div>
         </div>
 
-        {/* Custom Range Sub-bar */}
+        {/* Custom Range Sub-bar (Shown only when timeRange === 'custom') */}
         {timeRange === 'custom' && (
-          <div className="pt-2.5 border-t border-[var(--border-subtle)] text-xs space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="font-semibold text-blue-500 flex items-center gap-1 shrink-0 text-xs">
-                <Clock className="w-3.5 h-3.5" /> {t('Time Window:', 'Khoảng thời gian:')}
+          <div className="pt-3 border-t border-[var(--border-color)] text-xs space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-semibold text-blue-400 flex items-center gap-1.5 shrink-0">
+                <Clock className="w-3.5 h-3.5" /> Time Window:
               </span>
               <div className="flex items-center gap-1.5">
-                <label className="text-[var(--color-muted)] font-medium text-xs">{t('From:', 'Từ:')}</label>
+                <label className="text-[var(--color-muted)] font-medium">From:</label>
                 <input
                   type="date"
                   value={fromDate}
                   onChange={(e) => { setFromDate(e.target.value); setTimeRangeError(''); }}
-                  className="px-2 py-1 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-[var(--foreground)] text-xs outline-none focus:border-blue-500 font-mono"
+                  className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
                 />
                 <input
                   type="time"
                   value={fromTime}
                   onChange={(e) => { setFromTime(e.target.value); setTimeRangeError(''); }}
-                  className="px-2 py-1 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20 font-mono"
+                  className="px-2 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20"
                 />
               </div>
               <div className="flex items-center gap-1.5">
-                <label className="text-[var(--color-muted)] font-medium text-xs">{t('To:', 'Đến:')}</label>
+                <label className="text-[var(--color-muted)] font-medium">To:</label>
                 <input
                   type="date"
                   value={toDate}
                   onChange={(e) => { setToDate(e.target.value); setTimeRangeError(''); }}
-                  className="px-2 py-1 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-[var(--foreground)] text-xs outline-none focus:border-blue-500 font-mono"
+                  className="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500"
                 />
                 <input
                   type="time"
                   value={toTime}
                   onChange={(e) => { setToTime(e.target.value); setTimeRangeError(''); }}
-                  className="px-2 py-1 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-sm text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20 font-mono"
+                  className="px-2 py-1.5 bg-white/[0.05] border border-white/10 rounded text-[var(--foreground)] text-xs outline-none focus:border-blue-500 w-20"
                 />
               </div>
               {(fromDate || toDate) && (
                 <button
                   type="button"
                   onClick={() => { setFromDate(''); setToDate(''); setFromTime('00:00'); setToTime('23:59'); setTimeRangeError(''); }}
-                  className="text-xs text-rose-500 hover:underline ml-2"
+                  className="text-xs text-rose-400 hover:text-rose-300 underline ml-2"
                 >
-                  {t('Clear Range', 'Xóa khoảng')}
+                  Clear Range
                 </button>
               )}
             </div>
             {timeRangeError && (
-              <div className="text-xs font-semibold text-rose-500 flex items-center gap-1">
+              <div className="text-xs font-semibold text-rose-400 flex items-center gap-1">
                 ⚠️ {timeRangeError}
               </div>
             )}
@@ -693,24 +661,24 @@ export default function LogsPage() {
         )}
 
         {/* Action Row inside the Unified Panel */}
-        <div className="pt-2.5 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-32">
+        <div className="pt-3 border-t border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-36">
               <CustomSelect
                 value={remoteLogLines}
                 onChange={setRemoteLogLines}
                 options={[
-                  { value: '100', label: t('100 lines', '100 dòng') },
-                  { value: '200', label: t('200 lines', '200 dòng') },
-                  { value: '500', label: t('500 lines', '500 dòng') },
+                  { value: '100', label: '100 lines' },
+                  { value: '200', label: '200 lines' },
+                  { value: '500', label: '500 lines' },
                 ]}
                 className="w-full text-xs"
               />
             </div>
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-sm border ${
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
               canFetchRemoteLogs
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                : 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
             }`}>
               {remoteLogReadiness}
             </span>
@@ -720,73 +688,73 @@ export default function LogsPage() {
             type="button"
             onClick={() => void fetchRemoteLogs()}
             disabled={!canFetchRemoteLogs || fetchingRemoteLogs}
-            className="h-8 px-3.5 rounded-sm bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition duration-100 disabled:opacity-50"
+            className="ops-button primary text-xs py-2 px-4 flex items-center justify-center gap-2"
             title={remoteLogReadiness}
           >
-            {fetchingRemoteLogs ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Terminal className="h-3.5 w-3.5" />}
-            {fetchingRemoteLogs ? t('Fetching…', 'Đang truy vấn…') : fetchLogsLabel}
+            {fetchingRemoteLogs ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
+            {fetchingRemoteLogs ? 'Fetching…' : fetchLogsLabel}
           </button>
         </div>
       </div>
 
       {/* Terminal Log Console Window */}
-      <div className="overflow-hidden rounded-md border border-[var(--border-default)] bg-slate-950 text-slate-100 font-mono text-xs">
+      <div className="log-console ops-panel no-hover-lift overflow-hidden rounded-xl font-mono text-xs">
         {/* Terminal Header Bar */}
-        <div className="flex items-center justify-between px-3.5 py-2 bg-slate-900 border-b border-slate-800 text-slate-400">
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-900/90 border-b border-slate-800 text-slate-400">
           <div className="flex items-center gap-2">
-            <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+            <Terminal className="w-4 h-4 text-emerald-400" />
             <span className="font-semibold text-slate-200">live-stream.log</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
-              {loading ? t('loading', 'đang tải') : `${filteredLogs.length} ${t('entries', 'bản ghi')}`}
+            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+              {loading ? 'loading' : `${filteredLogs.length} entries`}
             </span>
             {filteredLogs.length > MAX_VISIBLE_LOGS && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
-                {t('showing latest', 'hiển thị mới nhất')} {MAX_VISIBLE_LOGS}
+              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                showing latest {MAX_VISIBLE_LOGS}
               </span>
             )}
           </div>
 
-          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-            {selectedServer ? `${selectedServer.name} · ${remoteLogSource.toUpperCase().replace('_', ' ')}` : t('AUDIT STREAM', 'LUỒNG AUDIT')}
+          <span className={`status-badge ${selectedServer ? 'online' : 'disabled'}`}>
+            {selectedServer ? `${selectedServer.name} · ${remoteLogSource.toUpperCase().replace('_', ' ')}` : 'AUDIT STREAM'}
           </span>
         </div>
 
         {/* Console Body */}
-        <div className="p-3 max-h-[550px] overflow-y-auto space-y-1 custom-scrollbar">
+        <div className="p-4 max-h-[550px] overflow-y-auto space-y-2 custom-scrollbar">
           {loading ? (
-            <div className="py-12 text-center text-slate-500 font-sans text-xs">
-              {t('Loading operational log records...', 'Đang tải bản ghi nhật ký vận hành...')}
+            <div className="py-12 text-center text-slate-500 font-sans">
+              Loading operational log records...
             </div>
           ) : loadError ? (
-            <div className="py-12 text-center text-rose-400 font-sans text-xs">
-              {t('Unable to load logs:', 'Không thể tải nhật ký:')} {loadError}
+            <div className="py-12 text-center text-rose-300 font-sans">
+              Unable to load logs: {loadError}
             </div>
           ) : visibleLogs.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 font-sans space-y-2.5">
-              <p className="text-xs">
+            <div className="py-12 text-center text-slate-400 font-sans space-y-3">
+              <p className="text-sm">
                 {searchQuery.trim()
-                  ? t(`No log lines matching "${searchQuery.trim()}" found.`, `Không tìm thấy dòng nhật ký nào khớp với "${searchQuery.trim()}".`)
+                  ? `No log lines matching "${searchQuery.trim()}" found in current view. Tip: ensure Unit/Service is specified (e.g. apache2, nginx) or widen the time range.`
                   : selectedServer
-                  ? t(`No ${remoteLogSource.replace('_', ' ')} logs loaded yet for ${selectedServer.name}.`, `Chưa có nhật ký ${remoteLogSource.replace('_', ' ')} cho ${selectedServer.name}.`)
-                  : t('No log records match the current filters.', 'Không có nhật ký nào khớp với bộ lọc hiện tại.')}
+                  ? `No ${remoteLogSource.replace('_', ' ')} logs loaded yet for ${selectedServer.name}.`
+                  : 'No log records match the current filters.'}
               </p>
               {selectedServer && (
                 <button
                   type="button"
                   onClick={() => void fetchRemoteLogs()}
                   disabled={fetchingRemoteLogs}
-                  className="h-7 px-3 rounded-sm bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 mx-auto transition duration-100"
+                  className="ops-button primary text-xs py-1.5 px-3 inline-flex items-center gap-2 mx-auto"
                 >
-                  <Terminal className="w-3 h-3" />
-                  {fetchingRemoteLogs ? t('Fetching…', 'Đang truy vấn…') : `${t('Fetch', 'Truy vấn')} ${remoteLogSource.replace('_', ' ')} logs`}
+                  <Terminal className="w-3.5 h-3.5" />
+                  {fetchingRemoteLogs ? 'Fetching…' : `Fetch ${remoteLogSource.replace('_', ' ')} logs`}
                 </button>
               )}
             </div>
           ) : (
             visibleLogs.map((log, idx) => (
-              <div key={log.id || idx} className="flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-slate-900/80 px-2 py-1 rounded transition-colors duration-75 group leading-relaxed">
-                <span className="text-slate-500 shrink-0 select-none text-[11px] min-w-[130px] font-mono tabular-nums">
-                  {new Date(log.timestamp).toLocaleString(isVi ? 'vi-VN' : 'en-US', {
+              <div key={log.id || idx} className="flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-slate-900/60 p-1.5 rounded transition-colors group">
+                <span className="text-slate-500 shrink-0 select-none text-[11px] min-w-[140px]">
+                  {new Date(log.timestamp).toLocaleString('vi-VN', {
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',
@@ -797,7 +765,7 @@ export default function LogsPage() {
                   })}
                 </span>
 
-                <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-bold shrink-0 font-mono ${
+                <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold shrink-0 ${
                   log.level === 'error'
                     ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                     : log.level === 'warn'
@@ -807,11 +775,11 @@ export default function LogsPage() {
                   {log.level}
                 </span>
 
-                <span className="text-blue-400 font-semibold shrink-0 w-32 truncate" title={log.server_name}>
+                <span className="text-blue-400 font-semibold shrink-0 w-36 truncate" title={log.server_name}>
                   [{log.server_name}]
                 </span>
 
-                <span className="text-slate-400 font-semibold shrink-0 w-28 truncate" title={log.source}>
+                <span className="text-slate-400 font-semibold shrink-0 w-32 truncate" title={log.source}>
                   {log.source}:
                 </span>
 

@@ -7,7 +7,6 @@ import {
   RefreshCw, Save, Send, Settings, ShieldAlert, Sparkles 
 } from 'lucide-react';
 import { apiClient, getUserRole } from '@/lib/apiClient';
-import { useLanguage } from '@/components/LanguageContext';
 
 type SystemSettings = {
   system_name: string;
@@ -25,7 +24,6 @@ type SystemSettings = {
 };
 
 export default function SettingsPage() {
-  const { t } = useLanguage();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(() => {
     const role = getUserRole();
     return role === 'admin' || role === 'superadmin' || role === 'owner' ? true : null;
@@ -74,11 +72,11 @@ export default function SettingsPage() {
         setSmtpEncryption(data.smtp_encryption || 'tls');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('Unable to load system settings', 'Không thể tải cài đặt hệ thống'));
+      setError(err instanceof Error ? err.message : 'Unable to load system settings');
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, []);
 
   useEffect(() => {
     apiClient('/auth/me')
@@ -145,14 +143,14 @@ export default function SettingsPage() {
         },
       });
 
-      setSuccessMsg(t('System settings and SMTP configuration saved successfully.', 'Đã lưu cài đặt hệ thống và cấu hình SMTP thành công.'));
+      setSuccessMsg('System settings and SMTP configuration saved successfully.');
       if (smtpPassword) {
         setSmtpPasswordSet(true);
         setSmtpPassword('');
       }
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('Failed to save settings', 'Không thể lưu cài đặt'));
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -160,11 +158,11 @@ export default function SettingsPage() {
 
   const handleTestEmail = async () => {
     if (!testRecipient) {
-      setTestResult({ success: false, message: t('Please enter a recipient email address', 'Vui lòng nhập địa chỉ email người nhận') });
+      setTestResult({ success: false, message: 'Please enter a recipient email address' });
       return;
     }
     if (!smtpHost) {
-      setTestResult({ success: false, message: t('Please enter an SMTP Host before running connection test', 'Vui lòng nhập SMTP Host trước khi chạy kiểm tra kết nối') });
+      setTestResult({ success: false, message: 'Please enter an SMTP Host before running connection test' });
       return;
     }
     setTesting(true);
@@ -186,12 +184,12 @@ export default function SettingsPage() {
       });
       setTestResult({
         success: true,
-        message: res.message || t(`Test email dispatched successfully to ${testRecipient}!`, `Đã gửi email thử nghiệm thành công đến ${testRecipient}!`),
+        message: res.message || `Test email dispatched successfully to ${testRecipient}!`,
       });
     } catch (err: unknown) {
       setTestResult({
         success: false,
-        message: err instanceof Error ? err.message : t('SMTP connection or delivery failed', 'Kết nối SMTP hoặc gửi email thất bại'),
+        message: err instanceof Error ? err.message : 'SMTP connection or delivery failed',
       });
     } finally {
       setTesting(false);
@@ -201,32 +199,28 @@ export default function SettingsPage() {
   if (isAdmin === false) {
     return (
       <div className="p-8 text-center max-w-md mx-auto">
-        <div className="h-10 w-10 mx-auto mb-3 rounded-sm bg-rose-500/10 text-rose-500 flex items-center justify-center border border-rose-500/20">
-          <ShieldAlert className="h-5 w-5" />
-        </div>
-        <h2 className="text-base font-bold mb-1.5 text-[var(--foreground)]">{t('Access Restricted', 'Quyền truy cập bị hạn chế')}</h2>
-        <p className="text-xs text-[var(--color-muted)] leading-relaxed">
-          {t('Only administrators have permission to configure system parameters and SMTP relays.', 'Chỉ quản trị viên mới có quyền cấu hình tham số hệ thống và máy chủ SMTP.')}
+        <div className="auth-icon mx-auto mb-4"><ShieldAlert className="h-6 w-6 text-rose-500" /></div>
+        <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+        <p className="text-sm text-[var(--color-muted)]">
+          Only administrators have permission to configure system parameters and SMTP relays.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 max-w-5xl pb-20">
+    <div className="space-y-8 max-w-5xl">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-sm bg-[var(--surface-2)] border border-[var(--border-default)]">
-              <Settings className="h-4 w-4 text-blue-500" />
+            <span className="p-2 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)]">
+              <Settings className="h-5 w-5 text-[var(--mint)]" />
             </span>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
-              {t('System & SMTP Settings', 'Cài đặt Hệ thống & SMTP')}
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight">System & SMTP Settings</h1>
           </div>
-          <p className="text-xs text-[var(--color-muted)] mt-1">
-            {t('Configure instance metadata, public routing domain, and transactional email (SMTP) relay.', 'Cấu hình siêu dữ liệu phiên bản, tên miền định tuyến công khai và email giao dịch (SMTP).')}
+          <p className="text-sm text-[var(--color-muted)] mt-1">
+            Configure instance metadata, public routing domain, and transactional email (SMTP) relay.
           </p>
         </div>
 
@@ -234,99 +228,93 @@ export default function SettingsPage() {
           type="button"
           onClick={fetchSettings}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-sm bg-[var(--surface-1)] border border-[var(--border-default)] text-[var(--foreground)] hover:bg-[var(--surface-2)] transition duration-100 self-start sm:self-auto"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-[var(--color-foreground)] hover:border-[var(--mint)] transition-colors self-start sm:self-auto"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-500' : ''}`} />
-          {t('Refresh', 'Làm mới')}
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
         </button>
       </div>
 
       {error && (
-        <div className="p-3 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex items-center gap-2">
-          <CircleAlert className="h-4 w-4 shrink-0" />
+        <div className="p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-center gap-3">
+          <CircleAlert className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
-          <Check className="h-4 w-4 shrink-0" />
+        <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm flex items-center gap-3">
+          <Check className="h-5 w-5 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-6">
+      <form onSubmit={handleSave} className="space-y-8">
         {/* Section 1: General Settings */}
-        <section className="p-5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] space-y-4">
-          <div className="border-b border-[var(--border-subtle)] pb-3">
-            <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-              <Globe className="h-4 w-4 text-blue-500" />
-              {t('General Instance Configuration', 'Cấu hình Hệ thống Chung')}
+        <section className="ops-panel p-6 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] space-y-6">
+          <div className="border-b border-[var(--border-color)] pb-4">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Globe className="h-4 w-4 text-[var(--mint)]" /> General Instance Configuration
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              {t('Public address used for password reset links and notification hyperlinks.', 'Địa chỉ công khai được dùng cho liên kết đặt lại mật khẩu và thông báo.')}
+              Public address used for password reset links and notification hyperlinks.
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-6 sm:grid-cols-2">
             <div>
-              <label htmlFor="settings-system-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Instance Name', 'Tên phiên bản')}
-              </label>
+              <label htmlFor="settings-system-name" className="auth-label">Instance Name</label>
               <input
                 id="settings-system-name"
                 type="text"
                 value={systemName}
                 onChange={(e) => setSystemName(e.target.value)}
                 required
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
+                className="auth-input"
                 placeholder="DatrixOps"
               />
             </div>
 
             <div>
-              <label htmlFor="settings-timezone" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Default Timezone', 'Múi giờ mặc định')}
-              </label>
+              <label htmlFor="settings-timezone" className="auth-label">Default Timezone</label>
               <input
                 id="settings-timezone"
                 type="text"
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500 font-mono"
+                className="auth-input"
                 placeholder="UTC or Asia/Ho_Chi_Minh"
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label htmlFor="settings-public-url" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Public URL (Base Address)', 'URL Công khai (Địa chỉ gốc)')}
+              <label htmlFor="settings-public-url" className="auth-label">
+                Public URL (Base Address)
               </label>
               <input
                 id="settings-public-url"
                 type="url"
                 value={publicUrl}
                 onChange={(e) => setPublicUrl(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500 font-mono"
+                className="auth-input font-mono text-sm"
                 placeholder="https://datrixops.example.com"
               />
-              <p className="text-[11px] text-[var(--color-muted)] mt-1">
-                {t('Must include scheme (e.g., https://). Used to generate email password reset links.', 'Bắt buộc bao gồm giao thức (ví dụ: https://). Dùng để tạo link đặt lại mật khẩu.')}
+              <p className="text-xs text-[var(--color-muted)] mt-1.5">
+                Must include scheme (e.g., <code>https://</code>). Used to generate email password reset links.
               </p>
             </div>
           </div>
         </section>
 
         {/* Section 2: Transactional SMTP Relay */}
-        <section className="p-5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+        <section className="ops-panel p-6 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[var(--border-color)] pb-4">
             <div>
-              <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                <Mail className="h-4 w-4 text-blue-500" />
-                {t('Transactional Email (SMTP Relay)', 'Email Giao dịch (SMTP Relay)')}
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <Mail className="h-4 w-4 text-[var(--mint)]" /> Transactional Email (SMTP Relay)
               </h2>
               <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                {t('Required for automated password resets, user invitations, and system delivery.', 'Bắt buộc cho đặt lại mật khẩu tự động, mời thành viên và gửi cảnh báo.')}
+                Required for automated password resets, user invitations, and system delivery.
               </p>
             </div>
 
@@ -337,78 +325,70 @@ export default function SettingsPage() {
                 onChange={(e) => setSmtpEnabled(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-              <span className="ml-2.5 text-xs font-semibold">
-                {smtpEnabled
-                  ? <span className="text-emerald-500">{t('Enabled', 'Đã bật')}</span>
-                  : <span className="text-[var(--color-muted)]">{t('Disabled', 'Đã tắt')}</span>}
+              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--mint)]"></div>
+              <span className="ml-3 text-sm font-medium">
+                {smtpEnabled ? <span className="text-[var(--mint)]">Enabled</span> : <span className="text-[var(--color-muted)]">Disabled</span>}
               </span>
             </label>
           </div>
 
           {/* Quick Presets */}
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-              {t('Quick Presets:', 'Mẫu cấu hình nhanh:')}
-            </span>
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Quick Presets:</span>
+            <div className="flex flex-wrap gap-2 mt-2">
               <button
                 type="button"
                 onClick={() => applyPreset('gmail')}
-                className="px-2.5 py-1 text-xs rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] transition duration-100"
+                className="px-2.5 py-1 text-xs rounded border border-[var(--border-color)] bg-[var(--background-secondary)] hover:border-[var(--mint)] text-[var(--color-foreground)] transition-colors"
               >
                 Google Gmail
               </button>
               <button
                 type="button"
                 onClick={() => applyPreset('office365')}
-                className="px-2.5 py-1 text-xs rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] transition duration-100"
+                className="px-2.5 py-1 text-xs rounded border border-[var(--border-color)] bg-[var(--background-secondary)] hover:border-[var(--mint)] text-[var(--color-foreground)] transition-colors"
               >
                 Microsoft 365
               </button>
               <button
                 type="button"
                 onClick={() => applyPreset('sendgrid')}
-                className="px-2.5 py-1 text-xs rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] transition duration-100"
+                className="px-2.5 py-1 text-xs rounded border border-[var(--border-color)] bg-[var(--background-secondary)] hover:border-[var(--mint)] text-[var(--color-foreground)] transition-colors"
               >
                 SendGrid
               </button>
               <button
                 type="button"
                 onClick={() => applyPreset('resend')}
-                className="px-2.5 py-1 text-xs rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] transition duration-100"
+                className="px-2.5 py-1 text-xs rounded border border-[var(--border-color)] bg-[var(--background-secondary)] hover:border-[var(--mint)] text-[var(--color-foreground)] transition-colors"
               >
                 Resend
               </button>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <label htmlFor="settings-smtp-host" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('SMTP Host', 'Máy chủ SMTP')}
-              </label>
+              <label htmlFor="settings-smtp-host" className="auth-label">SMTP Host</label>
               <input
                 id="settings-smtp-host"
                 type="text"
                 value={smtpHost}
                 onChange={(e) => setSmtpHost(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500 font-mono"
+                className="auth-input font-mono text-sm"
                 placeholder="smtp.gmail.com"
                 required={smtpEnabled}
               />
             </div>
 
             <div>
-              <label htmlFor="settings-smtp-port" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Port', 'Cổng')}
-              </label>
+              <label htmlFor="settings-smtp-port" className="auth-label">Port</label>
               <input
                 id="settings-smtp-port"
                 type="number"
                 value={smtpPort}
                 onChange={(e) => setSmtpPort(Number(e.target.value))}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500 font-mono"
+                className="auth-input font-mono text-sm"
                 placeholder="587"
                 min={1}
                 max={65535}
@@ -417,31 +397,27 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="settings-smtp-encryption" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Encryption Mode', 'Chế độ mã hóa')}
-              </label>
+              <label htmlFor="settings-smtp-encryption" className="auth-label">Encryption Mode</label>
               <select
                 id="settings-smtp-encryption"
                 value={smtpEncryption}
                 onChange={(e) => setSmtpEncryption(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
+                className="auth-input text-sm"
               >
-                <option value="tls">STARTTLS (Port 587)</option>
+                <option value="tls">STARTTLS (Recommended / Port 587)</option>
                 <option value="ssl">SSL / TLS (Port 465)</option>
                 <option value="none">None (Plaintext / Port 25)</option>
               </select>
             </div>
 
             <div>
-              <label htmlFor="settings-smtp-user" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Username', 'Tên đăng nhập')}
-              </label>
+              <label htmlFor="settings-smtp-user" className="auth-label">Username</label>
               <input
                 id="settings-smtp-user"
                 type="text"
                 value={smtpUsername}
                 onChange={(e) => setSmtpUsername(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
+                className="auth-input"
                 placeholder="user@example.com"
                 autoComplete="off"
               />
@@ -449,11 +425,9 @@ export default function SettingsPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label htmlFor="settings-smtp-password" className="block text-xs font-semibold text-[var(--foreground)]">
-                  {t('Password / App Key', 'Mật khẩu / Khóa ứng dụng')}
-                </label>
+                <label htmlFor="settings-smtp-password" className="auth-label mb-0">Password / App Key</label>
                 {smtpPasswordSet && (
-                  <span className="text-[10px] text-emerald-500 font-medium">✓ {t('Saved', 'Đã lưu')}</span>
+                  <span className="text-[11px] text-[var(--mint)] font-medium">✓ Saved</span>
                 )}
               </div>
               <div className="relative">
@@ -462,81 +436,77 @@ export default function SettingsPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
-                  className="w-full px-2.5 py-1.5 pr-8 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
-                  placeholder={smtpPasswordSet ? '•••••••• (unchanged)' : t('Enter SMTP password', 'Nhập mật khẩu SMTP')}
+                  className="auth-input pr-10"
+                  placeholder={smtpPasswordSet ? '•••••••• (unchanged)' : 'Enter SMTP password'}
                   autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--color-foreground)]"
                   tabIndex={-1}
                 >
-                  {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
             <div>
-              <label htmlFor="settings-from-email" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Sender Email (From)', 'Email người gửi (From)')}
-              </label>
+              <label htmlFor="settings-from-email" className="auth-label">Sender Email (From)</label>
               <input
                 id="settings-from-email"
                 type="email"
                 value={smtpFromEmail}
                 onChange={(e) => setSmtpFromEmail(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
+                className="auth-input"
                 placeholder="noreply@example.com"
                 required={smtpEnabled}
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label htmlFor="settings-from-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
-                {t('Sender Display Name', 'Tên hiển thị người gửi')}
-              </label>
+              <label htmlFor="settings-from-name" className="auth-label">Sender Display Name</label>
               <input
                 id="settings-from-name"
                 type="text"
                 value={smtpFromName}
                 onChange={(e) => setSmtpFromName(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500"
+                className="auth-input"
                 placeholder="DatrixOps System"
               />
             </div>
           </div>
 
           {/* Test Email Delivery Subsection */}
-          <div className="pt-3 border-t border-[var(--border-subtle)]">
-            <h3 className="text-xs font-bold mb-1.5 flex items-center gap-1.5 text-[var(--foreground)]">
-              <Sparkles className="h-3.5 w-3.5 text-blue-500" /> {t('Live Connection Test', 'Kiểm tra kết nối trực tiếp')}
+          <div className="pt-4 border-t border-[var(--border-color)]">
+            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[var(--mint)]" /> Live Connection Test
             </h3>
-            <p className="text-[11px] text-[var(--color-muted)] mb-2.5">
-              {t('Send a test verification message to ensure your credentials and firewall allow outbound delivery.', 'Gửi thư thử nghiệm để đảm bảo thông tin đăng nhập và tường lửa cho phép chuyển tiếp email.')}
+            <p className="text-xs text-[var(--color-muted)] mb-3">
+              Send a test verification message to ensure your credentials and firewall allow outbound delivery.
             </p>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <input
                 type="email"
                 value={testRecipient}
                 onChange={(e) => setTestRecipient(e.target.value)}
                 placeholder="recipient@example.com"
-                className="px-2.5 py-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] outline-none focus:border-blue-500 sm:max-w-xs"
+                className="auth-input sm:max-w-xs text-sm"
               />
               <button
                 type="button"
                 onClick={handleTestEmail}
                 disabled={testing || !testRecipient || !smtpHost}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-sm bg-[var(--surface-2)] border border-[var(--border-default)] text-xs font-semibold hover:bg-[var(--surface-3)] text-[var(--foreground)] disabled:opacity-50 transition duration-100 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[var(--background-secondary)] border border-[var(--border-color)] text-sm font-medium hover:border-[var(--mint)] disabled:opacity-50 transition-colors cursor-pointer"
               >
                 {testing ? (
                   <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" /> {t('Testing...', 'Đang thử...')}
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Testing...
                   </>
                 ) : (
                   <>
-                    <Send className="h-3.5 w-3.5" /> {t('Send Test Email', 'Gửi Email Thử')}
+                    <Send className="h-4 w-4" /> Send Test Email
                   </>
                 )}
               </button>
@@ -544,13 +514,13 @@ export default function SettingsPage() {
 
             {testResult && (
               <div
-                className={`mt-2.5 p-2.5 rounded-sm text-xs leading-relaxed border ${
+                className={`mt-3 p-3 rounded-lg text-xs leading-relaxed ${
                   testResult.success
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-rose-500/10 border-rose-500/20 text-rose-500'
+                    ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                    : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
                 }`}
               >
-                <strong>{testResult.success ? `${t('Success', 'Thành công')}: ` : `${t('Error', 'Lỗi')}: `}</strong>
+                <strong>{testResult.success ? 'Success: ' : 'Error: '}</strong>
                 {testResult.message}
               </div>
             )}
@@ -558,19 +528,19 @@ export default function SettingsPage() {
         </section>
 
         {/* Submit action */}
-        <div className="flex items-center justify-end gap-2.5 pt-1">
+        <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="submit"
             disabled={saving}
-            className="h-8 px-4 rounded-sm bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition duration-100 disabled:opacity-50"
+            className="auth-submit !w-auto px-6 py-2.5 inline-flex items-center gap-2"
           >
             {saving ? (
               <>
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" /> {t('Saving changes...', 'Đang lưu thay đổi...')}
+                <RefreshCw className="h-4 w-4 animate-spin" /> Saving changes...
               </>
             ) : (
               <>
-                <Save className="h-3.5 w-3.5" /> {t('Save Configuration', 'Lưu Cấu hình')}
+                <Save className="h-4 w-4" /> Save Configuration
               </>
             )}
           </button>

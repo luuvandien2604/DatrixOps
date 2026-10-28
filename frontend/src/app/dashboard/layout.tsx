@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -15,8 +15,6 @@ import { apiClient, getUserRole } from '@/lib/apiClient';
 import { editionLabel, getAppVersion } from '@/lib/edition';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { CommandPalette } from '@/components/CommandPalette';
-import { useLanguage } from '@/components/LanguageContext';
-import { LanguageToggle } from '@/components/LanguageToggle';
 
 type NavDefinition = {
   label: string;
@@ -50,28 +48,26 @@ type UpdateCheckInfo = {
   managed?: boolean;
 };
 
+const primaryNav: NavDefinition[] = [
+  { label: 'Overview', href: '/dashboard', icon: Gauge },
+  { label: 'Servers', href: '/dashboard/servers', icon: Server },
+  { label: 'Network Quality', href: '/dashboard/network', icon: Network },
+  { label: 'Uptime', href: '/dashboard/websites', icon: Globe2 },
+  { label: 'Metrics', href: '/dashboard/monitoring', icon: Activity },
+  { label: 'Alerts', href: '/dashboard/alerts', icon: Bell },
+  { label: 'Logs', href: '/dashboard/logs', icon: FileText },
+];
+
+const adminNav: NavDefinition[] = [
+  { label: 'Team access', href: '/dashboard/manage/users', icon: Users },
+  { label: 'Audit trail', href: '/dashboard/manage/audit', icon: ScrollText },
+  { label: 'API keys', href: '/dashboard/manage/api', icon: KeyRound },
+  { label: 'System settings', href: '/dashboard/manage/settings', icon: Settings },
+];
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { t, isVi } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
-
-  const primaryNavItems: NavDefinition[] = useMemo(() => [
-    { label: t('Overview', 'Tổng quan'), href: '/dashboard', icon: Gauge },
-    { label: t('Servers', 'Máy chủ'), href: '/dashboard/servers', icon: Server },
-    { label: t('Network Quality', 'Chất lượng mạng'), href: '/dashboard/network', icon: Network },
-    { label: t('Uptime', 'Website & SSL'), href: '/dashboard/websites', icon: Globe2 },
-    { label: t('Metrics', 'Chỉ số đo đạc'), href: '/dashboard/monitoring', icon: Activity },
-    { label: t('Alerts', 'Cảnh báo & Sự cố'), href: '/dashboard/alerts', icon: Bell },
-    { label: t('Logs', 'Nhật ký logs'), href: '/dashboard/logs', icon: FileText },
-  ], [t]);
-
-  const adminNavItems: NavDefinition[] = useMemo(() => [
-    { label: t('Team access', 'Thành viên & Quyền'), href: '/dashboard/manage/users', icon: Users },
-    { label: t('Audit trail', 'Nhật ký hoạt động'), href: '/dashboard/manage/audit', icon: ScrollText },
-    { label: t('API keys', 'Khóa API'), href: '/dashboard/manage/api', icon: KeyRound },
-    { label: t('System settings', 'Cài đặt hệ thống'), href: '/dashboard/manage/settings', icon: Settings },
-  ], [t]);
-
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
@@ -274,29 +270,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-current={active ? 'page' : undefined}
         onClick={() => setMobileOpen(false)}
         className={[
-          'flex items-center gap-2.5 px-3 py-2 mx-2 rounded-md text-[13px] font-medium transition-colors duration-100 font-sans',
-          active
-            ? 'bg-blue-600/15 text-white border-l-2 border-blue-500'
-            : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 border-l-2 border-l-transparent',
-          collapsed ? 'justify-center !mx-1 !px-2' : '',
+          'sidebar-nav-item',
+          // Tăng độ rõ cho toàn bộ menu sidebar.
+          'font-medium text-[var(--color-muted)]',
+          active ? 'is-active font-semibold !text-[var(--foreground)]' : '',
+          collapsed ? 'justify-center' : '',
         ].join(' ')}
       >
         <Icon
-          className={`w-4 h-4 shrink-0 ${
-            active ? 'text-blue-400' : 'text-slate-400'
+          className={`h-[18px] w-[18px] shrink-0 ${
+            active ? 'text-[var(--foreground)]' : 'text-[var(--color-muted)]'
           }`}
         />
-        {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && <span>{item.label}</span>}
       </Link>
     );
   };
 
   return (
-    <div className="app-shell min-h-screen bg-[#F1F5F9] dark:bg-[#060911] text-[#0F172A] dark:text-[#F8FAFC] font-sans">
+    // Mọi màu chữ dùng CSS variable của theme. Không dùng text-white cố định,
+    // vì text-white sẽ bị chìm khi người dùng chuyển sang giao diện sáng.
+    <div className="app-shell min-h-screen text-[var(--foreground)]">
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-2.5 lg:hidden border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#0B0F19] text-slate-700 dark:text-slate-200 shadow-sm"
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-3 lg:hidden"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
@@ -313,104 +311,114 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside
         aria-label="Dashboard navigation"
-        className={`fixed inset-y-0 left-0 z-50 shrink-0 bg-[#0B0F19] border-r border-[#1E293B] flex flex-col justify-between font-sans select-none transition-all duration-200 ${
-          collapsed ? 'w-[72px]' : 'w-60'
-        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
       >
-        <div className="flex flex-col min-h-0 flex-1">
-          {/* Logo Header */}
-          <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#1E293B] shrink-0">
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-                <Command className="w-4 h-4" />
-              </div>
+        <div className="flex h-20 items-center gap-3 px-4">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
+            <div className="brand-orbit">
+              <Command className="h-4 w-4" />
+            </div>
 
-              {!collapsed && (
-                <div className="min-w-0 flex items-center gap-2">
-                  <p className="text-sm font-bold tracking-wide text-white truncate font-sans">
-                    DATRIX<span className="text-blue-400">OPS</span>
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="flex items-center">
+                  <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
+                    DATRIX<span className="text-[var(--violet)]">OPS</span>
                   </p>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 leading-none">
-                    CP
-                  </span>
                 </div>
-              )}
-            </Link>
 
-            <button
-              type="button"
-              onClick={() => setMobileOpen(false)}
-              className="ml-auto text-slate-400 hover:text-white lg:hidden"
-              aria-label="Close navigation"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Agent Status Box */}
-          <div className="p-3 shrink-0">
-            <div className={`px-3 py-2 rounded-md bg-[#111827] border border-[#1E293B] flex items-center justify-between ${collapsed ? 'justify-center !px-2' : ''}`}>
-              <div className="flex items-center gap-2 min-w-0">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${fleetSyncFailed ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                {!collapsed && (
-                  <span className="text-xs font-medium text-slate-300 font-sans truncate">
-                    {t('Agent Network', 'Mạng lưới Agent')}
-                  </span>
-                )}
+                {/* Dòng phụ sáng hơn để không bị chìm trên nền tối. */}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  control plane
+                </p>
               </div>
-              {!collapsed && (
-                <span className={`text-xs font-mono tabular-nums shrink-0 font-medium ${fleetSyncFailed ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {fleetSyncFailed
-                    ? t('offline', 'mất kết nối')
-                    : fleetSummary
-                    ? `${fleetSummary.online_servers}/${fleetSummary.total_servers} ${t('online', 'trực tuyến')}`
-                    : t('Syncing...', 'Đang đồng bộ...')}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Navigation Items */}
-          <nav className="custom-scrollbar flex-1 overflow-y-auto py-2">
-            <div className="px-3 pt-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans">
-              {collapsed ? '•' : t('INSTANCE', 'HỆ THỐNG')}
-            </div>
-
-            <div className="space-y-1">
-              {primaryNavItems.map((item) => (
-                <NavItem item={item} key={item.href} />
-              ))}
-            </div>
-
-            {(role === 'admin' || role === 'superadmin') && (
-              <>
-                <div className="px-3 pt-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans">
-                  {collapsed ? '•' : t('ADMIN', 'QUẢN TRỊ')}
-                </div>
-
-                <div className="space-y-1">
-                  {adminNavItems.map((item) => (
-                    <NavItem item={item} key={item.href} />
-                  ))}
-                </div>
-              </>
             )}
-          </nav>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="ml-auto text-[var(--foreground)] lg:hidden"
+            aria-label="Close navigation"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-[#1E293B] flex items-center justify-between text-xs text-slate-500 font-sans shrink-0">
-          {!collapsed ? (
+        <div className="px-3">
+          <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span
+                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                  fleetSyncFailed
+                    ? 'bg-[var(--amber)]'
+                    : (fleetSummary?.online_servers ?? 0) > 0
+                      ? 'bg-[var(--mint)]'
+                      : 'bg-[var(--color-muted)]'
+                }`}
+              />
+            </span>
+
+            {!collapsed && (
+              <div>
+                {/* Tên card đậm hơn. */}
+                <p className="text-xs font-semibold text-[var(--foreground)]">Agent network</p>
+
+                {/* Thông tin trạng thái tăng contrast. */}
+                <p className="text-[10px] font-medium text-[var(--color-muted)]">
+                  {fleetSyncFailed
+                    ? 'Live data unavailable'
+                    : fleetSummary
+                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} connected`
+                      : 'Syncing live status…'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-5">
+          <p
+            className={`nav-eyebrow font-semibold text-[var(--color-muted)] ${
+              collapsed ? 'text-center' : ''
+            }`}
+          >
+            {collapsed ? '•' : 'Instance'}
+          </p>
+
+          <div className="space-y-1">
+            {primaryNav.map((item) => (
+              <NavItem item={item} key={item.href} />
+            ))}
+          </div>
+
+          {(role === 'admin' || role === 'superadmin') && (
             <>
+              <p
+                className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
+                  collapsed ? 'text-center' : ''
+                }`}
+              >
+                {collapsed ? '•' : 'Admin'}
+              </p>
+
+              <div className="space-y-1">
+                {adminNav.map((item) => (
+                  <NavItem item={item} key={item.href} />
+                ))}
+              </div>
+            </>
+          )}
+        </nav>
+
+        <div className="border-t border-[var(--border-color)] p-3">
+          {!collapsed && (
+            <div className="px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
               <span className="truncate">DatrixOps CE</span>
-              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 tabular-nums">
+              <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-blue-400 border border-white/10 font-bold">
                 v{systemVersion}
               </span>
-            </>
-          ) : (
-            <span className="font-mono text-[10px] text-slate-400 mx-auto">
-              v{systemVersion}
-            </span>
+            </div>
           )}
         </div>
 
@@ -429,18 +437,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
       </aside>
 
-      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''} bg-[#F1F5F9] dark:bg-[#060911] text-[#0F172A] dark:text-[#F8FAFC] min-h-screen flex flex-col font-sans`}>
-        <header className="h-14 px-6 bg-white dark:bg-[#0B0F19] border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between sticky top-0 z-30 font-sans shrink-0">
-          {/* Breadcrumb bên trái */}
-          <div className="hidden items-center gap-2 text-[13px] font-sans md:flex">
-            <span className="font-medium text-slate-900 dark:text-slate-200">{editionLabel(workspaceEdition)}</span>
-            <span className="text-slate-400">/</span>
-            <span className="text-slate-500 dark:text-slate-400">Production</span>
+      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
+        <header className="shell-surface app-header">
+          {/* Breadcrumb tăng độ rõ và weight. */}
+          <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
+            <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
+            <span className="text-[var(--color-muted)]">/</span>
+            <span className="text-[var(--color-muted)]">Production</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <LanguageToggle className="h-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200" />
-            <ThemeToggle className="h-8 w-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center p-0" />
+            <ThemeToggle />
 
             {(() => {
               const serverUpdateAvailable = Boolean(updateCheck?.update_available);
@@ -455,41 +462,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     type="button"
                     aria-label={
                       totalUnreadBadge > 0
-                        ? `${t('Open notifications', 'Mở thông báo')}, ${totalUnreadBadge} ${t('unread', 'chưa đọc')}`
-                        : t('Open notifications', 'Mở thông báo')
+                        ? `Open notifications, ${totalUnreadBadge} unread`
+                        : 'Open notifications'
                     }
                     aria-expanded={notificationsOpen}
                     onClick={() => {
                       setNotificationsOpen((current) => !current);
                       if (!notificationsOpen) void fetchNotifications();
                     }}
-                    className="h-8 w-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center relative transition-colors"
+                    className="topbar-icon relative text-[var(--color-muted)]"
                   >
                     <Bell className="h-4 w-4" />
                     {totalUnreadBadge > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-mono font-bold leading-none text-white shadow-sm">
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
                         {totalUnreadBadge > 99 ? '99+' : totalUnreadBadge}
                       </span>
                     )}
                   </button>
 
                   {notificationsOpen && (
-                    <div className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-lg animate-in fade-in">
-                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]">
+                    <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
                         <div>
-                          <p className="text-sm font-bold text-[var(--foreground)]">{t('Notifications', 'Thông báo')}</p>
-                          <p className="font-mono text-[11px] text-[var(--color-muted)]">
-                            {totalUnreadBadge} {t('unread', 'chưa đọc')}
+                          <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
+                          <p className="text-[11px] font-medium text-[var(--color-muted)]">
+                            {totalUnreadBadge} unread
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void markAllNotificationsRead()}
                           disabled={unreadNotificationCount === 0}
-                          className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold text-blue-500 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <CheckCheck className="h-3.5 w-3.5" />
-                          {t('Mark all as read', 'Đánh dấu đã đọc')}
+                          Mark all as read
                         </button>
                       </div>
 
@@ -497,20 +504,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Server Update notification (no action buttons) */}
                         {serverUpdateAvailable && (
                           <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-blue-500/[0.08]">
-                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-blue-500/20 text-blue-400">
-                              <Sparkles className="h-3.5 w-3.5" />
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400">
+                              <Sparkles className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <p className="min-w-0 truncate text-xs font-bold text-[var(--foreground)]">
-                                  {t('Server Update available', 'Bản cập nhật Server')} v{updateCheck?.latest_version}
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Server v{updateCheck?.latest_version}
                                 </p>
-                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-blue-400 uppercase tracking-wide">
+                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-blue-400 uppercase tracking-wide">
                                   Server
                                 </span>
                               </div>
-                              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                                {t('New DatrixOps Server version available', 'Đã có phiên bản DatrixOps Server mới')} (v{systemVersion || updateCheck?.current_version}).
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản DatrixOps Server mới (bản hiện tại v{systemVersion || updateCheck?.current_version}).
                               </p>
                             </div>
                           </div>
@@ -519,38 +526,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Agent Update notification (no action buttons) */}
                         {agentUpdateAvailable && (
                           <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-indigo-500/[0.08]">
-                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-indigo-500/20 text-indigo-400">
-                              <Bot className="h-3.5 w-3.5" />
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400">
+                              <Bot className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <p className="min-w-0 truncate text-xs font-bold text-[var(--foreground)]">
-                                  {t('Agent Update available', 'Bản cập nhật Agent')} v{updateCheck?.latest_agent_version}
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Agent v{updateCheck?.latest_agent_version}
                                 </p>
-                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-indigo-400 uppercase tracking-wide">
+                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-400 uppercase tracking-wide">
                                   Agent
                                 </span>
                               </div>
-                              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                                {t('New Datrix Agent version available for monitored servers.', 'Đã có phiên bản Datrix Agent mới cho các máy chủ giám sát.')}
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản Datrix Agent mới để nâng cấp cho các máy chủ giám sát.
                               </p>
                             </div>
                           </div>
                         )}
 
                         {notificationsLoading ? (
-                          <div className="flex items-center justify-center px-4 py-10 text-xs text-[var(--color-muted)]">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin text-[var(--accent-primary)]" /> {t('Loading notifications…', 'Đang tải thông báo…')}
+                          <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
                           </div>
                         ) : notificationError && notifications.length === 0 && !hasUpdateNotification ? (
-                          <div className="px-4 py-8 text-center text-xs text-[var(--rose)]">
-                            {t('Unable to load notifications.', 'Không thể tải thông báo.')}
+                          <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
+                            Unable to load notifications.
                           </div>
                         ) : notifications.length === 0 && !hasUpdateNotification ? (
                           <div className="px-4 py-10 text-center">
-                            <Bell className="mx-auto mb-2 h-6 w-6 text-[var(--color-muted)] opacity-40" />
-                            <p className="text-xs font-semibold text-[var(--foreground)]">{t('No notifications yet', 'Không có thông báo mới')}</p>
-                            <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t('Alert events will appear here.', 'Các sự kiện cảnh báo sẽ hiển thị ở đây.')}</p>
+                            <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
+                            <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
+                            <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
                           </div>
                         ) : (
                           notifications.map((notification) => {
@@ -560,17 +567,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               <div
                                 key={notification.id}
                                 className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
-                                  unread ? 'bg-[var(--accent-subtle)]' : 'bg-transparent'
+                                  unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
                                 }`}
                               >
                                 <div
-                                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded"
+                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
                                   style={{
-                                    background: resolved ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                    background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
                                     color: resolved ? 'var(--mint)' : 'var(--rose)',
                                   }}
                                 >
-                                  {resolved ? <CircleCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                                  {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
                                 </div>
 
                                 <Link
@@ -582,16 +589,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                   className="min-w-0 flex-1"
                                 >
                                   <div className="flex items-start gap-2">
-                                    <p className={`min-w-0 flex-1 truncate text-xs text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
+                                    <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
                                       {notification.title}
                                     </p>
-                                    {unread && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" />}
+                                    {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
                                   </div>
-                                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
+                                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
                                     {notification.message}
                                   </p>
-                                  <p className="mt-1 font-mono text-[10px] text-[var(--color-muted)]">
-                                    {formatNotificationTime(notification.created_at, isVi)}
+                                  <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
+                                    {formatNotificationTime(notification.created_at)}
                                   </p>
                                 </Link>
 
@@ -603,11 +610,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                       e.preventDefault();
                                       void markNotificationRead(notification.id);
                                     }}
-                                    title={t('Mark as read', 'Đánh dấu đã đọc')}
+                                    title="Mark as read"
                                     aria-label={`Mark ${notification.title} as read`}
-                                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-500"
+                                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
                                   >
-                                    <CircleCheck className="h-3.5 w-3.5" />
+                                    <CircleCheck className="h-4 w-4" />
                                   </button>
                                 )}
                               </div>
@@ -619,9 +626,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <Link
                         href="/dashboard/alerts"
                         onClick={() => setNotificationsOpen(false)}
-                        className="block border-t border-[var(--border-color)] px-4 py-2.5 text-center text-xs font-semibold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+                        className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
                       >
-                        {t('Open alert settings', 'Mở cấu hình cảnh báo')}
+                        Open alert settings
                       </Link>
                     </div>
                   )}
@@ -629,23 +636,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               );
             })()}
 
-            {/* User Profile Avatar with Technical Popover Menu */}
+            {/* User Profile Avatar with Grafana-style Popover Menu */}
             <div ref={userMenuRef} className="relative ml-1">
               <button
                 type="button"
                 aria-label="User profile menu"
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
-                className="h-8 w-8 rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center text-xs font-mono font-bold transition-colors focus:outline-none"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold transition-all hover:ring-2 hover:ring-blue-400/50 hover:opacity-95 active:scale-95 shadow-sm focus:outline-none"
                 title={userEmail || 'User profile'}
               >
                 {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 z-50 w-60 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-1 text-[var(--foreground)] shadow-lg animate-in fade-in">
-                  <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[var(--border-color)] mb-1">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--accent-primary)] text-white text-xs font-mono font-bold">
+                <div className="absolute right-0 top-full mt-2.5 z-50 w-64 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-1.5 text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                  {/* User Profile Header (Grafana style) */}
+                  <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--border-color)] mb-1">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold">
                       {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -653,10 +661,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {userEmail || (role === 'admin' || role === 'superadmin' ? 'Administrator' : 'Operator')}
                       </p>
                       <div className="mt-0.5 flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-[var(--color-muted)] truncate">
+                        <span className="text-[10px] font-medium text-[var(--color-muted)] truncate">
                           {userEmail?.includes('@') ? userEmail.split('@')[0] : (userEmail || 'admin')}
                         </span>
-                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold text-blue-400 uppercase">
+                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-400 capitalize">
                           {role || 'admin'}
                         </span>
                       </div>
@@ -667,10 +675,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <Link
                     href="/docs"
                     onClick={() => setUserMenuOpen(false)}
-                    className="flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
                   >
-                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--color-muted)]" />
-                    <span>{t('Documentation', 'Tài liệu hướng dẫn')}</span>
+                    <BookOpen className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                    <span>Documentation</span>
                   </Link>
 
                   <button
@@ -679,13 +687,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       setUserMenuOpen(false);
                       setCommandPaletteOpen(true);
                     }}
-                    className="flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Search className="h-3.5 w-3.5 shrink-0 text-[var(--color-muted)]" />
-                      <span>{t('Quick search', 'Tìm kiếm nhanh')}</span>
+                      <Search className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                      <span>Quick search</span>
                     </div>
-                    <kbd className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--color-muted)] border border-[var(--border-subtle)]">⌘ K</kbd>
+                    <kbd className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-[var(--color-muted)] border border-white/10">⌘ K</kbd>
                   </button>
 
                   <div className="my-1 border-t border-[var(--border-color)]" />
@@ -696,10 +704,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       setUserMenuOpen(false);
                       logout();
                     }}
-                    className="flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
                   >
-                    <LogOut className="h-3.5 w-3.5 shrink-0 text-[var(--rose)]" />
-                    <span>{t('Sign out', 'Đăng xuất')}</span>
+                    <LogOut className="h-4 w-4 shrink-0 text-[var(--rose)]" />
+                    <span>Sign out</span>
                   </button>
                 </div>
               )}
@@ -720,12 +728,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 // formatNotificationTime hiển thị thời gian tương đối ngắn trong dropdown.
-function formatNotificationTime(value: string, isVi = false): string {
+function formatNotificationTime(value: string): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return '';
 
   const seconds = Math.round((timestamp - Date.now()) / 1_000);
-  const formatter = new Intl.RelativeTimeFormat(isVi ? 'vi' : 'en', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');

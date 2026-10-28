@@ -4,13 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, ArrowUpRight, ChevronRight, CircleAlert,
-  Cpu, Database, Plus, RefreshCw, Server, Wifi,
+  Activity, ArrowUpRight, BellRing, Check, ChevronRight, CircleAlert, Cloud,
+  Cpu, Database, MemoryStick, Plus, RefreshCw, Server, Wifi,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
-import { useLanguage } from '@/components/LanguageContext';
 
 type DashboardRange = '1H' | '2H' | '12H' | '24H';
 
@@ -72,7 +71,6 @@ type ChartPoint = {
 const POLL_INTERVAL_MS = 15_000;
 
 export default function OverviewDashboard() {
-  const { t, isVi } = useLanguage();
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -153,659 +151,273 @@ export default function OverviewDashboard() {
   }, [overview?.metrics, range]);
 
   const latestMetric = chartData.at(-1);
+  const cpuBars = chartData.slice(-7).map((point) => point.cpu);
+  const memoryBars = chartData.slice(-7).map((point) => point.ram);
 
   if (loading && !overview) {
-    return (
-      <DashboardMessage
-        title={t('Syncing live telemetry', 'Đang đồng bộ dữ liệu')}
-        description={t('Fetching the latest fleet heartbeats, metrics, and incident state.', 'Đang nạp nhịp tim, thông số kỹ thuật và trạng thái cảnh báo.')}
-        loading
-      />
-    );
+    return <DashboardMessage title="Syncing live data" description="Fetching the latest heartbeat, metrics, and alert state." loading />;
   }
 
   if (!overview && error) {
     return (
       <DashboardMessage
-        title={t('Unable to load telemetry', 'Không thể tải dữ liệu')}
+        title="Unable to load data"
         description={error}
-        action={
-          <button
-            type="button"
-            onClick={() => void fetchOverview(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[#CBD5E1] dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-1.5 text-xs font-sans font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t('Try again', 'Thử lại')}
-          </button>
-        }
+        action={<button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
       />
     );
   }
 
-  const fleetStatus = getFleetStatus(total, online, incidents.length, t);
+  const fleetStatus = getFleetStatus(total, online, incidents.length);
 
   return (
-    <div className="font-sans">
-      {/* 1. Page Header (Clean, directly on background, no box/border) */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+    <div className="mx-auto max-w-[1540px] space-y-6">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-[#0F172A] dark:text-white font-sans">
-            {t('Infrastructure Overview', 'Tổng quan hạ tầng')}
-          </h1>
-          <div className="flex items-center gap-2 mt-1 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-            <span>{t('Live telemetry', 'Đo đạc trực tiếp')}</span>
-            <span>·</span>
-            <span>
-              {t('Snapshot:', 'Thời điểm:')}{' '}
-              <span className="font-mono tabular-nums text-[#0F172A] dark:text-slate-200">
-                {formatSnapshotTime(overview?.generated_at)}
-              </span>
-            </span>
-            <span>·</span>
-            <span>
-              {refreshing
-                ? t('Updating...', 'Đang cập nhật...')
-                : t('Auto-refresh 15s', 'Tự động làm mới 15s')}
-            </span>
-            {error && <span className="text-red-500 font-medium">[{error}]</span>}
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
+            <Activity className="h-3 w-3" />
+            Live telemetry
+            <span className="live-data-dot" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Infrastructure Overview</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40 font-mono" aria-live="polite">
+            <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{refreshing ? 'Receiving fresh data…' : 'Auto-refresh is on'}</span>
+            {error && <span className="text-[var(--rose)]">Latest refresh failed: {error}</span>}
           </div>
         </div>
-
-        {/* 2 Control Buttons Only */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => void fetchOverview(true)}
-            disabled={refreshing}
-            className="h-8 px-3 rounded-md text-xs font-medium font-sans bg-white dark:bg-[#0F1623] border border-[#CBD5E1] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-colors duration-100 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-blue-600' : ''}`} />
-            <span>{t('Refresh', 'Làm mới')}</span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary" disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
           </button>
-
-          <Link
-            href="/dashboard/servers"
-            className="h-8 px-3.5 rounded-md text-xs font-medium font-sans bg-[#2563EB] hover:bg-[#1D4ED8] dark:hover:bg-[#3B82F6] text-white flex items-center gap-1.5 transition-colors duration-100"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>{t('Add server', 'Thêm máy chủ')}</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* 2. 5-Column Metric Cards Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-5 font-sans">
-        {/* Card 1: Agents Online */}
-        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
-              {t('Agents Online', 'Agent trực tuyến')}
-            </span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-          </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
-            {online}/{total}
-          </div>
-          <div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
-              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${health}%` }} />
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
-              {total > 0 ? `${health}% ` + t('healthy heartbeats', 'nhịp tim ổn định') : t('No agents', 'Chưa có agent')}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Fleet Health */}
-        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
-              {t('Fleet Health', 'Sức khỏe cụm')}
-            </span>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${fleetStatus.tone === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
-            {total > 0 ? `${health}%` : '—'}
-          </div>
-          <div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
-              <div
-                className={`h-full rounded-full transition-all ${fleetStatus.tone === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                style={{ width: `${health}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
-              {offline} {t('offline', 'ngoại tuyến')} · {warning} {t('alerted', 'cảnh báo')}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 3: Average CPU */}
-        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
-              {t('Average CPU', 'CPU trung bình')}
-            </span>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.average_cpu ?? 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`} />
-          </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
-            {hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
-          </div>
-          <div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
-              <div
-                className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, summary?.average_cpu ?? 0))}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
-              {hasLiveMetrics ? t('Cluster load average', 'Tải trung bình cụm') : t('No metrics', 'Chưa có số liệu')}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 4: Memory Used */}
-        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
-              {t('Memory Used', 'RAM đã dùng')}
-            </span>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.average_memory ?? 0) >= 80 ? 'bg-amber-500' : 'bg-blue-500'}`} />
-          </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
-            {hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
-          </div>
-          <div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
-              <div
-                className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, summary?.average_memory ?? 0))}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
-              {hasLiveMemory ? (
-                <>
-                  <span className="font-mono tabular-nums">{formatBytes(summary?.memory_used ?? 0)}</span> /{' '}
-                  <span className="font-mono tabular-nums">{formatBytes(summary?.memory_total ?? 0)}</span>
-                </>
-              ) : (
-                t('No metrics', 'Chưa có số liệu')
-              )}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 5: Open Incidents */}
-        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
-              {t('Open Incidents', 'Sự cố đang mở')}
-            </span>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.open_incidents ?? 0) > 0 ? 'bg-red-500' : 'bg-emerald-500'}`} />
-          </div>
-          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
-            {summary?.open_incidents ?? 0}
-          </div>
-          <div>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
-              <div
-                className={`h-full rounded-full transition-all ${(summary?.open_incidents ?? 0) > 0 ? 'bg-red-500' : 'bg-emerald-500'}`}
-                style={{ width: `${(summary?.open_incidents ?? 0) > 0 ? 100 : 0}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
-              {warning > 0
-                ? `${warning} ` + t('affected servers', 'máy chủ bị ảnh hưởng')
-                : t('All systems operational', 'Toàn bộ ổn định')}
-            </p>
-          </div>
+          <Link href="/dashboard/servers" className="ops-button primary"><Plus className="h-4 w-4" />Add server</Link>
         </div>
       </section>
 
-      {/* 3. Split Grid (2/3 Resource Load + 1/3 Active Incidents) */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5 items-stretch font-sans">
-        {/* Left: Resource Load Area Chart (lg:col-span-2) */}
-        <div className="lg:col-span-2 bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          {/* Card Header on 1 single row */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-[#E2E8F0] dark:border-[#1E293B]">
-            <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
-                {t('Resource Load', 'Tải tài nguyên')}
-              </h2>
-              <div className="flex items-center gap-3 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-xs bg-blue-600 shrink-0" />
-                  CPU <strong className="font-mono tabular-nums text-[#0F172A] dark:text-white font-medium">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-xs bg-teal-500 shrink-0" />
-                  RAM <strong className="font-mono tabular-nums text-[#0F172A] dark:text-white font-medium">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
-                </span>
-              </div>
-            </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          icon={Server}
+          label="Agents online"
+          value={`${online}/${total}`}
+          note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
+          color="var(--mint)"
+          bars={[]}
+          tint="healthy"
+          emptyLabel="LIVE"
+        />
+        <MetricCard
+          icon={Cpu}
+          label="Average CPU"
+          value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
+          note={hasLiveMetrics ? 'Online server average' : 'No metrics'}
+          color="var(--violet)"
+          bars={cpuBars}
+          tint="info"
+        />
+        <MetricCard
+          icon={MemoryStick}
+          label="Memory used"
+          value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
+          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
+          color="var(--sky)"
+          bars={memoryBars}
+          tint="info"
+        />
+        <MetricCard
+          icon={BellRing}
+          label="Open incidents"
+          value={String(summary?.open_incidents ?? 0)}
+          note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
+          color="var(--rose)"
+          bars={[]}
+          tint={warning > 0 ? 'critical' : 'healthy'}
+          emptyLabel={warning > 0 ? 'ACTIVE' : 'CLEAR'}
+        />
+      </section>
 
-            {/* Time range selector (1H 2H 12H 24H) */}
-            <div className="inline-flex p-0.5 rounded-md bg-slate-100 dark:bg-[#090D16] border border-[#E2E8F0] dark:border-[#1E293B]">
+      <section className="grid gap-4 xl:grid-cols-[1.65fr_.75fr]">
+        <div className="ops-panel min-h-[390px] p-5 sm:p-6">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
+            <div className="range-picker" aria-label="Chart time range">
               {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
-                <button
-                  type="button"
-                  key={item}
-                  onClick={() => setRange(item)}
-                  className={`px-2.5 py-1 text-xs font-mono font-medium rounded-xs transition-colors ${
-                    range === item
-                      ? 'bg-[#2563EB] text-white'
-                      : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
-                  }`}
-                >
+                <button type="button" key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''} aria-pressed={range === item}>
                   {item}
                 </button>
               ))}
             </div>
           </div>
-
-          {/* Area Chart View */}
-          <div className="min-h-[260px] flex-1">
+          <div className="mb-4 flex gap-6 text-xs">
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--violet)]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--mint)]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
+          </div>
+          <div className="h-[260px]">
             {chartData.length > 0 ? (
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
-                        <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#14B8A6" stopOpacity={0.15} />
-                        <stop offset="100%" stopColor="#14B8A6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="t"
-                      stroke="#94A3B8"
-                      fontSize={11}
-                      fontFamily="monospace"
-                      tickLine={false}
-                      axisLine={{ stroke: '#E2E8F0', strokeOpacity: 0.5 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: 'var(--surface-1, #0F1623)',
-                        borderColor: 'var(--border-default, #1E293B)',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontFamily: 'Inter, system-ui, sans-serif',
-                      }}
-                      labelFormatter={(label) => label}
-                      formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="ram"
-                      name="RAM"
-                      stroke="#14B8A6"
-                      strokeWidth={1.5}
-                      fill="url(#overviewRamFill)"
-                      isAnimationActive={false}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="cpu"
-                      name="CPU"
-                      stroke="#2563EB"
-                      strokeWidth={1.5}
-                      fill="url(#overviewCpuFill)"
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".16" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".12" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
+                  </defs>
+                  <XAxis dataKey="t" hide />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }}
+                    labelFormatter={(label) => label}
+                    formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
+                  />
+                  <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
             ) : (
-              <EmptyPanel
-                icon={Activity}
-                title={t('No telemetry in this range', 'Không có dữ liệu trong khung thời gian này')}
-                description={t('The chart will populate automatically when an agent transmits metrics.', 'Biểu đồ sẽ hiển thị ngay khi Agent gửi dữ liệu.')}
-              />
+              <EmptyPanel icon={Activity} title="No telemetry in this range" description="The chart will appear when an agent sends metrics." />
             )}
           </div>
         </div>
 
-        {/* Right: Active Incidents (lg:col-span-1) */}
-        <div className="lg:col-span-1 bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
-          <div>
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#E2E8F0] dark:border-[#1E293B]">
-              <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
-                {t('Active Incidents', 'Sự cố đang mở')}
-              </h2>
-              <span
-                className={`px-2 py-0.5 text-[11px] font-mono font-medium rounded-full ${
-                  incidents.length > 0
-                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                }`}
-              >
-                {incidents.length} {t('firing', 'cảnh báo')}
-              </span>
-            </div>
-
-            {/* Status box: Flat card, NO nested boxes */}
-            {incidents.length === 0 ? (
-              <div className="p-3.5 rounded-md bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-[#E2E8F0] dark:border-[#1E293B]/80 font-sans">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-sans">
-                  <span>✓</span>
-                  <span>{t('All systems operational', 'Toàn bộ hệ thống ổn định')}</span>
-                </div>
-                <p className="text-xs text-[#64748B] dark:text-[#94A3B8] font-sans mt-1 leading-relaxed">
-                  {t(
-                    'No active alerts firing across monitored agents. Heartbeats are operating within nominal limits.',
-                    'Không có cảnh báo nào đang kích hoạt. Nhịp tim các máy chủ hoạt động bình thường.'
-                  )}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {incidents.slice(0, 3).map((incident) => (
-                  <IncidentRow
-                    key={`${incident.rule_id}-${incident.server_id}`}
-                    incident={incident}
-                    isVi={isVi}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Fleet Node Matrix (Compact list, NO outer border box) */}
-            <div className="mt-4">
-              <div className="flex justify-between text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] mb-2 font-sans">
-                <span>{t('Fleet Nodes', 'Máy chủ cụm')}</span>
-                <span className="font-mono tabular-nums font-normal">
-                  {online}/{total} {t('online', 'trực tuyến')}
-                </span>
-              </div>
-
-              {servers.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {servers.slice(0, 6).map((s) => (
-                    <Link
-                      key={s.id}
-                      href={`/dashboard/servers/${s.id}`}
-                      className="px-2.5 py-1.5 rounded bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:border-slate-400 dark:hover:border-slate-600 transition-colors"
-                    >
-                      <span className="truncate max-w-[90px] font-sans">{s.name}</span>
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          s.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'
-                        }`}
-                      />
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">
-                  {t('No agents enrolled.', 'Chưa có máy chủ đăng ký.')}
-                </p>
-              )}
-            </div>
+        <div className="ops-panel overflow-hidden p-6">
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div>
+            <span className={`status-pill ${fleetStatus.tone}`}>{fleetStatus.label}</span>
           </div>
-
-          {/* Open Incident Center button */}
-          <Link
-            href="/dashboard/alerts"
-            className="w-full h-8 mt-4 rounded-md text-xs font-medium font-sans bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <span>{t('Open Incident Center', 'Mở trung tâm sự cố')}</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-          </Link>
+          <div className="relative mx-auto my-7 grid h-44 w-44 place-items-center">
+            <div className="health-ring" style={{ '--health': `${health * 3.6}deg` } as React.CSSProperties} />
+            <div className="text-center"><p className="font-mono text-4xl font-medium">{total > 0 ? `${health}%` : '—'}</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">heartbeat score</p></div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 border-t border-white/[.06] pt-5 text-center">
+            <HealthStat label="Online" value={online} color="text-[var(--mint)]" />
+            <HealthStat label="Alerted" value={warning} color="text-[var(--amber)]" />
+            <HealthStat label="Offline" value={offline} color="text-[var(--rose)]" />
+          </div>
         </div>
       </section>
 
-      {/* 4. Server Activity Data Table (NO VERTICAL BORDERS) */}
-      <section className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md overflow-hidden shadow-none font-sans">
-        {/* Table Top Bar */}
-        <div className="px-4 py-3 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between font-sans">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
-              {t('Server Activity', 'Hoạt động máy chủ')}
-            </h2>
-            <span className="px-2 py-0.5 text-[11px] font-mono rounded-full bg-slate-100 dark:bg-slate-800 text-[#64748B] dark:text-[#94A3B8]">
-              {servers.length} {t('nodes', 'máy chủ')}
-            </span>
-          </div>
-
-          <Link
-            href="/dashboard/servers"
-            className="text-xs font-medium text-[#2563EB] dark:text-blue-400 hover:underline font-sans"
-          >
-            {t('View all nodes →', 'Xem tất cả máy chủ →')}
-          </Link>
+      <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
+        <div className="ops-panel overflow-hidden">
+          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
+          {servers.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="server-table">
+                <thead><tr><th>Server</th><th>Status</th><th>CPU</th><th>Memory</th><th>Heartbeat</th><th></th></tr></thead>
+                <tbody>{servers.slice(0, 6).map((server) => <ServerRow key={server.id} server={server} />)}</tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="No servers" description="Connect your first agent to start receiving live data." /></div>
+          )}
         </div>
 
-        {/* Clean Modern Data Table */}
-        {servers.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-[#F8FAFC] dark:bg-[#090D16]/60 border-b border-[#E2E8F0] dark:border-[#1E293B] text-[11px] font-semibold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] font-sans">
-                  <th className="py-2.5 px-4">{t('Server', 'Máy chủ')}</th>
-                  <th className="py-2.5 px-4">{t('Status', 'Trạng thái')}</th>
-                  <th className="py-2.5 px-4">{t('CPU Load', 'Tải CPU')}</th>
-                  <th className="py-2.5 px-4">{t('Memory Load', 'Bộ nhớ')}</th>
-                  <th className="py-2.5 px-4">{t('Heartbeat', 'Nhịp tim')}</th>
-                  <th className="py-2.5 px-4 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-xs">
-                {servers.map((server) => (
-                  <ServerRow key={server.id} server={server} isVi={isVi} t={t} />
-                ))}
-              </tbody>
-            </table>
+        <div className="ops-panel p-6">
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Active incidents</h2></div>
+            <Link href="/dashboard/alerts" className={incidents.length > 0 ? 'status-pill warning' : 'status-pill good'}>{incidents.length} open</Link>
           </div>
-        ) : (
-          <div className="p-8">
-            <EmptyPanel
-              icon={Server}
-              title={t('No servers registered', 'Chưa có máy chủ đăng ký')}
-              description={t('Enroll your first agent to start collecting realtime telemetry.', 'Cài đặt Agent đầu tiên để bắt đầu thu thập số liệu giám sát.')}
-            />
-          </div>
-        )}
+          {incidents.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              {incidents.slice(0, 4).map((incident) => <Incident key={`${incident.rule_id}-${incident.server_id}`} incident={incident} />)}
+            </div>
+          ) : (
+            <div className="mt-5"><EmptyPanel icon={Check} title="No firing incidents" description="The fleet's current alert state is stable." /></div>
+          )}
+          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Open incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+        </div>
       </section>
     </div>
   );
 }
 
-function ServerRow({
-  server,
-  isVi,
-  t,
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  note,
+  color,
+  bars,
+  tint = 'info',
+  emptyLabel = 'NO DATA',
 }: {
-  server: DashboardServer;
-  isVi: boolean;
-  t: (en: string, vi: string) => string;
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  note: string;
+  color: string;
+  bars: number[];
+  tint?: 'info' | 'healthy' | 'warning' | 'critical';
+  emptyLabel?: string;
 }) {
+  return (
+    <div className={`metric-card surface-regular status-tone-${tint}`}>
+      <div className="flex items-start justify-between">
+        <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
+        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-[var(--text-tertiary)]">{emptyLabel}</span>}
+      </div>
+      <p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p>
+      <div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 max-w-[130px] text-right text-[10px]" style={{ color }}>{note}</p></div>
+    </div>
+  );
+}
+
+function HealthStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return <div><p className={`font-mono text-lg ${color}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-[.16em] text-white/30">{label}</p></div>;
+}
+
+function ServerRow({ server }: { server: DashboardServer }) {
   const online = server.status === 'online';
-  const memoryPercent = server.memory_total > 0 ? (server.memory_used * 100) / server.memory_total : 0;
+  const memoryPercent = server.memory_total > 0 ? server.memory_used * 100 / server.memory_total : 0;
   const canShowMetrics = online && server.has_metrics;
 
   return (
-    <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-      <td className="py-3 px-4">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="w-7 h-7 rounded bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
-            <Server className="w-3.5 h-3.5" />
-          </span>
-          <div className="min-w-0">
-            <p className="font-sans font-medium text-[#0F172A] dark:text-[#F8FAFC] truncate max-w-[200px] sm:max-w-[280px]">
-              {server.name}
-            </p>
-            <p className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] tabular-nums truncate">
-              {server.ip_address ?? t('No IP assigned', 'Chưa gán IP')}
-            </p>
-          </div>
-        </div>
-      </td>
-      <td className="py-3 px-4 whitespace-nowrap">
-        <span
-          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium font-sans ${
-            online
-              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-              : 'bg-red-500/10 text-red-700 dark:text-red-400'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
-          {online ? t('Online', 'Trực tuyến') : t('Offline', 'Ngoại tuyến')}
-        </span>
-      </td>
-      <td className="py-3 px-4 whitespace-nowrap">
-        {canShowMetrics ? (
-          <div className="flex items-center gap-2.5">
-            <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-600 dark:bg-blue-500"
-                style={{ width: `${Math.min(100, Math.max(0, server.cpu_usage))}%` }}
-              />
-            </div>
-            <span className="font-mono font-medium text-xs text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
-              {roundMetric(server.cpu_usage)}%
-            </span>
-          </div>
-        ) : (
-          <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">—</span>
-        )}
-      </td>
-      <td className="py-3 px-4 whitespace-nowrap">
-        {canShowMetrics ? (
-          <div className="flex items-center gap-2.5">
-            <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-600 dark:bg-blue-500"
-                style={{ width: `${Math.min(100, Math.max(0, memoryPercent))}%` }}
-              />
-            </div>
-            <span className="font-mono font-medium text-xs text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
-              {roundMetric(memoryPercent)}%
-            </span>
-            {server.memory_total > 0 && (
-              <span className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] tabular-nums hidden sm:inline">
-                ({formatBytes(server.memory_used)} / {formatBytes(server.memory_total)})
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">—</span>
-        )}
-      </td>
-      <td className="py-3 px-4 font-mono text-xs text-[#64748B] dark:text-[#94A3B8] tabular-nums whitespace-nowrap">
-        {formatRelativeTime(server.last_seen_at, isVi)}
-      </td>
-      <td className="py-3 px-4 text-right whitespace-nowrap">
-        <Link
-          href={`/dashboard/servers/${server.id}`}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium font-sans text-[#2563EB] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-        >
-          {t('Manage', 'Quản lý')}
-          <ChevronRight className="w-3.5 h-3.5" />
-        </Link>
-      </td>
+    <tr>
+      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[11px] text-white/55">{server.ip_address ?? 'No IP address'}</p></div></div></td>
+      <td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td>
+      <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
+      <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
+      <td><span className="text-[10px] text-white/38">{formatRelativeTime(server.last_seen_at)}</span></td>
+      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Open ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
     </tr>
   );
 }
 
-function IncidentRow({
-  incident,
-  isVi,
-}: {
-  incident: DashboardIncident;
-  isVi: boolean;
-}) {
-  const valueDescription =
-    incident.metric === 'status'
-      ? 'Heartbeat > 60s'
-      : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
+function LoadBar({ value }: { value: number }) {
+  const normalized = Math.max(0, Math.min(value, 100));
+  const pressure = normalized >= 85 ? 'var(--status-critical)' : normalized >= 70 ? 'var(--status-warning)' : 'var(--text-secondary)';
+  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: pressure }} /></span><span className="font-mono text-[10px]" style={{ color: pressure }}>{roundMetric(value)}%</span></div>;
+}
+
+function Incident({ incident }: { incident: DashboardIncident }) {
+  const valueDescription = incident.metric === 'status'
+    ? 'Heartbeat is over 60 seconds old'
+    : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
 
   return (
-    <div className="flex items-center gap-2.5 p-2.5 rounded-md bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-red-500/20 font-sans">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-500/10 text-red-500">
-        {renderIncidentIcon(incident.metric)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
-          {incident.rule_name}
-        </p>
-        <p className="mt-0.5 truncate text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">
-          <span className="font-medium text-slate-700 dark:text-slate-300">{incident.server_name}</span> ·{' '}
-          <span className="font-mono tabular-nums">{valueDescription}</span> · {formatRelativeTime(incident.last_triggered_at, isVi)}
-        </p>
-      </div>
-      <CircleAlert className="w-3.5 h-3.5 shrink-0 text-red-500" />
+    <div className="incident-row">
+      <span className="incident-icon critical">{renderIncidentIcon(incident.metric)}</span>
+      <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
+      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[var(--rose)]" />
     </div>
   );
 }
 
-function EmptyPanel({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="grid h-full min-h-32 place-items-center rounded-md border border-dashed border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#090D16]/60 p-6 text-center font-sans">
-      <div>
-        <Icon className="mx-auto h-5 w-5 text-[#64748B] dark:text-[#94A3B8] opacity-60" />
-        <p className="mt-2 text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">{title}</p>
-        <p className="mt-0.5 text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">{description}</p>
-      </div>
-    </div>
-  );
+function EmptyPanel({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return <div className="grid h-full min-h-36 place-items-center rounded-xl border border-dashed border-white/[.07] bg-white/[.012] p-5 text-center"><div><Icon className="mx-auto h-5 w-5 text-white/25" /><p className="mt-3 text-xs text-white/60">{title}</p><p className="mt-1 text-[10px] text-white/28">{description}</p></div></div>;
 }
 
-function DashboardMessage({
-  title,
-  description,
-  loading = false,
-  action,
-}: {
-  title: string;
-  description: string;
-  loading?: boolean;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-64 items-center justify-center p-8 font-sans">
-      <div className="max-w-md w-full rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#0F1623] p-6 text-center shadow-none">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
-          {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <CircleAlert className="h-5 w-5" />}
-        </div>
-        <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">{title}</h2>
-        <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">{description}</p>
-        {action && <div className="mt-4">{action}</div>}
-      </div>
-    </div>
-  );
+function DashboardMessage({ title, description, loading = false, action }: { title: string; description: string; loading?: boolean; action?: React.ReactNode }) {
+  return <div className="feature-preview"><section className="ops-panel"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
 }
 
 function renderIncidentIcon(metric: string): React.ReactNode {
-  if (metric === 'ram') return <Database className="h-3.5 w-3.5" />;
-  if (metric === 'cpu') return <Cpu className="h-3.5 w-3.5" />;
-  if (metric === 'status') return <Wifi className="h-3.5 w-3.5" />;
-  return <CircleAlert className="h-3.5 w-3.5" />;
+  if (metric === 'ram') return <Database className="h-4 w-4" />;
+  if (metric === 'cpu') return <Cpu className="h-4 w-4" />;
+  if (metric === 'status') return <Wifi className="h-4 w-4" />;
+  return <CircleAlert className="h-4 w-4" />;
 }
 
-function getFleetStatus(
-  total: number,
-  online: number,
-  incidents: number,
-  t: (en: string, vi: string) => string
-): { label: string; tone: 'good' | 'warning' } {
-  if (total === 0) return { label: t('No data', 'Chưa có dữ liệu'), tone: 'warning' };
-  if (incidents > 0 || online < total) return { label: t('Attention', 'Cần chú ý'), tone: 'warning' };
-  return { label: t('Operational', 'Hoạt động tốt'), tone: 'good' };
+function getFleetStatus(total: number, online: number, incidents: number): { label: string; tone: 'good' | 'warning' } {
+  if (total === 0) return { label: 'No data', tone: 'warning' };
+  if (incidents > 0 || online < total) return { label: 'Attention', tone: 'warning' };
+  return { label: 'Operational', tone: 'good' };
 }
 
 function roundMetric(value: number | undefined): number {
@@ -841,13 +453,13 @@ function formatSnapshotTime(value?: string): string {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function formatRelativeTime(value?: string, isVi = false): string {
-  if (!value) return isVi ? 'Chưa từng' : 'Never';
+function formatRelativeTime(value?: string): string {
+  if (!value) return 'Never';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return isVi ? 'Không rõ' : 'Unknown';
+  if (Number.isNaN(date.getTime())) return 'Unknown';
 
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const formatter = new Intl.RelativeTimeFormat(isVi ? 'vi' : 'en', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');

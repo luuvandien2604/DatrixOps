@@ -97,10 +97,10 @@ export default function CustomSelect({
           width: `${coords.width}px`,
           zIndex: 'var(--z-dropdown)',
         }}
-        className="rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] shadow-xl max-h-80 overflow-y-auto py-1 font-sans text-xs"
+        className="ops-popover surface-elevated max-h-80 overflow-y-auto py-1.5 font-sans"
       >
         {options.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-[var(--color-muted)] italic">No options available</div>
+          <div className="px-3.5 py-2 text-xs text-slate-400 italic">No options available</div>
         ) : (
           options.map(option => {
             const isSelected = option.value === value;
@@ -112,18 +112,18 @@ export default function CustomSelect({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors duration-100 cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2 text-sm text-left transition-colors cursor-pointer ${
                   isSelected
-                    ? 'bg-blue-600/10 text-blue-500 font-semibold'
-                    : 'text-[var(--foreground)] hover:bg-[var(--surface-2)]'
+                    ? 'is-selected text-[var(--violet)] font-semibold'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]'
                 }`}
               >
                 <span className="flex items-center gap-2 min-w-0 truncate">
                   {option.icon}
                   <span className="truncate">{option.label}</span>
-                  {option.subLabel && <span className="ml-1 text-[11px] text-[var(--color-muted)] font-mono">({option.subLabel})</span>}
+                  {option.subLabel && <span className="ml-1 text-xs text-[var(--color-muted)]">({option.subLabel})</span>}
                 </span>
-                {isSelected && <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-blue-500" />}
+                {isSelected && <Check className="ml-2 h-4 w-4 shrink-0 text-[var(--violet)]" />}
               </button>
             );
           })
@@ -139,13 +139,13 @@ export default function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={handleToggle}
-        className="flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs font-semibold text-[var(--foreground)] outline-none hover:bg-[var(--surface-2)] focus:border-blue-500 transition duration-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="ops-control flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--violet)_24%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <span className="flex items-center gap-1.5 min-w-0 truncate">
+        <span className="flex items-center gap-2 min-w-0 truncate">
           {icon || selectedOption?.icon}
           <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         </span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--color-muted)] transition-transform duration-150 ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[var(--color-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180 text-[var(--violet)]' : ''}`} />
       </button>
 
       {dropdownMenu}
