@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -15,6 +15,8 @@ import { apiClient, getUserRole } from '@/lib/apiClient';
 import { editionLabel, getAppVersion } from '@/lib/edition';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { CommandPalette } from '@/components/CommandPalette';
+import { useLanguage } from '@/components/LanguageContext';
+import { LanguageToggle } from '@/components/LanguageToggle';
 
 type NavDefinition = {
   label: string;
@@ -48,26 +50,28 @@ type UpdateCheckInfo = {
   managed?: boolean;
 };
 
-const primaryNav: NavDefinition[] = [
-  { label: 'Overview', href: '/dashboard', icon: Gauge },
-  { label: 'Servers', href: '/dashboard/servers', icon: Server },
-  { label: 'Network Quality', href: '/dashboard/network', icon: Network },
-  { label: 'Uptime', href: '/dashboard/websites', icon: Globe2 },
-  { label: 'Metrics', href: '/dashboard/monitoring', icon: Activity },
-  { label: 'Alerts', href: '/dashboard/alerts', icon: Bell },
-  { label: 'Logs', href: '/dashboard/logs', icon: FileText },
-];
-
-const adminNav: NavDefinition[] = [
-  { label: 'Team access', href: '/dashboard/manage/users', icon: Users },
-  { label: 'Audit trail', href: '/dashboard/manage/audit', icon: ScrollText },
-  { label: 'API keys', href: '/dashboard/manage/api', icon: KeyRound },
-  { label: 'System settings', href: '/dashboard/manage/settings', icon: Settings },
-];
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { t, isVi } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
+
+  const primaryNavItems: NavDefinition[] = useMemo(() => [
+    { label: t('Overview', 'Tổng quan'), href: '/dashboard', icon: Gauge },
+    { label: t('Servers', 'Máy chủ'), href: '/dashboard/servers', icon: Server },
+    { label: t('Network Quality', 'Chất lượng mạng'), href: '/dashboard/network', icon: Network },
+    { label: t('Uptime', 'Website & SSL'), href: '/dashboard/websites', icon: Globe2 },
+    { label: t('Metrics', 'Chỉ số đo đạc'), href: '/dashboard/monitoring', icon: Activity },
+    { label: t('Alerts', 'Cảnh báo & Sự cố'), href: '/dashboard/alerts', icon: Bell },
+    { label: t('Logs', 'Nhật ký logs'), href: '/dashboard/logs', icon: FileText },
+  ], [t]);
+
+  const adminNavItems: NavDefinition[] = useMemo(() => [
+    { label: t('Team access', 'Thành viên & Quyền'), href: '/dashboard/manage/users', icon: Users },
+    { label: t('Audit trail', 'Nhật ký hoạt động'), href: '/dashboard/manage/audit', icon: ScrollText },
+    { label: t('API keys', 'Khóa API'), href: '/dashboard/manage/api', icon: KeyRound },
+    { label: t('System settings', 'Cài đặt hệ thống'), href: '/dashboard/manage/settings', icon: Settings },
+  ], [t]);
+
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
@@ -361,16 +365,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {!collapsed && (
               <div>
-                {/* Tên card đậm hơn. */}
-                <p className="text-xs font-semibold text-[var(--foreground)]">Agent network</p>
-
-                {/* Thông tin trạng thái tăng contrast. */}
+                <p className="text-xs font-semibold text-[var(--foreground)]">{t('Agent network', 'Mạng lưới Agent')}</p>
                 <p className="text-[10px] font-medium text-[var(--color-muted)]">
                   {fleetSyncFailed
-                    ? 'Live data unavailable'
+                    ? t('Live data unavailable', 'Mất đồng bộ dữ liệu')
                     : fleetSummary
-                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} connected`
-                      : 'Syncing live status…'}
+                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} ${t('connected', 'kết nối')}`
+                      : t('Syncing live status…', 'Đang đồng bộ…')}
                 </p>
               </div>
             )}
@@ -383,11 +384,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               collapsed ? 'text-center' : ''
             }`}
           >
-            {collapsed ? '•' : 'Instance'}
+            {collapsed ? '•' : t('Instance', 'Hệ thống')}
           </p>
 
           <div className="space-y-1">
-            {primaryNav.map((item) => (
+            {primaryNavItems.map((item) => (
               <NavItem item={item} key={item.href} />
             ))}
           </div>
@@ -399,11 +400,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   collapsed ? 'text-center' : ''
                 }`}
               >
-                {collapsed ? '•' : 'Admin'}
+                {collapsed ? '•' : t('Admin', 'Quản trị')}
               </p>
 
               <div className="space-y-1">
-                {adminNav.map((item) => (
+                {adminNavItems.map((item) => (
                   <NavItem item={item} key={item.href} />
                 ))}
               </div>
@@ -447,6 +448,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <LanguageToggle />
             <ThemeToggle />
 
             {(() => {
@@ -462,41 +464,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     type="button"
                     aria-label={
                       totalUnreadBadge > 0
-                        ? `Open notifications, ${totalUnreadBadge} unread`
-                        : 'Open notifications'
+                        ? `${t('Open notifications', 'Mở thông báo')}, ${totalUnreadBadge} ${t('unread', 'chưa đọc')}`
+                        : t('Open notifications', 'Mở thông báo')
                     }
                     aria-expanded={notificationsOpen}
                     onClick={() => {
                       setNotificationsOpen((current) => !current);
                       if (!notificationsOpen) void fetchNotifications();
                     }}
-                    className="topbar-icon relative text-[var(--color-muted)]"
+                    className="topbar-icon relative text-[var(--color-muted)] hover:text-[var(--foreground)]"
                   >
                     <Bell className="h-4 w-4" />
                     {totalUnreadBadge > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-mono font-extrabold leading-none text-white shadow-sm">
                         {totalUnreadBadge > 99 ? '99+' : totalUnreadBadge}
                       </span>
                     )}
                   </button>
 
                   {notificationsOpen && (
-                    <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
-                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
+                    <div className="absolute right-0 top-full mt-2 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-lg animate-in fade-in">
+                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]">
                         <div>
-                          <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
-                          <p className="text-[11px] font-medium text-[var(--color-muted)]">
-                            {totalUnreadBadge} unread
+                          <p className="text-sm font-bold text-[var(--foreground)]">{t('Notifications', 'Thông báo')}</p>
+                          <p className="font-mono text-[11px] text-[var(--color-muted)]">
+                            {totalUnreadBadge} {t('unread', 'chưa đọc')}
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void markAllNotificationsRead()}
                           disabled={unreadNotificationCount === 0}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold text-blue-500 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <CheckCheck className="h-3.5 w-3.5" />
-                          Mark all as read
+                          {t('Mark all as read', 'Đánh dấu đã đọc')}
                         </button>
                       </div>
 
@@ -504,20 +506,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Server Update notification (no action buttons) */}
                         {serverUpdateAvailable && (
                           <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-blue-500/[0.08]">
-                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-400">
-                              <Sparkles className="h-4 w-4" />
+                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-blue-500/20 text-blue-400">
+                              <Sparkles className="h-3.5 w-3.5" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
-                                  Bản cập nhật Server v{updateCheck?.latest_version}
+                                <p className="min-w-0 truncate text-xs font-bold text-[var(--foreground)]">
+                                  {t('Server Update available', 'Bản cập nhật Server')} v{updateCheck?.latest_version}
                                 </p>
-                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-blue-400 uppercase tracking-wide">
+                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-blue-400 uppercase tracking-wide">
                                   Server
                                 </span>
                               </div>
-                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
-                                Đã có phiên bản DatrixOps Server mới (bản hiện tại v{systemVersion || updateCheck?.current_version}).
+                              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                                {t('New DatrixOps Server version available', 'Đã có phiên bản DatrixOps Server mới')} (v{systemVersion || updateCheck?.current_version}).
                               </p>
                             </div>
                           </div>
@@ -526,38 +528,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* Agent Update notification (no action buttons) */}
                         {agentUpdateAvailable && (
                           <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-indigo-500/[0.08]">
-                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400">
-                              <Bot className="h-4 w-4" />
+                            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-indigo-500/20 text-indigo-400">
+                              <Bot className="h-3.5 w-3.5" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
-                                  Bản cập nhật Agent v{updateCheck?.latest_agent_version}
+                                <p className="min-w-0 truncate text-xs font-bold text-[var(--foreground)]">
+                                  {t('Agent Update available', 'Bản cập nhật Agent')} v{updateCheck?.latest_agent_version}
                                 </p>
-                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-400 uppercase tracking-wide">
+                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-indigo-400 uppercase tracking-wide">
                                   Agent
                                 </span>
                               </div>
-                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
-                                Đã có phiên bản Datrix Agent mới để nâng cấp cho các máy chủ giám sát.
+                              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                                {t('New Datrix Agent version available for monitored servers.', 'Đã có phiên bản Datrix Agent mới cho các máy chủ giám sát.')}
                               </p>
                             </div>
                           </div>
                         )}
 
                         {notificationsLoading ? (
-                          <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
+                          <div className="flex items-center justify-center px-4 py-10 text-xs text-[var(--color-muted)]">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin text-[var(--accent-primary)]" /> {t('Loading notifications…', 'Đang tải thông báo…')}
                           </div>
                         ) : notificationError && notifications.length === 0 && !hasUpdateNotification ? (
-                          <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
-                            Unable to load notifications.
+                          <div className="px-4 py-8 text-center text-xs text-[var(--rose)]">
+                            {t('Unable to load notifications.', 'Không thể tải thông báo.')}
                           </div>
                         ) : notifications.length === 0 && !hasUpdateNotification ? (
                           <div className="px-4 py-10 text-center">
-                            <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
-                            <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
-                            <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
+                            <Bell className="mx-auto mb-2 h-6 w-6 text-[var(--color-muted)] opacity-40" />
+                            <p className="text-xs font-semibold text-[var(--foreground)]">{t('No notifications yet', 'Không có thông báo mới')}</p>
+                            <p className="mt-1 text-[11px] text-[var(--color-muted)]">{t('Alert events will appear here.', 'Các sự kiện cảnh báo sẽ hiển thị ở đây.')}</p>
                           </div>
                         ) : (
                           notifications.map((notification) => {
@@ -567,17 +569,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                               <div
                                 key={notification.id}
                                 className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
-                                  unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
+                                  unread ? 'bg-[var(--accent-subtle)]' : 'bg-transparent'
                                 }`}
                               >
                                 <div
-                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded"
                                   style={{
-                                    background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
+                                    background: resolved ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
                                     color: resolved ? 'var(--mint)' : 'var(--rose)',
                                   }}
                                 >
-                                  {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+                                  {resolved ? <CircleCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
                                 </div>
 
                                 <Link
@@ -589,16 +591,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                   className="min-w-0 flex-1"
                                 >
                                   <div className="flex items-start gap-2">
-                                    <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
+                                    <p className={`min-w-0 flex-1 truncate text-xs text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
                                       {notification.title}
                                     </p>
-                                    {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
+                                    {unread && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-primary)]" />}
                                   </div>
-                                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
+                                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
                                     {notification.message}
                                   </p>
-                                  <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
-                                    {formatNotificationTime(notification.created_at)}
+                                  <p className="mt-1 font-mono text-[10px] text-[var(--color-muted)]">
+                                    {formatNotificationTime(notification.created_at, isVi)}
                                   </p>
                                 </Link>
 
@@ -610,11 +612,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                       e.preventDefault();
                                       void markNotificationRead(notification.id);
                                     }}
-                                    title="Mark as read"
+                                    title={t('Mark as read', 'Đánh dấu đã đọc')}
                                     aria-label={`Mark ${notification.title} as read`}
-                                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
+                                    className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-500"
                                   >
-                                    <CircleCheck className="h-4 w-4" />
+                                    <CircleCheck className="h-3.5 w-3.5" />
                                   </button>
                                 )}
                               </div>
@@ -626,9 +628,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <Link
                         href="/dashboard/alerts"
                         onClick={() => setNotificationsOpen(false)}
-                        className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
+                        className="block border-t border-[var(--border-color)] px-4 py-2.5 text-center text-xs font-semibold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] transition-colors"
                       >
-                        Open alert settings
+                        {t('Open alert settings', 'Mở cấu hình cảnh báo')}
                       </Link>
                     </div>
                   )}
@@ -636,24 +638,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               );
             })()}
 
-            {/* User Profile Avatar with Grafana-style Popover Menu */}
+            {/* User Profile Avatar with Technical Popover Menu */}
             <div ref={userMenuRef} className="relative ml-1">
               <button
                 type="button"
                 aria-label="User profile menu"
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold transition-all hover:ring-2 hover:ring-blue-400/50 hover:opacity-95 active:scale-95 shadow-sm focus:outline-none"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--foreground)] text-xs font-mono font-bold transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)] focus:outline-none"
                 title={userEmail || 'User profile'}
               >
                 {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2.5 z-50 w-64 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-1.5 text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
-                  {/* User Profile Header (Grafana style) */}
-                  <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--border-color)] mb-1">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold">
+                <div className="absolute right-0 top-full mt-2 z-50 w-60 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-1 text-[var(--foreground)] shadow-lg animate-in fade-in">
+                  <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[var(--border-color)] mb-1">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--accent-primary)] text-white text-xs font-mono font-bold">
                       {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -661,10 +662,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {userEmail || (role === 'admin' || role === 'superadmin' ? 'Administrator' : 'Operator')}
                       </p>
                       <div className="mt-0.5 flex items-center justify-between">
-                        <span className="text-[10px] font-medium text-[var(--color-muted)] truncate">
+                        <span className="text-[10px] font-mono text-[var(--color-muted)] truncate">
                           {userEmail?.includes('@') ? userEmail.split('@')[0] : (userEmail || 'admin')}
                         </span>
-                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-400 capitalize">
+                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-mono font-bold text-blue-400 uppercase">
                           {role || 'admin'}
                         </span>
                       </div>
@@ -675,10 +676,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <Link
                     href="/docs"
                     onClick={() => setUserMenuOpen(false)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
                   >
-                    <BookOpen className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
-                    <span>Documentation</span>
+                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--color-muted)]" />
+                    <span>{t('Documentation', 'Tài liệu hướng dẫn')}</span>
                   </Link>
 
                   <button
@@ -687,13 +688,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       setUserMenuOpen(false);
                       setCommandPaletteOpen(true);
                     }}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                    className="flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Search className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
-                      <span>Quick search</span>
+                      <Search className="h-3.5 w-3.5 shrink-0 text-[var(--color-muted)]" />
+                      <span>{t('Quick search', 'Tìm kiếm nhanh')}</span>
                     </div>
-                    <kbd className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-[var(--color-muted)] border border-white/10">⌘ K</kbd>
+                    <kbd className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--color-muted)] border border-[var(--border-subtle)]">⌘ K</kbd>
                   </button>
 
                   <div className="my-1 border-t border-[var(--border-color)]" />
@@ -704,10 +705,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       setUserMenuOpen(false);
                       logout();
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
                   >
-                    <LogOut className="h-4 w-4 shrink-0 text-[var(--rose)]" />
-                    <span>Sign out</span>
+                    <LogOut className="h-3.5 w-3.5 shrink-0 text-[var(--rose)]" />
+                    <span>{t('Sign out', 'Đăng xuất')}</span>
                   </button>
                 </div>
               )}
@@ -728,12 +729,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 
 // formatNotificationTime hiển thị thời gian tương đối ngắn trong dropdown.
-function formatNotificationTime(value: string): string {
+function formatNotificationTime(value: string, isVi = false): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return '';
 
   const seconds = Math.round((timestamp - Date.now()) / 1_000);
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat(isVi ? 'vi' : 'en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');

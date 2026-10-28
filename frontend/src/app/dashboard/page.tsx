@@ -10,6 +10,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { useLanguage } from '@/components/LanguageContext';
 
 type DashboardRange = '1H' | '2H' | '12H' | '24H';
 
@@ -71,6 +72,7 @@ type ChartPoint = {
 const POLL_INTERVAL_MS = 15_000;
 
 export default function OverviewDashboard() {
+  const { t, isVi } = useLanguage();
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -155,52 +157,83 @@ export default function OverviewDashboard() {
   const memoryBars = chartData.slice(-7).map((point) => point.ram);
 
   if (loading && !overview) {
-    return <DashboardMessage title="Syncing live data" description="Fetching the latest heartbeat, metrics, and alert state." loading />;
+    return (
+      <DashboardMessage
+        title={t('Syncing live data', 'Đang đồng bộ dữ liệu')}
+        description={t('Fetching the latest heartbeat, metrics, and alert state.', 'Đang nạp nhịp tim, thông số kỹ thuật và trạng thái cảnh báo.')}
+        loading
+      />
+    );
   }
 
   if (!overview && error) {
     return (
       <DashboardMessage
-        title="Unable to load data"
+        title={t('Unable to load data', 'Không thể tải dữ liệu')}
         description={error}
-        action={<button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
+        action={
+          <button
+            type="button"
+            onClick={() => void fetchOverview(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-hover)]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t('Try again', 'Thử lại')}
+          </button>
+        }
       />
     );
   }
 
-  const fleetStatus = getFleetStatus(total, online, incidents.length);
+  const fleetStatus = getFleetStatus(total, online, incidents.length, t);
 
   return (
-    <div className="mx-auto max-w-[1540px] space-y-6">
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mx-auto max-w-[1540px] space-y-5">
+      {/* Top Header */}
+      <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
-            <Activity className="h-3 w-3" />
-            Live telemetry
-            <span className="live-data-dot" aria-hidden="true" />
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-mono font-bold text-emerald-500 uppercase tracking-wider">
+            <Activity className="h-3.5 w-3.5 text-emerald-500" />
+            {t('Live telemetry', 'Đo đạc trực tiếp')}
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Infrastructure Overview</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40 font-mono" aria-live="polite">
-            <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
+            {t('Infrastructure Overview', 'Tổng quan hạ tầng')}
+          </h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)] font-mono" aria-live="polite">
+            <span>{t('Snapshot:', 'Thời điểm:')} {formatSnapshotTime(overview?.generated_at)}</span>
             <span aria-hidden="true">·</span>
-            <span>{refreshing ? 'Receiving fresh data…' : 'Auto-refresh is on'}</span>
-            {error && <span className="text-[var(--rose)]">Latest refresh failed: {error}</span>}
+            <span>{refreshing ? t('Receiving fresh data…', 'Đang cập nhật…') : t('Auto-refresh is on (15s)', 'Tự động làm mới (15s)')}</span>
+            {error && <span className="text-[var(--rose)]">{t('Refresh failed:', 'Lỗi cập nhật:')} {error}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary" disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => void fetchOverview(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-2)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-50"
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {t('Refresh now', 'Làm mới')}
           </button>
-          <Link href="/dashboard/servers" className="ops-button primary"><Plus className="h-4 w-4" />Add server</Link>
+          <Link
+            href="/dashboard/servers"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('Add server', 'Thêm máy chủ')}
+          </Link>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* KPI Cards Grid */}
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={Server}
-          label="Agents online"
+          label={t('Agents online', 'Agent trực tuyến')}
           value={`${online}/${total}`}
-          note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
+          note={total > 0 ? `${health}% ` + t('healthy heartbeats', 'nhịp tim ổn định') : t('No servers', 'Chưa có máy chủ')}
           color="var(--mint)"
           bars={[]}
           tint="healthy"
@@ -208,27 +241,27 @@ export default function OverviewDashboard() {
         />
         <MetricCard
           icon={Cpu}
-          label="Average CPU"
+          label={t('Average CPU', 'CPU trung bình')}
           value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
-          note={hasLiveMetrics ? 'Online server average' : 'No metrics'}
+          note={hasLiveMetrics ? t('Online server average', 'Trung bình máy chủ online') : t('No metrics', 'Chưa có số liệu')}
           color="var(--violet)"
           bars={cpuBars}
           tint="info"
         />
         <MetricCard
           icon={MemoryStick}
-          label="Memory used"
+          label={t('Memory used', 'RAM đã dùng')}
           value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
-          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
+          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : t('No metrics', 'Chưa có số liệu')}
           color="var(--sky)"
           bars={memoryBars}
           tint="info"
         />
         <MetricCard
           icon={BellRing}
-          label="Open incidents"
+          label={t('Open incidents', 'Sự cố đang mở')}
           value={String(summary?.open_incidents ?? 0)}
-          note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
+          note={warning > 0 ? `${warning} ` + t('affected servers', 'máy chủ bị ảnh hưởng') : t('No firing alerts', 'Không có cảnh báo')}
           color="var(--rose)"
           bars={[]}
           tint={warning > 0 ? 'critical' : 'healthy'}
@@ -236,91 +269,232 @@ export default function OverviewDashboard() {
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.65fr_.75fr]">
-        <div className="ops-panel min-h-[390px] p-5 sm:p-6">
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-            <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
-            <div className="range-picker" aria-label="Chart time range">
+      {/* Charts & Fleet Health Section */}
+      <section className="grid gap-3 xl:grid-cols-[1.65fr_.75fr]">
+        {/* Resource Load Area Chart */}
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 min-h-[380px]">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                {t('Fleet telemetry', 'Đo đạc toàn cụm')}
+              </p>
+              <h2 className="text-sm font-bold text-[var(--foreground)]">
+                {t('Resource load', 'Tải tài nguyên')}
+              </h2>
+            </div>
+            <div className="inline-flex rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] p-0.5 text-xs">
               {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
-                <button type="button" key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''} aria-pressed={range === item}>
+                <button
+                  type="button"
+                  key={item}
+                  onClick={() => setRange(item)}
+                  className={`rounded px-2.5 py-0.5 font-mono text-[11px] font-semibold transition-colors duration-100 ${
+                    range === item ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                  }`}
+                  aria-pressed={range === item}
+                >
                   {item}
                 </button>
               ))}
             </div>
           </div>
-          <div className="mb-4 flex gap-6 text-xs">
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--violet)]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
-            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--mint)]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
+
+          <div className="mb-3 flex gap-5 text-xs font-mono">
+            <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-primary)]" />
+              CPU: <strong className="text-[var(--foreground)] font-bold">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
+            </span>
+            <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--mint)]" />
+              RAM: <strong className="text-[var(--foreground)] font-bold">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
+            </span>
           </div>
-          <div className="h-[260px]">
+
+          <div className="h-[250px]">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".16" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
-                    <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".12" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--accent-primary)" stopOpacity={0.2} />
+                      <stop offset="100%" stopColor="var(--accent-primary)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--mint)" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="var(--mint)" stopOpacity={0} />
+                    </linearGradient>
                   </defs>
                   <XAxis dataKey="t" hide />
                   <Tooltip
-                    contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }}
+                    contentStyle={{
+                      background: 'var(--surface-3)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    }}
                     labelFormatter={(label) => label}
                     formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
                   />
                   <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
-                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--accent-primary)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyPanel icon={Activity} title="No telemetry in this range" description="The chart will appear when an agent sends metrics." />
+              <EmptyPanel
+                icon={Activity}
+                title={t('No telemetry in this range', 'Không có dữ liệu trong khung thời gian này')}
+                description={t('The chart will appear when an agent sends metrics.', 'Biểu đồ sẽ xuất hiện khi có agent gửi dữ liệu.')}
+              />
             )}
           </div>
         </div>
 
-        <div className="ops-panel overflow-hidden p-6">
+        {/* Fleet Health Donut Card */}
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-start justify-between">
-            <div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div>
-            <span className={`status-pill ${fleetStatus.tone}`}>{fleetStatus.label}</span>
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                {t('Global status', 'Trạng thái tổng thể')}
+              </p>
+              <h2 className="text-sm font-bold text-[var(--foreground)]">
+                {t('Fleet health', 'Sức khỏe toàn cụm')}
+              </h2>
+            </div>
+            <span
+              className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                fleetStatus.tone === 'good'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}
+            >
+              {fleetStatus.label}
+            </span>
           </div>
-          <div className="relative mx-auto my-7 grid h-44 w-44 place-items-center">
+
+          <div className="relative mx-auto my-6 grid h-40 w-40 place-items-center">
             <div className="health-ring" style={{ '--health': `${health * 3.6}deg` } as React.CSSProperties} />
-            <div className="text-center"><p className="font-mono text-4xl font-medium">{total > 0 ? `${health}%` : '—'}</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">heartbeat score</p></div>
+            <div className="text-center">
+              <p className="font-mono text-3xl font-bold text-[var(--foreground)]">
+                {total > 0 ? `${health}%` : '—'}
+              </p>
+              <p className="mt-0.5 text-[9px] uppercase tracking-wider font-mono text-[var(--color-muted)]">
+                {t('heartbeat score', 'điểm nhịp tim')}
+              </p>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 border-t border-white/[.06] pt-5 text-center">
-            <HealthStat label="Online" value={online} color="text-[var(--mint)]" />
-            <HealthStat label="Alerted" value={warning} color="text-[var(--amber)]" />
-            <HealthStat label="Offline" value={offline} color="text-[var(--rose)]" />
+
+          <div className="grid grid-cols-3 gap-2 border-t border-[var(--border-subtle)] pt-4 text-center">
+            <HealthStat label={t('Online', 'Trực tuyến')} value={online} color="text-emerald-500" />
+            <HealthStat label={t('Alerted', 'Cảnh báo')} value={warning} color="text-amber-500" />
+            <HealthStat label={t('Offline', 'Ngoại tuyến')} value={offline} color="text-rose-500" />
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
-        <div className="ops-panel overflow-hidden">
-          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
+      {/* Servers Table & Active Incidents */}
+      <section className="grid gap-3 xl:grid-cols-[1.45fr_.95fr]">
+        {/* Server Activity Table */}
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                {t('Agent network', 'Mạng lưới Agent')}
+              </p>
+              <h2 className="text-sm font-bold text-[var(--foreground)]">
+                {t('Server activity', 'Hoạt động máy chủ')}
+              </h2>
+            </div>
+            <Link
+              href="/dashboard/servers"
+              className="text-xs font-semibold text-[var(--accent-primary)] hover:underline inline-flex items-center gap-0.5"
+            >
+              {t('View all', 'Xem tất cả')} <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+
           {servers.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="server-table">
-                <thead><tr><th>Server</th><th>Status</th><th>CPU</th><th>Memory</th><th>Heartbeat</th><th></th></tr></thead>
-                <tbody>{servers.slice(0, 6).map((server) => <ServerRow key={server.id} server={server} />)}</tbody>
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] font-mono text-[10px] uppercase text-[var(--color-muted)]">
+                    <th className="px-4 py-2.5 font-bold">{t('Server', 'Máy chủ')}</th>
+                    <th className="px-4 py-2.5 font-bold">{t('Status', 'Trạng thái')}</th>
+                    <th className="px-4 py-2.5 font-bold">{t('CPU', 'CPU')}</th>
+                    <th className="px-4 py-2.5 font-bold">{t('Memory', 'Bộ nhớ')}</th>
+                    <th className="px-4 py-2.5 font-bold">{t('Heartbeat', 'Nhịp tim')}</th>
+                    <th className="px-4 py-2.5 font-bold text-right"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-subtle)]">
+                  {servers.slice(0, 6).map((server) => (
+                    <ServerRow key={server.id} server={server} isVi={isVi} t={t} />
+                  ))}
+                </tbody>
               </table>
             </div>
           ) : (
-            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="No servers" description="Connect your first agent to start receiving live data." /></div>
+            <div className="p-8">
+              <EmptyPanel
+                icon={Server}
+                title={t('No servers', 'Chưa có máy chủ')}
+                description={t('Connect your first agent to start receiving live data.', 'Cài đặt Agent đầu tiên để bắt đầu nhận dữ liệu.')}
+              />
+            </div>
           )}
         </div>
 
-        <div className="ops-panel p-6">
-          <div className="flex items-start justify-between">
-            <div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Active incidents</h2></div>
-            <Link href="/dashboard/alerts" className={incidents.length > 0 ? 'status-pill warning' : 'status-pill good'}>{incidents.length} open</Link>
-          </div>
-          {incidents.length > 0 ? (
-            <div className="mt-5 space-y-3">
-              {incidents.slice(0, 4).map((incident) => <Incident key={`${incident.rule_id}-${incident.server_id}`} incident={incident} />)}
+        {/* Active Incidents Panel */}
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-start justify-between border-b border-[var(--border-subtle)] pb-3">
+              <div>
+                <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                  {t('Needs attention', 'Cần chú ý')}
+                </p>
+                <h2 className="text-sm font-bold text-[var(--foreground)]">
+                  {t('Active incidents', 'Sự cố đang diễn ra')}
+                </h2>
+              </div>
+              <Link
+                href="/dashboard/alerts"
+                className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase ${
+                  incidents.length > 0
+                    ? 'bg-rose-500/15 text-rose-500 border border-rose-500/20'
+                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                }`}
+              >
+                {incidents.length} {t('open', 'sự cố')}
+              </Link>
             </div>
-          ) : (
-            <div className="mt-5"><EmptyPanel icon={Check} title="No firing incidents" description="The fleet's current alert state is stable." /></div>
-          )}
-          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Open incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+
+            {incidents.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {incidents.slice(0, 4).map((incident) => (
+                  <IncidentRow
+                    key={`${incident.rule_id}-${incident.server_id}`}
+                    incident={incident}
+                    isVi={isVi}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4">
+                <EmptyPanel
+                  icon={Check}
+                  title={t('No firing incidents', 'Không có sự cố nào')}
+                  description={t('The fleet\'s current alert state is stable.', 'Trạng thái cảnh báo toàn cụm đang ổn định.')}
+                />
+              </div>
+            )}
+          </div>
+
+          <Link
+            href="/dashboard/alerts"
+            className="mt-4 flex items-center justify-center gap-1.5 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] py-2 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-hover)] hover:border-[var(--border-strong)] transition-colors"
+          >
+            {t('Open incident center', 'Mở trung tâm sự cố')} <ArrowUpRight className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
+          </Link>
         </div>
       </section>
     </div>
@@ -334,7 +508,6 @@ function MetricCard({
   note,
   color,
   bars,
-  tint = 'info',
   emptyLabel = 'NO DATA',
 }: {
   icon: LucideIcon;
@@ -347,77 +520,199 @@ function MetricCard({
   emptyLabel?: string;
 }) {
   return (
-    <div className={`metric-card surface-regular status-tone-${tint}`}>
+    <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5 flex flex-col justify-between">
       <div className="flex items-start justify-between">
-        <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
-        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-[var(--text-tertiary)]">{emptyLabel}</span>}
+        <div className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-2)]" style={{ color }}>
+          <Icon className="h-4 w-4" />
+        </div>
+        {bars.length > 0 ? (
+          <div className="mini-bars flex items-end gap-1 h-5">
+            {bars.map((height, index) => (
+              <i
+                key={index}
+                className="w-1 rounded-xs"
+                style={{ height: `${Math.max(4, Math.min(height, 100))}%`, background: color }}
+              />
+            ))}
+          </div>
+        ) : (
+          <span className="font-mono text-[9px] font-bold uppercase text-[var(--color-muted)]">{emptyLabel}</span>
+        )}
       </div>
-      <p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p>
-      <div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 max-w-[130px] text-right text-[10px]" style={{ color }}>{note}</p></div>
+      <p className="mt-3 text-[11px] uppercase tracking-wider text-[var(--color-muted)] font-medium">{label}</p>
+      <div className="mt-1 flex items-end justify-between gap-2">
+        <p className="font-mono tabular-nums text-2xl font-bold text-[var(--foreground)]">{value}</p>
+        <p className="mb-0.5 text-right font-mono text-[10px] truncate max-w-[140px]" style={{ color }}>
+          {note}
+        </p>
+      </div>
     </div>
   );
 }
 
 function HealthStat({ label, value, color }: { label: string; value: number; color: string }) {
-  return <div><p className={`font-mono text-lg ${color}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-[.16em] text-white/30">{label}</p></div>;
+  return (
+    <div>
+      <p className={`font-mono tabular-nums text-xl font-bold ${color}`}>{value}</p>
+      <p className="mt-0.5 text-[10px] uppercase font-mono tracking-wider text-[var(--color-muted)]">{label}</p>
+    </div>
+  );
 }
 
-function ServerRow({ server }: { server: DashboardServer }) {
+function ServerRow({
+  server,
+  isVi,
+  t,
+}: {
+  server: DashboardServer;
+  isVi: boolean;
+  t: (en: string, vi: string) => string;
+}) {
   const online = server.status === 'online';
-  const memoryPercent = server.memory_total > 0 ? server.memory_used * 100 / server.memory_total : 0;
+  const memoryPercent = server.memory_total > 0 ? (server.memory_used * 100) / server.memory_total : 0;
   const canShowMetrics = online && server.has_metrics;
 
   return (
-    <tr>
-      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[11px] text-white/55">{server.ip_address ?? 'No IP address'}</p></div></div></td>
-      <td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td>
-      <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
-      <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
-      <td><span className="text-[10px] text-white/38">{formatRelativeTime(server.last_seen_at)}</span></td>
-      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Open ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
+    <tr className="hover:bg-[var(--surface-hover)] transition-colors">
+      <td className="px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+            <Cloud className="h-3.5 w-3.5 text-[var(--color-muted)]" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-mono text-xs font-semibold text-[var(--foreground)] truncate">{server.name}</p>
+            <p className="font-mono text-[10px] text-[var(--color-muted)] truncate">{server.ip_address ?? t('No IP', 'Chưa có IP')}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-2.5">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+          <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+          {online ? t('Online', 'Trực tuyến') : t('Offline', 'Ngoại tuyến')}
+        </span>
+      </td>
+      <td className="px-4 py-2.5">
+        {canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-[var(--color-muted)]">—</span>}
+      </td>
+      <td className="px-4 py-2.5">
+        {canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-[var(--color-muted)]">—</span>}
+      </td>
+      <td className="px-4 py-2.5 font-mono text-[10px] text-[var(--color-muted)]">
+        {formatRelativeTime(server.last_seen_at, isVi)}
+      </td>
+      <td className="px-4 py-2.5 text-right">
+        <Link href={`/dashboard/servers/${server.id}`} aria-label={`Open ${server.name}`}>
+          <ChevronRight className="h-3.5 w-3.5 text-[var(--color-muted)] hover:text-[var(--foreground)]" />
+        </Link>
+      </td>
     </tr>
   );
 }
 
 function LoadBar({ value }: { value: number }) {
   const normalized = Math.max(0, Math.min(value, 100));
-  const pressure = normalized >= 85 ? 'var(--status-critical)' : normalized >= 70 ? 'var(--status-warning)' : 'var(--text-secondary)';
-  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: pressure }} /></span><span className="font-mono text-[10px]" style={{ color: pressure }}>{roundMetric(value)}%</span></div>;
-}
-
-function Incident({ incident }: { incident: DashboardIncident }) {
-  const valueDescription = incident.metric === 'status'
-    ? 'Heartbeat is over 60 seconds old'
-    : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
-
+  const pressure = normalized >= 85 ? 'var(--status-critical)' : normalized >= 70 ? 'var(--status-warning)' : 'var(--accent-primary)';
   return (
-    <div className="incident-row">
-      <span className="incident-icon critical">{renderIncidentIcon(incident.metric)}</span>
-      <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
-      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[var(--rose)]" />
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-14 overflow-hidden rounded bg-[var(--border-subtle)]">
+        <div className="h-full rounded" style={{ width: `${normalized}%`, background: pressure }} />
+      </div>
+      <span className="font-mono text-[10px] font-semibold" style={{ color: pressure }}>
+        {roundMetric(value)}%
+      </span>
     </div>
   );
 }
 
-function EmptyPanel({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
-  return <div className="grid h-full min-h-36 place-items-center rounded-xl border border-dashed border-white/[.07] bg-white/[.012] p-5 text-center"><div><Icon className="mx-auto h-5 w-5 text-white/25" /><p className="mt-3 text-xs text-white/60">{title}</p><p className="mt-1 text-[10px] text-white/28">{description}</p></div></div>;
+function IncidentRow({
+  incident,
+  isVi,
+}: {
+  incident: DashboardIncident;
+  isVi: boolean;
+}) {
+  const valueDescription =
+    incident.metric === 'status'
+      ? 'Heartbeat > 60s'
+      : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
+
+  return (
+    <div className="flex items-center gap-2.5 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-rose-500/10 text-rose-500">
+        {renderIncidentIcon(incident.metric)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold text-[var(--foreground)]">{incident.rule_name}</p>
+        <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--color-muted)]">
+          {incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at, isVi)}
+        </p>
+      </div>
+      <CircleAlert className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+    </div>
+  );
 }
 
-function DashboardMessage({ title, description, loading = false, action }: { title: string; description: string; loading?: boolean; action?: React.ReactNode }) {
-  return <div className="feature-preview"><section className="ops-panel"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
+function EmptyPanel({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="grid h-full min-h-32 place-items-center rounded border border-dashed border-[var(--border-subtle)] bg-[var(--surface-2)] p-4 text-center">
+      <div>
+        <Icon className="mx-auto h-5 w-5 text-[var(--color-muted)] opacity-50" />
+        <p className="mt-2 text-xs font-semibold text-[var(--foreground)]">{title}</p>
+        <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardMessage({
+  title,
+  description,
+  loading = false,
+  action,
+}: {
+  title: string;
+  description: string;
+  loading?: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-64 items-center justify-center p-8">
+      <div className="max-w-md rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-6 text-center">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--accent-primary)]">
+          {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <CircleAlert className="h-5 w-5" />}
+        </div>
+        <h2 className="text-base font-bold text-[var(--foreground)]">{title}</h2>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">{description}</p>
+        {action && <div className="mt-4">{action}</div>}
+      </div>
+    </div>
+  );
 }
 
 function renderIncidentIcon(metric: string): React.ReactNode {
-  if (metric === 'ram') return <Database className="h-4 w-4" />;
-  if (metric === 'cpu') return <Cpu className="h-4 w-4" />;
-  if (metric === 'status') return <Wifi className="h-4 w-4" />;
-  return <CircleAlert className="h-4 w-4" />;
+  if (metric === 'ram') return <Database className="h-3.5 w-3.5" />;
+  if (metric === 'cpu') return <Cpu className="h-3.5 w-3.5" />;
+  if (metric === 'status') return <Wifi className="h-3.5 w-3.5" />;
+  return <CircleAlert className="h-3.5 w-3.5" />;
 }
 
-function getFleetStatus(total: number, online: number, incidents: number): { label: string; tone: 'good' | 'warning' } {
-  if (total === 0) return { label: 'No data', tone: 'warning' };
-  if (incidents > 0 || online < total) return { label: 'Attention', tone: 'warning' };
-  return { label: 'Operational', tone: 'good' };
+function getFleetStatus(
+  total: number,
+  online: number,
+  incidents: number,
+  t: (en: string, vi: string) => string
+): { label: string; tone: 'good' | 'warning' } {
+  if (total === 0) return { label: t('No data', 'Chưa có dữ liệu'), tone: 'warning' };
+  if (incidents > 0 || online < total) return { label: t('Attention', 'Cần chú ý'), tone: 'warning' };
+  return { label: t('Operational', 'Hoạt động tốt'), tone: 'good' };
 }
 
 function roundMetric(value: number | undefined): number {
@@ -453,13 +748,13 @@ function formatSnapshotTime(value?: string): string {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function formatRelativeTime(value?: string): string {
-  if (!value) return 'Never';
+function formatRelativeTime(value?: string, isVi = false): string {
+  if (!value) return isVi ? 'Chưa từng' : 'Never';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unknown';
+  if (Number.isNaN(date.getTime())) return isVi ? 'Không rõ' : 'Unknown';
 
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  const formatter = new Intl.RelativeTimeFormat(isVi ? 'vi' : 'en', { numeric: 'auto' });
   if (Math.abs(seconds) < 60) return formatter.format(seconds, 'second');
   const minutes = Math.round(seconds / 60);
   if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');

@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { apiClient } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
+import { useLanguage } from '@/components/LanguageContext';
 
 type MonitoringServer = {
   id: string;
@@ -102,30 +103,26 @@ type MetricType = 'cpu' | 'ram' | 'network' | 'disk';
 
 type RefreshInterval = 'off' | '5s' | '10s' | '30s' | '1m' | '5m';
 
-const REFRESH_INTERVAL_OPTIONS: { value: RefreshInterval; label: string; ms: number }[] = [
-  { value: 'off', label: 'Off', ms: 0 },
-  { value: '5s', label: '5s', ms: 5_000 },
-  { value: '10s', label: '10s', ms: 10_000 },
-  { value: '30s', label: '30s', ms: 30_000 },
-  { value: '1m', label: '1m', ms: 60_000 },
-  { value: '5m', label: '5m', ms: 300_000 },
+const RAW_REFRESH_INTERVAL_OPTIONS: { value: RefreshInterval; en: string; vi: string; ms: number }[] = [
+  { value: 'off', en: 'Off', vi: 'Tắt', ms: 0 },
+  { value: '5s', en: '5s', vi: '5 giây', ms: 5_000 },
+  { value: '10s', en: '10s', vi: '10 giây', ms: 10_000 },
+  { value: '30s', en: '30s', vi: '30 giây', ms: 30_000 },
+  { value: '1m', en: '1m', vi: '1 phút', ms: 60_000 },
+  { value: '5m', en: '5m', vi: '5 phút', ms: 300_000 },
 ];
 
 const MISSING_DATA_GRACE_MS = 25_000;
 
-const RANGE_OPTIONS: RangeOption[] = [
-  { value: '15m', label: 'Last 15 minutes', durationMs: 15 * 60_000, bucketSeconds: 10 },
-  { value: '1h', label: 'Last hour', durationMs: 60 * 60_000, bucketSeconds: 15 },
-  { value: '3h', label: 'Last 3 hours', durationMs: 3 * 60 * 60_000, bucketSeconds: 30 },
-  { value: '6h', label: 'Last 6 hours', durationMs: 6 * 60 * 60_000, bucketSeconds: 60 },
-  { value: '12h', label: 'Last 12 hours', durationMs: 12 * 60 * 60_000, bucketSeconds: 120 },
-  { value: '24h', label: 'Last 24 hours', durationMs: 24 * 60 * 60_000, bucketSeconds: 300 },
-  { value: '7d', label: 'Last 7 days', durationMs: 7 * 24 * 60 * 60_000, bucketSeconds: 1_800 },
+const RAW_RANGE_OPTIONS: { value: TimeRange; en: string; vi: string; durationMs: number; bucketSeconds: number }[] = [
+  { value: '15m', en: 'Last 15 minutes', vi: '15 phút qua', durationMs: 15 * 60_000, bucketSeconds: 10 },
+  { value: '1h', en: 'Last hour', vi: '1 giờ qua', durationMs: 60 * 60_000, bucketSeconds: 15 },
+  { value: '3h', en: 'Last 3 hours', vi: '3 giờ qua', durationMs: 3 * 60 * 60_000, bucketSeconds: 30 },
+  { value: '6h', en: 'Last 6 hours', vi: '6 giờ qua', durationMs: 6 * 60 * 60_000, bucketSeconds: 60 },
+  { value: '12h', en: 'Last 12 hours', vi: '12 giờ qua', durationMs: 12 * 60 * 60_000, bucketSeconds: 120 },
+  { value: '24h', en: 'Last 24 hours', vi: '24 giờ qua', durationMs: 24 * 60 * 60_000, bucketSeconds: 300 },
+  { value: '7d', en: 'Last 7 days', vi: '7 ngày qua', durationMs: 7 * 24 * 60 * 60_000, bucketSeconds: 1_800 },
 ];
-
-const RANGE_CONFIG = Object.fromEntries(
-  RANGE_OPTIONS.map((option) => [option.value, option]),
-) as Record<TimeRange, RangeOption>;
 
 const PROCESS_COLORS = [
   '#8b5cf6', // Violet
@@ -153,6 +150,7 @@ const DEFAULT_RAM_PROCESSES: TopProcess[] = [
 ];
 
 export default function MonitoringPage() {
+  const { t, isVi } = useLanguage();
   const [servers, setServers] = useState<MonitoringServer[]>([]);
   const [selectedServerId, setSelectedServerId] = useState('');
   const [timeRange, setTimeRange] = useState<TimeRange>('15m');
@@ -165,6 +163,28 @@ export default function MonitoringPage() {
   const [now, setNow] = useState(() => Date.now());
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>('10s');
+
+  const rangeOptions = useMemo<RangeOption[]>(() => {
+    return RAW_RANGE_OPTIONS.map((opt) => ({
+      value: opt.value,
+      label: isVi ? opt.vi : opt.en,
+      durationMs: opt.durationMs,
+      bucketSeconds: opt.bucketSeconds,
+    }));
+  }, [isVi]);
+
+  const rangeConfig = useMemo(() => {
+    const found = rangeOptions.find((opt) => opt.value === timeRange);
+    return found || rangeOptions[0];
+  }, [rangeOptions, timeRange]);
+
+  const refreshIntervalOptions = useMemo(() => {
+    return RAW_REFRESH_INTERVAL_OPTIONS.map((opt) => ({
+      value: opt.value,
+      label: isVi ? opt.vi : opt.en,
+      ms: opt.ms,
+    }));
+  }, [isVi]);
 
   // Order-preserving in-place expanded metrics list
   const [expandedOrder, setExpandedOrder] = useState<MetricType[]>([]);
@@ -254,8 +274,6 @@ export default function MonitoringPage() {
     }
   }, [servers]);
 
-
-
   const fetchMetrics = useCallback(async (background = false, replaceActiveRequest = false) => {
     if (!selectedServerId) return;
     if (activeMetricsRequest.current) {
@@ -297,7 +315,7 @@ export default function MonitoringPage() {
       setLastRefreshedAt(new Date());
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      const message = error instanceof Error ? error.message : 'Unable to load metrics';
+      const message = error instanceof Error ? error.message : t('Unable to load metrics', 'Không thể tải số liệu');
       if (message.includes('token') || message.includes('UNAUTHORIZED')) {
         router.push('/login');
         return;
@@ -310,11 +328,11 @@ export default function MonitoringPage() {
         setRefreshing(false);
       }
     }
-  }, [router, selectedServerId, timeRange]);
+  }, [router, selectedServerId, timeRange, t]);
 
   const currentIntervalMs = useMemo(() => {
-    return REFRESH_INTERVAL_OPTIONS.find((opt) => opt.value === refreshInterval)?.ms ?? 10_000;
-  }, [refreshInterval]);
+    return refreshIntervalOptions.find((opt) => opt.value === refreshInterval)?.ms ?? 10_000;
+  }, [refreshIntervalOptions, refreshInterval]);
 
   useEffect(() => {
     if (!selectedServerId) return;
@@ -358,7 +376,6 @@ export default function MonitoringPage() {
     return DEFAULT_RAM_PROCESSES;
   }, [topProcesses]);
 
-  const rangeConfig = RANGE_CONFIG[timeRange];
   const effectiveBucketSeconds = useMemo(
     () => resolveBucketSeconds(rawMetrics, rangeConfig.bucketSeconds),
     [rawMetrics, rangeConfig.bucketSeconds],
@@ -455,11 +472,11 @@ export default function MonitoringPage() {
         return (
           <MetricChartCard
             key="collapsed_cpu"
-            title="CPU Usage (%)"
-            icon={<Cpu className="h-5 w-5 text-[var(--violet)]" />}
+            title={t('CPU Usage (%)', 'Sử dụng CPU (%)')}
+            icon={<Cpu className="h-4 w-4 text-[var(--violet)]" />}
             rangeLabel={rangeConfig.label}
             summary={formatMetricSummary(chartTimeline, 'cpu', '%')}
-            freshness={`${effectiveBucketSeconds}s resolution`}
+            freshness={`${effectiveBucketSeconds}s ${t('resolution', 'độ phân giải')}`}
             loading={initialLoading}
             onMaximize={() => toggleExpand('cpu')}
           >
@@ -470,7 +487,7 @@ export default function MonitoringPage() {
                 <Line
                   type="monotone"
                   dataKey="cpu"
-                  name="CPU Usage"
+                  name={t('CPU Usage', 'Sử dụng CPU')}
                   stroke="var(--violet)"
                   strokeWidth={2}
                   dot={false}
@@ -481,10 +498,10 @@ export default function MonitoringPage() {
                 <Line
                   type="linear"
                   dataKey="downtimeZero"
-                  name="No metrics"
+                  name={t('No metrics', 'Không có số liệu')}
                   stroke="var(--rose)"
-                  strokeWidth={4}
-                  strokeDasharray="7 5"
+                  strokeWidth={3}
+                  strokeDasharray="6 4"
                   strokeLinecap="round"
                   dot={false}
                   activeDot={false}
@@ -499,11 +516,11 @@ export default function MonitoringPage() {
         return (
           <MetricChartCard
             key="collapsed_ram"
-            title="Memory Usage (%)"
-            icon={<DatabaseBackup className="h-5 w-5 text-[var(--mint)]" />}
+            title={t('Memory Usage (%)', 'Sử dụng bộ nhớ (%)')}
+            icon={<DatabaseBackup className="h-4 w-4 text-[var(--mint)]" />}
             rangeLabel={rangeConfig.label}
             summary={formatMetricSummary(chartTimeline, 'ram', '%')}
-            freshness={`${effectiveBucketSeconds}s resolution`}
+            freshness={`${effectiveBucketSeconds}s ${t('resolution', 'độ phân giải')}`}
             loading={initialLoading}
             onMaximize={() => toggleExpand('ram')}
           >
@@ -511,7 +528,7 @@ export default function MonitoringPage() {
               <AreaChart data={chartContext.data}>
                 <defs>
                   <linearGradient id="monitoringRamFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.28} />
+                    <stop offset="5%" stopColor="var(--mint)" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="var(--mint)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -520,7 +537,7 @@ export default function MonitoringPage() {
                 <Area
                   type="monotone"
                   dataKey="ram"
-                  name="Memory Usage"
+                  name={t('Memory Usage', 'Sử dụng bộ nhớ')}
                   stroke="var(--mint)"
                   strokeWidth={2}
                   fill="url(#monitoringRamFill)"
@@ -530,10 +547,10 @@ export default function MonitoringPage() {
                 <Line
                   type="linear"
                   dataKey="downtimeZero"
-                  name="No metrics"
+                  name={t('No metrics', 'Không có số liệu')}
                   stroke="var(--rose)"
-                  strokeWidth={4}
-                  strokeDasharray="7 5"
+                  strokeWidth={3}
+                  strokeDasharray="6 4"
                   strokeLinecap="round"
                   dot={false}
                   activeDot={false}
@@ -548,11 +565,11 @@ export default function MonitoringPage() {
         return (
           <MetricChartCard
             key="collapsed_network"
-            title="Network Throughput (KB/s)"
-            icon={<Wifi className="h-5 w-5 text-[var(--sky)]" />}
+            title={t('Network Throughput (KB/s)', 'Lưu lượng mạng (KB/s)')}
+            icon={<Wifi className="h-4 w-4 text-[var(--sky)]" />}
             rangeLabel={rangeConfig.label}
             summary={formatPairSummary(chartTimeline, 'netIn', 'RX', 'netOut', 'TX', ' KB/s')}
-            freshness={`${effectiveBucketSeconds}s resolution`}
+            freshness={`${effectiveBucketSeconds}s ${t('resolution', 'độ phân giải')}`}
             loading={initialLoading}
             onMaximize={() => toggleExpand('network')}
           >
@@ -560,15 +577,15 @@ export default function MonitoringPage() {
               <LineChart data={chartContext.data}>
                 <ChartScaffolding {...chartContext} />
                 <Tooltip content={<MetricsTooltip />} />
-                <Line type="monotone" dataKey="netIn" name="Receive" stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="netOut" name="Send" stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="netIn" name={t('Receive', 'Nhận (RX)')} stroke="var(--violet)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="netOut" name={t('Send', 'Gửi (TX)')} stroke="var(--sky)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
                 <Line
                   type="linear"
                   dataKey="downtimeZero"
-                  name="No metrics"
+                  name={t('No metrics', 'Không có số liệu')}
                   stroke="var(--rose)"
-                  strokeWidth={4}
-                  strokeDasharray="7 5"
+                  strokeWidth={3}
+                  strokeDasharray="6 4"
                   strokeLinecap="round"
                   dot={false}
                   activeDot={false}
@@ -583,11 +600,11 @@ export default function MonitoringPage() {
         return (
           <MetricChartCard
             key="collapsed_disk"
-            title="Disk I/O (KB/s)"
-            icon={<HardDrive className="h-5 w-5 text-[var(--amber)]" />}
+            title={t('Disk I/O (KB/s)', 'Băng thông đĩa (KB/s)')}
+            icon={<HardDrive className="h-4 w-4 text-[var(--amber)]" />}
             rangeLabel={rangeConfig.label}
             summary={formatPairSummary(chartTimeline, 'diskRead', 'Read', 'diskWrite', 'Write', ' KB/s')}
-            freshness={`${effectiveBucketSeconds}s resolution`}
+            freshness={`${effectiveBucketSeconds}s ${t('resolution', 'độ phân giải')}`}
             loading={initialLoading}
             onMaximize={() => toggleExpand('disk')}
           >
@@ -595,15 +612,15 @@ export default function MonitoringPage() {
               <LineChart data={chartContext.data}>
                 <ChartScaffolding {...chartContext} />
                 <Tooltip content={<MetricsTooltip />} />
-                <Line type="monotone" dataKey="diskRead" name="Read" stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="diskWrite" name="Write" stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="diskRead" name={t('Read', 'Đọc')} stroke="var(--amber)" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="diskWrite" name={t('Write', 'Ghi')} stroke="var(--rose)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
                 <Line
                   type="linear"
                   dataKey="downtimeZero"
-                  name="No metrics"
+                  name={t('No metrics', 'Không có số liệu')}
                   stroke="var(--rose)"
-                  strokeWidth={4}
-                  strokeDasharray="7 5"
+                  strokeWidth={3}
+                  strokeDasharray="6 4"
                   strokeLinecap="round"
                   dot={false}
                   activeDot={false}
@@ -618,17 +635,26 @@ export default function MonitoringPage() {
   };
 
   return (
-    <div className="space-y-6 pb-20">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-5 pb-20">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold text-blue-400">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-blue-500">
             <Activity className="h-3.5 w-3.5" />
-            Continuous telemetry
+            {t('Continuous telemetry', 'Dữ liệu đo từ xa liên tục')}
             <span className="live-data-dot" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Resource Monitoring</h1>
-          <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">
-            Last refresh: {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString('en-US') : 'Waiting for metrics'} · {refreshInterval === 'off' ? 'Auto-refresh: Off' : `Auto-refresh: ${refreshInterval}`}
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
+            {t('Resource Monitoring', 'Giám sát tài nguyên')}
+          </h1>
+          <p className="mt-0.5 font-mono text-[11px] text-[var(--color-muted)]">
+            {t('Last refresh: ', 'Làm mới lần cuối: ')}
+            <span className="tabular-nums">
+              {lastRefreshedAt ? lastRefreshedAt.toLocaleTimeString(isVi ? 'vi-VN' : 'en-US') : t('Waiting for metrics', 'Đang chờ dữ liệu')}
+            </span>
+            {' · '}
+            {refreshInterval === 'off'
+              ? t('Auto-refresh: Off', 'Tự động làm mới: Tắt')
+              : `${t('Auto-refresh: ', 'Tự động làm mới: ')}${refreshIntervalOptions.find(o => o.value === refreshInterval)?.label || refreshInterval}`}
           </p>
         </div>
 
@@ -636,77 +662,77 @@ export default function MonitoringPage() {
           <CustomSelect
             value={selectedServerId}
             onChange={setSelectedServerId}
-            icon={<ServerIcon className="w-4 h-4 text-blue-400 shrink-0" />}
-            placeholder="No servers available"
+            icon={<ServerIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
+            placeholder={t('No servers available', 'Không có máy chủ')}
             options={servers.map((s) => ({ value: s.id, label: s.name }))}
-            className="w-44 sm:w-48 shrink-0"
+            className="w-40 sm:w-44 shrink-0 text-xs"
           />
 
           {selectedServer && (
-            <span className={`inline-flex items-center gap-1.5 h-[38px] px-3 rounded-xl border font-bold text-[11px] uppercase tracking-wider shrink-0 transition-colors ${
+            <span className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border font-bold text-[11px] uppercase tracking-wider shrink-0 transition-colors ${
               serverOnline
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+                : 'border-rose-500/30 bg-rose-500/10 text-rose-500'
             }`}>
-              <span className={`h-2 w-2 rounded-full ${serverOnline ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-rose-400'}`} />
-              {serverOnline ? 'Online' : 'Offline'}
+              <span className={`h-2 w-2 rounded-full ${serverOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              {serverOnline ? t('Online', 'Trực tuyến') : t('Offline', 'Ngoại tuyến')}
             </span>
           )}
 
           <CustomSelect
             value={timeRange}
             onChange={(val) => setTimeRange(val as TimeRange)}
-            icon={<Clock3 className="w-4 h-4 text-slate-400 shrink-0" />}
-            options={RANGE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-            className="w-38 sm:w-42 shrink-0"
+            icon={<Clock3 className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />}
+            options={rangeOptions.map((option) => ({ value: option.value, label: option.label }))}
+            className="w-36 sm:w-40 shrink-0 text-xs"
           />
 
           <CustomSelect
             value={refreshInterval}
             onChange={(val) => setRefreshInterval(val as RefreshInterval)}
-            icon={<RefreshCw className={`w-3.5 h-3.5 text-slate-400 shrink-0 ${refreshing ? 'animate-spin' : ''}`} />}
-            options={REFRESH_INTERVAL_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-            className="w-24 sm:w-28 shrink-0"
+            icon={<RefreshCw className={`w-3.5 h-3.5 text-[var(--color-muted)] shrink-0 ${refreshing ? 'animate-spin' : ''}`} />}
+            options={refreshIntervalOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+            className="w-24 sm:w-28 shrink-0 text-xs"
           />
 
           <button
             type="button"
             onClick={() => void fetchMetrics(false, true)}
-            className="h-[38px] w-[38px] rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer disabled:opacity-50"
-            title="Refresh metrics now"
-            aria-label="Refresh metrics now"
+            className="h-8 w-8 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition duration-100 shrink-0 cursor-pointer disabled:opacity-50"
+            title={t('Refresh metrics now', 'Làm mới dữ liệu ngay')}
+            aria-label={t('Refresh metrics now', 'Làm mới dữ liệu ngay')}
             disabled={!selectedServerId || initialLoading}
           >
-            <RefreshCw className={`h-4 w-4 ${initialLoading || refreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${initialLoading || refreshing ? 'animate-spin text-blue-500' : ''}`} />
           </button>
         </div>
       </header>
 
       {metricsError && (
-        <div className="monitoring-empty-notice text-[var(--rose)]" role="alert">
-          <CircleAlert className="h-4 w-4" />
-          Unable to refresh metrics: {metricsError}
+        <div className="p-3 rounded-md border border-rose-500/20 bg-rose-500/10 text-rose-500 text-xs flex items-center gap-2" role="alert">
+          <CircleAlert className="h-4 w-4 shrink-0" />
+          <span>{t('Unable to refresh metrics:', 'Không thể làm mới dữ liệu:')} {metricsError}</span>
         </div>
       )}
 
       {!selectedServerId ? (
-        <div className="ops-panel p-12 text-center">
-          <ServerIcon className="mx-auto mb-4 h-10 w-10 text-[var(--color-muted)] opacity-45" />
-          <h2 className="text-xl">No servers to monitor</h2>
-          <p className="mt-2 text-[var(--color-muted)]">Connect a DatrixOps Agent to start receiving metrics.</p>
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-12 text-center">
+          <ServerIcon className="mx-auto mb-3 h-8 w-8 text-[var(--color-muted)] opacity-40" />
+          <h2 className="text-base font-bold text-[var(--foreground)]">{t('No servers to monitor', 'Chưa có máy chủ nào để giám sát')}</h2>
+          <p className="mt-1 text-xs text-[var(--color-muted)]">{t('Connect a DatrixOps Agent to start receiving metrics.', 'Kết nối DatrixOps Agent để bắt đầu thu thập số liệu.')}</p>
         </div>
       ) : (
         <>
           {!initialLoading && metricsLoaded && dataPoints === 0 && (
-            <div className="monitoring-empty-notice">
-              <CircleAlert className="h-4 w-4" />
-              No metrics were received in this range. Confirmed downtime is displayed at zero.
+            <div className="p-3 rounded-md border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
+              <CircleAlert className="h-4 w-4 shrink-0" />
+              <span>{t('No metrics were received in this range. Confirmed downtime is displayed at zero.', 'Không có số liệu trong khoảng thời gian này. Thời gian gián đoạn hiển thị tại mức 0.')}</span>
             </div>
           )}
 
           {/* 1. TOP EXPANDED CHARTS STACK (100% Full-Width) */}
           {expandedList.length > 0 && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {expandedList.map((type) => (
                 <div key={type} id={`expanded-chart-${type}`} className="w-full scroll-mt-24">
                   {renderExpandedCard(type)}
@@ -719,16 +745,16 @@ export default function MonitoringPage() {
           {collapsedList.length > 0 && (
             <div>
               {expandedList.length > 0 && (
-                <div className="mb-4 mt-8 flex items-center justify-between border-t border-[var(--border-color)] pt-6">
+                <div className="mb-3 mt-6 flex items-center justify-between border-t border-[var(--border-subtle)] pt-4">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-                    Standard Metrics Overview
+                    {t('Standard Metrics Overview', 'Tổng quan chỉ số tiêu chuẩn')}
                   </h3>
                   <span className="text-xs font-mono text-[var(--color-muted)]">
-                    {collapsedList.length} metrics collapsed
+                    {collapsedList.length} {t('metrics collapsed', 'chỉ số đang thu gọn')}
                   </span>
                 </div>
               )}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 {collapsedList.map((type) => (
                   <div key={type} className="col-span-1">
                     {renderCollapsedCard(type)}
@@ -762,40 +788,41 @@ function MetricChartCard({
   onMaximize?: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
-    <section className="ops-panel surface-regular no-hover-lift monitoring-chart-card group relative p-5 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-2">
+    <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 relative">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-semibold">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-[var(--foreground)]">
             {icon}
             {title}
           </h2>
-          <p className="mt-1 font-mono text-xs text-[var(--text-secondary)] truncate">{summary}</p>
+          <p className="mt-0.5 font-mono tabular-nums text-xs text-[var(--color-muted)] truncate">{summary}</p>
         </div>
         <div className="flex items-start gap-2">
           <div className="text-right text-xs text-[var(--color-muted)]">
-            <span className="block">{rangeLabel}</span>
-            <span className="mt-1 block font-mono text-[11px]">{freshness}</span>
+            <span className="block font-medium">{rangeLabel}</span>
+            <span className="mt-0.5 block font-mono text-[11px]">{freshness}</span>
           </div>
           {onMaximize && (
             <button
               type="button"
               onClick={onMaximize}
-              className="p-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.04] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white/[0.08] transition-colors"
-              title="Expand chart & view process breakdown"
+              className="p-1 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100"
+              title={t('Expand chart & view process breakdown', 'Mở rộng biểu đồ & xem phân bổ tiến trình')}
               aria-label={`Expand ${title} chart`}
             >
-              <Maximize2 className="w-4 h-4" />
+              <Maximize2 className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       </div>
-      <div className="relative h-72">
+      <div className="relative h-64">
         {children}
         {loading && (
-          <div className="monitoring-chart-loading">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            Loading metrics…
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]/80 backdrop-blur-[1px] text-xs font-semibold text-[var(--foreground)] gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+            {t('Loading metrics…', 'Đang tải số liệu…')}
           </div>
         )}
       </div>
@@ -831,6 +858,7 @@ function ProcessResourceBreakdown({
   totalKey,
   totalColor,
 }: ProcessResourceBreakdownProps) {
+  const { t } = useLanguage();
   const processItems = useMemo(() => {
     return processes.map((p, idx) => {
       const val = metricType === 'cpu' ? p.cpu : p.ram;
@@ -858,40 +886,40 @@ function ProcessResourceBreakdown({
   const isTotalVisible = activeSeries[totalKey] !== false;
 
   return (
-    <div className="mt-6 space-y-3.5">
-      {/* 1. Resource Allocation Bar (Thanh phân bổ tỷ trọng tài nguyên tổng quan) */}
-      <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+    <div className="mt-5 space-y-3">
+      {/* 1. Resource Allocation Bar */}
+      <div className="p-3.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--foreground)]">
               {title}
             </span>
             <span className="text-[11px] text-[var(--color-muted)] font-mono">
-              (Live Breakdown)
+              ({t('Live Breakdown', 'Phân bổ trực tiếp')})
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono tabular-nums">
             <span className="flex items-center gap-1.5 text-[var(--foreground)] font-semibold">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: totalColor }} />
-              Used: {currentTotal.toFixed(1)}%
+              {t('Used:', 'Đã dùng:')} {currentTotal.toFixed(1)}%
             </span>
             <span className="text-[var(--color-muted)]">·</span>
             <span className="text-[var(--color-muted)]">
-              Top 5: <strong className="text-[var(--foreground)]">{topSum.toFixed(1)}%</strong>
+              {t('Top 5:', 'Top 5:')} <strong className="text-[var(--foreground)]">{topSum.toFixed(1)}%</strong>
             </span>
             <span className="text-[var(--color-muted)]">·</span>
             <span className="text-[var(--color-muted)]">
-              Other: <strong className="text-slate-400">{otherVal.toFixed(1)}%</strong>
+              {t('Other:', 'Khác:')} <strong className="text-[var(--color-muted)]">{otherVal.toFixed(1)}%</strong>
             </span>
             <span className="text-[var(--color-muted)]">·</span>
             <span className="text-[var(--color-muted)]">
-              {metricType === 'cpu' ? 'Idle' : 'Free'}: <strong className="text-emerald-400">{idleVal.toFixed(1)}%</strong>
+              {metricType === 'cpu' ? t('Idle:', 'Nghỉ:') : t('Free:', 'Trống:')} <strong className="text-emerald-500">{idleVal.toFixed(1)}%</strong>
             </span>
           </div>
         </div>
 
         {/* Segmented Progress Bar */}
-        <div className="h-3.5 w-full bg-white/[0.04] rounded-full overflow-hidden flex p-0.5 border border-white/[0.08] shadow-inner">
+        <div className="h-3 w-full bg-[var(--surface-3)] rounded-sm overflow-hidden flex p-0.5 border border-[var(--border-default)]">
           {processItems.map((p) => {
             if (p.val <= 0) return null;
             return (
@@ -901,7 +929,7 @@ function ProcessResourceBreakdown({
                   width: `${(p.val / 100) * 100}%`,
                   backgroundColor: p.color,
                 }}
-                className="h-full rounded-sm transition-all duration-300 hover:brightness-125 cursor-pointer relative"
+                className="h-full rounded-sm transition-all duration-100 hover:brightness-125 cursor-pointer relative"
                 title={`${p.name} (PID ${p.pid}): ${p.val.toFixed(1)}%`}
                 onClick={() => onToggleSeries(p.key)}
               />
@@ -910,7 +938,7 @@ function ProcessResourceBreakdown({
           {otherVal > 0 && (
             <div
               style={{ width: `${(otherVal / 100) * 100}%` }}
-              className="h-full bg-slate-500 rounded-sm transition-all duration-300 hover:brightness-125 cursor-pointer"
+              className="h-full bg-slate-500 rounded-sm transition-all duration-100 hover:brightness-125 cursor-pointer"
               title={`Other Processes & OS: ${otherVal.toFixed(1)}%`}
               onClick={() => onToggleSeries(otherKey)}
             />
@@ -918,54 +946,54 @@ function ProcessResourceBreakdown({
           {idleVal > 0 && (
             <div
               style={{ width: `${(idleVal / 100) * 100}%` }}
-              className="h-full bg-transparent opacity-25"
+              className="h-full bg-transparent opacity-20"
               title={`${metricType === 'cpu' ? 'Idle CPU' : 'Free Memory'}: ${idleVal.toFixed(1)}%`}
             />
           )}
         </div>
       </div>
 
-      {/* 2. Ranked Process Cards Table (Danh sách tiến trình độc lập trực quan) */}
-      <div className="p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <div className="flex items-center justify-between pb-3 mb-3 border-b border-[var(--border-color)] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+      {/* 2. Ranked Process Cards Table */}
+      <div className="p-3.5 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+        <div className="flex items-center justify-between pb-2 mb-2 border-b border-[var(--border-subtle)] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
           <div className="flex items-center gap-2">
-            <span>Active Processes</span>
+            <span>{t('Active Processes', 'Tiến trình hoạt động')}</span>
             <span className="text-[10px] lowercase font-normal text-[var(--color-muted)]">
-              (click row to toggle on chart)
+              {t('(click row to toggle on chart)', '(nhấn vào dòng để ẩn/hiện trên biểu đồ)')}
             </span>
           </div>
           <div className="flex items-center gap-6">
-            <span className="w-28 hidden sm:inline-block">Share</span>
-            <span className="w-16 text-right">Usage</span>
-            <span className="w-20 text-center">Chart View</span>
+            <span className="w-28 hidden sm:inline-block">{t('Share', 'Tỷ trọng')}</span>
+            <span className="w-16 text-right">{t('Usage', 'Mức dùng')}</span>
+            <span className="w-16 text-center">{t('Chart View', 'Biểu đồ')}</span>
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {processItems.map((p) => (
             <div
               key={p.key}
               onClick={() => onToggleSeries(p.key)}
-              className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+              className={`flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-sm border transition-all duration-100 cursor-pointer ${
                 p.isVisible
-                  ? 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20'
-                  : 'border-white/[0.03] bg-transparent opacity-40 hover:opacity-70'
+                  ? 'border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-3)]'
+                  : 'border-transparent bg-transparent opacity-40 hover:opacity-70'
               }`}
             >
               {/* Process Identity */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <span className="w-4 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
                   #{p.idx + 1}
                 </span>
                 <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm"
+                  className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: p.color }}
                 />
                 <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-[var(--foreground)] truncate max-w-[200px] sm:max-w-[280px]">
+                  <span className="text-xs font-semibold text-[var(--foreground)] truncate max-w-[200px] sm:max-w-[260px]">
                     {p.name}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/[0.06] text-[var(--color-muted)] border border-white/[0.08]">
+                  <span className="px-1 py-0.5 rounded-sm text-[10px] font-mono bg-[var(--surface-2)] text-[var(--color-muted)] border border-[var(--border-subtle)]">
                     PID {p.pid}
                   </span>
                   {p.user && (
@@ -979,9 +1007,9 @@ function ProcessResourceBreakdown({
               {/* Progress Bar & Value */}
               <div className="flex items-center gap-6 flex-shrink-0">
                 <div className="w-28 hidden sm:block">
-                  <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-1.5 w-full rounded-full bg-[var(--surface-3)] overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-300"
+                      className="h-full rounded-full transition-all duration-100"
                       style={{
                         width: `${Math.min(100, (p.val / Math.max(1, currentTotal)) * 100)}%`,
                         backgroundColor: p.color,
@@ -990,20 +1018,20 @@ function ProcessResourceBreakdown({
                   </div>
                 </div>
 
-                <span className="w-16 text-right font-mono text-xs font-bold" style={{ color: p.color }}>
+                <span className="w-16 text-right font-mono tabular-nums text-xs font-bold" style={{ color: p.color }}>
                   {p.val.toFixed(1)}%
                 </span>
 
-                <div className="w-20 flex justify-center">
+                <div className="w-16 flex justify-center">
                   <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium transition-colors ${
                       p.isVisible
-                        ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
-                        : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                        ? 'bg-[var(--surface-2)] text-[var(--foreground)] border border-[var(--border-default)]'
+                        : 'bg-transparent text-[var(--color-muted)] border border-transparent'
                     }`}
                   >
                     {p.isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    {p.isVisible ? 'Show' : 'Hide'}
+                    {p.isVisible ? t('Show', 'Hiện') : t('Hide', 'Ẩn')}
                   </span>
                 </div>
               </div>
@@ -1013,32 +1041,32 @@ function ProcessResourceBreakdown({
           {/* Other Processes & OS row */}
           <div
             onClick={() => onToggleSeries(otherKey)}
-            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+            className={`flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-sm border transition-all duration-100 cursor-pointer ${
               isOtherVisible
-                ? 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20'
-                : 'border-white/[0.03] bg-transparent opacity-40 hover:opacity-70'
+                ? 'border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-3)]'
+                : 'border-transparent bg-transparent opacity-40 hover:opacity-70'
             }`}
           >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span className="w-4 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
                 —
               </span>
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-slate-500 shadow-sm" />
+              <span className="w-2 h-2 rounded-full flex-shrink-0 bg-slate-500" />
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-[var(--foreground)] truncate">
-                  Other Processes & OS
+                  {t('Other Processes & OS', 'Tiến trình khác & HĐH')}
                 </span>
                 <span className="text-[10px] text-[var(--color-muted)] ml-2 hidden sm:inline">
-                  (Kernel & background tasks)
+                  {t('(Kernel & background tasks)', '(Nhân HĐH & tác vụ nền)')}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-6 flex-shrink-0">
               <div className="w-28 hidden sm:block">
-                <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-[var(--surface-3)] overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-slate-500 transition-all duration-300"
+                    className="h-full rounded-full bg-slate-500 transition-all duration-100"
                     style={{
                       width: `${Math.min(100, (otherVal / Math.max(1, currentTotal)) * 100)}%`,
                     }}
@@ -1046,20 +1074,20 @@ function ProcessResourceBreakdown({
                 </div>
               </div>
 
-              <span className="w-16 text-right font-mono text-xs font-bold text-slate-400">
+              <span className="w-16 text-right font-mono tabular-nums text-xs font-bold text-slate-400">
                 {otherVal.toFixed(1)}%
               </span>
 
-              <div className="w-20 flex justify-center">
+              <div className="w-16 flex justify-center">
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium transition-colors ${
                     isOtherVisible
-                      ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
-                      : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                      ? 'bg-[var(--surface-2)] text-[var(--foreground)] border border-[var(--border-default)]'
+                      : 'bg-transparent text-[var(--color-muted)] border border-transparent'
                   }`}
                 >
                   {isOtherVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  {isOtherVisible ? 'Show' : 'Hide'}
+                  {isOtherVisible ? t('Show', 'Hiện') : t('Hide', 'Ẩn')}
                 </span>
               </div>
             </div>
@@ -1068,35 +1096,35 @@ function ProcessResourceBreakdown({
           {/* Total Reference Ceiling Row */}
           <div
             onClick={() => onToggleSeries(totalKey)}
-            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-dashed transition-all cursor-pointer ${
+            className={`flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-sm border border-dashed transition-all duration-100 cursor-pointer ${
               isTotalVisible
-                ? 'border-white/20 bg-white/[0.02] hover:bg-white/[0.05]'
-                : 'border-white/5 bg-transparent opacity-40 hover:opacity-70'
+                ? 'border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-3)]'
+                : 'border-transparent bg-transparent opacity-40 hover:opacity-70'
             }`}
           >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <span className="w-5 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span className="w-4 text-center text-xs font-mono font-bold text-[var(--color-muted)]">
                 REF
               </span>
               <span
-                className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-sm"
+                className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: totalColor }}
               />
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-[var(--foreground)] truncate">
-                  {metricType === 'cpu' ? 'Total CPU Reference' : 'Total Memory Reference'}
+                  {metricType === 'cpu' ? t('Total CPU Reference', 'Mức CPU tham chiếu') : t('Total Memory Reference', 'Mức RAM tham chiếu')}
                 </span>
                 <span className="text-[10px] text-[var(--color-muted)] ml-2 hidden sm:inline">
-                  (Dashed reference line on chart)
+                  {t('(Dashed reference line on chart)', '(Đường nét đứt tham chiếu trên biểu đồ)')}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-6 flex-shrink-0">
               <div className="w-28 hidden sm:block">
-                <div className="h-2 w-full rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-[var(--surface-3)] overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-300"
+                    className="h-full rounded-full transition-all duration-100"
                     style={{
                       width: `${Math.min(100, currentTotal)}%`,
                       backgroundColor: totalColor,
@@ -1105,20 +1133,20 @@ function ProcessResourceBreakdown({
                 </div>
               </div>
 
-              <span className="w-16 text-right font-mono text-xs font-bold" style={{ color: totalColor }}>
+              <span className="w-16 text-right font-mono tabular-nums text-xs font-bold" style={{ color: totalColor }}>
                 {currentTotal.toFixed(1)}%
               </span>
 
-              <div className="w-20 flex justify-center">
+              <div className="w-16 flex justify-center">
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-medium transition-colors ${
                     isTotalVisible
-                      ? 'bg-white/[0.08] text-[var(--foreground)] border border-white/20'
-                      : 'bg-transparent text-[var(--color-muted)] border border-white/5'
+                      ? 'bg-[var(--surface-2)] text-[var(--foreground)] border border-[var(--border-default)]'
+                      : 'bg-transparent text-[var(--color-muted)] border border-transparent'
                   }`}
                 >
                   {isTotalVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  {isTotalVisible ? 'Show' : 'Hide'}
+                  {isTotalVisible ? t('Show', 'Hiện') : t('Hide', 'Ẩn')}
                 </span>
               </div>
             </div>
@@ -1153,6 +1181,7 @@ function ExpandedCpuChartCard({
   onToggleSeries: (key: string) => void;
   loading: boolean;
 }) {
+  const { t } = useLanguage();
   const stats = useMemo(() => calculateStats(timeline, 'cpu', '%'), [timeline]);
   const currentCpuNum = useMemo(() => {
     const val = timeline.filter((p) => p.hasData && p.cpu != null).map((p) => Number(p.cpu)).at(-1);
@@ -1160,22 +1189,22 @@ function ExpandedCpuChartCard({
   }, [timeline]);
 
   return (
-    <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
+    <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 animate-in fade-in duration-100">
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
-            <Cpu className="w-5 h-5 text-violet-400" />
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-sm bg-violet-500/10 border border-violet-500/20">
+            <Cpu className="w-4 h-4 text-violet-500" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              CPU Utilization Breakdown (%)
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+              {t('CPU Utilization Breakdown (%)', 'Phân bổ mức sử dụng CPU (%)')}
+              <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-violet-500/10 text-violet-500 border border-violet-500/20">
                 Top Processes
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Breakdown of CPU utilization by active processes · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              {t('Breakdown of CPU utilization by active processes', 'Phân bổ mức sử dụng CPU theo tiến trình hoạt động')} · <span className="font-mono">{rangeLabel} ({resolution}s {t('resolution', 'độ phân giải')})</span>
             </p>
           </div>
         </div>
@@ -1183,16 +1212,16 @@ function ExpandedCpuChartCard({
         <button
           type="button"
           onClick={onCollapse}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Collapse to grid"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100"
+          title={t('Collapse to grid', 'Thu gọn về dạng lưới')}
         >
-          <Minimize2 className="w-4 h-4 text-violet-400" />
-          Collapse
+          <Minimize2 className="w-3.5 h-3.5 text-violet-500" />
+          {t('Collapse', 'Thu gọn')}
         </button>
       </div>
 
       {/* Chart Canvas - Independent Process Curves (NO stackId) */}
-      <div className="mt-6 h-[360px] w-full relative">
+      <div className="mt-4 h-[320px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
             <defs>
@@ -1215,7 +1244,7 @@ function ExpandedCpuChartCard({
               <Line
                 type="monotone"
                 dataKey="cpu"
-                name="Total CPU Reference"
+                name={t('Total CPU Reference', 'Mức CPU tham chiếu')}
                 stroke="#a855f7"
                 strokeWidth={2}
                 strokeDasharray="4 4"
@@ -1230,7 +1259,7 @@ function ExpandedCpuChartCard({
               <Area
                 type="monotone"
                 dataKey="cpu_other"
-                name="Other Processes & OS"
+                name={t('Other Processes & OS', 'Tiến trình khác & HĐH')}
                 stroke="#64748b"
                 fill="url(#cpuOtherGrad)"
                 strokeWidth={1.5}
@@ -1261,10 +1290,10 @@ function ExpandedCpuChartCard({
             <Line
               type="linear"
               dataKey="downtimeZero"
-              name="No metrics"
+              name={t('No metrics', 'Không có số liệu')}
               stroke="var(--rose)"
-              strokeWidth={4}
-              strokeDasharray="7 5"
+              strokeWidth={3}
+              strokeDasharray="6 4"
               strokeLinecap="round"
               dot={false}
               connectNulls={false}
@@ -1274,16 +1303,16 @@ function ExpandedCpuChartCard({
         </ResponsiveContainer>
 
         {loading && (
-          <div className="monitoring-chart-loading">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            Loading metrics…
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]/80 backdrop-blur-[1px] text-xs font-semibold text-[var(--foreground)] gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+            {t('Loading metrics…', 'Đang tải số liệu…')}
           </div>
         )}
       </div>
 
       {/* Visual Resource Breakdown & Ranked Process Cards */}
       <ProcessResourceBreakdown
-        title="CPU Allocation Breakdown"
+        title={t('CPU Allocation Breakdown', 'Phân bổ mức sử dụng CPU')}
         metricType="cpu"
         currentTotal={currentCpuNum}
         processes={cpuProcesses}
@@ -1296,22 +1325,22 @@ function ExpandedCpuChartCard({
       />
 
       {/* KPI Stats Grid */}
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Current CPU</p>
-          <p className="mt-1 text-lg font-bold text-[var(--foreground)]">{stats.current}</p>
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Current CPU', 'CPU hiện tại')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-[var(--foreground)]">{stats.current}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Average</p>
-          <p className="mt-1 text-lg font-bold text-violet-400">{stats.avg}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Average', 'Trung bình')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-violet-500">{stats.avg}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
-          <p className="mt-1 text-lg font-bold text-rose-400">{stats.peak}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Peak Max', 'Đỉnh cao nhất')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-rose-500">{stats.peak}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
-          <p className="mt-1 text-lg font-bold text-emerald-400">{resolution}s</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Sampling Resolution', 'Độ phân giải lấy mẫu')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-emerald-500">{resolution}s</p>
         </div>
       </div>
     </section>
@@ -1342,6 +1371,7 @@ function ExpandedRamChartCard({
   onToggleSeries: (key: string) => void;
   loading: boolean;
 }) {
+  const { t } = useLanguage();
   const stats = useMemo(() => calculateStats(timeline, 'ram', '%'), [timeline]);
   const currentRamNum = useMemo(() => {
     const val = timeline.filter((p) => p.hasData && p.ram != null).map((p) => Number(p.ram)).at(-1);
@@ -1349,22 +1379,22 @@ function ExpandedRamChartCard({
   }, [timeline]);
 
   return (
-    <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
+    <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 animate-in fade-in duration-100">
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-            <DatabaseBackup className="w-5 h-5 text-emerald-400" />
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-sm bg-emerald-500/10 border border-emerald-500/20">
+            <DatabaseBackup className="w-4 h-4 text-emerald-500" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              Memory Utilization Breakdown (%)
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+              {t('Memory Utilization Breakdown (%)', 'Phân bổ mức sử dụng RAM (%)')}
+              <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                 Top Processes
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Breakdown of RAM consumption by active processes · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              {t('Breakdown of RAM consumption by active processes', 'Phân bổ mức sử dụng RAM theo tiến trình hoạt động')} · <span className="font-mono">{rangeLabel} ({resolution}s {t('resolution', 'độ phân giải')})</span>
             </p>
           </div>
         </div>
@@ -1372,16 +1402,16 @@ function ExpandedRamChartCard({
         <button
           type="button"
           onClick={onCollapse}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Collapse to grid"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100"
+          title={t('Collapse to grid', 'Thu gọn về dạng lưới')}
         >
-          <Minimize2 className="w-4 h-4 text-emerald-400" />
-          Collapse
+          <Minimize2 className="w-3.5 h-3.5 text-emerald-500" />
+          {t('Collapse', 'Thu gọn')}
         </button>
       </div>
 
       {/* Chart Canvas - Independent Process Curves (NO stackId) */}
-      <div className="mt-6 h-[360px] w-full relative">
+      <div className="mt-4 h-[320px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
             <defs>
@@ -1404,7 +1434,7 @@ function ExpandedRamChartCard({
               <Line
                 type="monotone"
                 dataKey="ram"
-                name="Total Memory Reference"
+                name={t('Total Memory Reference', 'Mức RAM tham chiếu')}
                 stroke="#10b981"
                 strokeWidth={2}
                 strokeDasharray="4 4"
@@ -1419,7 +1449,7 @@ function ExpandedRamChartCard({
               <Area
                 type="monotone"
                 dataKey="ram_other"
-                name="Other Processes & OS"
+                name={t('Other Processes & OS', 'Tiến trình khác & HĐH')}
                 stroke="#64748b"
                 fill="url(#ramOtherGrad)"
                 strokeWidth={1.5}
@@ -1450,10 +1480,10 @@ function ExpandedRamChartCard({
             <Line
               type="linear"
               dataKey="downtimeZero"
-              name="No metrics"
+              name={t('No metrics', 'Không có số liệu')}
               stroke="var(--rose)"
-              strokeWidth={4}
-              strokeDasharray="7 5"
+              strokeWidth={3}
+              strokeDasharray="6 4"
               strokeLinecap="round"
               dot={false}
               connectNulls={false}
@@ -1463,16 +1493,16 @@ function ExpandedRamChartCard({
         </ResponsiveContainer>
 
         {loading && (
-          <div className="monitoring-chart-loading">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            Loading metrics…
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]/80 backdrop-blur-[1px] text-xs font-semibold text-[var(--foreground)] gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+            {t('Loading metrics…', 'Đang tải số liệu…')}
           </div>
         )}
       </div>
 
       {/* Visual Resource Breakdown & Ranked Process Cards */}
       <ProcessResourceBreakdown
-        title="Memory Allocation Breakdown"
+        title={t('Memory Allocation Breakdown', 'Phân bổ mức sử dụng RAM')}
         metricType="ram"
         currentTotal={currentRamNum}
         processes={ramProcesses}
@@ -1485,22 +1515,22 @@ function ExpandedRamChartCard({
       />
 
       {/* KPI Stats Grid */}
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Current Memory</p>
-          <p className="mt-1 text-lg font-bold text-[var(--foreground)]">{stats.current}</p>
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Current Memory', 'RAM hiện tại')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-[var(--foreground)]">{stats.current}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Average</p>
-          <p className="mt-1 text-lg font-bold text-emerald-400">{stats.avg}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Average', 'Trung bình')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-emerald-500">{stats.avg}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
-          <p className="mt-1 text-lg font-bold text-rose-400">{stats.peak}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Peak Max', 'Đỉnh cao nhất')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-rose-500">{stats.peak}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
-          <p className="mt-1 text-lg font-bold text-emerald-400">{resolution}s</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Sampling Resolution', 'Độ phân giải lấy mẫu')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-emerald-500">{resolution}s</p>
         </div>
       </div>
     </section>
@@ -1529,24 +1559,25 @@ function ExpandedNetworkChartCard({
   onToggleSeries: (key: string) => void;
   loading: boolean;
 }) {
+  const { t } = useLanguage();
   const stats = useMemo(() => calculateStats(timeline, 'netIn', ' KB/s'), [timeline]);
 
   return (
-    <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20">
-            <Wifi className="w-5 h-5 text-sky-400" />
+    <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 animate-in fade-in duration-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-sm bg-sky-500/10 border border-sky-500/20">
+            <Wifi className="w-4 h-4 text-sky-500" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              Network Throughput Breakdown (KB/s)
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+              {t('Network Throughput Breakdown (KB/s)', 'Phân bổ lưu lượng mạng (KB/s)')}
+              <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-sky-500/10 text-sky-500 border border-sky-500/20">
                 Inbound & Outbound
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Breakdown of Inbound (RX) and Outbound (TX) network throughput · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              {t('Breakdown of Inbound (RX) and Outbound (TX) network throughput', 'Phân bổ lưu lượng mạng nhận (RX) và gửi (TX)')} · <span className="font-mono">{rangeLabel} ({resolution}s {t('resolution', 'độ phân giải')})</span>
             </p>
           </div>
         </div>
@@ -1554,25 +1585,25 @@ function ExpandedNetworkChartCard({
         <button
           type="button"
           onClick={onCollapse}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Collapse to grid"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100"
+          title={t('Collapse to grid', 'Thu gọn về dạng lưới')}
         >
-          <Minimize2 className="w-4 h-4 text-sky-400" />
-          Collapse
+          <Minimize2 className="w-3.5 h-3.5 text-sky-500" />
+          {t('Collapse', 'Thu gọn')}
         </button>
       </div>
 
-      <div className="mt-6 h-[380px] w-full relative">
+      <div className="mt-4 h-[320px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartContext.data}>
             <defs>
               <linearGradient id="netInGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
               </linearGradient>
               <linearGradient id="netOutGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.45} />
-                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.05} />
+                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <ChartScaffolding {...chartContext} />
@@ -1581,7 +1612,7 @@ function ExpandedNetworkChartCard({
               <Area
                 type="monotone"
                 dataKey="netIn"
-                name="Inbound RX"
+                name={t('Inbound RX', 'Lưu lượng đến (RX)')}
                 stroke="#8b5cf6"
                 fill="url(#netInGrad)"
                 strokeWidth={2}
@@ -1593,7 +1624,7 @@ function ExpandedNetworkChartCard({
               <Area
                 type="monotone"
                 dataKey="netOut"
-                name="Outbound TX"
+                name={t('Outbound TX', 'Lưu lượng đi (TX)')}
                 stroke="#38bdf8"
                 fill="url(#netOutGrad)"
                 strokeWidth={2}
@@ -1604,10 +1635,10 @@ function ExpandedNetworkChartCard({
             <Line
               type="linear"
               dataKey="downtimeZero"
-              name="No metrics"
+              name={t('No metrics', 'Không có số liệu')}
               stroke="var(--rose)"
-              strokeWidth={4}
-              strokeDasharray="7 5"
+              strokeWidth={3}
+              strokeDasharray="6 4"
               strokeLinecap="round"
               dot={false}
               connectNulls={false}
@@ -1617,39 +1648,39 @@ function ExpandedNetworkChartCard({
         </ResponsiveContainer>
 
         {loading && (
-          <div className="monitoring-chart-loading">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            Loading metrics…
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]/80 backdrop-blur-[1px] text-xs font-semibold text-[var(--foreground)] gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+            {t('Loading metrics…', 'Đang tải số liệu…')}
           </div>
         )}
       </div>
 
-      <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Network Streams (Click to toggle stream):
+      <div className="mt-4 p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+        <p className="text-[11px] font-semibold uppercase text-[var(--color-muted)] mb-2">
+          {t('Network Streams (Click to toggle stream):', 'Luồng mạng (Nhấn để bật/tắt):')}
         </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <LegendBadge label="Inbound (RX Ingress)" color="#8b5cf6" active={activeSeries.netIn} onClick={() => onToggleSeries('netIn')} />
-          <LegendBadge label="Outbound (TX Egress)" color="#38bdf8" active={activeSeries.netOut} onClick={() => onToggleSeries('netOut')} />
+        <div className="flex flex-wrap items-center gap-2">
+          <LegendBadge label={t('Inbound (RX Ingress)', 'Lưu lượng đến (RX Ingress)')} color="#8b5cf6" active={activeSeries.netIn} onClick={() => onToggleSeries('netIn')} />
+          <LegendBadge label={t('Outbound (TX Egress)', 'Lưu lượng đi (TX Egress)')} color="#38bdf8" active={activeSeries.netOut} onClick={() => onToggleSeries('netOut')} />
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Current RX</p>
-          <p className="mt-1 text-lg font-bold text-[var(--foreground)]">{stats.current}</p>
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Current RX', 'RX hiện tại')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-[var(--foreground)]">{stats.current}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Average</p>
-          <p className="mt-1 text-lg font-bold text-sky-400">{stats.avg}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Average', 'Trung bình')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-sky-500">{stats.avg}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
-          <p className="mt-1 text-lg font-bold text-rose-400">{stats.peak}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Peak Max', 'Đỉnh cao nhất')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-rose-500">{stats.peak}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
-          <p className="mt-1 text-lg font-bold text-emerald-400">{resolution}s</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Sampling Resolution', 'Độ phân giải lấy mẫu')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-emerald-500">{resolution}s</p>
         </div>
       </div>
     </section>
@@ -1678,24 +1709,25 @@ function ExpandedDiskChartCard({
   onToggleSeries: (key: string) => void;
   loading: boolean;
 }) {
+  const { t } = useLanguage();
   const stats = useMemo(() => calculateStats(timeline, 'diskRead', ' KB/s'), [timeline]);
 
   return (
-    <section className="ops-panel surface-regular no-hover-lift p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xl animate-in fade-in duration-300">
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <HardDrive className="w-5 h-5 text-amber-400" />
+    <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 animate-in fade-in duration-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-sm bg-amber-500/10 border border-amber-500/20">
+            <HardDrive className="w-4 h-4 text-amber-500" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[var(--foreground)] flex items-center gap-2">
-              Disk I/O Bandwidth Breakdown (KB/s)
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <h2 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
+              {t('Disk I/O Bandwidth Breakdown (KB/s)', 'Phân bổ băng thông đĩa (KB/s)')}
+              <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
                 Read & Write
               </span>
             </h2>
             <p className="text-xs text-[var(--color-muted)] mt-0.5">
-              Breakdown of disk Read and Write I/O bandwidth · <span className="font-mono">{rangeLabel} ({resolution}s resolution)</span>
+              {t('Breakdown of disk Read and Write I/O bandwidth', 'Phân bổ băng thông đọc và ghi đĩa')} · <span className="font-mono">{rangeLabel} ({resolution}s {t('resolution', 'độ phân giải')})</span>
             </p>
           </div>
         </div>
@@ -1703,15 +1735,15 @@ function ExpandedDiskChartCard({
         <button
           type="button"
           onClick={onCollapse}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-white/[0.05] text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/10 transition-all shadow-sm"
-          title="Collapse to grid"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100"
+          title={t('Collapse to grid', 'Thu gọn về dạng lưới')}
         >
-          <Minimize2 className="w-4 h-4 text-amber-400" />
-          Collapse
+          <Minimize2 className="w-3.5 h-3.5 text-amber-500" />
+          {t('Collapse', 'Thu gọn')}
         </button>
       </div>
 
-      <div className="mt-6 h-[380px] w-full relative">
+      <div className="mt-4 h-[320px] w-full relative">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartContext.data}>
             <ChartScaffolding {...chartContext} />
@@ -1720,9 +1752,9 @@ function ExpandedDiskChartCard({
               <Line
                 type="monotone"
                 dataKey="diskRead"
-                name="Read Throughput"
+                name={t('Read Throughput', 'Băng thông đọc')}
                 stroke="#f59e0b"
-                strokeWidth={2.5}
+                strokeWidth={2}
                 dot={false}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -1732,9 +1764,9 @@ function ExpandedDiskChartCard({
               <Line
                 type="monotone"
                 dataKey="diskWrite"
-                name="Write Throughput"
+                name={t('Write Throughput', 'Băng thông ghi')}
                 stroke="#f43f5e"
-                strokeWidth={2.5}
+                strokeWidth={2}
                 strokeDasharray="4 4"
                 dot={false}
                 connectNulls={false}
@@ -1744,10 +1776,10 @@ function ExpandedDiskChartCard({
             <Line
               type="linear"
               dataKey="downtimeZero"
-              name="No metrics"
+              name={t('No metrics', 'Không có số liệu')}
               stroke="var(--rose)"
-              strokeWidth={4}
-              strokeDasharray="7 5"
+              strokeWidth={3}
+              strokeDasharray="6 4"
               strokeLinecap="round"
               dot={false}
               connectNulls={false}
@@ -1757,39 +1789,39 @@ function ExpandedDiskChartCard({
         </ResponsiveContainer>
 
         {loading && (
-          <div className="monitoring-chart-loading">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            Loading metrics…
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--surface-1)]/80 backdrop-blur-[1px] text-xs font-semibold text-[var(--foreground)] gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+            {t('Loading metrics…', 'Đang tải số liệu…')}
           </div>
         )}
       </div>
 
-      <div className="mt-6 p-4 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-        <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-3">
-          Disk Channels (Click to toggle channel):
+      <div className="mt-4 p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+        <p className="text-[11px] font-semibold uppercase text-[var(--color-muted)] mb-2">
+          {t('Disk Channels (Click to toggle channel):', 'Kênh đĩa (Nhấn để bật/tắt):')}
         </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <LegendBadge label="Read Bandwidth" color="#f59e0b" active={activeSeries.diskRead} onClick={() => onToggleSeries('diskRead')} />
-          <LegendBadge label="Write Bandwidth" color="#f43f5e" active={activeSeries.diskWrite} onClick={() => onToggleSeries('diskWrite')} />
+        <div className="flex flex-wrap items-center gap-2">
+          <LegendBadge label={t('Read Bandwidth', 'Băng thông đọc')} color="#f59e0b" active={activeSeries.diskRead} onClick={() => onToggleSeries('diskRead')} />
+          <LegendBadge label={t('Write Bandwidth', 'Băng thông ghi')} color="#f43f5e" active={activeSeries.diskWrite} onClick={() => onToggleSeries('diskWrite')} />
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Current Read</p>
-          <p className="mt-1 text-lg font-bold text-[var(--foreground)]">{stats.current}</p>
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Current Read', 'Đọc hiện tại')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-[var(--foreground)]">{stats.current}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Average</p>
-          <p className="mt-1 text-lg font-bold text-amber-400">{stats.avg}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Average', 'Trung bình')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-amber-500">{stats.avg}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Peak Max</p>
-          <p className="mt-1 text-lg font-bold text-rose-400">{stats.peak}</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Peak Max', 'Đỉnh cao nhất')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-rose-500">{stats.peak}</p>
         </div>
-        <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-white/[0.02]">
-          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">Sampling Resolution</p>
-          <p className="mt-1 text-lg font-bold text-emerald-400">{resolution}s</p>
+        <div className="p-3 rounded-sm border border-[var(--border-subtle)] bg-[var(--surface-2)]">
+          <p className="text-[11px] font-semibold text-[var(--color-muted)] uppercase">{t('Sampling Resolution', 'Độ phân giải lấy mẫu')}</p>
+          <p className="mt-0.5 text-base font-bold font-mono tabular-nums text-emerald-500">{resolution}s</p>
         </div>
       </div>
     </section>
@@ -1811,13 +1843,13 @@ function LegendBadge({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm border text-xs font-medium transition duration-100 ${
         active
-          ? 'border-white/20 bg-white/[0.08] text-[var(--foreground)] shadow-sm'
-          : 'border-white/5 bg-transparent text-[var(--color-muted)] opacity-40 line-through'
+          ? 'border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--foreground)]'
+          : 'border-transparent bg-transparent text-[var(--color-muted)] opacity-40 line-through'
       }`}
     >
-      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
       {label}
     </button>
   );
@@ -1835,11 +1867,12 @@ function ChartScaffolding({
   percentAxis?: boolean;
   fixedPercentDomain?: boolean;
 }) {
+  const { isVi } = useLanguage();
   return (
     <>
       <CartesianGrid
         strokeDasharray="3 3"
-        stroke="var(--border-color)"
+        stroke="var(--border-subtle)"
         vertical={false}
       />
       <XAxis
@@ -1848,19 +1881,19 @@ function ChartScaffolding({
         domain={domain}
         scale="time"
         allowDataOverflow
-        stroke="var(--border-color)"
-        tick={{ fill: 'var(--text-strong)', fontSize: 13, fontWeight: 600 }}
+        stroke="var(--border-subtle)"
+        tick={{ fill: 'var(--color-muted)', fontSize: 11, fontFamily: 'monospace' }}
         tickLine={false}
         axisLine={false}
         minTickGap={42}
-        tickFormatter={(value) => formatAxisTime(Number(value), range)}
+        tickFormatter={(value) => formatAxisTime(Number(value), range, isVi ? 'vi-VN' : 'en-US')}
       />
       <YAxis
-        stroke="var(--border-color)"
-        tick={{ fill: 'var(--text-strong)', fontSize: 13, fontWeight: 600 }}
+        stroke="var(--border-subtle)"
+        tick={{ fill: 'var(--color-muted)', fontSize: 11, fontFamily: 'monospace' }}
         tickLine={false}
         axisLine={false}
-        width={46}
+        width={42}
         tickFormatter={(value) =>
           percentAxis ? `${value}%` : formatCompactNumber(Number(value))
         }
@@ -1877,35 +1910,38 @@ function ChartScaffolding({
 }
 
 function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
+  const { t, isVi } = useLanguage();
   if (!active) return null;
   const timestamp = Number(label);
   const point = payload?.[0]?.payload;
   const visibleItems = (payload ?? [])
-    .filter((item) => item.value != null && item.name !== 'No metrics')
+    .filter((item) => item.value != null && item.name !== 'No metrics' && item.name !== 'Không có số liệu')
     .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
 
   return (
-    <div className="monitoring-tooltip">
-      <p className="monitoring-tooltip-time">{formatTooltipTime(timestamp)}</p>
+    <div className="rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-2.5 shadow-xl text-xs max-w-xs font-mono">
+      <p className="text-[11px] text-[var(--color-muted)] font-semibold border-b border-[var(--border-subtle)] pb-1 mb-1.5">
+        {formatTooltipTime(timestamp, isVi ? 'vi-VN' : 'en-US')}
+      </p>
       {!point?.hasData || visibleItems.length === 0 ? (
-        <div className="monitoring-tooltip-missing">
+        <div className="flex items-center gap-1.5 text-rose-500 text-xs">
           <CircleAlert className="h-3.5 w-3.5" />
-          No metrics
+          {t('No metrics', 'Không có số liệu')}
         </div>
       ) : (
-        <div className="mt-2 space-y-1.5">
+        <div className="space-y-1">
           {visibleItems.map((item) => (
-            <div key={item.name} className="flex items-center justify-between gap-6">
-              <span className="flex items-center gap-2">
-                <i style={{ background: item.color }} />
-                <span className="monitoring-tooltip-name">{item.name}</span>
+            <div key={item.name} className="flex items-center justify-between gap-4">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <i className="w-2 h-2 rounded-full inline-block shrink-0" style={{ background: item.color }} />
+                <span className="text-[var(--foreground)] truncate text-[11px]">{item.name}</span>
               </span>
-              <strong>{formatTooltipValue(item.value, item.name)}</strong>
+              <strong className="text-[var(--foreground)] tabular-nums shrink-0">{formatTooltipValue(item.value, item.name)}</strong>
             </div>
           ))}
-          <div className="monitoring-tooltip-meta">
-            <span>Status</span><strong>Data received</strong>
-            <span>Source</span><strong>Agent heartbeat</strong>
+          <div className="pt-1.5 mt-1 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-x-2 text-[10px] text-[var(--color-muted)]">
+            <span>{t('Status', 'Trạng thái')}:</span><strong className="text-right text-[var(--foreground)]">{t('Data received', 'Đã nhận dữ liệu')}</strong>
+            <span>{t('Source', 'Nguồn')}:</span><strong className="text-right text-[var(--foreground)]">{t('Agent heartbeat', 'Nhịp tim Agent')}</strong>
           </div>
         </div>
       )}
@@ -1914,129 +1950,117 @@ function MetricsTooltip({ active, label, payload }: MetricsTooltipProps) {
 }
 
 function getProcessOrganicWeight(baseWeight: number, index: number, timestamp: number): number {
-  const t = timestamp / 1_000;
-  // Multi-harmonic oscillation with prime frequencies per process index
-  const freq1 = [43, 37, 29, 23, 19][index % 5];
-  const freq2 = [17, 13, 11, 7, 5][index % 5];
-  const phase = index * 1.35;
-  const wave = Math.sin(t / freq1 + phase) * 0.08 + Math.cos(t / freq2 + phase * 1.5) * 0.04;
-  return Math.max(0.05, baseWeight * (1 + wave));
+  if (baseWeight <= 0) return 0.1;
+  const cycleMs = (index + 1) * 35_000 + 15_000;
+  const phase = ((timestamp % cycleMs) / cycleMs) * Math.PI * 2;
+  const variance = Math.sin(phase) * 0.15;
+  return Math.max(0.1, Number((baseWeight * (1 + variance)).toFixed(1)));
 }
 
 function buildTimeline(
   metrics: MetricApiPoint[],
-  range: RangeOption,
+  config: RangeOption,
   now: number,
   cpuProcesses: TopProcess[],
   ramProcesses: TopProcess[],
 ): TimelinePoint[] {
-  const bucketMs = range.bucketSeconds * 1_000;
-  const alignedStart = Math.floor((now - range.durationMs) / bucketMs) * bucketMs;
-  const alignedEnd = Math.floor(now / bucketMs) * bucketMs;
-  const metricByBucket = new Map<number, MetricApiPoint>();
+  const { durationMs, bucketSeconds } = config;
+  const bucketMs = bucketSeconds * 1_000;
+  const totalBuckets = Math.max(1, Math.floor(durationMs / bucketMs));
+  const startTime = now - durationMs;
 
-  for (const metric of metrics) {
-    const timestamp = getMetricTimestamp(metric);
-    if (timestamp == null) continue;
-    metricByBucket.set(Math.floor(timestamp / bucketMs) * bucketMs, metric);
+  const validMetrics = metrics
+    .map((metric) => ({
+      metric,
+      timestamp: getMetricTimestamp(metric),
+    }))
+    .filter(
+      (item): item is { metric: MetricApiPoint; timestamp: number } =>
+        item.timestamp != null &&
+        item.timestamp >= startTime - bucketMs &&
+        item.timestamp <= now + bucketMs,
+    );
+
+  const buckets = new Map<number, MetricApiPoint[]>();
+  for (const { metric, timestamp } of validMetrics) {
+    const bucketIndex = Math.floor((timestamp - startTime) / bucketMs);
+    if (bucketIndex >= 0 && bucketIndex < totalBuckets) {
+      const current = buckets.get(bucketIndex) ?? [];
+      current.push(metric);
+      buckets.set(bucketIndex, current);
+    }
   }
+
+  const latestValidTimestamp = validMetrics.reduce(
+    (latest, item) => Math.max(latest, item.timestamp),
+    0,
+  );
 
   const timeline: TimelinePoint[] = [];
 
-  for (let timestamp = alignedStart; timestamp <= alignedEnd; timestamp += bucketMs) {
-    let metric = metricByBucket.get(timestamp);
-    let hasData = Boolean(metric);
-
-    // If an isolated single bucket is empty between valid surrounding points (e.g. 10.5s cadence on a 10s grid),
-    // carry forward previous valid telemetry to prevent false 0% downtime dips on healthy servers
-    if (!hasData) {
-      const prevMetric = metricByBucket.get(timestamp - bucketMs);
-      const nextMetric = metricByBucket.get(timestamp + bucketMs);
-      if (prevMetric && nextMetric) {
-        metric = prevMetric;
-        hasData = true;
-      }
-    }
+  for (let index = 0; index < totalBuckets; index += 1) {
+    const timestamp = startTime + index * bucketMs;
+    const bucketMetrics = buckets.get(index);
+    const hasData = Boolean(bucketMetrics && bucketMetrics.length > 0);
+    const metric = bucketMetrics?.at(-1);
 
     const isConfirmedMissing =
-      !hasData && timestamp < now - MISSING_DATA_GRACE_MS;
+      !hasData &&
+      latestValidTimestamp > 0 &&
+      timestamp < latestValidTimestamp &&
+      now - timestamp > MISSING_DATA_GRACE_MS;
 
-    const missingValue = isConfirmedMissing ? 0 : null;
-    const cpuVal = metric ? toFiniteMetric(metric.cpu_usage) : missingValue;
-    const ramVal = metric ? calculateMemoryPercent(metric.memory_used, metric.memory_total) : missingValue;
+    const cpu = toFiniteMetric(metric?.cpu_usage);
+    const ram = calculateMemoryPercent(metric?.memory_used, metric?.memory_total);
+    const netIn = toKilobytes(metric?.net_in);
+    const netOut = toKilobytes(metric?.net_out);
+    const diskRead = toKilobytes(metric?.disk_read);
+    const diskWrite = toKilobytes(metric?.disk_write);
 
-    // Allocate real top process CPU values based on dynamic live share
-    let cpu_proc_0: number | null = null;
-    let cpu_proc_1: number | null = null;
-    let cpu_proc_2: number | null = null;
-    let cpu_proc_3: number | null = null;
-    let cpu_proc_4: number | null = null;
-    let cpu_other: number | null = null;
+    // Calculate synthetic individual process allocations based on telemetry snapshot weights
+    const totalCpuTarget = cpu ?? 0;
+    const cpuWeights = cpuProcesses.map((p, i) => getProcessOrganicWeight(p.cpu, i, timestamp));
+    const cpuWeightSum = cpuWeights.reduce((a, b) => a + b, 0);
 
-    if (cpuVal != null) {
-      if (cpuVal <= 0) {
-        cpu_proc_0 = 0;
-        cpu_proc_1 = 0;
-        cpu_proc_2 = 0;
-        cpu_proc_3 = 0;
-        cpu_proc_4 = 0;
-        cpu_other = 0;
-      } else {
-        const topCpuRawSum = (cpuProcesses[0]?.cpu || 0) + (cpuProcesses[1]?.cpu || 0) + (cpuProcesses[2]?.cpu || 0) + (cpuProcesses[3]?.cpu || 0) + (cpuProcesses[4]?.cpu || 0);
-        const targetTopShare = topCpuRawSum > 0 ? Math.min(cpuVal * 0.85, topCpuRawSum) : cpuVal * 0.8;
+    const cpuAllocations = cpuWeights.map((w) => {
+      if (totalCpuTarget <= 0 || cpuWeightSum <= 0) return 0;
+      return Number(Math.min(totalCpuTarget * 0.9, (w / Math.max(100, cpuWeightSum * 1.5)) * totalCpuTarget * 1.5).toFixed(1));
+    });
 
-        const cw0 = getProcessOrganicWeight(cpuProcesses[0]?.cpu || 1.0, 0, timestamp);
-        const cw1 = getProcessOrganicWeight(cpuProcesses[1]?.cpu || 0.8, 1, timestamp);
-        const cw2 = getProcessOrganicWeight(cpuProcesses[2]?.cpu || 0.6, 2, timestamp);
-        const cw3 = getProcessOrganicWeight(cpuProcesses[3]?.cpu || 0.4, 3, timestamp);
-        const cw4 = getProcessOrganicWeight(cpuProcesses[4]?.cpu || 0.2, 4, timestamp);
-        const dynamicWeightCpu = cw0 + cw1 + cw2 + cw3 + cw4 || 1;
+    const sumAllocCpu = cpuAllocations.reduce((a, b) => a + b, 0);
+    const cpu_proc_0 = hasData && cpuProcesses[0] ? (cpuAllocations[0] ?? null) : null;
+    const cpu_proc_1 = hasData && cpuProcesses[1] ? (cpuAllocations[1] ?? null) : null;
+    const cpu_proc_2 = hasData && cpuProcesses[2] ? (cpuAllocations[2] ?? null) : null;
+    const cpu_proc_3 = hasData && cpuProcesses[3] ? (cpuAllocations[3] ?? null) : null;
+    const cpu_proc_4 = hasData && cpuProcesses[4] ? (cpuAllocations[4] ?? null) : null;
+    const cpu_other = hasData ? Number(Math.max(0, totalCpuTarget - sumAllocCpu).toFixed(1)) : null;
 
-        cpu_proc_0 = Number(((cw0 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-        cpu_proc_1 = Number(((cw1 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-        cpu_proc_2 = Number(((cw2 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-        cpu_proc_3 = Number(((cw3 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-        cpu_proc_4 = Number(((cw4 / dynamicWeightCpu) * targetTopShare).toFixed(1));
-        const allocated = (cpu_proc_0 || 0) + (cpu_proc_1 || 0) + (cpu_proc_2 || 0) + (cpu_proc_3 || 0) + (cpu_proc_4 || 0);
-        cpu_other = Math.max(0, Number((cpuVal - allocated).toFixed(1)));
-      }
-    }
+    // RAM allocation per process
+    const totalRamTarget = ram ?? 0;
+    const ramWeights = ramProcesses.map((p, i) => getProcessOrganicWeight(p.ram, i, timestamp));
+    const ramWeightSum = ramWeights.reduce((a, b) => a + b, 0);
 
-    // Allocate top process RAM values — exact telemetry from Agent
-    let ram_proc_0: number | null = null;
-    let ram_proc_1: number | null = null;
-    let ram_proc_2: number | null = null;
-    let ram_proc_3: number | null = null;
-    let ram_proc_4: number | null = null;
-    let ram_other: number | null = null;
+    const ramAllocations = ramWeights.map((w) => {
+      if (totalRamTarget <= 0 || ramWeightSum <= 0) return 0;
+      return Number(Math.min(totalRamTarget * 0.9, (w / Math.max(100, ramWeightSum * 1.5)) * totalRamTarget * 1.5).toFixed(1));
+    });
 
-    if (ramVal != null) {
-      if (ramVal <= 0) {
-        ram_proc_0 = 0;
-        ram_proc_1 = 0;
-        ram_proc_2 = 0;
-        ram_proc_3 = 0;
-        ram_proc_4 = 0;
-        ram_other = 0;
-      } else {
-        ram_proc_0 = Number((ramProcesses[0]?.ram || 0).toFixed(1));
-        ram_proc_1 = Number((ramProcesses[1]?.ram || 0).toFixed(1));
-        ram_proc_2 = Number((ramProcesses[2]?.ram || 0).toFixed(1));
-        ram_proc_3 = Number((ramProcesses[3]?.ram || 0).toFixed(1));
-        ram_proc_4 = Number((ramProcesses[4]?.ram || 0).toFixed(1));
-        const allocatedRam = (ram_proc_0 || 0) + (ram_proc_1 || 0) + (ram_proc_2 || 0) + (ram_proc_3 || 0) + (ram_proc_4 || 0);
-        ram_other = Math.max(0, Number((ramVal - allocatedRam).toFixed(1)));
-      }
-    }
+    const sumAllocRam = ramAllocations.reduce((a, b) => a + b, 0);
+    const ram_proc_0 = hasData && ramProcesses[0] ? (ramAllocations[0] ?? null) : null;
+    const ram_proc_1 = hasData && ramProcesses[1] ? (ramAllocations[1] ?? null) : null;
+    const ram_proc_2 = hasData && ramProcesses[2] ? (ramAllocations[2] ?? null) : null;
+    const ram_proc_3 = hasData && ramProcesses[3] ? (ramAllocations[3] ?? null) : null;
+    const ram_proc_4 = hasData && ramProcesses[4] ? (ramAllocations[4] ?? null) : null;
+    const ram_other = hasData ? Number(Math.max(0, totalRamTarget - sumAllocRam).toFixed(1)) : null;
 
     timeline.push({
       timestamp,
-      cpu: cpuVal,
-      ram: ramVal,
-      netIn: metric ? toKilobytes(metric.net_in) : missingValue,
-      netOut: metric ? toKilobytes(metric.net_out) : missingValue,
-      diskRead: metric ? toKilobytes(metric.disk_read) : missingValue,
-      diskWrite: metric ? toKilobytes(metric.disk_write) : missingValue,
+      cpu: hasData ? cpu : null,
+      ram: hasData ? ram : null,
+      netIn: hasData ? netIn : null,
+      netOut: hasData ? netOut : null,
+      diskRead: hasData ? diskRead : null,
+      diskWrite: hasData ? diskWrite : null,
 
       cpu_proc_0,
       cpu_proc_1,
@@ -2112,33 +2136,36 @@ function toKilobytes(value: number | string | undefined): number | null {
   return Number((bytes / 1_024).toFixed(2));
 }
 
-function formatAxisTime(timestamp: number, range: TimeRange): string {
+function formatAxisTime(timestamp: number, range: TimeRange, locale: string = 'en-US'): string {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp);
   if (range === '7d' || range === '24h') {
-    return date.toLocaleString('en-US', {
+    return date.toLocaleString(locale, {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     });
   }
-  return date.toLocaleTimeString('en-US', {
+  return date.toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
     ...(range === '15m' ? { second: '2-digit' } : {}),
   });
 }
 
-function formatTooltipTime(timestamp: number): string {
+function formatTooltipTime(timestamp: number, locale: string = 'en-US'): string {
   if (!Number.isFinite(timestamp)) return 'Unknown';
-  return new Date(timestamp).toLocaleString('en-US', {
+  return new Date(timestamp).toLocaleString(locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    hour12: false,
   });
 }
 
@@ -2155,10 +2182,10 @@ function formatTooltipValue(value: number | string | null | undefined, name?: st
   if (!Number.isFinite(metric)) return '—';
   const numStr = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(metric);
   if (name) {
-    if (name.includes('KB/s') || name.includes('Inbound') || name.includes('Outbound') || name.includes('Read') || name.includes('Write') || name.includes('Disk') || name.includes('Network') || name.includes('netIn') || name.includes('netOut')) {
+    if (name.includes('KB/s') || name.includes('Inbound') || name.includes('Outbound') || name.includes('Read') || name.includes('Write') || name.includes('Disk') || name.includes('Network') || name.includes('netIn') || name.includes('netOut') || name.includes('Nhận') || name.includes('Gửi') || name.includes('Đọc') || name.includes('Ghi')) {
       return `${numStr} KB/s`;
     }
-    if (name.includes('%') || name.includes('PID') || name.includes('CPU') || name.includes('Memory') || name.includes('Processes') || name.includes('OS') || name.includes('System')) {
+    if (name.includes('%') || name.includes('PID') || name.includes('CPU') || name.includes('Memory') || name.includes('Processes') || name.includes('OS') || name.includes('System') || name.includes('bộ nhớ') || name.includes('tiến trình')) {
       return `${numStr}%`;
     }
   }

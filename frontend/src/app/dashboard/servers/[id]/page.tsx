@@ -9,6 +9,7 @@ import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import WebTerminal from '@/components/WebTerminal';
 import CustomSelect from '@/components/CustomSelect';
+import { useLanguage } from '@/components/LanguageContext';
 
 interface NetworkTargetProbe {
   id: string;
@@ -262,6 +263,7 @@ const versionAtLeast = (current: string | undefined, minimum: string) => {
 };
 
 export default function ServerDetailsPage() {
+  const { t } = useLanguage();
   const params = useParams();
   const router = useRouter();
   const [server, setServer] = useState<ServerDetails | null>(null);
@@ -666,13 +668,15 @@ export default function ServerDetailsPage() {
           missing: 'Unit not found',
           search: 'Search systemd units',
         };
-  const terminalTabLabel = terminalEnvironmentUnsupported ? 'Terminal · Not supported' : 'Terminal';
+  const terminalTabLabel = terminalEnvironmentUnsupported
+    ? t('Terminal · Not supported', 'Terminal · Không hỗ trợ')
+    : 'Terminal';
   const tabs: Array<[string, string]> = [
-    ['overview', 'Overview'],
-    ['processes', 'Processes'],
-    ['services', serviceContent.tab],
-    ['network', 'Network Quality'],
-    ['docker', osFamily === 'macos' || osFamily === 'windows' ? 'Containers' : 'Docker'],
+    ['overview', t('Overview', 'Tổng quan')],
+    ['processes', t('Processes', 'Tiến trình')],
+    ['services', t(serviceContent.tab, serviceContent.tab === 'Launch Services' ? 'Dịch vụ launchd' : serviceContent.tab === 'Windows Services' ? 'Dịch vụ Windows' : 'Dịch vụ Systemd')],
+    ['network', t('Network Quality', 'Chất lượng mạng')],
+    ['docker', osFamily === 'macos' || osFamily === 'windows' ? t('Containers', 'Container') : 'Docker'],
     ['terminal', terminalTabLabel],
   ];
   // Old agents sent a Linux-only list without a service manager. Do not show
@@ -800,13 +804,13 @@ export default function ServerDetailsPage() {
         <button
           type="button"
           onClick={() => router.push(`/dashboard/monitoring?server_id=${server?.id || params.id}`)}
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 shrink-0 self-start sm:self-center cursor-pointer"
+          className="inline-flex items-center gap-1.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 self-start sm:self-center cursor-pointer"
         >
-          <Activity className="w-4 h-4" /> View Metrics
+          <Activity className="w-3.5 h-3.5" /> {t('View Metrics', 'Xem chỉ số')}
         </button>
       </div>
 
-      <div role="tablist" aria-label="Server detail views" className="flex gap-4 overflow-x-auto border-b border-[var(--border-color)]">
+      <div role="tablist" aria-label="Server detail views" className="flex gap-3 overflow-x-auto border-b border-[var(--border-subtle)]">
         {tabs.map(([key, label]) => {
           const isNetTab = key === 'network';
           const hasNetWarning = isNetTab && snapshot?.network_diagnostics?.status === 'warning';
@@ -819,18 +823,18 @@ export default function ServerDetailsPage() {
               role="tab"
               aria-selected={activeTab === key}
               onClick={() => setActiveTab(key)}
-              className={`whitespace-nowrap pb-3 text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+              className={`whitespace-nowrap pb-2.5 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
                 activeTab === key
-                  ? 'text-blue-500 border-b-2 border-blue-500'
+                  ? 'text-[var(--accent-primary)] border-b-2 border-[var(--accent-primary)]'
                   : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
               }`}
             >
               {label}
               {hasNetCritical && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" title="Network Critical Alert" />
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" title="Network Critical Alert" />
               )}
               {hasNetWarning && !hasNetCritical && (
-                <span className="w-2 h-2 rounded-full bg-amber-500" title="Network Warning" />
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Network Warning" />
               )}
             </button>
           );
@@ -838,56 +842,56 @@ export default function ServerDetailsPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
 
           {supportsServiceControls && updateAvailable && (
-            <section aria-labelledby="agent-update-available-title" className="rounded-2xl border border-amber-500/35 bg-[var(--background-card)] p-5 shadow-lg shadow-black/5 sm:p-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="rounded-full border border-amber-500/30 bg-amber-500/15 p-2 text-amber-600 dark:text-amber-400">
-                    <RefreshCw className="h-5 w-5" />
+            <section aria-labelledby="agent-update-available-title" className="rounded-md border border-amber-500/35 bg-[var(--surface-1)] p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/15 p-1.5 text-amber-500">
+                    <RefreshCw className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <h2 id="agent-update-available-title" className="text-base font-bold text-[var(--foreground)]">
-                      Agent update available
+                    <h2 id="agent-update-available-title" className="text-sm font-bold text-[var(--foreground)]">
+                      {t('Agent update available', 'Có bản cập nhật Agent mới')}
                     </h2>
-                    <p className="mt-2 text-sm font-medium leading-6 text-[var(--color-muted)]">
-                      This server is running Agent {reportedAgentVersion || 'Unknown'}. The current release is Agent {latestAgentVersion}.
+                    <p className="mt-1 text-xs text-[var(--color-muted)]">
+                      {t('This server is running Agent', 'Máy chủ này đang chạy Agent')} <span className="font-mono">{reportedAgentVersion || t('Unknown', 'Không xác định')}</span>. {t('The current release is Agent', 'Phiên bản mới nhất là Agent')} <span className="font-mono font-semibold text-emerald-500">{latestAgentVersion}</span>.
                     </p>
                     {agentUpdateTask && (
-                      <p className={`mt-2 text-sm font-semibold ${agentUpdateFailed ? 'text-rose-500' : agentUpdateCompleted ? 'text-emerald-500' : 'text-amber-600 dark:text-amber-300'}`}>
+                      <p className={`mt-1 text-xs font-semibold ${agentUpdateFailed ? 'text-rose-500' : agentUpdateCompleted ? 'text-emerald-500' : 'text-amber-500'}`}>
                         {agentUpdateCompleted
-                          ? 'Update confirmed by the latest heartbeat.'
+                          ? t('Update confirmed by the latest heartbeat.', 'Cập nhật đã được xác nhận bởi nhịp tim mới nhất.')
                           : agentUpdateFailed
                             ? agentUpdateStalled
-                              ? 'The update was staged, but the agent is still reporting the old version. Retry the update to restart the service with the new binary.'
-                              : agentUpdateTask.result || `Update task ${agentUpdateTask.status}.`
+                              ? t('The update was staged, but the agent is still reporting the old version. Retry the update to restart the service with the new binary.', 'Bản cập nhật đã được nạp nhưng agent vẫn báo phiên bản cũ. Thử lại cập nhật.')
+                              : agentUpdateTask.result || `${t('Update task', 'Tác vụ cập nhật')} ${agentUpdateTask.status}.`
                             : agentUpdateTask.status === 'processing'
-                              ? 'The agent has claimed the task. Waiting for restart and version confirmation.'
-                              : 'Update task is queued. Waiting for the next agent heartbeat.'}
+                              ? t('The agent has claimed the task. Waiting for restart and version confirmation.', 'Agent đang xử lý tác vụ. Chờ khởi động lại và xác nhận phiên bản.')
+                              : t('Update task is queued. Waiting for the next agent heartbeat.', 'Tác vụ đã xếp hàng. Chờ nhịp tim tiếp theo của agent.')}
                       </p>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   {agentUpdateInProgress && (
                     <button
                       type="button"
                       onClick={cancelAgentUpdate}
-                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-rose-500/35 bg-rose-500/10 px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
+                      className="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer"
                     >
                       <CircleX className="h-3.5 w-3.5" />
-                      Cancel task
+                      {t('Cancel task', 'Hủy tác vụ')}
                     </button>
                   )}
                   <button
                     type="button"
                     disabled={queueingAgentUpdate || (agentUpdateInProgress && server.status === 'online') || server.status !== 'online'}
                     onClick={queueAgentUpdate}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-amber-500/45 bg-amber-500/15 px-4 py-2 text-sm font-bold text-amber-700 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:bg-amber-500/15 disabled:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200 dark:disabled:text-amber-300"
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-amber-500/45 bg-amber-500/15 px-3.5 py-1.5 text-xs font-bold text-amber-600 dark:text-amber-300 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   >
-                    <AgentUpdateIcon className={`h-4 w-4 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
-                    {queueingAgentUpdate ? 'Queueing update...' : agentUpdateLabel}
+                    <AgentUpdateIcon className={`h-3.5 w-3.5 ${queueingAgentUpdate || agentUpdateInProgress ? 'animate-spin' : ''}`} />
+                    {queueingAgentUpdate ? t('Queueing update...', 'Đang xếp hàng...') : agentUpdateLabel}
                   </button>
                 </div>
               </div>
@@ -895,144 +899,147 @@ export default function ServerDetailsPage() {
           )}
 
           {/* Section 1: Real-Time Telemetry Parameters */}
-          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 shadow-lg">
-            <h3 className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-4 flex items-center justify-between">
+          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-md p-4">
+            <h3 className="text-xs font-bold text-[var(--accent-primary)] uppercase tracking-wider mb-3.5 flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-400" /> Real-Time Telemetry Parameters
+                <Activity className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                {t('Real-Time Telemetry Parameters', 'Thông số đo lường thời gian thực')}
               </span>
               <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">
                 Node IP: {server.ip_address || server.id}
               </span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* CPU Usage */}
-              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
-                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
-                  <span>CPU USAGE</span>
+              <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-md p-3 font-mono tabular-nums">
+                <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mb-1">
+                  <span>{t('CPU USAGE', 'SỬ DỤNG CPU')}</span>
                   <span className={totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-semibold'}>
-                    {totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'HIGH' : 'NORMAL'}
+                    {totalCPUUsage !== undefined && totalCPUUsage > 90 ? t('HIGH', 'CAO') : t('NORMAL', 'BÌNH THƯỜNG')}
                   </span>
                 </div>
-                <div className={`text-2xl font-bold ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-500' : 'text-[var(--foreground)]'}`}>
+                <div className={`text-xl font-bold ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'text-rose-500' : 'text-[var(--foreground)]'}`}>
                   {totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
+                <div className="h-1 overflow-hidden rounded-sm bg-[var(--border-subtle)] mt-2.5">
                   <div
-                    className={`h-full rounded-full ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    className={`h-full rounded-sm ${totalCPUUsage !== undefined && totalCPUUsage > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`}
                     style={{ width: `${Math.min(totalCPUUsage || 0, 100)}%` }}
                   />
                 </div>
               </div>
 
               {/* RAM Usage */}
-              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
-                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
-                  <span>RAM USAGE</span>
-                  <span className="text-[11px] text-[var(--color-muted)]">
+              <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-md p-3 font-mono tabular-nums">
+                <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mb-1">
+                  <span>{t('RAM USAGE', 'SỬ DỤNG RAM')}</span>
+                  <span className="text-[10px] text-[var(--color-muted)]">
                     {parsedOSInfo.memory_total && parsedOSInfo.memory_used ? `${(parsedOSInfo.memory_used / (1024 * 1024 * 1024)).toFixed(1)} / ${(parsedOSInfo.memory_total / (1024 * 1024 * 1024)).toFixed(1)} GB` : ''}
                   </span>
                 </div>
-                <div className="text-2xl font-bold text-[var(--foreground)]">
+                <div className="text-xl font-bold text-[var(--foreground)]">
                   {totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
+                <div className="h-1 overflow-hidden rounded-sm bg-[var(--border-subtle)] mt-2.5">
                   <div
-                    className="h-full rounded-full bg-blue-500"
+                    className="h-full rounded-sm bg-blue-500"
                     style={{ width: `${Math.min(totalMemoryUsage || 0, 100)}%` }}
                   />
                 </div>
               </div>
 
               {/* Disk Usage */}
-              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
-                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
-                  <span>DISK USAGE</span>
-                  <span className="text-[11px] text-[var(--color-muted)]">
+              <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-md p-3 font-mono tabular-nums">
+                <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mb-1">
+                  <span>{t('DISK USAGE', 'DUNG LƯỢNG Ổ ĐĨA')}</span>
+                  <span className="text-[10px] text-[var(--color-muted)]">
                     {parsedOSInfo.disk_total ? `${formatBytes(parsedOSInfo.disk_used)} / ${formatBytes(parsedOSInfo.disk_total)}` : ''}
                   </span>
                 </div>
-                <div className="text-2xl font-bold text-[var(--foreground)]">
+                <div className="text-xl font-bold text-[var(--foreground)]">
                   {parsedOSInfo.disk_usage !== undefined ? `${parsedOSInfo.disk_usage.toFixed(1)}%` : '—'}
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-color)] mt-3">
+                <div className="h-1 overflow-hidden rounded-sm bg-[var(--border-subtle)] mt-2.5">
                   <div
-                    className={`h-full rounded-full ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : 'bg-amber-500'}`}
+                    className={`h-full rounded-sm ${Number(parsedOSInfo.disk_usage || 0) >= 90 ? 'bg-rose-500' : 'bg-amber-500'}`}
                     style={{ width: `${Math.min(Number(parsedOSInfo.disk_usage || 0), 100)}%` }}
                   />
                 </div>
               </div>
 
               {/* Uptime */}
-              <div className="bg-[var(--surface-subtle)] border border-[var(--border-color)] rounded-xl p-4 font-mono">
-                <div className="flex justify-between items-center text-xs text-[var(--color-muted)] mb-1">
-                  <span>UPTIME</span>
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${server.status === 'online' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span> {server.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+              <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-md p-3 font-mono tabular-nums">
+                <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mb-1">
+                  <span>{t('UPTIME', 'THỜI GIAN HOẠT ĐỘNG')}</span>
+                  <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase ${server.status === 'online' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${server.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /> {server.status === 'online' ? t('ONLINE', 'TRỰC TUYẾN') : t('OFFLINE', 'NGOẠI TUYẾN')}
                   </span>
                 </div>
-                <div className={`text-xl font-bold mt-1 ${server.status === 'online' ? 'text-emerald-400' : 'text-[var(--color-muted)]'}`}>
+                <div className={`text-lg font-bold mt-0.5 ${server.status === 'online' ? 'text-emerald-500' : 'text-[var(--color-muted)]'}`}>
                   {snapshot?.system_info?.uptime ? formatUptime(snapshot.system_info.uptime) : '—'}
                 </div>
-                <div className="text-[11px] text-[var(--color-muted)] mt-3">
-                  {server.status === 'online' ? 'Heartbeat Active' : 'Offline / No Heartbeat'}
+                <div className="text-[10px] text-[var(--color-muted)] mt-2">
+                  {server.status === 'online' ? t('Heartbeat Active', 'Nhịp tim hoạt động') : t('Offline / No Heartbeat', 'Ngoại tuyến / Mất nhịp tim')}
                 </div>
               </div>
             </div>
           </div>
 
           {/* Section 2: Static System Information & Package Security */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* System Information */}
-            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5">
-              <h3 className="text-xs font-bold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
-                <Cpu className="w-4 h-4 text-blue-400" /> System Specification & Environment
+            <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-md p-4">
+              <h3 className="text-xs font-bold text-[var(--color-muted)] mb-3 flex items-center gap-2 uppercase tracking-wider">
+                <Cpu className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                {t('System Specification & Environment', 'Thông số hệ thống & Môi trường')}
               </h3>
-              <div className="space-y-3.5 text-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <span className="text-[var(--color-muted)]">Operating System</span>
+              <div className="space-y-2.5 text-xs">
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--border-subtle)]">
+                  <span className="text-[var(--color-muted)]">{t('Operating System', 'Hệ điều hành')}</span>
                   <span className="font-semibold text-[var(--foreground)]">{parsedOSInfo.os_name || monitoredOS || 'N/A'}</span>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <span className="text-[var(--color-muted)]">Agent Version</span>
-                  <span className={`font-semibold ${reportedAgentVersion ? 'text-blue-400' : 'text-amber-500'}`}>
-                    {reportedAgentVersion || 'Not reported'}
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--border-subtle)]">
+                  <span className="text-[var(--color-muted)]">{t('Agent Version', 'Phiên bản Agent')}</span>
+                  <span className={`font-semibold font-mono ${reportedAgentVersion ? 'text-[var(--accent-primary)]' : 'text-amber-500'}`}>
+                    {reportedAgentVersion || t('Not reported', 'Chưa báo cáo')}
                   </span>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <span className="text-[var(--color-muted)]">Kernel Version</span>
-                  <span className="font-mono text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--border-subtle)]">
+                  <span className="text-[var(--color-muted)]">{t('Kernel Version', 'Phiên bản Kernel')}</span>
+                  <span className="font-mono tabular-nums text-[var(--foreground)]">{snapshot?.system_info?.kernel || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[var(--color-muted)]">Virtualization Platform</span>
-                  <span className="font-semibold text-[var(--foreground)] uppercase">{snapshot?.system_info?.virtualization || 'N/A'}</span>
+                  <span className="text-[var(--color-muted)]">{t('Virtualization Platform', 'Nền tảng ảo hóa')}</span>
+                  <span className="font-semibold text-[var(--foreground)] uppercase font-mono">{snapshot?.system_info?.virtualization || 'N/A'}</span>
                 </div>
               </div>
             </div>
 
             {/* Package Updates & Fleet Security */}
-            <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl p-5 flex flex-col justify-between">
+            <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-md p-4 flex flex-col justify-between">
               <div>
-                <h3 className="text-xs font-bold text-[var(--color-muted)] mb-4 flex items-center gap-2 uppercase tracking-wider">
-                  <Box className="w-4 h-4 text-blue-400" /> Package Updates & Security Status
+                <h3 className="text-xs font-bold text-[var(--color-muted)] mb-3 flex items-center gap-2 uppercase tracking-wider">
+                  <Box className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                  {t('Package Updates & Security Status', 'Cập nhật gói & Trạng thái bảo mật')}
                 </h3>
-                <div className="flex items-center gap-4 mt-2">
-                  <div className="p-3.5 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20">
-                    <ShieldCheck className="w-7 h-7" />
+                <div className="flex items-center gap-3 mt-1.5">
+                  <div className="p-2.5 bg-blue-500/10 rounded-md text-[var(--accent-primary)] border border-blue-500/20">
+                    <ShieldCheck className="w-6 h-6" />
                   </div>
                   <div>
-                    <p className="text-xs text-[var(--color-muted)] font-medium">Packages awaiting upgrade</p>
-                    <div className="text-2xl font-bold text-[var(--foreground)] font-mono mt-0.5">
-                      {snapshot?.package_update || 0} <span className="text-sm font-normal text-[var(--color-muted)]">packages</span>
+                    <p className="text-xs text-[var(--color-muted)] font-medium">{t('Packages awaiting upgrade', 'Gói đang chờ nâng cấp')}</p>
+                    <div className="text-xl font-bold text-[var(--foreground)] font-mono tabular-nums mt-0.5">
+                      {snapshot?.package_update || 0} <span className="text-xs font-normal text-[var(--color-muted)]">{t('packages', 'gói')}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
-                <span className="text-[var(--color-muted)]">Fleet Security policy</span>
-                <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <CircleCheck className="w-3.5 h-3.5" /> Compliant
+              <div className="mt-4 pt-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between text-xs">
+                <span className="text-[var(--color-muted)]">{t('Fleet Security policy', 'Chính sách bảo mật hệ thống')}</span>
+                <span className="text-emerald-500 font-semibold flex items-center gap-1 font-mono text-[11px]">
+                  <CircleCheck className="w-3.5 h-3.5" /> {t('Compliant', 'Tuân thủ')}
                 </span>
               </div>
             </div>
@@ -1041,38 +1048,41 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'processes' && (
-        <div className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
               {
-                label: 'Total CPU usage',
-                value: totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : 'Unavailable',
-                detail: 'Current system-wide usage',
-                tone: 'text-[var(--rose)]',
+                label: t('Total CPU usage', 'Tổng mức sử dụng CPU'),
+                value: totalCPUUsage !== undefined ? `${totalCPUUsage.toFixed(1)}%` : '—',
+                detail: t('Current system-wide usage', 'Mức sử dụng toàn hệ thống'),
+                tone: 'text-rose-500',
               },
               {
-                label: 'Total RAM usage',
-                value: totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : 'Unavailable',
-                detail: parsedOSInfo.memory_total ? `${formatBytes(parsedOSInfo.memory_used)} of ${formatBytes(parsedOSInfo.memory_total)}` : 'Current system-wide usage',
-                tone: 'text-[var(--violet)]',
+                label: t('Total RAM usage', 'Tổng mức sử dụng RAM'),
+                value: totalMemoryUsage !== undefined ? `${totalMemoryUsage.toFixed(1)}%` : '—',
+                detail: parsedOSInfo.memory_total ? `${formatBytes(parsedOSInfo.memory_used)} / ${formatBytes(parsedOSInfo.memory_total)}` : t('Current system-wide usage', 'Mức sử dụng toàn hệ thống'),
+                tone: 'text-[var(--accent-primary)]',
               },
               {
-                label: 'Processes shown',
+                label: t('Processes shown', 'Số tiến trình hiển thị'),
                 value: String(snapshot?.top_processes?.length || 0),
-                detail: 'Highest resource consumers',
-                tone: 'text-[var(--mint)]',
+                detail: t('Highest resource consumers', 'Tiêu tốn nhiều tài nguyên nhất'),
+                tone: 'text-emerald-500',
               },
             ].map(item => (
-              <div key={item.label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
-                <p className="text-sm font-semibold text-[var(--color-muted)]">{item.label}</p>
-                <p className={`mt-2 text-2xl font-bold ${item.tone}`}>{item.value}</p>
-                <p className="mt-1 text-xs font-medium text-[var(--color-muted)]">{item.detail}</p>
+              <div key={item.label} className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5">
+                <p className="text-xs font-semibold text-[var(--color-muted)]">{item.label}</p>
+                <p className={`mt-1.5 text-xl font-bold font-mono tabular-nums ${item.tone}`}>{item.value}</p>
+                <p className="mt-1 text-[11px] font-medium text-[var(--color-muted)]">{item.detail}</p>
               </div>
             ))}
           </div>
-          <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden">
-            <div className="p-5 border-b border-[var(--border-color)]">
-              <h3 className="text-sm font-medium text-[var(--color-muted)] flex items-center gap-2"><Activity className="w-4 h-4" /> TOP RESOURCE-CONSUMING PROCESSES</h3>
+          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-md overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
+              <h3 className="text-xs font-bold text-[var(--foreground)] uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                {t('TOP RESOURCE-CONSUMING PROCESSES', 'CÁC TIẾN TRÌNH CHIẾM TÀI NGUYÊN HÀNG ĐẦU')}
+              </h3>
             </div>
             <div className="overflow-x-auto">
               {(() => {
@@ -1083,13 +1093,13 @@ export default function ServerDetailsPage() {
                   return processSortOrder === 'desc' ? valB - valA : valA - valB;
                 });
                 return (
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-[var(--background)] text-[var(--color-muted)]">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[var(--surface-2)] border-b border-[var(--border-subtle)] text-[11px] font-mono font-bold uppercase text-[var(--color-muted)]">
                       <tr>
-                        <th className="px-6 py-3 font-medium">PID</th>
-                        <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Process' : 'Command'}</th>
-                        <th className="px-6 py-3 font-medium">{osFamily === 'windows' ? 'Account' : 'User'}</th>
-                        <th className="px-6 py-3 font-medium">
+                        <th className="px-3.5 py-2">PID</th>
+                        <th className="px-3.5 py-2">{osFamily === 'windows' ? t('Process', 'Tiến trình') : t('Command', 'Lệnh')}</th>
+                        <th className="px-3.5 py-2">{osFamily === 'windows' ? t('Account', 'Tài khoản') : t('User', 'Người dùng')}</th>
+                        <th className="px-3.5 py-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -1100,21 +1110,21 @@ export default function ServerDetailsPage() {
                                 setProcessSortOrder('desc');
                               }
                             }}
-                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer font-mono"
                           >
                             <span>CPU %</span>
                             {processSortField === 'cpu' ? (
                               processSortOrder === 'desc' ? (
-                                <ArrowDown className="h-3.5 w-3.5 text-rose-400" />
+                                <ArrowDown className="h-3 w-3 text-rose-500" />
                               ) : (
-                                <ArrowUp className="h-3.5 w-3.5 text-rose-400" />
+                                <ArrowUp className="h-3 w-3 text-rose-500" />
                               )
                             ) : (
-                              <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                              <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
                             )}
                           </button>
                         </th>
-                        <th className="px-6 py-3 font-medium">
+                        <th className="px-3.5 py-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -1125,35 +1135,37 @@ export default function ServerDetailsPage() {
                                 setProcessSortOrder('desc');
                               }
                             }}
-                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 hover:text-[var(--foreground)] transition-colors cursor-pointer font-mono"
                           >
                             <span>RAM %</span>
                             {processSortField === 'ram' ? (
                               processSortOrder === 'desc' ? (
-                                <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                                <ArrowDown className="h-3 w-3 text-blue-500" />
                               ) : (
-                                <ArrowUp className="h-3.5 w-3.5 text-blue-400" />
+                                <ArrowUp className="h-3 w-3 text-blue-500" />
                               )
                             ) : (
-                              <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                              <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100" />
                             )}
                           </button>
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
+                    <tbody className="divide-y divide-[var(--border-subtle)]">
                       {sortedProcesses.map(p => (
-                        <tr key={p.pid} className="hover:bg-[var(--background)] transition-colors">
-                          <td className="px-6 py-3 text-[var(--color-muted)]">{p.pid}</td>
-                          <td className="px-6 py-3 font-medium text-[var(--foreground)]">{p.name}</td>
-                          <td className="px-6 py-3 text-[var(--color-muted)]">{p.user}</td>
-                          <td className="px-6 py-3 text-rose-400 font-mono font-medium">{p.cpu.toFixed(1)}%</td>
-                          <td className="px-6 py-3 text-blue-400 font-mono font-medium">{p.ram.toFixed(1)}%</td>
+                        <tr key={p.pid} className="hover:bg-[var(--surface-2)] transition-colors">
+                          <td className="px-3.5 py-2 text-[var(--color-muted)] font-mono tabular-nums">{p.pid}</td>
+                          <td className="px-3.5 py-2 font-medium text-[var(--foreground)] font-mono">{p.name}</td>
+                          <td className="px-3.5 py-2 text-[var(--color-muted)] font-mono">{p.user}</td>
+                          <td className="px-3.5 py-2 text-rose-500 font-mono tabular-nums font-semibold">{p.cpu.toFixed(1)}%</td>
+                          <td className="px-3.5 py-2 text-blue-500 font-mono tabular-nums font-semibold">{p.ram.toFixed(1)}%</td>
                         </tr>
                       ))}
                       {!sortedProcesses.length && (
                         <tr>
-                          <td colSpan={5} className="px-6 py-8 text-center text-[var(--color-muted)]">No process data available</td>
+                          <td colSpan={5} className="px-4 py-8 text-center text-xs text-[var(--color-muted)]">
+                            {t('No process data available', 'Không có dữ liệu tiến trình')}
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -1166,59 +1178,70 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'services' && (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {hasIncompatibleLegacyServices && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-[var(--foreground)]">
-              <div className="flex items-start gap-3">
-                <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-[var(--foreground)]">
+              <div className="flex items-start gap-2.5">
+                <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                 <div>
-                  <p className="font-semibold">This snapshot contains a service list from an older agent.</p>
-                  <p className="mt-1 leading-6 text-[var(--color-muted)]">Linux service names were hidden because this server is identified as {monitoredOS}. Update and restart the agent to collect native {serviceContent.title}.</p>
+                  <p className="font-semibold">{t('This snapshot contains a service list from an older agent.', 'Bản chụp này chứa danh sách dịch vụ từ agent phiên bản cũ.')}</p>
+                  <p className="mt-1 leading-relaxed text-[var(--color-muted)]">
+                    {t(
+                      `Linux service names were hidden because this server is identified as ${monitoredOS}. Update and restart the agent to collect native ${serviceContent.title}.`,
+                      `Tên dịch vụ Linux đã bị ẩn vì máy chủ này được nhận diện là ${monitoredOS}. Cập nhật và khởi động lại agent để thu thập ${serviceContent.title} nguyên bản.`
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: 'Running', value: serviceCounts.running || 0, icon: CircleCheck, tone: 'text-emerald-500' },
-              { label: serviceContent.stopped, value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
-              { label: 'Unknown', value: serviceCounts.unknown || 0, icon: CircleHelp, tone: 'text-amber-500' },
-              { label: 'Total Services', value: services.length, icon: Layers, tone: 'text-blue-500' },
+              { label: t('Running', 'Đang chạy'), value: serviceCounts.running || 0, icon: CircleCheck, tone: 'text-emerald-500' },
+              { label: t(serviceContent.stopped, 'Đã dừng'), value: serviceCounts.stopped || 0, icon: CircleX, tone: 'text-rose-500' },
+              { label: t('Unknown', 'Không rõ'), value: serviceCounts.unknown || 0, icon: CircleHelp, tone: 'text-amber-500' },
+              { label: t('Total Services', 'Tổng số dịch vụ'), value: services.length, icon: Layers, tone: 'text-[var(--accent-primary)]' },
             ].map(({ label, value, icon: Icon, tone }) => (
-              <div key={label} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5">
-                <div className={`flex items-center gap-2 text-sm font-semibold ${tone}`}><Icon className="h-4 w-4" />{label}</div>
-                <p className="mt-3 text-2xl font-semibold text-[var(--foreground)]">{value}</p>
+              <div key={label} className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5">
+                <div className={`flex items-center gap-1.5 text-xs font-semibold ${tone}`}><Icon className="h-3.5 w-3.5" />{label}</div>
+                <p className="mt-2 text-xl font-bold font-mono tabular-nums text-[var(--foreground)]">{value}</p>
               </div>
             ))}
           </div>
 
-          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)]">
-            <div className="flex flex-col gap-4 border-b border-[var(--border-color)] p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] p-3.5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-[var(--foreground)]">{serviceContent.title} on {monitoredOS}</h3>
-                <p className="mt-1 text-sm text-[var(--color-muted)]">{serviceContent.description} Configure DATRIXOPS_SERVICES to replace the {osFamily === 'unknown' ? 'platform' : osFamily} defaults.</p>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">{serviceContent.title} on {monitoredOS}</h3>
+                <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">{serviceContent.description}</p>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-2 sm:flex-row text-xs">
                 <label className="relative">
-                  <span className="sr-only">Search services</span>
-                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)]" />
-                  <input value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} style={{ paddingLeft: '2.5rem', paddingRight: '1rem' }} className="w-full rounded-full border border-[var(--border-color)] bg-[var(--background)] py-2 text-sm text-[var(--foreground)] outline-none focus:border-blue-500 sm:w-64" placeholder={serviceContent.search} />
+                  <span className="sr-only">{t('Search services', 'Tìm kiếm dịch vụ')}</span>
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-muted)]" />
+                  <input
+                    value={serviceSearch}
+                    onChange={event => setServiceSearch(event.target.value)}
+                    style={{ paddingLeft: '2.2rem', paddingRight: '0.75rem' }}
+                    className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] py-1.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--accent-primary)] transition-colors sm:w-60"
+                    placeholder={serviceContent.search}
+                  />
                 </label>
                 <CustomSelect
                   value={serviceFilter}
                   onChange={setServiceFilter}
                   options={[
-                    { value: 'all', label: 'All statuses' },
-                    { value: 'running', label: 'Running' },
-                    { value: 'stopped', label: serviceContent.stopped },
-                    { value: 'unknown', label: 'Unknown' },
+                    { value: 'all', label: t('All statuses', 'Tất cả trạng thái') },
+                    { value: 'running', label: t('Running', 'Đang chạy') },
+                    { value: 'stopped', label: t(serviceContent.stopped, 'Đã dừng') },
+                    { value: 'unknown', label: t('Unknown', 'Không rõ') },
                   ]}
-                  className="w-48"
+                  className="w-40 h-8"
                 />
               </div>
             </div>
 
-            <div className="divide-y divide-[var(--border-color)]">
+            <div className="divide-y divide-[var(--border-subtle)]">
               {filteredServices.map(service => {
                 const statusLabel = service.status === 'stopped'
                   ? serviceContent.stopped
@@ -1234,7 +1257,7 @@ export default function ServerDetailsPage() {
                     ? 'border-rose-500/30 bg-rose-500/10 text-rose-500'
                     : service.status === 'unknown'
                       ? 'border-amber-500/30 bg-amber-500/10 text-amber-500'
-                      : 'border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)]';
+                      : 'border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--color-muted)]';
                 const serviceIsControllable = server.status === 'online'
                   && supportsServiceControls
                   && ['running', 'stopped'].includes(service.status)
@@ -1242,28 +1265,28 @@ export default function ServerDetailsPage() {
                 const serviceActions: Array<{action: ServiceAction, label: string, icon: typeof Play, tone: string, disabled: boolean, unavailableReason?: string}> = [
                   {
                     action: 'start',
-                    label: 'Start',
+                    label: t('Start', 'Bắt đầu'),
                     icon: Play,
                     tone: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20',
                     disabled: !serviceIsControllable || service.status === 'running',
                   },
                   {
                     action: 'stop',
-                    label: 'Stop',
+                    label: t('Stop', 'Dừng'),
                     icon: Square,
                     tone: 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20',
                     disabled: !serviceIsControllable || service.status !== 'running',
                   },
                   {
                     action: 'restart',
-                    label: 'Restart',
+                    label: t('Restart', 'Khởi động lại'),
                     icon: RotateCw,
                     tone: 'border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20',
                     disabled: !serviceIsControllable,
                   },
                   {
                     action: 'reload',
-                    label: 'Reload',
+                    label: t('Reload', 'Tải lại'),
                     icon: RefreshCw,
                     tone: 'border-blue-500/30 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20',
                     disabled: !serviceIsControllable || service.status !== 'running' || service.source === 'windows-scm',
@@ -1273,37 +1296,37 @@ export default function ServerDetailsPage() {
                 return (
                   <div
                     key={service.name}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-[var(--background)]/50 transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 hover:bg-[var(--surface-2)] transition-colors text-xs"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <span
-                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                        className={`h-2 w-2 rounded-full shrink-0 ${
                           isRunning
-                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
+                            ? 'bg-emerald-500'
                             : isStopped
                               ? 'bg-rose-500'
                               : isMissing
-                                ? 'bg-slate-400'
+                                ? 'bg-zinc-400'
                                 : 'bg-amber-500'
                         }`}
                       />
                       <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-[var(--foreground)] truncate">
+                        <span className="font-semibold text-xs text-[var(--foreground)] truncate font-mono">
                           {service.display_name || service.name}
                         </span>
-                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${statusStyle}`}>
+                        <span className={`text-[9px] font-mono uppercase font-bold px-1.5 py-0.2 rounded border ${statusStyle}`}>
                           {statusLabel}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <Link
                         href={`/dashboard/logs?server_id=${server.id}&source=journal&unit=${encodeURIComponent(service.name)}`}
-                        className="p-1.5 text-xs font-semibold rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--color-muted)] hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/10 transition-all inline-flex items-center justify-center cursor-pointer"
-                        title={`View journal logs for ${service.display_name || service.name}`}
+                        className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--accent-primary)] hover:border-[var(--accent-primary)]/40 transition-colors inline-flex items-center justify-center cursor-pointer"
+                        title={t(`View journal logs for ${service.display_name || service.name}`, `Xem nhật ký log của ${service.display_name || service.name}`)}
                       >
-                        <FileText className="h-4 w-4" />
+                        <FileText className="h-3.5 w-3.5" />
                       </Link>
                       {serviceActions.map(({ action, label, icon: Icon, tone, disabled, unavailableReason }) => (
                         <button
@@ -1313,9 +1336,9 @@ export default function ServerDetailsPage() {
                           disabled={disabled}
                           title={unavailableReason || (!supportsServiceControls ? `Update the agent to version ${MIN_SERVICE_CONTROL_AGENT_VERSION} or newer.` : server.status !== 'online' ? 'The agent must be online.' : `${label} ${service.display_name || service.name}`)}
                           onClick={() => setServiceActionRequest({ action, service })}
-                          className={`p-1.5 text-xs font-semibold rounded-lg border transition-all inline-flex items-center justify-center ${tone} disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer`}
+                          className={`p-1 rounded-md border transition-colors inline-flex items-center justify-center ${tone} disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer`}
                         >
-                          <Icon className="h-4 w-4" />
+                          <Icon className="h-3.5 w-3.5" />
                         </button>
                       ))}
                     </div>
@@ -1323,12 +1346,12 @@ export default function ServerDetailsPage() {
                 );
               })}
               {!filteredServices.length && (
-                <div className="p-10 text-center text-[var(--color-muted)]">
+                <div className="p-8 text-center text-xs text-[var(--color-muted)]">
                   {services.length
-                    ? `No ${serviceContent.title} match the current filters.`
+                    ? `${t('No', 'Không có')} ${serviceContent.title} ${t('match the current filters.', 'phù hợp với bộ lọc.')}`
                     : hasIncompatibleLegacyServices
-                      ? `Native ${serviceContent.title} will appear after the agent is updated.`
-                      : `No ${serviceContent.title} have been reported by this agent.`}
+                      ? `${t('Native', 'Dịch vụ nguyên bản')} ${serviceContent.title} ${t('will appear after the agent is updated.', 'sẽ xuất hiện sau khi cập nhật agent.')}`
+                      : `${t('No', 'Không có')} ${serviceContent.title} ${t('have been reported by this agent.', 'nào được báo cáo bởi agent này.')}`}
                 </div>
               )}
             </div>
@@ -1358,17 +1381,17 @@ export default function ServerDetailsPage() {
             const renderStatusBadge = (status?: string) => {
               switch (status?.toLowerCase()) {
                 case 'optimal':
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Optimal</span>;
+                  return <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">{t('Optimal', 'Tối ưu')}</span>;
                 case 'reachable':
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30">Reachable</span>;
+                  return <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-blue-500/15 text-[var(--accent-primary)] border border-blue-500/30">{t('Reachable', 'Khả dụng')}</span>;
                 case 'warning':
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">Warning</span>;
+                  return <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-500 border border-amber-500/30">{t('Warning', 'Cảnh báo')}</span>;
                 case 'critical':
                 case 'unreachable':
                 case 'offline':
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30">{status}</span>;
+                  return <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-rose-500/15 text-rose-500 border border-rose-500/30">{status || t('Critical', 'Sự cố')}</span>;
                 default:
-                  return <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">{status || 'Unavailable'}</span>;
+                  return <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-zinc-500/15 text-zinc-400 border border-zinc-500/30">{status || t('Unavailable', 'Không có')}</span>;
               }
             };
 
@@ -1377,65 +1400,67 @@ export default function ServerDetailsPage() {
                 {/* Top Action Bar */}
                 {(gateway || groupTags.length > 0) && (
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <h3 className="text-base font-bold text-[var(--foreground)]">Network Quality</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
+                      {t('Network Quality', 'Chất lượng mạng')}
+                    </h3>
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/dashboard/alerts?tab=create&category=network&server_id=${params.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3.5 py-2 text-xs font-bold transition"
-                        title="Set alert rules for this server's network targets"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3 py-1.5 text-xs font-semibold transition-colors"
+                        title={t("Set alert rules for this server's network targets", 'Thiết lập quy tắc cảnh báo cho máy chủ này')}
                       >
-                        <Bell className="w-3.5 h-3.5" /> Set Alert Rule
+                        <Bell className="w-3.5 h-3.5" /> {t('Set Alert Rule', 'Tạo cảnh báo')}
                       </Link>
                       <Link
                         href={`/dashboard/network?agent_id=${params.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3.5 py-2 text-xs font-bold transition"
-                        title="Open centralized network targets manager"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-[var(--foreground)] px-3 py-1.5 text-xs font-semibold transition-colors"
+                        title={t('Open centralized network targets manager', 'Mở trang quản lý mục tiêu mạng tập trung')}
                       >
-                        <Network className="w-4 h-4" /> Manage Targets <ExternalLink className="w-3 h-3" />
+                        <Network className="w-3.5 h-3.5 text-[var(--accent-primary)]" /> {t('Manage Targets', 'Quản lý targets')} <ExternalLink className="w-3 h-3 text-[var(--color-muted)]" />
                       </Link>
                     </div>
                   </div>
                 )}
 
                 {/* Dynamic Pillar / Tag Group Cards */}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {/* Gateway Uplink Card (if present) */}
                   {gateway && (
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
+                    <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 flex flex-col justify-between">
                       <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <Radio className="w-4 h-4 text-emerald-400" />
-                            <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                              Gateway Uplink
+                        <div className="flex items-center justify-between mb-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                              {t('Gateway Uplink', 'Uplink Gateway')}
                             </span>
                           </div>
                           {renderStatusBadge(gateway.status)}
                         </div>
-                        <div className="flex items-baseline gap-2 mb-2">
-                          <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
+                        <div className="flex items-baseline gap-1.5 mb-2">
+                          <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">
                             {gateway.latency_ms > 0 ? `${gateway.latency_ms.toFixed(1)}` : '< 1'}
                           </span>
-                          <span className="text-xs text-[var(--color-muted)] font-medium">ms latency</span>
+                          <span className="text-xs text-[var(--color-muted)] font-medium">{t('ms latency', 'ms độ trễ')}</span>
                         </div>
-                        <div className="text-xs space-y-1.5 text-[var(--color-muted)]">
+                        <div className="text-xs space-y-1 text-[var(--color-muted)] pt-1 border-t border-[var(--border-subtle)]">
                           <div className="flex justify-between">
-                            <span>Packet Loss:</span>
-                            <span className={`font-mono font-semibold ${
-                              (gateway.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
+                            <span>{t('Packet Loss:', 'Mất gói:')}</span>
+                            <span className={`font-mono tabular-nums font-semibold ${
+                              (gateway.packet_loss ?? 0) > 0 ? 'text-rose-500' : 'text-emerald-500'
                             }`}>
                               {gateway.packet_loss != null ? `${gateway.packet_loss}%` : 'N/A'}
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Gateway IP:</span>
+                            <span>{t('Gateway IP:', 'IP Gateway:')}</span>
                             <span className="font-mono text-[var(--foreground)] truncate max-w-[150px]">
                               {snapshot?.network_diagnostics?.default_gateway || netReport?.server_telemetry?.default_gateway || 'Default Gateway'}
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Sample Probes:</span>
-                            <span className="font-mono text-[var(--foreground)]">
+                            <span>{t('Sample Probes:', 'Mẫu kiểm tra:')}</span>
+                            <span className="font-mono tabular-nums text-[var(--foreground)]">
                               {gateway.successful_probes}/{gateway.total_probes} ({gateway.measurement_method})
                             </span>
                           </div>
@@ -1449,35 +1474,35 @@ export default function ServerDetailsPage() {
                     const grp = groups[tag];
                     if (!grp) return null;
                     return (
-                      <div key={tag} className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 flex flex-col justify-between">
+                      <div key={tag} className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 flex flex-col justify-between">
                         <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <Zap className="w-4 h-4 text-blue-400" />
-                              <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] truncate" title={tag}>
-                                Tag: {tag}
+                          <div className="flex items-center justify-between mb-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)] truncate" title={tag}>
+                                {t('Tag:', 'Thẻ:')} {tag}
                               </span>
                             </div>
                             {renderStatusBadge(grp.status)}
                           </div>
-                          <div className="flex items-baseline gap-2 mb-2">
-                            <span className="text-2xl sm:text-3xl font-bold font-mono text-[var(--foreground)]">
+                          <div className="flex items-baseline gap-1.5 mb-2">
+                            <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">
                               {grp.latency_ms.toFixed(1)}
                             </span>
-                            <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
+                            <span className="text-xs text-[var(--color-muted)] font-medium">{t('ms avg latency', 'ms độ trễ TB')}</span>
                           </div>
-                          <div className="text-xs space-y-1.5 text-[var(--color-muted)]">
+                          <div className="text-xs space-y-1 text-[var(--color-muted)] pt-1 border-t border-[var(--border-subtle)]">
                             <div className="flex justify-between">
-                              <span>Packet Loss:</span>
-                              <span className={`font-mono font-semibold ${
-                                (grp.packet_loss ?? 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
+                              <span>{t('Packet Loss:', 'Mất gói:')}</span>
+                              <span className={`font-mono tabular-nums font-semibold ${
+                                (grp.packet_loss ?? 0) > 0 ? 'text-rose-500' : 'text-emerald-500'
                               }`}>
                                 {grp.packet_loss != null ? `${grp.packet_loss}%` : 'N/A'}
                               </span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Sample Probes:</span>
-                              <span className="font-mono text-[var(--foreground)]">
+                              <span>{t('Sample Probes:', 'Mẫu kiểm tra:')}</span>
+                              <span className="font-mono tabular-nums text-[var(--foreground)]">
                                 {grp.successful_probes}/{grp.total_probes} ({grp.measurement_method})
                               </span>
                             </div>
@@ -1490,49 +1515,50 @@ export default function ServerDetailsPage() {
 
                 {/* Loading state while fetching network diagnostics */}
                 {!netReport && !netReportFailed && (
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-12 text-center shadow-sm flex flex-col items-center justify-center">
-                    <LoaderCircle className="w-8 h-8 text-blue-500 animate-spin mb-3" />
-                    <p className="text-sm font-semibold text-[var(--foreground)]">Evaluating network targets…</p>
-                    <p className="text-xs text-[var(--color-muted)] mt-1">Probing latency and packet loss for configured network targets</p>
+                  <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-10 text-center flex flex-col items-center justify-center">
+                    <LoaderCircle className="w-6 h-6 text-[var(--accent-primary)] animate-spin mb-2" />
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{t('Evaluating network targets…', 'Đang đánh giá các mục tiêu mạng…')}</p>
+                    <p className="text-[11px] text-[var(--color-muted)] mt-0.5">{t('Probing latency and packet loss for configured network targets', 'Đang đo độ trễ và mất gói cho các mục tiêu đã cấu hình')}</p>
                   </div>
                 )}
 
                 {/* If no targets configured */}
                 {netReport && !gateway && groupTags.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-[var(--border-color)] p-8 text-center bg-[var(--background-card)]">
-                    <Network className="w-8 h-8 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
-                    <p className="text-sm font-semibold text-[var(--foreground)]">No network targets configured for this server</p>
+                  <div className="rounded-md border border-dashed border-[var(--border-subtle)] p-8 text-center bg-[var(--surface-1)]">
+                    <Network className="w-6 h-6 text-[var(--color-muted)] mx-auto mb-2 opacity-50" />
+                    <p className="text-xs font-semibold text-[var(--foreground)]">{t('No network targets configured for this server', 'Chưa cấu hình mục tiêu kiểm tra mạng nào cho máy chủ này')}</p>
                     <Link
                       href={`/dashboard/network?agent_id=${params.id}`}
-                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white px-3 py-1.5 text-xs font-bold transition-colors"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Manage Targets
+                      <Plus className="w-3.5 h-3.5" /> {t('Manage Targets', 'Quản lý targets')}
                     </Link>
                   </div>
                 )}
 
                 {/* Tested Targets Table */}
                 {allProbes.length > 0 && (
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
-                    <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+                    <div className="p-3.5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div>
-                        <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-blue-400" /> Monitored Targets Breakdown ({allProbes.length})
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                          <Activity className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                          {t('Monitored Targets Breakdown', 'Chi tiết mục tiêu giám sát')} ({allProbes.length})
                         </h3>
                       </div>
 
                       {/* Tag Filter Pills */}
-                      <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)] self-start sm:self-center overflow-x-auto max-w-full">
+                      <div className="flex items-center gap-1 bg-[var(--surface-2)] p-0.5 rounded-md border border-[var(--border-subtle)] self-start sm:self-center overflow-x-auto max-w-full">
                         <button
                           type="button"
                           onClick={() => setNetTargetFilter('all')}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                          className={`px-2.5 py-0.5 text-xs font-mono font-semibold rounded-sm transition-colors cursor-pointer ${
                             netTargetFilter === 'all'
-                              ? 'bg-blue-600 text-white shadow-xs'
+                              ? 'bg-[var(--accent-primary)] text-white'
                               : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                           }`}
                         >
-                          All ({allProbes.length})
+                          {t('All', 'Tất cả')} ({allProbes.length})
                         </button>
                         {discoveredTags.map((tag) => {
                           const count = allProbes.filter(p => (p.tag || 'default') === tag).length;
@@ -1541,9 +1567,9 @@ export default function ServerDetailsPage() {
                               key={tag}
                               type="button"
                               onClick={() => setNetTargetFilter(tag)}
-                              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                              className={`px-2.5 py-0.5 text-xs font-mono font-semibold rounded-sm transition-colors cursor-pointer ${
                                 netTargetFilter.toLowerCase() === tag.toLowerCase()
-                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  ? 'bg-[var(--accent-primary)] text-white'
                                   : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
@@ -1557,53 +1583,53 @@ export default function ServerDetailsPage() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
                         <thead>
-                          <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
-                            <th className="px-4 py-3">Target &amp; Host</th>
-                            <th className="px-4 py-3">Tag</th>
-                            <th className="px-4 py-3">Method</th>
-                            <th className="px-4 py-3">Probes</th>
-                            <th className="px-4 py-3">Packet Loss</th>
-                            <th className="px-4 py-3">Latency (Avg / Min–Max)</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3 text-right">History</th>
+                          <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] font-semibold text-[var(--color-muted)] text-[11px]">
+                            <th className="px-3.5 py-2">{t('Target & Host', 'Mục tiêu & Host')}</th>
+                            <th className="px-3.5 py-2">{t('Tag', 'Thẻ')}</th>
+                            <th className="px-3.5 py-2">{t('Method', 'Giao thức')}</th>
+                            <th className="px-3.5 py-2">{t('Probes', 'Số mẫu')}</th>
+                            <th className="px-3.5 py-2">{t('Packet Loss', 'Mất gói')}</th>
+                            <th className="px-3.5 py-2">{t('Latency (Avg / Min–Max)', 'Độ trễ (TB / Min–Max)')}</th>
+                            <th className="px-3.5 py-2">{t('Status', 'Trạng thái')}</th>
+                            <th className="px-3.5 py-2 text-right">{t('History', 'Lịch sử')}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[var(--border-color)]">
+                        <tbody className="divide-y divide-[var(--border-subtle)]">
                           {filteredProbes.map((probe) => {
                             const isTCP = probe.probe_method === 'TCP';
                             const lat = probe.latency_ms;
-                            const latColor = lat <= 20 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
-                                             lat <= 60 ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
-                                             lat <= 120 ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
-                                             'text-rose-400 bg-rose-500/10 border-rose-500/20';
+                            const latColor = lat <= 20 ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' :
+                                             lat <= 60 ? 'text-blue-500 bg-blue-500/10 border-blue-500/20' :
+                                             lat <= 120 ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
+                                             'text-rose-500 bg-rose-500/10 border-rose-500/20';
 
                             return (
                               <tr
                                 key={probe.id}
                                 onClick={() => openProbeHistory(probe)}
-                                className="hover:bg-[var(--border-color)]/20 transition-colors cursor-pointer"
-                                title="Click to view latency & packet loss chart"
+                                className="hover:bg-[var(--surface-2)] transition-colors cursor-pointer"
+                                title={t('Click to view latency & packet loss chart', 'Nhấp để xem biểu đồ độ trễ và mất gói')}
                               >
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
+                                <td className="px-3.5 py-2">
+                                  <div className="flex items-center gap-1.5">
                                     <span className="font-semibold text-[var(--foreground)]">{probe.name}</span>
                                     {probe.is_gateway && (
-                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                                      <span className="text-[9px] font-mono font-semibold px-1 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
                                         Gateway
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[11px] font-mono text-[var(--color-muted)] mt-0.5">
+                                  <div className="text-[11px] font-mono tabular-nums text-[var(--color-muted)] mt-0.5">
                                     {probe.host}{probe.port ? `:${probe.port}` : ''}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)]">
+                                <td className="px-3.5 py-2">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)]">
                                     {probe.tag || 'default'}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3">
-                                  <span className={`inline-flex items-center font-mono font-semibold px-2 py-0.5 rounded text-[11px] border ${
+                                <td className="px-3.5 py-2">
+                                  <span className={`inline-flex items-center font-mono font-semibold px-1.5 py-0.5 rounded text-[10px] border ${
                                     isTCP
                                       ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                       : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -1611,12 +1637,12 @@ export default function ServerDetailsPage() {
                                     {probe.probe_method}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 font-mono text-[var(--color-muted)]">
+                                <td className="px-3.5 py-2 font-mono tabular-nums text-[var(--color-muted)]">
                                   <span className="text-[var(--foreground)] font-medium">{probe.successful_probes ?? 5}</span>/{probe.total_probes ?? 5}
                                 </td>
-                                <td className="px-4 py-3 font-mono">
+                                <td className="px-3.5 py-2 font-mono tabular-nums">
                                   {probe.packet_loss != null ? (
-                                    <span className={probe.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400 font-medium'}>
+                                    <span className={probe.packet_loss > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-medium'}>
                                       {probe.packet_loss}%
                                     </span>
                                   ) : (
@@ -1625,32 +1651,32 @@ export default function ServerDetailsPage() {
                                     </span>
                                   )}
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3.5 py-2">
                                   {probe.status === 'unreachable' || (lat === 0 && probe.failed_probes === probe.total_probes) ? (
-                                    <span className="font-mono text-rose-400 font-semibold text-[11px]">Timeout</span>
+                                    <span className="font-mono text-rose-500 font-semibold text-[11px]">Timeout</span>
                                   ) : (
                                     <div>
-                                      <span className={`inline-block font-mono font-bold px-2 py-0.5 rounded border text-[11px] ${latColor}`}>
+                                      <span className={`inline-block font-mono tabular-nums font-bold px-1.5 py-0.2 rounded border text-[11px] ${latColor}`}>
                                         {lat.toFixed(1)} ms
                                       </span>
                                       {probe.min_latency_ms > 0 && probe.max_latency_ms > 0 && (
-                                        <div className="text-[10px] font-mono text-[var(--color-muted)] mt-0.5">
+                                        <div className="text-[10px] font-mono tabular-nums text-[var(--color-muted)] mt-0.5">
                                           {probe.min_latency_ms.toFixed(1)} – {probe.max_latency_ms.toFixed(1)} ms
                                         </div>
                                       )}
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="px-3.5 py-2">
                                   {renderStatusBadge(probe.status)}
                                 </td>
-                                <td className="px-4 py-3 text-right">
+                                <td className="px-3.5 py-2 text-right">
                                   <div className="flex items-center justify-end gap-1">
                                     <Link
                                       href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(probe.name)}&server_id=${params.id}&metric=network_latency`}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition cursor-pointer"
-                                      title={`Create alert rule for target "${probe.name}"`}
+                                      className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition-colors cursor-pointer"
+                                      title={t(`Create alert rule for target "${probe.name}"`, `Tạo cảnh báo cho "${probe.name}"`)}
                                     >
                                       <Bell className="w-3.5 h-3.5" />
                                     </Link>
@@ -1660,8 +1686,8 @@ export default function ServerDetailsPage() {
                                         e.stopPropagation();
                                         openProbeHistory(probe);
                                       }}
-                                      className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-blue-400 transition cursor-pointer"
-                                      title="View latency history chart"
+                                      className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--border-subtle)] text-[var(--accent-primary)] transition-colors cursor-pointer"
+                                      title={t('View latency history chart', 'Xem biểu đồ lịch sử')}
                                     >
                                       <Activity className="w-3.5 h-3.5" />
                                     </button>
@@ -1678,37 +1704,37 @@ export default function ServerDetailsPage() {
 
                 {/* In-context History Modal */}
                 {historyTargetProbe && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-                    <div className="w-full max-w-2xl rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl p-6 text-[var(--foreground)] space-y-4">
-                      <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+                    <div className="w-full max-w-2xl rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-5 text-[var(--foreground)] space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
                         <div>
                           <div className="flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-blue-400" />
-                            <h3 className="text-base font-bold">{historyTargetProbe.name} — Latency Trend</h3>
+                            <Activity className="w-4 h-4 text-[var(--accent-primary)]" />
+                            <h3 className="text-sm font-bold">{historyTargetProbe.name} — {t('Latency Trend', 'Xu hướng độ trễ')}</h3>
                           </div>
-                          <p className="text-xs text-[var(--color-muted)] font-mono mt-0.5">
-                            Host: {historyTargetProbe.host} · Tag: {historyTargetProbe.tag}
+                          <p className="text-[11px] text-[var(--color-muted)] font-mono tabular-nums mt-0.5">
+                            Host: {historyTargetProbe.host} · {t('Tag:', 'Thẻ:')} {historyTargetProbe.tag}
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => setHistoryTargetProbe(null)}
-                          className="p-1 rounded-lg hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                          className="p-1 rounded-md hover:bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
                         >
-                          <X className="w-5 h-5" />
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)]">
+                        <div className="flex items-center gap-1 bg-[var(--surface-2)] p-0.5 rounded-md border border-[var(--border-subtle)]">
                           {(['6h', '24h', '7d'] as const).map((r) => (
                             <button
                               key={r}
                               type="button"
                               onClick={() => openProbeHistory(historyTargetProbe, r)}
-                              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                              className={`px-2.5 py-0.5 text-xs font-mono font-semibold rounded-sm transition-colors cursor-pointer ${
                                 historyRange === r
-                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  ? 'bg-[var(--accent-primary)] text-white'
                                   : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                               }`}
                             >
@@ -1716,19 +1742,19 @@ export default function ServerDetailsPage() {
                             </button>
                           ))}
                         </div>
-                        <span className="text-xs text-[var(--color-muted)] font-mono">
-                          {historyData.length} probe points
+                        <span className="text-[11px] text-[var(--color-muted)] font-mono tabular-nums">
+                          {historyData.length} {t('probe points', 'điểm đo')}
                         </span>
                       </div>
 
-                      <div className="h-60 w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-3">
+                      <div className="h-60 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5">
                         {loadingHistory ? (
                           <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
-                            Loading time-series data...
+                            {t('Loading time-series data...', 'Đang tải dữ liệu chuỗi thời gian...')}
                           </div>
                         ) : historyData.length === 0 ? (
                           <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
-                            No history records found for this target.
+                            {t('No history records found for this target.', 'Không có bản ghi lịch sử cho mục tiêu này.')}
                           </div>
                         ) : (
                           <ResponsiveContainer width="100%" height="100%">
@@ -1759,20 +1785,20 @@ export default function ServerDetailsPage() {
                                   if (!active || !payload || !payload.length) return null;
                                   const pt = payload[0].payload as { latency_ms?: number; packet_loss?: number; measured_at: string; status: string; successful_probes: number; total_probes: number };
                                   return (
-                                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-2.5 shadow-xl text-xs space-y-1">
+                                    <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-2 text-xs space-y-1">
                                       <p className="text-[var(--color-muted)] font-mono text-[10px]">
                                         {new Date(pt.measured_at).toLocaleString()}
                                       </p>
-                                      <p className="font-bold text-[var(--foreground)] font-mono">
-                                        Latency: {pt.latency_ms?.toFixed(1) ?? 'N/A'} ms
+                                      <p className="font-bold text-[var(--foreground)] font-mono tabular-nums">
+                                        {t('Latency', 'Độ trễ')}: {pt.latency_ms?.toFixed(1) ?? 'N/A'} ms
                                       </p>
                                       {pt.packet_loss != null && (
-                                        <p className={`font-mono text-[11px] ${pt.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
-                                          Packet Loss: {pt.packet_loss}%
+                                        <p className={`font-mono tabular-nums text-[11px] ${pt.packet_loss > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500'}`}>
+                                          {t('Packet Loss', 'Mất gói')}: {pt.packet_loss}%
                                         </p>
                                       )}
-                                      <p className="text-[10px] text-[var(--color-muted)]">
-                                        Status: {pt.status.toUpperCase()} ({pt.successful_probes}/{pt.total_probes} probes)
+                                      <p className="text-[10px] text-[var(--color-muted)] font-mono tabular-nums">
+                                        {t('Status', 'Trạng thái')}: {pt.status.toUpperCase()} ({pt.successful_probes}/{pt.total_probes} {t('probes', 'mẫu')})
                                       </p>
                                     </div>
                                   );
@@ -1782,7 +1808,7 @@ export default function ServerDetailsPage() {
                                 type="monotone"
                                 dataKey="latency_ms"
                                 stroke="#3b82f6"
-                                strokeWidth={2}
+                                strokeWidth={1.5}
                                 fillOpacity={1}
                                 fill="url(#latencyGradAgent)"
                               />
@@ -1791,13 +1817,13 @@ export default function ServerDetailsPage() {
                         )}
                       </div>
 
-                      <div className="flex justify-end pt-2">
+                      <div className="flex justify-end pt-1">
                         <button
                           type="button"
                           onClick={() => setHistoryTargetProbe(null)}
-                          className="px-4 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-color)]"
+                          className="px-3.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-subtle)] transition-colors cursor-pointer"
                         >
-                          Close
+                          {t('Close', 'Đóng')}
                         </button>
                       </div>
                     </div>
@@ -1806,75 +1832,76 @@ export default function ServerDetailsPage() {
 
                 {/* Host Network Interfaces & Hardware Error Counters */}
                 {netIfaces.length > 0 && (
-                  <div className="bg-[var(--background-card)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm">
-                    <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
+                  <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-md overflow-hidden">
+                    <div className="p-3.5 border-b border-[var(--border-subtle)] flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                          <Network className="w-4 h-4 text-blue-500" /> Host Network Interfaces & Hardware Error Counters
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                          <Network className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                          {t('Host Network Interfaces & Hardware Error Counters', 'Giao diện mạng máy chủ & Bộ đếm lỗi phần cứng')}
                         </h3>
-                        <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                          Kernel physical interface counters (RX/TX errors, dropped ring buffer packets, and throughput).
+                        <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+                          {t('Kernel physical interface counters (RX/TX errors, dropped ring buffer packets, and throughput).', 'Bộ đếm giao diện vật lý kernel (lỗi RX/TX, gói drop trong ring buffer, và băng thông).')}
                         </p>
                       </div>
-                      <span className="text-xs text-[var(--color-muted)]">
-                        {netIfaces.length} Interfaces
+                      <span className="text-[11px] font-mono text-[var(--color-muted)]">
+                        {netIfaces.length} {t('Interfaces', 'Giao diện')}
                       </span>
                     </div>
 
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
+                      <table className="w-full text-left text-xs">
                         <thead>
-                          <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/30 text-xs font-semibold text-[var(--color-muted)]">
-                            <th className="px-4 py-3">Interface</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">IP Address</th>
-                            <th className="px-4 py-3">Drop / Error Rate</th>
-                            <th className="px-4 py-3">Dropped (Delta)</th>
-                            <th className="px-4 py-3">Throughput (I/O)</th>
-                            <th className="px-4 py-3">Lifetime Errors</th>
+                          <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] text-[11px] font-semibold text-[var(--color-muted)]">
+                            <th className="px-3.5 py-2">{t('Interface', 'Giao diện')}</th>
+                            <th className="px-3.5 py-2">{t('Status', 'Trạng thái')}</th>
+                            <th className="px-3.5 py-2">{t('IP Address', 'Địa chỉ IP')}</th>
+                            <th className="px-3.5 py-2">{t('Drop / Error Rate', 'Tỷ lệ Drop / Lỗi')}</th>
+                            <th className="px-3.5 py-2">{t('Dropped (Delta)', 'Gói bị hủy (Delta)')}</th>
+                            <th className="px-3.5 py-2">{t('Throughput (I/O)', 'Lưu lượng (I/O)')}</th>
+                            <th className="px-3.5 py-2">{t('Lifetime Errors', 'Tổng lỗi tích lũy')}</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[var(--border-color)]">
+                        <tbody className="divide-y divide-[var(--border-subtle)]">
                           {netIfaces.map((iface) => {
                             const isPrimary = iface.name === (netDiag?.primary_uplink || primaryIface?.name);
                             return (
-                              <tr key={iface.name} className={`hover:bg-[var(--border-color)]/20 transition-colors ${isPrimary ? 'bg-blue-500/5' : ''}`}>
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
+                              <tr key={iface.name} className={`hover:bg-[var(--surface-2)] transition-colors ${isPrimary ? 'bg-blue-500/5' : ''}`}>
+                                <td className="px-3.5 py-2">
+                                  <div className="flex items-center gap-1.5">
                                     <span className="font-mono font-semibold text-xs text-[var(--foreground)]">{iface.name}</span>
                                     {isPrimary && (
-                                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">Uplink</span>
+                                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/15 text-[var(--accent-primary)] border border-blue-500/30">Uplink</span>
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-xs">
-                                  <span className={`inline-flex items-center gap-1 font-semibold ${iface.is_up ? 'text-emerald-400' : 'text-[var(--color-muted)]'}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${iface.is_up ? 'bg-emerald-400' : 'bg-gray-400'}`} />
+                                <td className="px-3.5 py-2 text-xs">
+                                  <span className={`inline-flex items-center gap-1 font-mono font-semibold ${iface.is_up ? 'text-emerald-500' : 'text-[var(--color-muted)]'}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${iface.is_up ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                                     {iface.is_up ? 'UP' : 'DOWN'}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <td className="px-3.5 py-2 text-xs font-mono tabular-nums text-[var(--color-muted)]">
                                   {iface.ip_addresses?.length ? iface.ip_addresses.join(', ') : 'N/A'}
                                 </td>
-                                <td className="px-4 py-3 text-xs">
+                                <td className="px-3.5 py-2 text-xs font-mono tabular-nums">
                                   <div className="space-y-0.5">
-                                    <div className={`flex items-center justify-between gap-2 ${(iface.drop_rate_per_min || 0) > 0 ? 'text-amber-400 font-semibold' : 'text-[var(--color-muted)]'}`}>
+                                    <div className={`flex items-center justify-between gap-2 ${(iface.drop_rate_per_min || 0) > 0 ? 'text-amber-500 font-semibold' : 'text-[var(--color-muted)]'}`}>
                                       <span>Drops:</span>
                                       <span>{(iface.drop_rate_per_min || 0).toFixed(1)}/m</span>
                                     </div>
-                                    <div className={`flex items-center justify-between gap-2 ${(iface.error_rate_per_min || 0) > 0 ? 'text-rose-400 font-semibold' : 'text-[var(--color-muted)]'}`}>
+                                    <div className={`flex items-center justify-between gap-2 ${(iface.error_rate_per_min || 0) > 0 ? 'text-rose-500 font-semibold' : 'text-[var(--color-muted)]'}`}>
                                       <span>Errors:</span>
                                       <span>{(iface.error_rate_per_min || 0).toFixed(1)}/m</span>
                                     </div>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <td className="px-3.5 py-2 text-xs font-mono tabular-nums text-[var(--color-muted)]">
                                   +{((iface.delta_drop_in || 0) + (iface.delta_drop_out || 0))} drops
                                 </td>
-                                <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <td className="px-3.5 py-2 text-xs font-mono tabular-nums text-[var(--color-muted)]">
                                   RX: {formatBytes(iface.bytes_recv || 0)} / TX: {formatBytes(iface.bytes_sent || 0)}
                                 </td>
-                                <td className="px-4 py-3 text-xs font-mono text-[var(--color-muted)]">
+                                <td className="px-3.5 py-2 text-xs font-mono tabular-nums text-[var(--color-muted)]">
                                   Errs: {((iface.errors_in || 0) + (iface.errors_out || 0)).toLocaleString()}
                                 </td>
                               </tr>
@@ -1904,66 +1931,66 @@ export default function ServerDetailsPage() {
       )}
 
       {activeTab === 'docker' && (
-        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--border-color)] p-4 sm:p-5">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-3.5">
             <div>
-              <h3 className="text-sm font-semibold text-[var(--foreground)] flex items-center gap-2">
-                <Box className="w-4 h-4 text-[var(--accent-primary)]" />
-                {osFamily === 'macos' || osFamily === 'windows' ? 'Local Containers' : 'Docker Containers'}
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                <Box className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                {osFamily === 'macos' || osFamily === 'windows' ? t('Local Containers', 'Container cục bộ') : t('Docker Containers', 'Container Docker')}
               </h3>
-              <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                {osFamily === 'macos' || osFamily === 'windows' ? 'Containers reported through local Docker engine.' : 'Containers managed on this host.'}
+              <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+                {osFamily === 'macos' || osFamily === 'windows' ? t('Containers reported through local Docker engine.', 'Container báo cáo qua Docker engine cục bộ.') : t('Containers managed on this host.', 'Container được quản lý trên máy chủ này.')}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-                {(snapshot?.docker_containers || []).filter(c => c.state === 'running').length} running
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-500">
+                {(snapshot?.docker_containers || []).filter(c => c.state === 'running').length} {t('running', 'đang chạy')}
               </span>
-              <span className="rounded-full bg-[var(--surface-subtle)] border border-[var(--border-color)] px-2.5 py-1 text-xs font-semibold text-[var(--color-muted)]">
-                {snapshot?.docker_containers?.length || 0} total
+              <span className="rounded bg-[var(--surface-2)] border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-muted)]">
+                {snapshot?.docker_containers?.length || 0} {t('total', 'tổng')}
               </span>
             </div>
           </div>
 
-          <div className="divide-y divide-[var(--border-color)]">
+          <div className="divide-y divide-[var(--border-subtle)]">
             {snapshot?.docker_containers?.map(c => {
               const isRunning = c.state === 'running';
               return (
                 <div
                   key={c.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-[var(--background)]/50 transition-colors"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 hover:bg-[var(--surface-2)] transition-colors text-xs"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                        isRunning ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-slate-500'
+                      className={`h-2 w-2 rounded-full shrink-0 ${
+                        isRunning ? 'bg-emerald-500' : 'bg-zinc-400'
                       }`}
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-[var(--foreground)] truncate">{c.name}</span>
-                        <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                          isRunning ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        <span className="font-semibold text-xs text-[var(--foreground)] truncate font-mono">{c.name}</span>
+                        <span className={`text-[9px] font-mono uppercase font-bold px-1.5 py-0.2 rounded border ${
+                          isRunning ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                         }`}>
                           {c.state}
                         </span>
                       </div>
-                      <p className="text-xs text-[var(--color-muted)] truncate mt-0.5 max-w-md font-mono" title={c.image}>
+                      <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5 max-w-md font-mono" title={c.image}>
                         {c.image}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
                     {/* Actions */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       {!isRunning && (
                         <button
                           type="button"
                           onClick={() => handleDockerAction('docker_start', c.id)}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                          className="px-2 py-0.5 text-[11px] font-semibold rounded-sm border border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors cursor-pointer"
                         >
-                          Start
+                          {t('Start', 'Bắt đầu')}
                         </button>
                       )}
                       {isRunning && (
@@ -1971,25 +1998,25 @@ export default function ServerDetailsPage() {
                           <button
                             type="button"
                             onClick={() => handleDockerAction('docker_restart', c.id)}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
+                            className="px-2 py-0.5 text-[11px] font-semibold rounded-sm border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors cursor-pointer"
                           >
-                            Restart
+                            {t('Restart', 'Khởi động lại')}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDockerAction('docker_stop', c.id)}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
+                            className="px-2 py-0.5 text-[11px] font-semibold rounded-sm border border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer"
                           >
-                            Stop
+                            {t('Stop', 'Dừng')}
                           </button>
                         </>
                       )}
                       <button
                         type="button"
                         onClick={() => handleDockerAction('docker_logs', c.id)}
-                        className="px-2.5 py-1 text-xs font-semibold rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+                        className="px-2 py-0.5 text-[11px] font-semibold rounded-sm border border-blue-500/30 bg-blue-500/10 text-[var(--accent-primary)] hover:bg-blue-500/20 transition-colors cursor-pointer"
                       >
-                        Logs
+                        {t('Logs', 'Nhật ký')}
                       </button>
                     </div>
                   </div>
@@ -2000,8 +2027,8 @@ export default function ServerDetailsPage() {
             {!snapshot?.docker_containers?.length && (
               <div className="p-8 text-center text-xs text-[var(--color-muted)]">
                 {osFamily === 'macos' || osFamily === 'windows'
-                  ? 'No local containers were reported by this agent.'
-                  : 'No Docker containers were reported by this agent.'}
+                  ? t('No local containers were reported by this agent.', 'Không có container cục bộ nào được báo cáo bởi agent này.')
+                  : t('No Docker containers were reported by this agent.', 'Không có container Docker nào được báo cáo bởi agent này.')}
               </div>
             )}
           </div>
@@ -2009,25 +2036,37 @@ export default function ServerDetailsPage() {
       )}
 
       {serviceActionRequest && (
-        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="service-action-title" className="ops-modal w-full max-w-md overflow-hidden">
-            <div className="flex items-center gap-3 border-b border-[var(--border-color)] p-6">
-              <RotateCw className="h-5 w-5 text-blue-500" />
-              <h2 id="service-action-title" className="text-xl font-semibold capitalize text-[var(--foreground)]">{serviceActionRequest.action} service?</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="service-action-title" className="w-full max-w-md rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-5 text-[var(--foreground)] space-y-3.5">
+            <div className="flex items-center gap-2.5 pb-2.5 border-b border-[var(--border-subtle)]">
+              <RotateCw className="h-4 w-4 text-[var(--accent-primary)]" />
+              <h2 id="service-action-title" className="text-sm font-bold capitalize text-[var(--foreground)]">
+                {serviceActionRequest.action} {t('service?', 'dịch vụ?')}
+              </h2>
             </div>
-            <div className="p-6">
-              <p className="leading-6 text-[var(--color-muted)]">
-                Send <strong className="text-[var(--foreground)]">{serviceActionRequest.action}</strong> to{' '}
-                <strong className="text-[var(--foreground)]">{serviceActionRequest.service.display_name || serviceActionRequest.service.name}</strong> through {serviceActionRequest.service.source}.
+            <div className="space-y-3 text-xs">
+              <p className="leading-relaxed text-[var(--color-muted)]">
+                {t('Send', 'Gửi lệnh')} <strong className="text-[var(--foreground)] capitalize">{serviceActionRequest.action}</strong> {t('to', 'đến')}{' '}
+                <strong className="text-[var(--foreground)] font-mono">{serviceActionRequest.service.display_name || serviceActionRequest.service.name}</strong> {t('through', 'thông qua')} {serviceActionRequest.service.source}.
               </p>
-              <p className="mt-3 font-mono text-xs text-[var(--color-muted)]">{serviceActionRequest.service.name}</p>
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" disabled={serviceActionBusy} onClick={() => setServiceActionRequest(null)} className="rounded-full px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--background)] disabled:opacity-50">
-                  Cancel
+              <p className="font-mono text-[11px] text-[var(--color-muted)]">{serviceActionRequest.service.name}</p>
+              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  disabled={serviceActionBusy}
+                  onClick={() => setServiceActionRequest(null)}
+                  className="px-3.5 py-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-subtle)] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {t('Cancel', 'Hủy')}
                 </button>
-                <button type="button" disabled={serviceActionBusy} onClick={handleServiceAction} className="ops-button disabled:cursor-not-allowed disabled:opacity-50">
-                  {serviceActionBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  <span className="capitalize">{serviceActionBusy ? 'Waiting for agent…' : `${serviceActionRequest.action} service`}</span>
+                <button
+                  type="button"
+                  disabled={serviceActionBusy}
+                  onClick={handleServiceAction}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {serviceActionBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                  <span className="capitalize">{serviceActionBusy ? t('Waiting for agent…', 'Đang chờ agent…') : `${serviceActionRequest.action} ${t('service', 'dịch vụ')}`}</span>
                 </button>
               </div>
             </div>
@@ -2037,18 +2076,25 @@ export default function ServerDetailsPage() {
 
       {/* Logs Modal */}
       {logsModal.isOpen && (
-        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-6">
-          <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="ops-modal flex max-h-[80vh] w-full max-w-4xl flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)]">
-              <h3 id="container-logs-title" className="font-semibold text-[var(--foreground)]">Container Logs <span className="text-[var(--color-muted)] text-sm font-normal">({logsModal.containerId})</span></h3>
-              <button type="button" onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})} aria-label="Close container logs" className="text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div role="dialog" aria-modal="true" aria-labelledby="container-logs-title" className="flex max-h-[80vh] w-full max-w-4xl flex-col rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--foreground)] overflow-hidden">
+            <div className="flex justify-between items-center p-3.5 border-b border-[var(--border-subtle)]">
+              <h3 id="container-logs-title" className="text-xs font-bold text-[var(--foreground)]">
+                {t('Container Logs', 'Nhật ký Container')} <span className="text-[var(--color-muted)] font-mono text-[11px] font-normal">({logsModal.containerId})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setLogsModal({isOpen: false, containerId: '', logs: '', loading: false})}
+                aria-label="Close container logs"
+                className="p-1 rounded-md hover:bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+              >
                 ✕
               </button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 font-mono text-sm bg-[var(--background)] text-[var(--foreground)] whitespace-pre-wrap">
+            <div className="p-3.5 overflow-y-auto flex-1 font-mono text-xs bg-[var(--surface-2)] text-[var(--foreground)] whitespace-pre-wrap">
               {logsModal.loading ? (
-                <div className="flex items-center gap-3 text-blue-400 animate-pulse">
-                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                <div className="flex items-center gap-2.5 text-[var(--accent-primary)] animate-pulse">
+                  <div className="w-3.5 h-3.5 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
                   {logsModal.logs}
                 </div>
               ) : (

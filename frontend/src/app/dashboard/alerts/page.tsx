@@ -32,6 +32,7 @@ import {
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
 import ConfirmModal from '@/components/ConfirmModal';
+import { useLanguage } from '@/components/LanguageContext';
 
 interface NetworkTargetOption {
   id: string;
@@ -169,6 +170,7 @@ function TelegramIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 function AlertsPageInner() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const paramTab = searchParams.get('tab');
   const paramCategory = searchParams.get('category');
@@ -1348,7 +1350,7 @@ function AlertsPageInner() {
             onClick={() => { setErrorMessage(''); setSuccessMessage(''); }}
             className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition"
           >
-            Dismiss
+            {t('Dismiss', 'Đóng')}
           </button>
         </div>
       )}
@@ -1356,96 +1358,96 @@ function AlertsPageInner() {
       {/* Top 4 KPI Summary Metric Cards & Main Tab Navigation (Hidden when on Create Studio) */}
       {activeTab !== 'create' && (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {/* Active Rules Card */}
-            <div className="metric-card surface-regular status-tone-healthy p-4">
+            <div className="metric-card surface-regular status-tone-healthy p-3.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
               <div className="flex items-start justify-between">
                 <div className="metric-icon" style={{ color: 'var(--mint)' }}>
                   <Bell className="h-4 w-4" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                  POLICIES
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  {t('POLICIES', 'QUY TẮC')}
                 </span>
               </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
-                Active Rules
+              <p className="mt-3 text-[11px] uppercase tracking-[.14em] text-[var(--color-muted)] font-medium">
+                {t('Active Rules', 'Quy tắc đang chạy')}
               </p>
               <div className="mt-1 flex items-end justify-between gap-2">
-                <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+                <p className="font-mono tabular-nums text-2xl font-bold text-[var(--foreground)]">
                   {activeRulesCount}
-                  <span className="text-lg font-normal text-[var(--color-muted)]">/{rules.length}</span>
+                  <span className="text-sm font-normal text-[var(--color-muted)]">/{rules.length}</span>
                 </p>
-                <p className="mb-0.5 text-right text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                  {rules.length > 0 ? `${Math.round((activeRulesCount / rules.length) * 100)}% active` : 'No rules'}
+                <p className="mb-0.5 text-right font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                  {rules.length > 0 ? `${Math.round((activeRulesCount / rules.length) * 100)}% ` + t('active', 'hoạt động') : t('No rules', 'Chưa có')}
                 </p>
               </div>
             </div>
 
             {/* Firing Incidents Card */}
-            <div className={`metric-card surface-regular ${activeFiringCount > 0 ? 'status-tone-critical' : 'status-tone-healthy'} p-4`}>
+            <div className={`metric-card surface-regular ${activeFiringCount > 0 ? 'status-tone-critical' : 'status-tone-healthy'} p-3.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]`}>
               <div className="flex items-start justify-between">
                 <div className="metric-icon" style={{ color: activeFiringCount > 0 ? 'var(--rose)' : 'var(--mint)' }}>
                   <Flame className="h-4 w-4" />
                 </div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${activeFiringCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {activeFiringCount > 0 ? 'FIRING' : 'HEALTHY'}
+                <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${activeFiringCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {activeFiringCount > 0 ? t('FIRING', 'CẢNH BÁO') : t('HEALTHY', 'BÌNH THƯỜNG')}
                 </span>
               </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
-                Open Incidents
+              <p className="mt-3 text-[11px] uppercase tracking-[.14em] text-[var(--color-muted)] font-medium">
+                {t('Open Incidents', 'Sự cố đang diễn ra')}
               </p>
               <div className="mt-1 flex items-end justify-between gap-2">
-                <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+                <p className="font-mono tabular-nums text-2xl font-bold text-[var(--foreground)]">
                   {activeFiringCount}
                 </p>
                 <p className={`mb-0.5 text-right text-[10px] font-medium ${activeFiringCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {activeFiringCount > 0 ? `${activeFiringCount} require action` : 'All systems clear'}
+                  {activeFiringCount > 0 ? `${activeFiringCount} ` + t('require action', 'cần xử lý') : t('All clear', 'An toàn')}
                 </p>
               </div>
             </div>
 
             {/* Notification Channels Card */}
-            <div className="metric-card surface-regular status-tone-info p-4">
+            <div className="metric-card surface-regular status-tone-info p-3.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
               <div className="flex items-start justify-between">
                 <div className="metric-icon" style={{ color: 'var(--violet)' }}>
                   <Radio className="h-4 w-4" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  ROUTING
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  {t('ROUTING', 'KÊNH GỬI')}
                 </span>
               </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
-                Connected Channels
+              <p className="mt-3 text-[11px] uppercase tracking-[.14em] text-[var(--color-muted)] font-medium">
+                {t('Connected Channels', 'Kênh kết nối')}
               </p>
               <div className="mt-1 flex items-end justify-between gap-2">
-                <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+                <p className="font-mono tabular-nums text-2xl font-bold text-[var(--foreground)]">
                   {channels.filter((c) => c.enabled).length}
                 </p>
-                <p className="mb-0.5 text-right text-[10px] font-medium text-purple-600 dark:text-purple-400">
-                  {channels.length > 0 ? `${channels.length} delivery endpoints` : 'None linked'}
+                <p className="mb-0.5 text-right text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                  {channels.length > 0 ? `${channels.length} ` + t('channels', 'kênh') : t('None linked', 'Chưa có')}
                 </p>
               </div>
             </div>
 
             {/* Coverage Card */}
-            <div className="metric-card surface-regular status-tone-info p-4">
+            <div className="metric-card surface-regular status-tone-info p-3.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
               <div className="flex items-start justify-between">
                 <div className="metric-icon" style={{ color: 'var(--sky)' }}>
                   <Server className="h-4 w-4" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                  TARGETS
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  {t('TARGETS', 'MỤC TIÊU')}
                 </span>
               </div>
-              <p className="mt-4 text-[11px] uppercase tracking-[.16em] text-[var(--color-muted)]">
-                Fleet Coverage
+              <p className="mt-3 text-[11px] uppercase tracking-[.14em] text-[var(--color-muted)] font-medium">
+                {t('Fleet Coverage', 'Phạm vi giám sát')}
               </p>
               <div className="mt-1 flex items-end justify-between gap-2">
-                <p className="font-mono text-3xl font-semibold text-[var(--foreground)]">
+                <p className="font-mono tabular-nums text-2xl font-bold text-[var(--foreground)]">
                   {servers.length + websites.length}
                 </p>
-                <p className="mb-0.5 text-right text-[10px] font-medium text-blue-600 dark:text-blue-400">
-                  {servers.length} servers · {websites.length} sites
+                <p className="mb-0.5 text-right font-mono text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                  {servers.length} {t('servers', 'máy chủ')} · {websites.length} {t('sites', 'site')}
                 </p>
               </div>
             </div>
@@ -1459,19 +1461,19 @@ function AlertsPageInner() {
                 role="tab"
                 aria-selected={activeTab === 'rules'}
                 onClick={() => { setActiveTab('rules'); setErrorMessage(''); setSuccessMessage(''); }}
-                className={`relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all ${
+                className={`relative flex items-center gap-2 pb-3 text-xs font-semibold transition-colors duration-100 ${
                   activeTab === 'rules'
-                    ? 'text-blue-600 dark:text-blue-400'
+                    ? 'text-[var(--accent-primary)] font-bold'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
-                <Bell className="h-4 w-4" />
-                <span>Alert Rules</span>
-                <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+                <Bell className="h-3.5 w-3.5" />
+                <span>{t('Alert Rules', 'Quy tắc cảnh báo')}</span>
+                <span className="font-mono rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400">
                   {rules.length}
                 </span>
                 {activeTab === 'rules' && (
-                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-[var(--accent-primary)]" />
                 )}
               </button>
 
@@ -1480,10 +1482,10 @@ function AlertsPageInner() {
                 role="tab"
                 aria-selected={false}
                 onClick={() => { setActiveTab('create'); setErrorMessage(''); setSuccessMessage(''); }}
-                className="relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                className="relative flex items-center gap-2 pb-3 text-xs font-semibold transition-colors duration-100 text-[var(--color-muted)] hover:text-[var(--foreground)]"
               >
-                <Plus className="h-4 w-4" />
-                <span>Create Alert Rule</span>
+                <Plus className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
+                <span>{t('Create Alert Rule', 'Tạo quy tắc mới')}</span>
               </button>
 
               <button
@@ -1491,19 +1493,19 @@ function AlertsPageInner() {
                 role="tab"
                 aria-selected={activeTab === 'channels'}
                 onClick={() => { setActiveTab('channels'); setErrorMessage(''); setSuccessMessage(''); }}
-                className={`relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all ${
+                className={`relative flex items-center gap-2 pb-3 text-xs font-semibold transition-colors duration-100 ${
                   activeTab === 'channels'
-                    ? 'text-blue-600 dark:text-blue-400'
+                    ? 'text-[var(--accent-primary)] font-bold'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
-                <Radio className="h-4 w-4" />
-                <span>Notification Channels</span>
-                <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-xs font-bold text-[var(--color-muted)]">
+                <Radio className="h-3.5 w-3.5" />
+                <span>{t('Notification Channels', 'Kênh thông báo')}</span>
+                <span className="font-mono rounded bg-slate-500/10 px-1.5 py-0.5 text-[10px] font-bold text-[var(--color-muted)]">
                   {channels.length}
                 </span>
                 {activeTab === 'channels' && (
-                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-[var(--accent-primary)]" />
                 )}
               </button>
 
@@ -1512,21 +1514,21 @@ function AlertsPageInner() {
                 role="tab"
                 aria-selected={activeTab === 'incidents'}
                 onClick={() => { setActiveTab('incidents'); setErrorMessage(''); setSuccessMessage(''); }}
-                className={`relative flex items-center gap-2 pb-3.5 text-sm font-semibold transition-all ${
+                className={`relative flex items-center gap-2 pb-3 text-xs font-semibold transition-colors duration-100 ${
                   activeTab === 'incidents'
-                    ? 'text-blue-600 dark:text-blue-400'
+                    ? 'text-[var(--accent-primary)] font-bold'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                 }`}
               >
-                <Flame className="h-4 w-4" />
-                <span>Incident Stream</span>
+                <Flame className="h-3.5 w-3.5" />
+                <span>{t('Incident Stream', 'Lịch sử sự cố')}</span>
                 {unreadIncidentsCount > 0 && (
-                  <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                    {unreadIncidentsCount} new
+                  <span className="font-mono rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                    {unreadIncidentsCount} {t('new', 'mới')}
                   </span>
                 )}
                 {activeTab === 'incidents' && (
-                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
+                  <span className="absolute inset-x-0 -bottom-px h-0.5 rounded bg-[var(--accent-primary)]" />
                 )}
               </button>
             </nav>
@@ -1535,33 +1537,33 @@ function AlertsPageInner() {
       )}
 
       {loading ? (
-        <div className="flex min-h-64 items-center justify-center text-[var(--color-muted)]">
-          <Loader2 className="mr-2 h-6 w-6 animate-spin text-blue-500" /> Loading alert configuration…
+        <div className="flex min-h-64 items-center justify-center text-xs text-[var(--color-muted)]">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-[var(--accent-primary)]" /> {t('Loading alert configuration…', 'Đang tải cấu hình cảnh báo…')}
         </div>
       ) : activeTab === 'rules' ? (
         /* ========================================================================= */
         /* TAB 1: ALERT RULES LIST */
         /* ========================================================================= */
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Controls Bar: Search, Category Quick Filter, Status Filter */}
-          <div className="ops-panel surface-regular no-hover-lift p-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* Search Input */}
             <div className="relative w-full sm:w-80 md:w-96">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted)] z-10" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-muted)] z-10" />
               <input
                 type="text"
                 value={ruleSearchQuery}
                 onChange={(e) => setRuleSearchQuery(e.target.value)}
-                placeholder="Search alert rules by name, target, or server..."
-                style={{ paddingLeft: '40px', paddingRight: '32px' }}
-                className="h-9 w-full rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                placeholder={t('Search alert rules by name, target, or server...', 'Tìm quy tắc theo tên, đối tượng, máy chủ...')}
+                style={{ paddingLeft: '34px', paddingRight: '28px' }}
+                className="h-8 w-full rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] text-xs text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-blue-500 transition-colors"
               />
               {ruleSearchQuery && (
                 <button
                   type="button"
                   onClick={() => setRuleSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 z-10"
-                  title="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--foreground)] p-0.5 z-10"
+                  title={t('Clear search', 'Xóa tìm kiếm')}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1569,31 +1571,31 @@ function AlertsPageInner() {
             </div>
 
             {/* Category and Status Filter Group */}
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Category Select */}
               <select
                 value={ruleCategoryFilter}
                 onChange={(e) => setRuleCategoryFilter(e.target.value as 'all' | AlertCategory)}
-                className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+                className="h-8 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-blue-500 transition-colors cursor-pointer"
               >
-                <option value="all">All Categories</option>
-                <option value="status">Server Offline</option>
-                <option value="metric">Resource Thresholds</option>
-                <option value="network">Network Quality</option>
-                <option value="container">Docker Container</option>
-                <option value="service">Systemd Service</option>
-                <option value="website">Website & SSL</option>
+                <option value="all">{t('All Categories', 'Tất cả danh mục')}</option>
+                <option value="status">{t('Server Offline', 'Máy chủ mất kết nối')}</option>
+                <option value="metric">{t('Resource Thresholds', 'Ngưỡng tài nguyên')}</option>
+                <option value="network">{t('Network Quality', 'Chất lượng mạng')}</option>
+                <option value="container">{t('Docker Container', 'Container Docker')}</option>
+                <option value="service">{t('Systemd Service', 'Dịch vụ Systemd')}</option>
+                <option value="website">{t('Website & SSL', 'Website & SSL')}</option>
               </select>
 
               {/* Status Select */}
               <select
                 value={ruleStatusFilter}
                 onChange={(e) => setRuleStatusFilter(e.target.value as 'all' | 'active' | 'disabled')}
-                className="h-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer"
+                className="h-8 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 text-xs font-medium text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-blue-500 transition-colors cursor-pointer"
               >
-                <option value="all">All Statuses ({rules.length})</option>
-                <option value="active">Active ({rules.filter((r) => r.enabled).length})</option>
-                <option value="disabled">Disabled ({rules.filter((r) => !r.enabled).length})</option>
+                <option value="all">{t('All Statuses', 'Tất cả trạng thái')} ({rules.length})</option>
+                <option value="active">{t('Active', 'Đang bật')} ({rules.filter((r) => r.enabled).length})</option>
+                <option value="disabled">{t('Disabled', 'Đang tắt')} ({rules.filter((r) => !r.enabled).length})</option>
               </select>
             </div>
           </div>
@@ -1611,70 +1613,70 @@ function AlertsPageInner() {
               return (
                 <div
                   key={rule.id}
-                  className={`ops-panel surface-regular p-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between transition-all ${
-                    rule.enabled ? '' : 'opacity-70 bg-opacity-40'
+                  className={`rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between transition-colors duration-100 hover:border-[var(--border-default)] ${
+                    rule.enabled ? '' : 'opacity-60 bg-[var(--surface-2)]'
                   }`}
                 >
                   {/* Left: Category Icon & Metadata */}
-                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     {/* Themed Icon Badge */}
                     <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
                         isOffline
-                          ? 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30'
+                          ? 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20'
                           : isDocker
-                            ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                            ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
                             : isService
-                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/30'
+                              ? 'bg-purple-500/10 text-purple-500 border-purple-500/20'
                               : isWebsite || isSSL
-                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                                 : isNetwork
-                                  ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30'
-                                  : 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                  ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
+                                  : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                       }`}
                     >
-                      {isOffline && <Server className="h-5 w-5" />}
-                      {isDocker && <Box className="h-5 w-5" />}
-                      {isService && <Layers className="h-5 w-5" />}
-                      {(isWebsite || isSSL) && <Globe2 className="h-5 w-5" />}
-                      {isNetwork && <Wifi className="h-5 w-5" />}
-                      {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && !isNetwork && <Activity className="h-5 w-5" />}
+                      {isOffline && <Server className="h-4 w-4" />}
+                      {isDocker && <Box className="h-4 w-4" />}
+                      {isService && <Layers className="h-4 w-4" />}
+                      {(isWebsite || isSSL) && <Globe2 className="h-4 w-4" />}
+                      {isNetwork && <Wifi className="h-4 w-4" />}
+                      {!isOffline && !isDocker && !isService && !isWebsite && !isSSL && !isNetwork && <Activity className="h-4 w-4" />}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-semibold text-[var(--foreground)] truncate text-sm sm:text-base">{rule.name}</h4>
+                        <h4 className="font-semibold text-[var(--foreground)] truncate text-xs sm:text-sm">{rule.name}</h4>
                         {isNetwork && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
                             <Wifi className="w-2.5 h-2.5" />
-                            {rule.target_name ? `Target: ${rule.target_name}` : 'All Targets'}
+                            {rule.target_name ? `${t('Target:', 'Mục tiêu:')} ${rule.target_name}` : t('All Targets', 'Tất cả mục tiêu')}
                           </span>
                         )}
                         {rule.server_name ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] text-[var(--color-muted)] border border-[var(--border-color)]">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-[var(--surface-2)] text-[var(--color-muted)] border border-[var(--border-subtle)]">
                             <Server className="w-2.5 h-2.5" />
                             {rule.server_name}
                           </span>
                         ) : rule.metric !== 'website' && rule.metric !== 'ssl' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
                             <Server className="w-2.5 h-2.5" />
-                            All servers
+                            {t('All servers', 'Tất cả máy chủ')}
                           </span>
                         ) : null}
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-[var(--color-muted)] flex-wrap">
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[var(--color-muted)] flex-wrap">
                         <span>
-                          Condition: <strong className="text-[var(--foreground)] font-mono">{rule.metric} {rule.operator} {rule.threshold}{rule.metric === 'network_latency' ? 'ms' : '%'}</strong>
+                          {t('Condition:', 'Điều kiện:')} <strong className="text-[var(--foreground)] font-mono">{rule.metric} {rule.operator} {rule.threshold}{rule.metric === 'network_latency' ? 'ms' : '%'}</strong>
                         </span>
                         <span>•</span>
                         <span>
-                          Duration: <strong className="text-[var(--foreground)] font-mono">{rule.duration_minutes}m</strong>
+                          {t('Duration:', 'Thời lượng:')} <strong className="text-[var(--foreground)] font-mono">{rule.duration_minutes}m</strong>
                         </span>
                         {rule.channels && rule.channels.length > 0 && (
                           <>
                             <span>•</span>
                             <span className="text-[11px]">
-                              {rule.channels.length} channel{rule.channels.length > 1 ? 's' : ''} ({rule.channels.map(c => c.name).join(', ')})
+                              {rule.channels.length} {t('channel(s)', 'kênh')} ({rule.channels.map(c => c.name).join(', ')})
                             </span>
                           </>
                         )}
@@ -1682,7 +1684,7 @@ function AlertsPageInner() {
                           <>
                             <span>•</span>
                             <Link href="/dashboard/network" className="text-blue-400 hover:underline inline-flex items-center gap-0.5 text-[11px]">
-                              Network Targets ↗
+                              {t('Network Targets ↗', 'Mục tiêu mạng ↗')}
                             </Link>
                           </>
                         )}
@@ -1697,11 +1699,11 @@ function AlertsPageInner() {
                       type="button"
                       disabled={isViewer}
                       onClick={() => openEditModal(rule)}
-                      title={isViewer ? 'Editing rules requires Operator or Admin role' : 'Edit alert rule'}
-                      className="ops-button secondary flex items-center gap-1.5 px-2.5 py-1 text-xs"
+                      title={isViewer ? t('Editing rules requires Operator or Admin role', 'Chỉnh sửa quy tắc yêu cầu quyền Quản trị hoặc Vận hành') : t('Edit alert rule', 'Chỉnh sửa quy tắc')}
+                      className="inline-flex items-center gap-1.5 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-3)] hover:border-[var(--border-strong)] transition-colors"
                     >
-                      <Pencil className="h-3.5 w-3.5 text-blue-500" />
-                      <span>Edit</span>
+                      <Pencil className="h-3 w-3 text-blue-400" />
+                      <span>{t('Edit', 'Sửa')}</span>
                     </button>
 
                     {/* TEST SIMULATION BUTTON */}
@@ -1709,15 +1711,15 @@ function AlertsPageInner() {
                       type="button"
                       disabled={testingRuleId === rule.id || !rule.channels || rule.channels.length === 0}
                       onClick={() => void testAlertRule(rule.id, rule.name)}
-                      title="Send a simulated test alert for this rule to linked notification channels"
-                      className="ops-button secondary flex items-center gap-1.5 px-2.5 py-1 text-xs text-blue-500 hover:text-blue-400"
+                      title={t('Send a simulated test alert for this rule to linked notification channels', 'Gửi thông báo giả lập kiểm tra quy tắc này đến các kênh đã liên kết')}
+                      className="inline-flex items-center gap-1.5 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 py-1 text-xs font-medium text-blue-400 hover:bg-[var(--surface-3)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {testingRuleId === rule.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
-                        <Send className="h-3.5 w-3.5" />
+                        <Send className="h-3 w-3" />
                       )}
-                      <span>Test</span>
+                      <span>{t('Test', 'Thử')}</span>
                     </button>
 
                     {/* SWITCH TOGGLE */}
@@ -1726,15 +1728,15 @@ function AlertsPageInner() {
                       role="switch"
                       aria-checked={rule.enabled}
                       onClick={() => toggleRule(rule.id, rule.enabled)}
-                      title={rule.enabled ? 'Click to disable alert rule' : 'Click to enable alert rule'}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        rule.enabled ? 'bg-emerald-600' : 'bg-slate-400 dark:bg-slate-700'
+                      title={rule.enabled ? t('Click to disable alert rule', 'Bấm để tắt quy tắc') : t('Click to enable alert rule', 'Bấm để bật quy tắc')}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-100 ease-in-out focus:outline-none ${
+                        rule.enabled ? 'bg-emerald-600' : 'bg-slate-600'
                       }`}
                     >
                       <span
                         aria-hidden="true"
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          rule.enabled ? 'translate-x-5' : 'translate-x-0'
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-100 ease-in-out ${
+                          rule.enabled ? 'translate-x-4' : 'translate-x-0.5'
                         }`}
                       />
                     </button>
@@ -1742,12 +1744,12 @@ function AlertsPageInner() {
                     {/* DELETE */}
                     <button
                       type="button"
-                      aria-label={`Delete rule ${rule.name}`}
+                      aria-label={`${t('Delete rule', 'Xóa quy tắc')} ${rule.name}`}
                       onClick={() => setDeleteRuleTarget(rule)}
-                      className="p-1.5 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 rounded-lg transition"
-                      title="Delete rule"
+                      className="p-1 text-rose-500 hover:bg-rose-500/10 rounded transition-colors"
+                      title={t('Delete rule', 'Xóa quy tắc')}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -1755,18 +1757,18 @@ function AlertsPageInner() {
             })}
 
             {filteredRules.length === 0 && (
-              <div className="ops-panel surface-regular p-12 text-center">
-                <Bell className="mx-auto h-8 w-8 text-[var(--color-muted)]" />
-                <h3 className="mt-3 font-semibold text-[var(--foreground)]">No alert rules found</h3>
-                <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  Try adjusting your search or filters, or create a new automated alert rule.
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-10 text-center">
+                <Bell className="mx-auto h-7 w-7 text-[var(--color-muted)] opacity-50" />
+                <h3 className="mt-3 font-semibold text-[var(--foreground)] text-xs">{t('No alert rules found', 'Không tìm thấy quy tắc cảnh báo nào')}</h3>
+                <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+                  {t('Try adjusting your search or filters, or create a new automated alert rule.', 'Hãy thử điều chỉnh bộ lọc tìm kiếm hoặc tạo một quy tắc cảnh báo mới.')}
                 </p>
                 <button
                   type="button"
                   onClick={() => setActiveTab('create')}
-                  className="mt-4 ops-button primary inline-flex items-center gap-2"
+                  className="mt-4 inline-flex items-center gap-1.5 rounded bg-[var(--accent-primary)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer"
                 >
-                  <Plus className="h-4 w-4" /> + Create Alert Rule
+                  <Plus className="h-3.5 w-3.5" /> {t('Create Alert Rule', 'Tạo quy tắc mới')}
                 </button>
               </div>
             )}
@@ -1776,47 +1778,47 @@ function AlertsPageInner() {
         /* ========================================================================= */
         /* TAB 2: CREATE ALERT RULE STUDIO (OPTION A3 - SINGLE BLOCK UX)            */
         /* ========================================================================= */
-        <div className="max-w-4xl mx-auto space-y-6 pb-12">
+        <div className="max-w-4xl mx-auto space-y-5 pb-12">
           {/* Breadcrumb Navigation */}
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
             <button
               type="button"
               onClick={() => setActiveTab('rules')}
-              className="text-blue-500 hover:underline font-medium cursor-pointer"
+              className="text-[var(--accent-primary)] hover:underline font-medium cursor-pointer"
             >
-              Alerts
+              {t('Alerts', 'Cảnh báo')}
             </button>
             <span>/</span>
             <button
               type="button"
               onClick={() => setActiveTab('rules')}
-              className="text-blue-500 hover:underline font-medium cursor-pointer"
+              className="text-[var(--accent-primary)] hover:underline font-medium cursor-pointer"
             >
-              Rules
+              {t('Rules', 'Quy tắc')}
             </button>
             <span>/</span>
-            <span className="text-[var(--foreground)] font-medium">New</span>
+            <span className="text-[var(--foreground)] font-medium">{t('New', 'Tạo mới')}</span>
           </div>
 
           {/* Header Title with Subtitle Tag */}
           <div className="flex items-baseline gap-3">
-            <h2 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
-              Create alert rule
+            <h2 className="text-xl font-bold tracking-tight text-[var(--foreground)]">
+              {t('Create alert rule', 'Tạo quy tắc cảnh báo')}
             </h2>
             <span className="font-mono text-xs text-[var(--color-muted)] font-normal hidden sm:inline">
-              option A3 · single block
+              {t('policy builder · unified block', 'trình tạo quy tắc · khối chuẩn hóa')}
             </span>
           </div>
 
           {/* Category Navigation (Underline Tab Bar) */}
-          <div className="border-b border-[var(--border-color)] flex items-center gap-6 overflow-x-auto no-scrollbar">
+          <div className="border-b border-[var(--border-color)] flex items-center gap-4 sm:gap-6 overflow-x-auto no-scrollbar">
             {[
-              { id: 'status', label: 'Server offline' },
-              { id: 'metric', label: 'Resource usage' },
-              { id: 'network', label: 'Network quality' },
-              { id: 'container', label: 'Docker container' },
-              { id: 'service', label: 'Systemd service' },
-              { id: 'website', label: 'Website & SSL' },
+              { id: 'status', label: t('Server offline', 'Máy chủ mất kết nối') },
+              { id: 'metric', label: t('Resource usage', 'Sử dụng tài nguyên') },
+              { id: 'network', label: t('Network quality', 'Chất lượng mạng') },
+              { id: 'container', label: t('Docker container', 'Container Docker') },
+              { id: 'service', label: t('Systemd service', 'Dịch vụ Systemd') },
+              { id: 'website', label: t('Website & SSL', 'Website & SSL') },
             ].map((cat) => {
               const isSelected = selectedCategory === cat.id;
               return (
@@ -1824,9 +1826,9 @@ function AlertsPageInner() {
                   key={cat.id}
                   type="button"
                   onClick={() => handleSelectCategory(cat.id as AlertCategory)}
-                  className={`pb-2.5 text-sm font-semibold whitespace-nowrap transition cursor-pointer select-none border-b-2 -mb-px ${
+                  className={`pb-2.5 text-xs font-semibold whitespace-nowrap transition-colors duration-100 cursor-pointer select-none border-b-2 -mb-px ${
                     isSelected
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+                      ? 'border-[var(--accent-primary)] text-[var(--accent-primary)] font-bold'
                       : 'border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)] font-medium'
                   }`}
                 >
@@ -1837,10 +1839,10 @@ function AlertsPageInner() {
           </div>
 
           {/* Unified Single Block Card */}
-          <form onSubmit={createRule} className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-xs divide-y divide-[var(--border-color)] overflow-hidden">
+          <form onSubmit={createRule} className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] divide-y divide-[var(--border-subtle)] overflow-hidden">
             {/* 1. CONDITION SECTION */}
             {selectedCategory === 'status' && (
-              <div className="p-6 space-y-3">
+              <div className="p-5 space-y-3">
                 <div className="text-[11px] font-bold tracking-wider uppercase text-[var(--color-muted)] font-mono">
                   CONDITION · HEARTBEAT MISSING FOR
                 </div>
@@ -3020,13 +3022,13 @@ function AlertsPageInner() {
                 return (
                   <div
                     key={channel.id}
-                    className="ops-panel surface-regular p-4.5 flex flex-col justify-between border border-[var(--border-color)] hover:border-slate-700/60 transition-all rounded-2xl"
+                    className="p-3.5 flex flex-col justify-between border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:border-[var(--border-strong)] transition-colors duration-100 rounded-md"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
                               isDiscord
                                 ? 'bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/25'
                                 : isTelegram
@@ -3055,33 +3057,33 @@ function AlertsPageInner() {
                           </div>
                         </div>
 
-                        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Active
+                        <span className="shrink-0 inline-flex items-center gap-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-emerald-400 uppercase">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          {t('Active', 'Hoạt động')}
                         </span>
                       </div>
 
-                      <div className="mt-3.5 space-y-1 text-xs">
+                      <div className="mt-3 space-y-1 text-xs">
                         {detailText && (
                           <p className="font-mono text-[11px] text-[var(--color-muted)] truncate" title={detailText}>
                             {detailText}
                           </p>
                         )}
                         <p className="text-[11px] text-[var(--color-muted)]">
-                          Linked to <strong className="text-[var(--foreground)]">{channel.usage_count || 0}</strong> alert rule{channel.usage_count === 1 ? '' : 's'}
+                          {t('Linked to', 'Liên kết với')} <strong className="text-[var(--foreground)] font-mono">{channel.usage_count || 0}</strong> {t('alert rule(s)', 'quy tắc')}
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between border-t border-[var(--border-color)] pt-3">
+                    <div className="mt-3.5 flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5">
                       <button
                         type="button"
                         disabled={testingChannelId === channel.id}
                         onClick={() => void testExistingChannel(channel.id, channel.name)}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-500 hover:text-blue-400 transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:text-[var(--accent-hover)] transition-colors cursor-pointer"
                       >
                         {testingChannelId === channel.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        Send Test
+                        {t('Send Test', 'Gửi thử')}
                       </button>
 
                       <div className="flex items-center gap-1">
@@ -3089,25 +3091,30 @@ function AlertsPageInner() {
                           type="button"
                           disabled={isViewer}
                           onClick={() => openEditChannelModal(channel)}
-                          className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={isViewer ? 'Editing channels requires Operator or Admin role' : 'Edit channel'}
+                          className="p-1 text-[var(--color-muted)] hover:text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={isViewer ? t('Editing channels requires Operator or Admin role', 'Cần quyền Quản trị hoặc Vận hành') : t('Edit channel', 'Chỉnh sửa kênh')}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
                           disabled={isViewer}
                           onClick={() => {
                             if (channel.usage_count && channel.usage_count > 0) {
-                              setErrorMessage(`This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`);
+                              setErrorMessage(
+                                t(
+                                  `This channel is currently used by ${channel.usage_count} alert rule(s). Please unlink or delete those rules first.`,
+                                  `Kênh này đang được dùng bởi ${channel.usage_count} quy tắc. Vui lòng hủy liên kết các quy tắc trước khi xóa.`
+                                )
+                              );
                               return;
                             }
                             setDeleteChannelTarget(channel);
                           }}
-                          className="p-1.5 text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={isViewer ? 'Deleting channels requires Operator or Admin role' : 'Delete channel'}
+                          className="p-1 text-rose-500 hover:bg-rose-500/10 rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={isViewer ? t('Deleting channels requires Operator or Admin role', 'Cần quyền Quản trị hoặc Vận hành') : t('Delete channel', 'Xóa kênh')}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -3116,10 +3123,10 @@ function AlertsPageInner() {
               })}
 
               {channels.length === 0 && (
-                <div className="col-span-1 sm:col-span-2 ops-panel surface-regular p-8 text-center flex flex-col items-center justify-center gap-2 text-xs text-[var(--color-muted)]">
-                  <Radio className="h-8 w-8 opacity-40 mb-1" />
-                  <p className="font-medium text-[var(--foreground)]">No notification channels configured yet.</p>
-                  <p>Add Discord, Telegram, or Email on the left to receive instant alerts.</p>
+                <div className="col-span-1 sm:col-span-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-8 text-center flex flex-col items-center justify-center gap-1.5 text-xs text-[var(--color-muted)]">
+                  <Radio className="h-7 w-7 opacity-40 mb-1" />
+                  <p className="font-semibold text-[var(--foreground)]">{t('No notification channels configured yet.', 'Chưa có kênh thông báo nào.')}</p>
+                  <p className="text-[11px]">{t('Add Discord, Telegram, or Email on the left to receive instant alerts.', 'Thêm Discord, Telegram, hoặc Email ở biểu mẫu bên trái.')}</p>
                 </div>
               )}
             </div>
@@ -3129,76 +3136,76 @@ function AlertsPageInner() {
         /* ========================================================================= */
         /* TAB 4: INCIDENTS HISTORY */
         /* ========================================================================= */
-        <div className="space-y-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-[var(--foreground)]">Incident & Recovery Timeline</h2>
-              <p className="mt-1 text-sm text-[var(--color-muted)]">
-                Historical timeline of FIRING and RESOLVED events with precise downtime durations.
+              <h2 className="text-lg font-bold text-[var(--foreground)]">{t('Incident & Recovery Timeline', 'Lịch sử Sự cố & Khắc phục')}</h2>
+              <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                {t('Historical timeline of FIRING and RESOLVED events with precise downtime durations.', 'Dòng thời gian các sự kiện cảnh báo và khắc phục kèm thời lượng chi tiết.')}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               {/* Filter chips for Read / Unread */}
-              <div className="flex items-center gap-1 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-1 text-xs">
+              <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-1)] p-0.5 text-xs">
                 <button
                   type="button"
                   onClick={() => setIncidentFilter('all')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                  className={`rounded px-2.5 py-1 font-semibold transition-colors duration-100 ${
                     incidentFilter === 'all'
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-[var(--accent-primary)] text-white'
                       : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
-                  All ({incidents.length})
+                  {t('All', 'Tất cả')} ({incidents.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setIncidentFilter('unread')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                  className={`rounded px-2.5 py-1 font-semibold transition-colors duration-100 ${
                     incidentFilter === 'unread'
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-[var(--accent-primary)] text-white'
                       : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
-                  Unread ({unreadIncidentsCount})
+                  {t('Unread', 'Chưa đọc')} ({unreadIncidentsCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setIncidentFilter('read')}
-                  className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                  className={`rounded px-2.5 py-1 font-semibold transition-colors duration-100 ${
                     incidentFilter === 'read'
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-[var(--accent-primary)] text-white'
                       : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
-                  Read ({Math.max(0, incidents.length - unreadIncidentsCount)})
+                  {t('Read', 'Đã đọc')} ({Math.max(0, incidents.length - unreadIncidentsCount)})
                 </button>
               </div>
 
               <button
                 type="button"
                 onClick={() => void fetchIncidents()}
-                className="ops-button secondary flex items-center gap-1.5 h-8 text-xs"
+                className="inline-flex items-center gap-1.5 h-8 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-3)] hover:border-[var(--border-strong)] transition-colors"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                <RefreshCw className="h-3.5 w-3.5 text-[var(--color-muted)]" /> {t('Refresh', 'Làm mới')}
               </button>
 
               {unreadIncidentsCount > 0 && (
                 <button
                   type="button"
                   onClick={() => void markAllIncidentsRead()}
-                  className="ops-button primary h-8 text-xs font-semibold"
+                  className="inline-flex items-center gap-1.5 h-8 rounded bg-[var(--accent-primary)] px-2.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors cursor-pointer"
                 >
-                  Mark all as read
+                  {t('Mark all as read', 'Đánh dấu đã đọc')}
                 </button>
               )}
             </div>
           </div>
 
           {loadingIncidents ? (
-            <div className="flex min-h-48 items-center justify-center text-[var(--color-muted)]">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-500" /> Loading incident timeline…
+            <div className="flex min-h-48 items-center justify-center text-xs text-[var(--color-muted)]">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[var(--accent-primary)]" /> {t('Loading incident timeline…', 'Đang tải dòng thời gian sự cố…')}
             </div>
           ) : (
             <div className="space-y-3">
@@ -3266,48 +3273,48 @@ function AlertsPageInner() {
                             <button
                               type="button"
                               onClick={() => void markIncidentRead(item.id)}
-                              className="text-[10px] font-semibold text-blue-500 hover:underline"
+                              className="text-[10px] font-semibold text-[var(--accent-primary)] hover:underline cursor-pointer"
                             >
-                              Mark read
+                              {t('Mark read', 'Đánh dấu đã đọc')}
                             </button>
                           )}
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                            className={`rounded px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider ${
                               isFiring
-                                ? 'bg-rose-500/15 text-rose-500'
+                                ? 'bg-rose-500/15 text-rose-500 border border-rose-500/20'
                                 : isResolved
-                                  ? 'bg-emerald-500/15 text-emerald-500'
+                                  ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20'
                                   : isReminder
-                                    ? 'bg-amber-500/15 text-amber-500'
-                                    : 'bg-blue-500/15 text-blue-500'
+                                    ? 'bg-amber-500/15 text-amber-500 border border-amber-500/20'
+                                    : 'bg-blue-500/15 text-blue-500 border border-blue-500/20'
                             }`}
                           >
-                            {isFiring ? 'Firing' : isResolved ? 'Resolved' : isReminder ? 'Reminder' : 'Notification'}
+                            {isFiring ? t('FIRING', 'CẢNH BÁO') : isResolved ? t('RESOLVED', 'ĐÃ KHẮC PHỤC') : isReminder ? t('REMINDER', 'NHẮC LẠI') : t('NOTIFICATION', 'THÔNG BÁO')}
                           </span>
                         </div>
                       </div>
 
                       {/* Incident Message */}
-                      <p className="mt-3 text-xs text-[var(--color-muted)] leading-relaxed">
+                      <p className="mt-2.5 text-xs text-[var(--color-muted)] leading-relaxed">
                         {item.message}
                       </p>
 
                       {/* Timestamps & Downtime Chip */}
-                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-color)] pt-3 text-[11px] text-[var(--color-muted)]">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-2.5 text-[11px] text-[var(--color-muted)] font-mono">
                         <div className="flex items-center gap-3 flex-wrap">
                           <span>
-                            Triggered: <strong className="text-[var(--foreground)]">{failedAt}</strong>
+                            {t('Triggered:', 'Thời điểm:')} <strong className="text-[var(--foreground)]">{failedAt}</strong>
                           </span>
                           {recoveredAt && (
                             <span>
-                              Recovered: <strong className="text-emerald-500">{recoveredAt}</strong>
+                              {t('Recovered:', 'Phục hồi:')} <strong className="text-emerald-500">{recoveredAt}</strong>
                             </span>
                           )}
                         </div>
 
                         {isResolved && downtime && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2 py-0.5 font-mono text-[10px] font-bold text-[var(--foreground)]">
-                            <Clock className="h-3 w-3 text-emerald-500" /> Total Outage: {downtime}
+                          <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-2)] border border-[var(--border-subtle)] px-2 py-0.5 font-mono text-[10px] font-bold text-[var(--foreground)]">
+                            <Clock className="h-3 w-3 text-emerald-500" /> {t('Total Outage:', 'Tổng thời gian:')} {downtime}
                           </span>
                         )}
                       </div>
@@ -3316,10 +3323,10 @@ function AlertsPageInner() {
                 })}
 
               {incidents.length === 0 && (
-                <div className="ops-panel surface-regular p-12 text-center text-xs text-[var(--color-muted)]">
-                  <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-                  <p className="mt-2 font-semibold text-[var(--foreground)]">No incidents recorded</p>
-                  <p className="mt-1">All monitored servers, containers, services, and websites are operating normally.</p>
+                <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-10 text-center text-xs text-[var(--color-muted)]">
+                  <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-500 mb-2" />
+                  <p className="font-semibold text-[var(--foreground)]">{t('No incidents recorded', 'Không có sự cố nào được ghi nhận')}</p>
+                  <p className="mt-1 text-[11px]">{t('All monitored servers, containers, services, and websites are operating normally.', 'Tất cả máy chủ, container, dịch vụ và website đang hoạt động ổn định.')}</p>
                 </div>
               )}
             </div>
@@ -3329,25 +3336,25 @@ function AlertsPageInner() {
 
       {/* Edit Alert Rule Modal */}
       {editingRule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-rule-dialog-title"
-            className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl"
+            className="w-full max-w-lg overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] shadow-xl"
           >
-            <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center">
-              <h3 id="edit-rule-dialog-title" className="font-bold text-lg text-[var(--foreground)] flex items-center gap-2">
-                <Pencil className="w-4 h-4 text-blue-400" />
-                Edit Alert Rule
+            <div className="p-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--surface-2)]">
+              <h3 id="edit-rule-dialog-title" className="font-bold text-sm text-[var(--foreground)] flex items-center gap-2">
+                <Pencil className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                {t('Edit Alert Rule', 'Chỉnh sửa quy tắc cảnh báo')}
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingRule(null)}
-                aria-label="Close dialog"
-                className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition"
+                aria-label={t('Close dialog', 'Đóng hộp thoại')}
+                className="h-7 w-7 rounded flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)] transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleSaveEdit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
@@ -3801,21 +3808,21 @@ function AlertsPageInner() {
                 )}
               </div>
 
-              <div className="pt-3 border-t border-[var(--border-color)] flex justify-end gap-2">
+              <div className="pt-3 border-t border-[var(--border-subtle)] flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingRule(null)}
-                  className="ops-button secondary px-4 py-2 text-xs"
+                  className="rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {t('Cancel', 'Hủy')}
                 </button>
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  className="ops-button primary px-4 py-2 text-xs flex items-center gap-2"
+                  className="rounded bg-[var(--accent-primary)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Save Changes
+                  {t('Save Changes', 'Lưu thay đổi')}
                 </button>
               </div>
             </form>
@@ -3825,12 +3832,12 @@ function AlertsPageInner() {
 
       {/* Edit Notification Channel Modal */}
       {editingChannel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-channel-dialog-title"
-            className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl"
+            className="w-full max-w-lg overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] shadow-xl"
           >
             <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center">
               <h3 id="edit-channel-dialog-title" className="font-bold text-lg text-[var(--foreground)] flex items-center gap-2">
@@ -4085,32 +4092,32 @@ function AlertsPageInner() {
               )}
 
               {/* Action Buttons: TEST + CANCEL + SAVE */}
-              <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
+              <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => void testEditChannel()}
                   disabled={testingEditChannel || savingEditChannel}
-                  className="ops-button secondary px-3 py-2 text-xs flex items-center gap-1.5 text-blue-500 cursor-pointer disabled:opacity-40"
+                  className="rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition-colors"
                 >
                   {testingEditChannel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  <span>Send Test</span>
+                  <span>{t('Send Test', 'Gửi thử')}</span>
                 </button>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setEditingChannel(null)}
-                    className="ops-button secondary px-4 py-2 text-xs cursor-pointer"
+                    className="rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
                   >
-                    Cancel
+                    {t('Cancel', 'Hủy')}
                   </button>
                   <button
                     type="submit"
                     disabled={savingEditChannel || testingEditChannel}
-                    className="ops-button primary px-4 py-2 text-xs flex items-center gap-2 cursor-pointer disabled:opacity-40"
+                    className="rounded bg-[var(--accent-primary)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-40"
                   >
                     {savingEditChannel && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    Save Changes
+                    {t('Save Changes', 'Lưu thay đổi')}
                   </button>
                 </div>
               </div>
@@ -4122,9 +4129,13 @@ function AlertsPageInner() {
       {/* Delete Rule Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(deleteRuleTarget)}
-        title="Delete Alert Rule"
-        message={`Are you sure you want to delete alert rule "${deleteRuleTarget?.name}"? You will no longer receive notifications for this rule.`}
-        confirmText="Delete Rule"
+        title={t('Delete Alert Rule', 'Xóa quy tắc cảnh báo')}
+        message={t(
+          `Are you sure you want to delete alert rule "${deleteRuleTarget?.name}"? You will no longer receive notifications for this rule.`,
+          `Bạn có chắc chắn muốn xóa quy tắc "${deleteRuleTarget?.name}"? Hệ thống sẽ ngừng kích hoạt thông báo cho quy tắc này.`
+        )}
+        confirmText={t('Delete Rule', 'Xóa quy tắc')}
+        cancelText={t('Cancel', 'Hủy')}
         variant="danger"
         loading={deletingRule}
         onConfirm={() => void confirmDeleteRule()}
@@ -4134,9 +4145,13 @@ function AlertsPageInner() {
       {/* Delete Channel Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(deleteChannelTarget)}
-        title="Delete Notification Channel"
-        message={`Are you sure you want to delete notification channel "${deleteChannelTarget?.name}"? Any rules using it will no longer send notifications here.`}
-        confirmText="Delete Channel"
+        title={t('Delete Notification Channel', 'Xóa kênh thông báo')}
+        message={t(
+          `Are you sure you want to delete notification channel "${deleteChannelTarget?.name}"? Any rules using it will no longer send notifications here.`,
+          `Bạn có chắc chắn muốn xóa kênh thông báo "${deleteChannelTarget?.name}"? Các quy tắc đang liên kết sẽ ngừng gửi tin đến đây.`
+        )}
+        confirmText={t('Delete Channel', 'Xóa kênh')}
+        cancelText={t('Cancel', 'Hủy')}
         variant="danger"
         loading={deletingChannel}
         onConfirm={() => void confirmDeleteChannel()}

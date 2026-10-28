@@ -31,6 +31,7 @@ import {
 import toast from 'react-hot-toast';
 import { apiClient } from '@/lib/apiClient';
 import CustomSelect from '@/components/CustomSelect';
+import { useLanguage } from '@/components/LanguageContext';
 
 interface ServerOption {
   id: string;
@@ -113,6 +114,7 @@ interface NetworkAlertRule {
 }
 
 function NetworkQualityPageInner() {
+  const { t, isVi } = useLanguage();
   const searchParams = useSearchParams();
   const initialAgentFilter = searchParams.get('agent_id') || '';
 
@@ -217,35 +219,35 @@ function NetworkQualityPageInner() {
 
   const serverSelectOptions = useMemo(
     () => [
-      { value: '', label: `All Servers (${servers.length})` },
+      { value: '', label: `${t('All Servers', 'Tất cả máy chủ')} (${servers.length})` },
       ...servers.map((s) => ({
         value: s.id,
         label: s.name,
-        subLabel: s.ip_address || 'No IP',
+        subLabel: s.ip_address || (isVi ? 'Không có IP' : 'No IP'),
       })),
     ],
-    [servers]
+    [servers, t, isVi]
   );
 
   const tagSelectOptions = useMemo(
     () => [
-      { value: 'all', label: 'All Tags' },
-      ...discoveredTags.map((t) => ({
-        value: t,
-        label: `Tag: ${t}`,
+      { value: 'all', label: t('All Tags', 'Tất cả thẻ') },
+      ...discoveredTags.map((tag) => ({
+        value: tag,
+        label: `${t('Tag', 'Thẻ')}: ${tag}`,
       })),
     ],
-    [discoveredTags]
+    [discoveredTags, t]
   );
 
   const statusSelectOptions = useMemo(
     () => [
-      { value: 'all', label: 'All Statuses' },
-      { value: 'optimal', label: 'Optimal' },
-      { value: 'warning', label: 'Warning' },
-      { value: 'critical', label: 'Critical' },
+      { value: 'all', label: t('All Statuses', 'Tất cả trạng thái') },
+      { value: 'optimal', label: t('Optimal', 'Tối ưu') },
+      { value: 'warning', label: t('Warning', 'Cảnh báo') },
+      { value: 'critical', label: t('Critical', 'Sự cố') },
     ],
-    []
+    [t]
   );
 
   // Currently selected server for title / header scoping
@@ -518,60 +520,60 @@ function NetworkQualityPageInner() {
   const renderStatusBadge = (status?: string) => {
     if (!status) {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/15 border border-zinc-500/30 text-zinc-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" /> Pending
+        <span className="inline-flex items-center gap-1 rounded bg-zinc-500/15 border border-zinc-500/30 text-zinc-400 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" /> {t('Pending', 'Chờ')}
         </span>
       );
     }
     const s = status.toLowerCase();
     if (s === 'critical' || s === 'unreachable') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" /> Critical
+        <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 border border-rose-500/30 text-rose-500 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> {t('Critical', 'Sự cố')}
         </span>
       );
     }
     if (s === 'warning') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Warning
+        <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-500 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {t('Warning', 'Cảnh báo')}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Optimal
+      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {t('Optimal', 'Tối ưu')}
       </span>
     );
   };
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto pb-16">
+    <div className="space-y-5 max-w-[1600px] mx-auto pb-16">
       {/* Top Banner & Actions */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[var(--border-color)] pb-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-[var(--border-color)] pb-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              <Network className="w-6 h-6" />
+            <div className="p-1.5 rounded-md bg-blue-500/10 text-[var(--accent-primary)] border border-blue-500/20">
+              <Network className="w-5 h-5" />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--foreground)]">
-                Network Quality & Targets
+                {t('Network Quality & Targets', 'Chất lượng mạng & Mục tiêu')}
               </h1>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link
             href="/dashboard/alerts?tab=rules&category=network"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition cursor-pointer"
-            title="View alert rules configured for network quality"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-[var(--foreground)] px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
+            title={t('View alert rules configured for network quality', 'Xem các quy tắc cảnh báo mạng')}
           >
             <Bell className="w-3.5 h-3.5 text-indigo-400" />
-            Alert Rules
+            {t('Alert Rules', 'Quy tắc cảnh báo')}
             {networkAlertRules.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <span className="ml-1 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
                 {networkAlertRules.length}
               </span>
             )}
@@ -584,37 +586,37 @@ function NetworkQualityPageInner() {
               void loadData(true);
             }}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] px-3.5 py-2 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-[var(--foreground)] px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            {t('Refresh', 'Làm mới')}
           </button>
 
           <button
             type="button"
             onClick={openCreateModal}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> Add Target
+            <Plus className="w-3.5 h-3.5" /> {t('Add Target', 'Thêm mục tiêu')}
           </button>
         </div>
       </div>
 
       {/* If no targets configured at all */}
       {targets.length === 0 && !loading ? (
-        <div className="rounded-2xl border border-[var(--border-color)] p-12 text-center bg-[var(--background-card)] shadow-xs space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
-            <Network className="w-6 h-6" />
+        <div className="rounded-md border border-[var(--border-subtle)] p-10 text-center bg-[var(--surface-1)] space-y-3">
+          <div className="w-10 h-10 rounded-md bg-blue-500/10 border border-blue-500/20 text-[var(--accent-primary)] flex items-center justify-center mx-auto">
+            <Network className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-[var(--foreground)]">No Active Targets Configured</h3>
+            <h3 className="text-sm font-bold text-[var(--foreground)]">{t('No Active Targets Configured', 'Chưa có mục tiêu kiểm tra mạng nào')}</h3>
           </div>
           <button
             type="button"
             onClick={openCreateModal}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-xs font-bold transition shadow-sm cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> Add First Target with Presets
+            <Plus className="w-3.5 h-3.5" /> {t('Add First Target with Presets', 'Thêm mục tiêu đầu tiên')}
           </button>
         </div>
       ) : (
@@ -622,91 +624,93 @@ function NetworkQualityPageInner() {
           {/* Overview Cards by Tag (Fleet-Wide Incident Detection) */}
           {/* Overview Cards by Tag (Fleet-Wide Incident Detection or Scoped by Server) */}
           {(overviews.length > 0 || loading) && (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-2">
-                  <Radio className="w-3.5 h-3.5 text-blue-400" />
-                  {selectedServer ? `Network Overview by Tag — ${selectedServer.name}` : 'Fleet Network Overview by Tag'}
+                  <Radio className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                  {selectedServer
+                    ? `${t('Network Overview by Tag', 'Tổng quan mạng theo thẻ')} — ${selectedServer.name}`
+                    : t('Fleet Network Overview by Tag', 'Tổng quan chất lượng mạng toàn cụm')}
                 </h2>
               </div>
 
               {loading ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-32 rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] animate-pulse" />
+                    <div key={i} className="h-32 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] animate-pulse" />
                   ))}
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {overviews.map((ov) => {
                     const isCrit = ov.status === 'critical';
                     const isWarn = ov.status === 'warning';
                     return (
                       <div
                         key={ov.tag}
-                        className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between transition-all ${
+                        className={`rounded-md border p-3.5 flex flex-col justify-between transition-colors ${
                           ov.is_wide_area_issue
-                            ? 'border-rose-500/60 bg-rose-500/10 shadow-lg shadow-rose-500/10 ring-1 ring-rose-500/50'
+                            ? 'border-rose-500/60 bg-rose-500/10'
                             : isCrit
-                            ? 'border-rose-500/40 bg-[var(--background-card)]'
+                            ? 'border-rose-500/40 bg-[var(--surface-1)]'
                             : isWarn
-                            ? 'border-amber-500/40 bg-[var(--background-card)]'
-                            : 'border-[var(--border-color)] bg-[var(--background-card)]'
+                            ? 'border-amber-500/40 bg-[var(--surface-1)]'
+                            : 'border-[var(--border-subtle)] bg-[var(--surface-1)]'
                         }`}
                       >
                         <div>
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="font-bold text-sm text-[var(--foreground)] truncate" title={ov.tag}>
+                            <span className="font-bold text-xs text-[var(--foreground)] truncate" title={ov.tag}>
                               {ov.tag}
                             </span>
                             {renderStatusBadge(ov.status)}
                           </div>
 
                           {ov.is_wide_area_issue && (
-                            <div className="mb-3 rounded-lg bg-rose-500/20 border border-rose-500/30 px-2.5 py-1.5 flex items-start gap-2">
-                              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
-                              <span className="text-[11px] font-semibold text-rose-300 leading-tight">
-                                Wide-Area Alert: Multiple servers reporting critical
+                            <div className="mb-2.5 rounded bg-rose-500/15 border border-rose-500/30 px-2 py-1 flex items-start gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5 animate-pulse" />
+                              <span className="text-[10px] font-semibold text-rose-500 leading-tight">
+                                {t('Wide-Area Alert: Multiple servers reporting critical', 'Cảnh báo diện rộng: Nhiều máy chủ gặp sự cố')}
                               </span>
                             </div>
                           )}
 
-                          <div className="flex items-baseline gap-2 mb-3">
-                            <span className="text-2xl font-bold font-mono text-[var(--foreground)]">
+                          <div className="flex items-baseline gap-1.5 mb-2.5">
+                            <span className="text-xl font-bold font-mono tabular-nums text-[var(--foreground)]">
                               {ov.avg_latency_ms.toFixed(1)}
                             </span>
-                            <span className="text-xs text-[var(--color-muted)] font-medium">ms avg latency</span>
+                            <span className="text-[11px] text-[var(--color-muted)] font-medium">{t('ms avg latency', 'ms độ trễ TB')}</span>
                           </div>
 
-                          <div className="text-xs space-y-1.5 text-[var(--color-muted)] pb-2 border-b border-[var(--border-color)]/60">
+                          <div className="text-[11px] space-y-1 text-[var(--color-muted)] pb-2 border-b border-[var(--border-subtle)]">
                             {!selectedAgentId && (
                               <div className="flex justify-between">
-                                <span>Servers Monitored:</span>
-                                <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_agents}</span>
+                                <span>{t('Servers Monitored:', 'Máy chủ giám sát:')}</span>
+                                <span className="font-semibold text-[var(--foreground)] font-mono tabular-nums">{ov.total_agents}</span>
                               </div>
                             )}
                             <div className="flex justify-between">
-                              <span>Total Targets:</span>
-                              <span className="font-semibold text-[var(--foreground)] font-mono">{ov.total_targets}</span>
+                              <span>{t('Total Targets:', 'Tổng mục tiêu:')}</span>
+                              <span className="font-semibold text-[var(--foreground)] font-mono tabular-nums">{ov.total_targets}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Max Packet Loss:</span>
-                              <span className={`font-mono font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              <span>{t('Max Packet Loss:', 'Mất gói cao nhất:')}</span>
+                              <span className={`font-mono tabular-nums font-semibold ${ov.max_loss_pct > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
                                 {ov.max_loss_pct.toFixed(1)}%
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="mt-3 pt-2.5 border-t border-[var(--border-color)]/60 flex items-center justify-between text-[11px]">
+                        <div className="mt-2.5 pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px]">
                           <button
                             type="button"
                             onClick={() => {
                               setSelectedTag(ov.tag);
                             }}
-                            className="text-blue-400 hover:underline font-semibold cursor-pointer"
+                            className="text-[var(--accent-primary)] hover:underline font-semibold cursor-pointer"
                           >
-                            Filter tag →
+                            {t('Filter tag →', 'Lọc theo thẻ →')}
                           </button>
 
                           {(() => {
@@ -716,10 +720,10 @@ function NetworkQualityPageInner() {
                                 <Link
                                   href="/dashboard/alerts?tab=rules&category=network"
                                   className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-400 hover:underline"
-                                  title={`${tagAlerts.length} alert rule(s) active for tag ${ov.tag}`}
+                                  title={`${tagAlerts.length} ${t('alert rule(s) active for tag', 'quy tắc cảnh báo cho thẻ')} ${ov.tag}`}
                                 >
                                   <Bell className="w-3 h-3 text-indigo-400" />
-                                  <span>{tagAlerts.length} Alert{tagAlerts.length > 1 ? 's' : ''}</span>
+                                  <span>{tagAlerts.length} {t('Alerts', 'Cảnh báo')}</span>
                                 </Link>
                               );
                             }
@@ -727,10 +731,10 @@ function NetworkQualityPageInner() {
                               <Link
                                 href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(ov.tag)}&metric=network_latency`}
                                 className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-muted)] hover:text-indigo-400 hover:underline"
-                                title={`Set alert rule for tag ${ov.tag}`}
+                                title={`${t('Set alert rule for tag', 'Tạo cảnh báo cho thẻ')} ${ov.tag}`}
                               >
                                 <Bell className="w-3 h-3" />
-                                <span>+ Set Alert</span>
+                                <span>{t('+ Set Alert', '+ Tạo cảnh báo')}</span>
                               </Link>
                             );
                           })()}
@@ -744,17 +748,17 @@ function NetworkQualityPageInner() {
           )}
 
           {/* Filter and Search Bar */}
-          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-4 space-y-3 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted)] pointer-events-none z-10" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)] pointer-events-none z-10" />
                 <input
                   type="text"
-                  placeholder="Search by target name, host, or server..."
+                  placeholder={t('Search by target name, host, or server...', 'Tìm kiếm theo tên mục tiêu, host hoặc máy chủ...')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ paddingLeft: '40px' }}
-                  className="w-full pr-3 py-2 text-xs rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ paddingLeft: '34px' }}
+                  className="w-full pr-3 py-1.5 text-xs rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
                 />
               </div>
 
@@ -776,7 +780,7 @@ function NetworkQualityPageInner() {
                   }}
                   options={serverSelectOptions}
                   icon={<ServerIcon className="w-3.5 h-3.5 text-[var(--color-muted)]" />}
-                  className="h-9 min-w-[190px] max-w-[240px]"
+                  className="h-8.5 min-w-[180px] max-w-[230px]"
                 />
 
                 {/* Tag filter */}
@@ -785,7 +789,7 @@ function NetworkQualityPageInner() {
                   onChange={setSelectedTag}
                   options={tagSelectOptions}
                   icon={<Filter className="w-3.5 h-3.5 text-[var(--color-muted)]" />}
-                  className="h-9 min-w-[140px] max-w-[180px]"
+                  className="h-8.5 min-w-[130px] max-w-[170px]"
                 />
 
                 {/* Status filter */}
@@ -793,7 +797,7 @@ function NetworkQualityPageInner() {
                   value={selectedStatus}
                   onChange={setSelectedStatus}
                   options={statusSelectOptions}
-                  className="h-9 min-w-[130px] max-w-[150px]"
+                  className="h-8.5 min-w-[120px] max-w-[150px]"
                 />
 
                 {(selectedAgentId || selectedTag !== 'all' || selectedStatus !== 'all' || searchQuery) && (
@@ -810,10 +814,10 @@ function NetworkQualityPageInner() {
                         window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
                       }
                     }}
-                    className="h-9 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)]/40 px-3 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] transition cursor-pointer"
+                    className="h-8.5 inline-flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--border-subtle)] px-2.5 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
-                    Reset
+                    {t('Reset', 'Đặt lại')}
                   </button>
                 )}
               </div>
@@ -821,11 +825,12 @@ function NetworkQualityPageInner() {
           </div>
 
           {/* Target Management Table */}
-          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] overflow-hidden shadow-sm">
-            <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between">
+          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border-subtle)] flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-[var(--foreground)] flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-blue-400" /> Monitored Network Targets ({filteredTargets.length})
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)] flex items-center gap-2">
+                  <Activity className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
+                  {t('Monitored Network Targets', 'Mục tiêu mạng được giám sát')} ({filteredTargets.length})
                 </h3>
               </div>
             </div>
@@ -833,23 +838,23 @@ function NetworkQualityPageInner() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-[var(--border-color)] bg-[var(--background)]/40 font-semibold text-[var(--color-muted)]">
-                <th className="px-4 py-3">Target & Host</th>
-                <th className="px-4 py-3">Assigned Server</th>
-                <th className="px-4 py-3">Tag</th>
-                <th className="px-4 py-3">Method</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Latency</th>
-                <th className="px-4 py-3">Packet Loss</th>
-                <th className="px-4 py-3">Probes</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+              <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] font-semibold text-[var(--color-muted)] text-[11px]">
+                <th className="px-3.5 py-2.5">{t('Target & Host', 'Mục tiêu & Host')}</th>
+                <th className="px-3.5 py-2.5">{t('Assigned Server', 'Máy chủ gán')}</th>
+                <th className="px-3.5 py-2.5">{t('Tag', 'Thẻ')}</th>
+                <th className="px-3.5 py-2.5">{t('Method', 'Giao thức')}</th>
+                <th className="px-3.5 py-2.5">{t('Status', 'Trạng thái')}</th>
+                <th className="px-3.5 py-2.5">{t('Latency', 'Độ trễ')}</th>
+                <th className="px-3.5 py-2.5">{t('Packet Loss', 'Mất gói')}</th>
+                <th className="px-3.5 py-2.5">{t('Probes', 'Số mẫu')}</th>
+                <th className="px-3.5 py-2.5 text-right">{t('Actions', 'Thao tác')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--border-color)]">
+            <tbody className="divide-y divide-[var(--border-subtle)]">
               {filteredTargets.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-[var(--color-muted)]">
-                    No network targets match the selected filters.
+                  <td colSpan={9} className="px-4 py-8 text-center text-xs text-[var(--color-muted)]">
+                    {t('No network targets match the selected filters.', 'Không tìm thấy mục tiêu nào phù hợp với bộ lọc.')}
                   </td>
                 </tr>
               ) : (
@@ -861,37 +866,37 @@ function NetworkQualityPageInner() {
                   const targetAlerts = getTargetAlerts(target);
 
                   return (
-                    <tr key={target.id} className="hover:bg-[var(--border-color)]/20 transition-colors">
+                    <tr key={target.id} className="hover:bg-[var(--surface-2)] transition-colors">
                       {/* Name & Host */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 flex-wrap">
+                      <td className="px-3.5 py-2.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-semibold text-[var(--foreground)]">{target.name}</span>
                           {target.is_gateway && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                            <span className="text-[9px] font-mono font-semibold px-1 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400">
                               Gateway
                             </span>
                           )}
                           {targetAlerts.length > 0 && (
                             <Link
                               href="/dashboard/alerts?tab=rules&category=network"
-                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/25 inline-flex items-center gap-1 transition"
-                              title={`${targetAlerts.length} alert rule(s) active: ${targetAlerts.map(a => a.name).join(', ')}`}
+                              className="text-[9px] font-mono font-semibold px-1 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/25 inline-flex items-center gap-1 transition-colors"
+                              title={`${targetAlerts.length} ${t('alert rule(s) active:', 'quy tắc cảnh báo kích hoạt:')} ${targetAlerts.map(a => a.name).join(', ')}`}
                             >
                               <Bell className="w-2.5 h-2.5" />
-                              <span>{targetAlerts.length} Alert{targetAlerts.length > 1 ? 's' : ''}</span>
+                              <span>{targetAlerts.length} {t('Alert', 'Cảnh báo')}</span>
                             </Link>
                           )}
                         </div>
-                        <div className="text-[11px] font-mono text-[var(--color-muted)] mt-0.5">
+                        <div className="text-[11px] font-mono tabular-nums text-[var(--color-muted)] mt-0.5">
                           {target.host}{target.port ? `:${target.port}` : ''}
                         </div>
                       </td>
 
                       {/* Server */}
-                      <td className="px-4 py-3">
+                      <td className="px-3.5 py-2.5">
                         <Link
                           href={`/dashboard/servers/${target.agent_id}`}
-                          className="font-medium text-blue-400 hover:underline flex items-center gap-1.5"
+                          className="font-medium text-[var(--accent-primary)] hover:underline flex items-center gap-1.5"
                         >
                           <ServerIcon className="w-3 h-3 text-[var(--color-muted)] shrink-0" />
                           <span className="truncate max-w-[140px]">{target.server_name || target.agent_id}</span>
@@ -899,15 +904,15 @@ function NetworkQualityPageInner() {
                       </td>
 
                       {/* Tag */}
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)]">
+                      <td className="px-3.5 py-2.5">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)]">
                           {target.tag}
                         </span>
                       </td>
 
                       {/* Method */}
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center font-mono font-semibold px-2 py-0.5 rounded text-[11px] border ${
+                      <td className="px-3.5 py-2.5">
+                        <span className={`inline-flex items-center font-mono font-semibold px-1.5 py-0.5 rounded text-[10px] border ${
                           target.probe_method === 'TCP'
                             ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                             : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -917,12 +922,12 @@ function NetworkQualityPageInner() {
                       </td>
 
                       {/* Status */}
-                      <td className="px-4 py-3">
+                      <td className="px-3.5 py-2.5">
                         {renderStatusBadge(res?.status)}
                       </td>
 
                       {/* Latency */}
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-3.5 py-2.5 font-mono tabular-nums">
                         {lat != null ? (
                           <span className="font-semibold text-[var(--foreground)]">
                             {lat.toFixed(1)} ms
@@ -933,9 +938,9 @@ function NetworkQualityPageInner() {
                       </td>
 
                       {/* Packet Loss */}
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-3.5 py-2.5 font-mono tabular-nums">
                         {res?.packet_loss != null ? (
-                          <span className={res.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                          <span className={res.packet_loss > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500'}>
                             {res.packet_loss}%
                           </span>
                         ) : (
@@ -944,17 +949,17 @@ function NetworkQualityPageInner() {
                       </td>
 
                       {/* Probes */}
-                      <td className="px-4 py-3 font-mono text-[var(--color-muted)]">
+                      <td className="px-3.5 py-2.5 font-mono tabular-nums text-[var(--color-muted)]">
                         {res ? `${res.successful_probes}/${res.total_probes}` : `${target.probes_per_run}p`}
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3.5 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Link
                             href={`/dashboard/alerts?tab=create&category=network&target=${encodeURIComponent(target.name)}&server_id=${target.agent_id}&metric=network_latency`}
-                            title={`Create or manage alert rule for target "${target.name}"`}
-                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition cursor-pointer"
+                            title={t(`Create or manage alert rule for target "${target.name}"`, `Tạo hoặc quản lý cảnh báo cho "${target.name}"`)}
+                            className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-indigo-500/15 hover:border-indigo-500/30 text-indigo-400 transition-colors cursor-pointer"
                           >
                             <Bell className="w-3.5 h-3.5" />
                           </Link>
@@ -963,8 +968,8 @@ function NetworkQualityPageInner() {
                             type="button"
                             onClick={() => handleTestTargetNow(target)}
                             disabled={isTesting}
-                            title="Test target now"
-                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-blue-400 transition cursor-pointer disabled:opacity-50"
+                            title={t('Test target now', 'Kiểm tra mục tiêu ngay')}
+                            className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--border-subtle)] text-[var(--accent-primary)] transition-colors cursor-pointer disabled:opacity-50"
                           >
                             <Zap className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
                           </button>
@@ -972,8 +977,8 @@ function NetworkQualityPageInner() {
                           <button
                             type="button"
                             onClick={() => openHistoryModal(target)}
-                            title="View history chart"
-                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] transition cursor-pointer"
+                            title={t('View history chart', 'Xem biểu đồ lịch sử')}
+                            className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--border-subtle)] text-[var(--foreground)] transition-colors cursor-pointer"
                           >
                             <Activity className="w-3.5 h-3.5" />
                           </button>
@@ -981,8 +986,8 @@ function NetworkQualityPageInner() {
                           <button
                             type="button"
                             onClick={() => openEditModal(target)}
-                            title="Edit target"
-                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] transition cursor-pointer"
+                            title={t('Edit target', 'Chỉnh sửa mục tiêu')}
+                            className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--border-subtle)] text-[var(--foreground)] transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -990,8 +995,8 @@ function NetworkQualityPageInner() {
                           <button
                             type="button"
                             onClick={() => setDeleteConfirmTarget(target)}
-                            title="Delete target"
-                            className="p-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
+                            title={t('Delete target', 'Xóa mục tiêu')}
+                            className="p-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1010,29 +1015,29 @@ function NetworkQualityPageInner() {
 
       {/* Target Add/Edit Modal */}
       {targetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl p-6 text-[var(--foreground)]">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-4 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-5 text-[var(--foreground)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3 mb-3.5">
               <div className="flex items-center gap-2">
-                <Network className="w-5 h-5 text-blue-400" />
-                <h3 className="text-base font-bold">
-                  {editingTarget ? `Edit Target: ${editingTarget.name}` : 'Add Network Probe Target'}
+                <Network className="w-4 h-4 text-[var(--accent-primary)]" />
+                <h3 className="text-sm font-bold">
+                  {editingTarget ? `${t('Edit Target:', 'Sửa mục tiêu:')} ${editingTarget.name}` : t('Add Network Probe Target', 'Thêm mục tiêu kiểm tra mạng')}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setTargetModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                className="p-1 rounded-md hover:bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Preset quick buttons (only on create) */}
             {!editingTarget && presets.length > 0 && (
-              <div className="mb-5 p-3 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)]">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)] block mb-2">
-                  Presets
+              <div className="mb-4 p-2.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)]">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--color-muted)] block mb-1.5">
+                  {t('Presets', 'Mẫu cấu hình nhanh')}
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {presets.map((p) => (
@@ -1040,7 +1045,7 @@ function NetworkQualityPageInner() {
                       key={p.name}
                       type="button"
                       onClick={() => applyPreset(p)}
-                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] hover:border-blue-500 hover:text-blue-400 transition cursor-pointer shadow-xs"
+                      className="px-2 py-0.5 text-[11px] font-semibold rounded-sm bg-[var(--surface-1)] border border-[var(--border-subtle)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors cursor-pointer"
                     >
                       {p.name}
                     </button>
@@ -1049,12 +1054,12 @@ function NetworkQualityPageInner() {
               </div>
             )}
 
-            <form onSubmit={handleSaveTarget} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveTarget} className="space-y-3.5 text-xs">
               {/* Target Name & Host */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Target Name <span className="text-rose-400">*</span>
+                    {t('Target Name', 'Tên mục tiêu')} <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1062,13 +1067,13 @@ function NetworkQualityPageInner() {
                     placeholder="e.g. Cloudflare DNS, Viettel Core"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:border-[var(--accent-primary)] focus:outline-none transition-colors"
                   />
                 </div>
 
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Host / IP Address <span className="text-rose-400">*</span>
+                    {t('Host / IP Address', 'Host / Địa chỉ IP')} <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1077,7 +1082,7 @@ function NetworkQualityPageInner() {
                     disabled={formData.is_gateway}
                     value={formData.host}
                     onChange={(e) => setFormData({ ...formData, host: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-60"
+                    className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:border-[var(--accent-primary)] focus:outline-none disabled:opacity-50 transition-colors font-mono"
                   />
                 </div>
               </div>
@@ -1086,14 +1091,14 @@ function NetworkQualityPageInner() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Tag / Category
+                    {t('Tag / Category', 'Thẻ / Phân loại')}
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. International, Domestic, Infrastructure"
+                    placeholder="e.g. International, Domestic"
                     value={formData.tag}
                     onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                    className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:border-[var(--accent-primary)] focus:outline-none transition-colors"
                   />
                   <div className="flex gap-1 mt-1.5 flex-wrap">
                     {['International', 'Domestic', 'Infrastructure', 'Custom'].map((tag) => (
@@ -1101,7 +1106,7 @@ function NetworkQualityPageInner() {
                         key={tag}
                         type="button"
                         onClick={() => setFormData({ ...formData, tag })}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-subtle)] border border-[var(--border-color)] hover:text-blue-400"
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm bg-[var(--surface-2)] border border-[var(--border-subtle)] hover:text-[var(--accent-primary)] transition-colors cursor-pointer"
                       >
                         {tag}
                       </button>
@@ -1111,7 +1116,7 @@ function NetworkQualityPageInner() {
 
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Probe Method
+                    {t('Probe Method', 'Phương thức kiểm tra')}
                   </label>
                   <CustomSelect
                     value={formData.probe_method}
@@ -1126,7 +1131,7 @@ function NetworkQualityPageInner() {
 
                 <div>
                   <label className="block font-semibold mb-1 text-[var(--foreground)]">
-                    Port
+                    {t('Port', 'Cổng (Port)')}
                   </label>
                   <input
                     type="number"
@@ -1134,20 +1139,20 @@ function NetworkQualityPageInner() {
                     max={65535}
                     value={formData.port}
                     onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
+                    className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:border-[var(--accent-primary)] focus:outline-none font-mono tabular-nums transition-colors"
                   />
                 </div>
               </div>
 
               {/* Thresholds (Optional) */}
-              <div className="p-3 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] space-y-2">
+              <div className="p-3 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] space-y-2">
                 <span className="font-semibold text-[var(--foreground)] block">
-                  Alert Thresholds
+                  {t('Alert Thresholds', 'Ngưỡng cảnh báo')}
                 </span>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="block text-[var(--color-muted)] mb-1">
-                      Warning Latency (ms)
+                    <label className="block text-[var(--color-muted)] mb-1 text-[11px]">
+                      {t('Warning Latency (ms)', 'Độ trễ cảnh báo (ms)')}
                     </label>
                     <input
                       type="number"
@@ -1155,13 +1160,13 @@ function NetworkQualityPageInner() {
                       placeholder="Default: 50 ms"
                       value={formData.alert_latency_warning_ms}
                       onChange={(e) => setFormData({ ...formData, alert_latency_warning_ms: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-[var(--foreground)] focus:outline-none font-mono"
+                      className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:outline-none font-mono tabular-nums"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[var(--color-muted)] mb-1">
-                      Critical Latency (ms)
+                    <label className="block text-[var(--color-muted)] mb-1 text-[11px]">
+                      {t('Critical Latency (ms)', 'Độ trễ sự cố (ms)')}
                     </label>
                     <input
                       type="number"
@@ -1169,13 +1174,13 @@ function NetworkQualityPageInner() {
                       placeholder="Default: 150 ms"
                       value={formData.alert_latency_critical_ms}
                       onChange={(e) => setFormData({ ...formData, alert_latency_critical_ms: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-[var(--foreground)] focus:outline-none font-mono"
+                      className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:outline-none font-mono tabular-nums"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[var(--color-muted)] mb-1">
-                      Critical Packet Loss (%)
+                    <label className="block text-[var(--color-muted)] mb-1 text-[11px]">
+                      {t('Critical Packet Loss (%)', 'Mất gói sự cố (%)')}
                     </label>
                     <input
                       type="number"
@@ -1183,7 +1188,7 @@ function NetworkQualityPageInner() {
                       placeholder="Default: 20 %"
                       value={formData.alert_loss_critical_pct}
                       onChange={(e) => setFormData({ ...formData, alert_loss_critical_pct: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg bg-[var(--background-card)] border border-[var(--border-color)] text-[var(--foreground)] focus:outline-none font-mono"
+                      className="w-full px-2.5 py-1.5 rounded-md bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--foreground)] focus:outline-none font-mono tabular-nums"
                     />
                   </div>
                 </div>
@@ -1204,9 +1209,9 @@ function NetworkQualityPageInner() {
                         tag: chk ? 'Hạ tầng nội bộ' : formData.tag,
                       });
                     }}
-                    className="rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
+                    className="rounded-sm border-[var(--border-subtle)] text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="font-semibold text-[var(--foreground)]">Is Default Gateway Target</span>
+                  <span className="font-semibold text-[var(--foreground)]">{t('Is Default Gateway Target', 'Là Gateway mặc định')}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -1214,44 +1219,44 @@ function NetworkQualityPageInner() {
                     type="checkbox"
                     checked={formData.enabled}
                     onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                    className="rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
+                    className="rounded-sm border-[var(--border-subtle)] text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="font-semibold text-[var(--foreground)]">Enabled</span>
+                  <span className="font-semibold text-[var(--foreground)]">{t('Enabled', 'Kích hoạt')}</span>
                 </label>
               </div>
 
               {/* Server Selection (Multi-agent Batch Add on create) */}
               {!editingTarget && (
-                <div className="pt-2 border-t border-[var(--border-color)]">
+                <div className="pt-2 border-t border-[var(--border-subtle)]">
                   <div className="flex items-center justify-between mb-2">
                     <label className="font-semibold text-[var(--foreground)] block">
-                      Assign to Servers ({selectedAgentIds.length}/{servers.length} selected)
+                      {t('Assign to Servers', 'Gán vào máy chủ')} ({selectedAgentIds.length}/{servers.length} {t('selected', 'đã chọn')})
                     </label>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedAgentIds(servers.map((s) => s.id))}
-                        className="text-[11px] text-blue-400 hover:underline"
+                        className="text-[11px] text-[var(--accent-primary)] hover:underline cursor-pointer"
                       >
-                        Select All
+                        {t('Select All', 'Chọn tất cả')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedAgentIds([])}
-                        className="text-[11px] text-[var(--color-muted)] hover:underline"
+                        className="text-[11px] text-[var(--color-muted)] hover:underline cursor-pointer"
                       >
-                        Clear
+                        {t('Clear', 'Bỏ chọn')}
                       </button>
                     </div>
                   </div>
 
-                  <div className="max-h-36 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-2 space-y-1">
+                  <div className="max-h-36 overflow-y-auto rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2 space-y-1">
                     {servers.map((s) => {
                       const checked = selectedAgentIds.includes(s.id);
                       return (
                         <label
                           key={s.id}
-                          className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[var(--border-color)]/50 cursor-pointer text-xs"
+                          className="flex items-center gap-2 p-1 rounded-sm hover:bg-[var(--surface-1)] cursor-pointer text-xs"
                         >
                           <input
                             type="checkbox"
@@ -1263,10 +1268,10 @@ function NetworkQualityPageInner() {
                                 setSelectedAgentIds(selectedAgentIds.filter((id) => id !== s.id));
                               }
                             }}
-                            className="rounded border-[var(--border-color)] text-blue-600 focus:ring-blue-500"
+                            className="rounded-sm border-[var(--border-subtle)] text-blue-600 focus:ring-blue-500"
                           />
                           <span className="font-medium text-[var(--foreground)]">{s.name}</span>
-                          <span className="text-[10px] font-mono text-[var(--color-muted)]">
+                          <span className="text-[10px] font-mono tabular-nums text-[var(--color-muted)]">
                             ({s.ip_address || s.id})
                           </span>
                         </label>
@@ -1277,20 +1282,20 @@ function NetworkQualityPageInner() {
               )}
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-[var(--border-color)]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
                 <button
                   type="button"
                   onClick={() => setTargetModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-[var(--foreground)] font-semibold text-xs hover:bg-[var(--border-color)] transition cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--foreground)] font-semibold text-xs hover:bg-[var(--border-subtle)] transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {t('Cancel', 'Hủy')}
                 </button>
                 <button
                   type="submit"
                   disabled={savingTarget}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-md bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  {savingTarget ? 'Saving...' : editingTarget ? 'Save Changes' : 'Create Target(s)'}
+                  {savingTarget ? t('Saving...', 'Đang lưu...') : editingTarget ? t('Save Changes', 'Lưu thay đổi') : t('Create Target(s)', 'Tạo mục tiêu')}
                 </button>
               </div>
             </form>
@@ -1300,38 +1305,38 @@ function NetworkQualityPageInner() {
 
       {/* Target History Modal */}
       {historyModalOpen && historyTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-3xl rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl p-6 text-[var(--foreground)] space-y-4">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-3xl rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-5 text-[var(--foreground)] space-y-3.5">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
               <div>
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-base font-bold">{historyTarget.name} — Latency History</h3>
+                  <Activity className="w-4 h-4 text-[var(--accent-primary)]" />
+                  <h3 className="text-sm font-bold">{historyTarget.name} — {t('Latency History', 'Lịch sử độ trễ')}</h3>
                 </div>
-                <p className="text-xs text-[var(--color-muted)] font-mono mt-0.5">
-                  Host: {historyTarget.host} · Server: {historyTarget.server_name || historyTarget.agent_id}
+                <p className="text-[11px] text-[var(--color-muted)] font-mono tabular-nums mt-0.5">
+                  Host: {historyTarget.host} · {t('Server:', 'Máy chủ:')} {historyTarget.server_name || historyTarget.agent_id}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setHistoryModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                className="p-1 rounded-md hover:bg-[var(--surface-2)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Time Range Selector */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 bg-[var(--surface-subtle)] p-1 rounded-xl border border-[var(--border-color)]">
+              <div className="flex items-center gap-1 bg-[var(--surface-2)] p-0.5 rounded-md border border-[var(--border-subtle)]">
                 {(['6h', '24h', '7d'] as const).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => openHistoryModal(historyTarget, r)}
-                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                    className={`px-2.5 py-1 text-xs font-mono font-semibold rounded-sm transition-colors cursor-pointer ${
                       historyRange === r
-                        ? 'bg-blue-600 text-white shadow-xs'
+                        ? 'bg-[var(--accent-primary)] text-white'
                         : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                     }`}
                   >
@@ -1340,20 +1345,20 @@ function NetworkQualityPageInner() {
                 ))}
               </div>
 
-              <span className="text-xs text-[var(--color-muted)] font-mono">
-                {historyData.length} data points
+              <span className="text-[11px] text-[var(--color-muted)] font-mono tabular-nums">
+                {historyData.length} {t('data points', 'điểm dữ liệu')}
               </span>
             </div>
 
             {/* Chart Area */}
-            <div className="h-64 w-full rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] p-3">
+            <div className="h-64 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5">
               {loadingHistory ? (
                 <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
-                  Loading time-series data...
+                  {t('Loading time-series data...', 'Đang tải dữ liệu chuỗi thời gian...')}
                 </div>
               ) : historyData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-[var(--color-muted)]">
-                  No historical measurements recorded in this range.
+                  {t('No historical measurements recorded in this range.', 'Không có bản ghi đo lường nào trong khoảng thời gian này.')}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -1384,20 +1389,20 @@ function NetworkQualityPageInner() {
                         if (!active || !payload || !payload.length) return null;
                         const pt = payload[0].payload as NetworkTargetResult;
                         return (
-                          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-2.5 shadow-xl text-xs space-y-1">
+                          <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-2 text-xs space-y-1">
                             <p className="text-[var(--color-muted)] font-mono text-[10px]">
                               {new Date(pt.measured_at).toLocaleString()}
                             </p>
-                            <p className="font-bold text-[var(--foreground)] font-mono">
-                              Latency: {pt.latency_ms?.toFixed(1) ?? 'N/A'} ms
+                            <p className="font-bold text-[var(--foreground)] font-mono tabular-nums">
+                              {t('Latency', 'Độ trễ')}: {pt.latency_ms?.toFixed(1) ?? 'N/A'} ms
                             </p>
                             {pt.packet_loss != null && (
-                              <p className={`font-mono text-[11px] ${pt.packet_loss > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
-                                Packet Loss: {pt.packet_loss}%
+                              <p className={`font-mono tabular-nums text-[11px] ${pt.packet_loss > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500'}`}>
+                                {t('Packet Loss', 'Mất gói')}: {pt.packet_loss}%
                               </p>
                             )}
-                            <p className="text-[10px] text-[var(--color-muted)]">
-                              Status: {pt.status.toUpperCase()} ({pt.successful_probes}/{pt.total_probes} probes)
+                            <p className="text-[10px] text-[var(--color-muted)] font-mono tabular-nums">
+                              {t('Status', 'Trạng thái')}: {pt.status.toUpperCase()} ({pt.successful_probes}/{pt.total_probes} {t('probes', 'mẫu')})
                             </p>
                           </div>
                         );
@@ -1407,7 +1412,7 @@ function NetworkQualityPageInner() {
                       type="monotone"
                       dataKey="latency_ms"
                       stroke="#3b82f6"
-                      strokeWidth={2}
+                      strokeWidth={1.5}
                       fillOpacity={1}
                       fill="url(#latencyGradient)"
                     />
@@ -1416,13 +1421,13 @@ function NetworkQualityPageInner() {
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={() => setHistoryModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-[var(--surface-subtle)] border border-[var(--border-color)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-color)]"
+                className="px-3.5 py-1.5 rounded-md bg-[var(--surface-2)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--border-subtle)] transition-colors cursor-pointer"
               >
-                Close
+                {t('Close', 'Đóng')}
               </button>
             </div>
           </div>
@@ -1431,37 +1436,40 @@ function NetworkQualityPageInner() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-rose-500/40 bg-[var(--background-card)] shadow-2xl p-6 text-[var(--foreground)] space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                <Trash2 className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md rounded-md border border-rose-500/40 bg-[var(--surface-1)] p-5 text-[var(--foreground)] space-y-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-md bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                <Trash2 className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-base font-bold">Delete Network Target</h3>
-                <p className="text-xs text-[var(--color-muted)]">This action cannot be undone.</p>
+                <h3 className="text-sm font-bold">{t('Delete Network Target', 'Xóa mục tiêu mạng')}</h3>
+                <p className="text-[11px] text-[var(--color-muted)]">{t('This action cannot be undone.', 'Hành động này không thể hoàn tác.')}</p>
               </div>
             </div>
 
-            <p className="text-xs text-[var(--foreground)]">
-              Are you sure you want to delete target <strong>&ldquo;{deleteConfirmTarget.name}&rdquo;</strong> on server <strong>{deleteConfirmTarget.server_name || deleteConfirmTarget.agent_id}</strong>?
+            <p className="text-xs text-[var(--foreground)] leading-relaxed">
+              {t('Are you sure you want to delete target', 'Bạn có chắc chắn muốn xóa mục tiêu')}{' '}
+              <strong className="font-mono">&ldquo;{deleteConfirmTarget.name}&rdquo;</strong>{' '}
+              {t('on server', 'trên máy chủ')}{' '}
+              <strong>{deleteConfirmTarget.server_name || deleteConfirmTarget.agent_id}</strong>?
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-color)]">
+            <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-[var(--border-subtle)]">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmTarget(null)}
-                className="px-4 py-2 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-semibold hover:bg-[var(--border-color)]"
+                className="px-3.5 py-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-xs font-semibold hover:bg-[var(--border-subtle)] transition-colors cursor-pointer"
               >
-                Cancel
+                {t('Cancel', 'Hủy')}
               </button>
               <button
                 type="button"
                 onClick={handleDeleteTarget}
                 disabled={deletingTarget}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-500/20 disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
               >
-                {deletingTarget ? 'Deleting...' : 'Confirm Delete'}
+                {deletingTarget ? t('Deleting...', 'Đang xóa...') : t('Confirm Delete', 'Xác nhận xóa')}
               </button>
             </div>
           </div>

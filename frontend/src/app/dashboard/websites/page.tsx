@@ -11,8 +11,7 @@ import {
 import { apiClient, getUserRole } from '@/lib/apiClient';
 import toast from 'react-hot-toast';
 import ConfirmModal from '@/components/ConfirmModal';
-
-
+import { useLanguage } from '@/components/LanguageContext';
 
 interface Website {
   id: string;
@@ -26,7 +25,6 @@ interface Website {
   response_time_ms?: number;
   history_24h?: number[];
   down_started_at?: string;
-
   created_at?: string;
 }
 
@@ -102,13 +100,13 @@ function parseJSON<T>(value: string | T | undefined): T | undefined {
   }
 }
 
-function formatMonthYearRange(startStr?: string, endStr?: string) {
+function formatMonthYearRange(startStr?: string, endStr?: string, locale: string = 'en-US') {
   if (!startStr || !endStr) return 'Jun 2026 - Sep 2026';
   const start = new Date(startStr + 'T00:00:00Z');
   const end = new Date(endStr + 'T00:00:00Z');
-  const startMonth = start.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+  const startMonth = start.toLocaleString(locale, { month: 'short', timeZone: 'UTC' });
   const startYear = start.getUTCFullYear();
-  const endMonth = end.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+  const endMonth = end.toLocaleString(locale, { month: 'short', timeZone: 'UTC' });
   const endYear = end.getUTCFullYear();
 
   if (startYear === endYear) {
@@ -120,11 +118,11 @@ function formatMonthYearRange(startStr?: string, endStr?: string) {
   return `${startMonth} ${startYear} - ${endMonth} ${endYear}`;
 }
 
-function formatTooltipDate(dateStr: string) {
+function formatTooltipDate(dateStr: string, locale: string = 'en-US') {
   try {
     const d = new Date(dateStr + 'T00:00:00Z');
     const day = d.getUTCDate();
-    const month = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const month = d.toLocaleString(locale, { month: 'short', timeZone: 'UTC' });
     const year = d.getUTCFullYear();
     return `${day} ${month} ${year}`;
   } catch {
@@ -132,17 +130,18 @@ function formatTooltipDate(dateStr: string) {
   }
 }
 
-function formatOutageDuration(seconds: number) {
-  if (seconds <= 0) return '0 mins';
+function formatOutageDuration(seconds: number, isVi: boolean) {
+  if (seconds <= 0) return isVi ? '0 phút' : '0 mins';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
-  if (hrs > 0 && mins > 0) return `${hrs} hrs ${mins} mins`;
-  if (hrs > 0) return `${hrs} ${hrs === 1 ? 'hr' : 'hrs'}`;
-  if (mins > 0) return `${mins} mins`;
-  return '< 1 min';
+  if (hrs > 0 && mins > 0) return isVi ? `${hrs} giờ ${mins} phút` : `${hrs} hrs ${mins} mins`;
+  if (hrs > 0) return isVi ? `${hrs} giờ` : `${hrs} ${hrs === 1 ? 'hr' : 'hrs'}`;
+  if (mins > 0) return isVi ? `${mins} phút` : `${mins} mins`;
+  return isVi ? '< 1 phút' : '< 1 min';
 }
 
 export default function WebsitesPage() {
+  const { t, isVi } = useLanguage();
   const [websites, setWebsites] = useState<Website[]>([]);
   const [servers, setServers] = useState<ServerRecord[]>([]);
 
@@ -226,8 +225,6 @@ export default function WebsitesPage() {
     }
   }
 
-
-
   const refreshAll = () => {
     void fetchWebsites();
     void fetchServers();
@@ -286,11 +283,11 @@ export default function WebsitesPage() {
     setCheckingId(id);
     try {
       await apiClient(`/websites/${id}/check`, { method: 'POST' }).catch(() => {});
-      toast.success(`Triggered health check for ${name}`);
+      toast.success(t(`Triggered health check for ${name}`, `Đã kích hoạt kiểm tra ${name}`));
       await fetchWebsites();
       await fetchUptimeSummary(selectedEndDate);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Check failed');
+      toast.error(err instanceof Error ? err.message : t('Check failed', 'Kiểm tra thất bại'));
     } finally {
       setCheckingId(null);
     }
@@ -298,10 +295,9 @@ export default function WebsitesPage() {
 
   const openAddModal = () => {
     if (isViewer) {
-      toast.error('Adding websites requires Operator or Admin role');
+      toast.error(t('Adding websites requires Operator or Admin role', 'Thêm website yêu cầu quyền Operator hoặc Admin'));
       return;
     }
-
     setIsModalOpen(true);
   };
 
@@ -321,9 +317,9 @@ export default function WebsitesPage() {
       setNewUrl('');
       await fetchWebsites();
       await fetchUptimeSummary(selectedEndDate);
-      toast.success('Website added to monitoring suite');
+      toast.success(t('Website added to monitoring suite', 'Đã thêm website vào hệ thống giám sát'));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unable to add website');
+      setError(err instanceof Error ? err.message : t('Unable to add website', 'Không thể thêm website'));
     } finally {
       setSubmitting(false);
     }
@@ -331,13 +327,12 @@ export default function WebsitesPage() {
 
   const openEditModal = (w: Website) => {
     if (isViewer) {
-      toast.error('Editing websites requires Operator or Admin role');
+      toast.error(t('Editing websites requires Operator or Admin role', 'Sửa website yêu cầu quyền Operator hoặc Admin'));
       return;
     }
     setEditingWebsite(w);
     setEditName(w.name);
     setEditUrl(w.url);
-
     setEditError('');
     setIsEditModalOpen(true);
   };
@@ -359,9 +354,9 @@ export default function WebsitesPage() {
       setEditingWebsite(null);
       await fetchWebsites();
       await fetchUptimeSummary(selectedEndDate);
-      toast.success('Website configuration updated');
+      toast.success(t('Website configuration updated', 'Đã cập nhật cấu hình website'));
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Unable to update website');
+      setEditError(err instanceof Error ? err.message : t('Unable to update website', 'Không thể cập nhật website'));
     } finally {
       setUpdatingWebsite(false);
     }
@@ -372,12 +367,12 @@ export default function WebsitesPage() {
     setDeletingWebsite(true);
     try {
       await apiClient(`/websites/${pendingDeleteWebsite.id}`, { method: 'DELETE' });
-      toast.success(`Website ${pendingDeleteWebsite.name} removed`);
+      toast.success(t(`Website ${pendingDeleteWebsite.name} removed`, `Đã xóa website ${pendingDeleteWebsite.name}`));
       setPendingDeleteWebsite(null);
       await fetchWebsites();
       await fetchUptimeSummary(selectedEndDate);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete website');
+      toast.error(err instanceof Error ? err.message : t('Failed to delete website', 'Không thể xóa website'));
     } finally {
       setDeletingWebsite(false);
     }
@@ -398,14 +393,14 @@ export default function WebsitesPage() {
     const diffMs = currentTimestamp - new Date(startedAt).getTime();
     if (diffMs < 0) return null;
     const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return 'down < 1m';
+    if (mins < 1) return isVi ? 'down < 1m' : 'down < 1m';
     if (mins < 60) return `down ${mins}m`;
     const hours = Math.floor(mins / 60);
     return `down ${hours}h ${mins % 60}m`;
   };
 
   const formatDowntimeDuration = (seconds?: number) => {
-    if (!seconds || seconds <= 0) return '0m downtime';
+    if (!seconds || seconds <= 0) return isVi ? '0m downtime' : '0m downtime';
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -462,133 +457,159 @@ export default function WebsitesPage() {
         })
       }));
 
+  const dateLocale = isVi ? 'vi-VN' : 'en-US';
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[var(--foreground)] tracking-tight flex items-center gap-3">
-            <Globe className="w-6 h-6 text-blue-400" />
-            Uptime & Availability
+          <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)] tracking-tight flex items-center gap-2.5">
+            <Globe className="w-5 h-5 text-blue-500" />
+            {t('Uptime & Availability', 'Thời gian hoạt động & Độ sẵn sàng')}
           </h1>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             onClick={refreshAll}
-            className="h-9 px-3.5 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] hover:bg-[var(--surface-subtle)] text-xs font-semibold text-[var(--foreground)] transition shadow-sm"
+            className="h-8 px-3 inline-flex items-center gap-2 rounded-sm border border-[var(--border-default)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)] transition duration-100"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingWebsites || loadingServers || loadingUptimeSummary ? 'animate-spin text-blue-400' : ''}`} />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingWebsites || loadingServers || loadingUptimeSummary ? 'animate-spin text-blue-500' : ''}`} />
+            {t('Refresh', 'Làm mới')}
           </button>
           <button
             onClick={openAddModal}
             disabled={isViewer}
-            title={isViewer ? 'Adding websites requires Operator or Admin role' : ''}
-            className="h-9 px-3.5 inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition shadow-sm shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isViewer ? t('Adding websites requires Operator or Admin role', 'Thêm website yêu cầu quyền Operator hoặc Admin') : ''}
+            className="h-8 px-3 inline-flex items-center gap-1.5 rounded-sm bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus className="w-3.5 h-3.5" /> Add Website
+            <Plus className="w-3.5 h-3.5" /> {t('Add Website', 'Thêm Website')}
           </button>
         </div>
       </div>
 
       {/* 4 Overview Metric Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Card 1: Websites Availability */}
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Web Endpoints</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400">
-              <Globe className="h-5 w-5" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              {t('Web Endpoints', 'Điểm cuối Web')}
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-emerald-500/10 text-emerald-500">
+              <Globe className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[var(--foreground)]">{websites.length}</span>
-            <span className="text-xs text-[var(--color-muted)]">targets</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">{websites.length}</span>
+            <span className="text-xs text-[var(--color-muted)]">{t('targets', 'mục tiêu')}</span>
           </div>
-          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {upWebsites.length} Operational {downWebsites.length > 0 && <span className="text-rose-700 dark:text-rose-400 font-bold">· {downWebsites.length} Down</span>}
+          <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-mono tabular-nums">{upWebsites.length}</span> {t('Operational', 'Hoạt động')}
+            {downWebsites.length > 0 && (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold ml-1">
+                · <span className="font-mono tabular-nums">{downWebsites.length}</span> {t('Down', 'Gián đoạn')}
+              </span>
+            )}
           </p>
         </div>
 
         {/* Card 2: Server Fleet Uptime */}
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">Server Fleet</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400">
-              <Server className="h-5 w-5" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              {t('Server Fleet', 'Cụm máy chủ')}
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-blue-500/10 text-blue-500">
+              <Server className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[var(--foreground)]">{servers.length}</span>
-            <span className="text-xs text-[var(--color-muted)]">nodes</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">{servers.length}</span>
+            <span className="text-xs text-[var(--color-muted)]">{t('nodes', 'nút')}</span>
           </div>
-          <p className="mt-1 text-xs text-blue-700 dark:text-blue-400 font-semibold flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {onlineServers.length} Online {offlineServers.length > 0 && <span className="text-rose-700 dark:text-rose-400 font-bold">· {offlineServers.length} Offline</span>}
+          <p className="mt-1 text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-mono tabular-nums">{onlineServers.length}</span> {t('Online', 'Trực tuyến')}
+            {offlineServers.length > 0 && (
+              <span className="text-rose-600 dark:text-rose-400 font-semibold ml-1">
+                · <span className="font-mono tabular-nums">{offlineServers.length}</span> {t('Offline', 'Ngoại tuyến')}
+              </span>
+            )}
           </p>
         </div>
 
         {/* Card 3: Overall Availability Ratio */}
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">System Availability</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-800 dark:bg-cyan-500/10 dark:text-cyan-400">
-              <Activity className="h-5 w-5" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              {t('System Availability', 'Độ sẵn sàng hệ thống')}
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-cyan-500/10 text-cyan-500">
+              <Activity className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[var(--foreground)]">{overallAvailability}</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">{overallAvailability}</span>
           </div>
-          <p className="mt-1 text-xs text-cyan-600 dark:text-cyan-400 font-semibold">
-            Fleet probe average
+          <p className="mt-1 text-xs text-[var(--color-muted)] font-medium">
+            {t('Fleet probe average', 'Trung bình đo kiểm toàn cụm')}
           </p>
         </div>
 
         {/* Card 4: SSL Certificates */}
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] p-5 shadow-sm">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">SSL Certificates</span>
-            <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-              expiringSslCount > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-purple-100 text-purple-800 dark:bg-purple-500/10 dark:text-purple-400'
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              {t('SSL Certificates', 'Chứng chỉ SSL')}
+            </span>
+            <div className={`flex h-8 w-8 items-center justify-center rounded-sm ${
+              expiringSslCount > 0 ? 'bg-amber-500/10 text-amber-500' : 'bg-purple-500/10 text-purple-500'
             }`}>
-              {expiringSslCount > 0 ? <ShieldAlert className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+              {expiringSslCount > 0 ? <ShieldAlert className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[var(--foreground)]">{websites.length - expiringSslCount} / {websites.length}</span>
-            <span className="text-xs text-[var(--color-muted)]">healthy</span>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tabular-nums text-[var(--foreground)]">
+              {websites.length - expiringSslCount} / {websites.length}
+            </span>
+            <span className="text-xs text-[var(--color-muted)]">{t('healthy', 'hợp lệ')}</span>
           </div>
-          <p className={`mt-1 text-xs font-semibold ${expiringSslCount > 0 ? 'text-amber-800 dark:text-amber-400' : 'text-emerald-800 dark:text-emerald-400'}`}>
-            {expiringSslCount > 0 ? `⚠️ ${expiringSslCount} expiring soon (≤ 14d)` : 'All certificates valid'}
+          <p className={`mt-1 text-xs font-semibold ${expiringSslCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            {expiringSslCount > 0
+              ? t(`⚠️ ${expiringSslCount} expiring soon (≤ 14d)`, `⚠️ ${expiringSslCount} sắp hết hạn (≤ 14 ngày)`)
+              : t('All certificates valid', 'Tất cả chứng chỉ hợp lệ')}
           </p>
         </div>
       </div>
 
       {/* Segmented View Switcher */}
-      <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-3">
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
         <button
           type="button"
           onClick={() => setActiveTab('websites')}
-          className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition ${
+          className={`h-8 px-3 rounded-sm text-xs font-semibold inline-flex items-center gap-2 transition duration-100 ${
             activeTab === 'websites'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+              ? 'bg-blue-600 text-white'
+              : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)]'
           }`}
         >
           <Globe className="w-3.5 h-3.5" />
-          Websites & Endpoints ({websites.length})
+          {t('Websites & Endpoints', 'Website & Điểm cuối')} ({websites.length})
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('servers')}
-          className={`h-9 px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-2 transition ${
+          className={`h-8 px-3 rounded-sm text-xs font-semibold inline-flex items-center gap-2 transition duration-100 ${
             activeTab === 'servers'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-              : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+              ? 'bg-blue-600 text-white'
+              : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)]'
           }`}
         >
           <Server className="w-3.5 h-3.5" />
-          Servers & Agents Host Uptime ({servers.length})
+          {t('Servers & Agents Host Uptime', 'Máy chủ & Uptime máy chủ')} ({servers.length})
         </button>
       </div>
 
@@ -597,49 +618,53 @@ export default function WebsitesPage() {
         <>
           {loadingWebsites && loadingUptimeSummary && websites.length === 0 ? (
             <div className="flex justify-center p-16">
-              <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+              <div className="w-7 h-7 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
             </div>
           ) : websites.length === 0 ? (
-            <div className="ops-panel p-12 text-center rounded-2xl border border-dashed border-[var(--border-color)]">
-              <Globe className="w-12 h-12 text-[var(--color-muted)] mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-bold text-[var(--foreground)] mb-2">No monitored websites yet</h3>
-              <p className="text-[var(--color-muted)] text-sm mb-5">Add a URL (https://...) to initiate automated health checks, 90-day uptime metrics, and SSL alerts.</p>
+            <div className="p-12 text-center rounded-md border border-dashed border-[var(--border-default)] bg-[var(--surface-1)]">
+              <Globe className="w-10 h-10 text-[var(--color-muted)] mx-auto mb-3 opacity-40" />
+              <h3 className="text-base font-bold text-[var(--foreground)] mb-1.5">{t('No monitored websites yet', 'Chưa có website nào được giám sát')}</h3>
+              <p className="text-[var(--color-muted)] text-xs mb-4 max-w-md mx-auto">
+                {t('Add a URL (https://...) to initiate automated health checks, 90-day uptime metrics, and SSL alerts.', 'Thêm một URL (https://...) để kích hoạt kiểm tra tự động, số liệu hoạt động 90 ngày và cảnh báo SSL.')}
+              </p>
               <button
                 onClick={openAddModal}
-                className="h-9 px-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors"
+                className="h-8 px-3.5 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-sm text-xs font-semibold transition duration-100"
               >
-                <Plus className="w-3.5 h-3.5" /> Add Website
+                <Plus className="w-3.5 h-3.5" /> {t('Add Website', 'Thêm Website')}
               </button>
             </div>
           ) : (
             /* System Status Container */
-            <div className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-sm">
+            <div className="overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
               {/* System status header & date window navigator */}
-              <div className="p-5 sm:p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-3.5">
-                  <h2 className="text-xl font-bold text-[var(--foreground)] tracking-tight">System status</h2>
+              <div className="p-4 sm:p-5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-base font-bold text-[var(--foreground)] tracking-tight">
+                    {t('System status', 'Trạng thái hệ thống')}
+                  </h2>
 
                   {/* Date window navigator */}
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-semibold text-[var(--foreground)]">
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)]">
                     <button
                       type="button"
                       onClick={handlePreviousDateRange}
-                      className="p-1 rounded hover:bg-white/10 text-[var(--color-muted)] hover:text-[var(--foreground)] transition"
-                      title="Previous 30 days"
+                      className="p-1 rounded hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition duration-100"
+                      title={t('Previous 30 days', '30 ngày trước')}
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-                    <span className="px-1 text-[var(--foreground)] select-none">
-                      {formatMonthYearRange(uptimeSummary?.start_date, uptimeSummary?.end_date)}
+                    <span className="px-1 text-[var(--foreground)] select-none font-mono text-[11px]">
+                      {formatMonthYearRange(uptimeSummary?.start_date, uptimeSummary?.end_date, dateLocale)}
                     </span>
                     <button
                       type="button"
                       onClick={handleNextDateRange}
                       disabled={!selectedEndDate}
-                      className={`p-1 rounded text-[var(--color-muted)] transition ${
-                        !selectedEndDate ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 hover:text-[var(--foreground)]'
+                      className={`p-1 rounded text-[var(--color-muted)] transition duration-100 ${
+                        !selectedEndDate ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[var(--surface-3)] hover:text-[var(--foreground)]'
                       }`}
-                      title="Next 30 days"
+                      title={t('Next 30 days', '30 ngày tiếp theo')}
                     >
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -649,7 +674,7 @@ export default function WebsitesPage() {
                         onClick={handleResetDateRange}
                         className="ml-1 text-[11px] text-blue-500 hover:underline font-semibold"
                       >
-                        Today
+                        {t('Today', 'Hôm nay')}
                       </button>
                     )}
                   </div>
@@ -657,28 +682,28 @@ export default function WebsitesPage() {
 
                 {/* View Mode Toggle */}
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)]">
+                  <div className="inline-flex p-0.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)]">
                     <button
                       type="button"
                       onClick={() => setWebsiteViewMode('timeline')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                      className={`px-2.5 py-1 rounded-sm text-xs font-semibold inline-flex items-center gap-1.5 transition duration-100 ${
                         websiteViewMode === 'timeline'
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-blue-600 text-white'
                           : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                       }`}
                     >
-                      <LayoutGrid className="w-3.5 h-3.5" /> Status bars
+                      <LayoutGrid className="w-3.5 h-3.5" /> {t('Status bars', 'Thanh trạng thái')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setWebsiteViewMode('table')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                      className={`px-2.5 py-1 rounded-sm text-xs font-semibold inline-flex items-center gap-1.5 transition duration-100 ${
                         websiteViewMode === 'table'
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-blue-600 text-white'
                           : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                       }`}
                     >
-                      <List className="w-3.5 h-3.5" /> Table view
+                      <List className="w-3.5 h-3.5" /> {t('Table view', 'Dạng bảng')}
                     </button>
                   </div>
                 </div>
@@ -686,17 +711,17 @@ export default function WebsitesPage() {
 
               {/* TIMELINE / 90-DAY STATUS BARS VIEW */}
               {websiteViewMode === 'timeline' ? (
-                <div className="divide-y divide-[var(--border-color)]">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {displayItems.map((item) => {
                     const website = websites.find(w => w.id === item.id);
                     const isUp = item.current_status.toUpperCase() === 'UP' || item.current_status.toLowerCase() === 'online';
                     const daysLeft = website?.ssl_days_remaining;
 
                     return (
-                      <div key={item.id} className="p-5 sm:p-6 transition hover:bg-[var(--surface-subtle)]/30">
+                      <div key={item.id} className="p-4 sm:p-5 transition hover:bg-[var(--surface-2)]">
                         {/* Component Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3.5">
-                          <div className="flex items-center gap-2.5 flex-wrap">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {isUp ? (
                               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                             ) : (
@@ -710,7 +735,7 @@ export default function WebsitesPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 title={`Open ${item.url}`}
-                                className="text-[var(--color-muted)] hover:text-blue-500 transition inline-flex items-center gap-0.5 text-xs"
+                                className="text-[var(--color-muted)] hover:text-blue-500 transition inline-flex items-center gap-0.5 text-xs font-mono"
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </a>
@@ -718,28 +743,28 @@ export default function WebsitesPage() {
 
                             {/* SSL Badge */}
                             {daysLeft !== undefined && (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold border ${
                                 daysLeft > 30
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
                                   : daysLeft > 15
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
-                                    : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
                               }`}>
                                 {daysLeft > 15 ? <ShieldCheck className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
-                                {daysLeft > 0 ? `${daysLeft}d SSL` : 'SSL Expired'}
+                                {daysLeft > 0 ? `${daysLeft}d SSL` : t('SSL Expired', 'SSL Hết hạn')}
                               </span>
                             )}
                           </div>
 
                           {/* Status and Action Buttons */}
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                          <div className="flex items-center gap-2.5 self-end sm:self-auto">
                             <span className={`text-xs font-semibold ${
-                              isUp ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+                              isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                             }`}>
-                              {isUp ? 'Operational' : 'Major outage'}
+                              {isUp ? t('Operational', 'Hoạt động') : t('Major outage', 'Sự cố')}
                             </span>
 
-                            <div className="flex items-center gap-1.5 pl-2 border-l border-[var(--border-color)]">
+                            <div className="flex items-center gap-1 pl-2 border-l border-[var(--border-subtle)]">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -752,19 +777,19 @@ export default function WebsitesPage() {
                                   openEditModal(target);
                                 }}
                                 disabled={isViewer}
-                                className="h-7 w-7 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition disabled:opacity-50"
-                                title={isViewer ? 'Requires Operator or Admin role' : 'Cấu hình website'}
+                                className="h-7 w-7 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition duration-100 disabled:opacity-50"
+                                title={isViewer ? t('Requires Operator or Admin role', 'Yêu cầu quyền Operator hoặc Admin') : t('Configure website', 'Cấu hình website')}
                               >
-                                <Settings2 className="w-3 h-3" />
+                                <Settings2 className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleManualCheck(item.id, item.name)}
                                 disabled={checkingId === item.id}
-                                className="h-7 w-7 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition"
-                                title="Check health now"
+                                className="h-7 w-7 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition duration-100"
+                                title={t('Check health now', 'Kiểm tra ngay')}
                               >
-                                <RefreshCw className={`w-3 h-3 ${checkingId === item.id ? 'animate-spin text-blue-400' : ''}`} />
+                                <RefreshCw className={`w-3.5 h-3.5 ${checkingId === item.id ? 'animate-spin text-blue-500' : ''}`} />
                               </button>
                               <button
                                 type="button"
@@ -773,18 +798,18 @@ export default function WebsitesPage() {
                                   if (isViewer) return;
                                   setPendingDeleteWebsite({ id: item.id, name: item.name });
                                 }}
-                                className="h-7 w-7 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={isViewer ? 'Deleting requires Operator or Admin role' : 'Delete'}
+                                className="h-7 w-7 rounded-sm border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 flex items-center justify-center transition duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={isViewer ? t('Deleting requires Operator or Admin role', 'Xóa yêu cầu quyền Operator hoặc Admin') : t('Delete', 'Xóa')}
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
                         </div>
 
                         {/* 90-Day Bars Container */}
-                        <div className="relative pt-2 pb-1">
-                          <div className="grid grid-cols-[repeat(90,minmax(0,1fr))] gap-[2px] sm:gap-[2.5px] h-8 sm:h-9 items-stretch">
+                        <div className="relative pt-1 pb-1">
+                          <div className="grid grid-cols-[repeat(90,minmax(0,1fr))] gap-[2px] h-7 sm:h-8 items-stretch">
                             {item.days.map((day, dayIdx) => {
                               let bgClass = 'bg-emerald-500 hover:bg-emerald-400 dark:bg-[#10a37f] dark:hover:bg-[#12b990]';
                               if (day.status === 'outage') {
@@ -792,7 +817,7 @@ export default function WebsitesPage() {
                               } else if (day.status === 'degraded') {
                                 bgClass = 'bg-amber-500 hover:bg-amber-400 dark:bg-[#f59e0b] dark:hover:bg-[#fbbf24]';
                               } else if (day.status === 'no_data') {
-                                bgClass = 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-700/80';
+                                bgClass = 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700';
                               }
 
                               const isHovered = hoveredDay?.itemId === item.id && hoveredDay?.barIndex === dayIdx;
@@ -802,7 +827,7 @@ export default function WebsitesPage() {
                                   key={day.date}
                                   onMouseEnter={() => setHoveredDay({ itemId: item.id, day, barIndex: dayIdx })}
                                   onMouseLeave={() => setHoveredDay(null)}
-                                  className={`h-full rounded-[2px] cursor-pointer transition-all duration-100 relative ${bgClass} ${
+                                  className={`h-full rounded-[1px] cursor-pointer transition-all duration-100 relative ${bgClass} ${
                                     isHovered ? 'scale-y-115 z-20 ring-1 ring-white/60 brightness-110' : 'opacity-95 hover:opacity-100'
                                   }`}
                                 />
@@ -814,7 +839,6 @@ export default function WebsitesPage() {
                           {hoveredDay && hoveredDay.itemId === item.id && (
                             (() => {
                               const barPercent = ((hoveredDay.barIndex + 0.5) / 90) * 100;
-                              // Clamp tooltip box center between 18% and 82%
                               const clampedBoxLeft = Math.max(18, Math.min(82, barPercent));
                               const arrowOffsetPct = barPercent - clampedBoxLeft;
 
@@ -824,23 +848,23 @@ export default function WebsitesPage() {
                                     left: `${clampedBoxLeft}%`,
                                     transform: 'translateX(-50%)',
                                   }}
-                                  className="absolute bottom-full mb-3 pointer-events-none z-30 transition-opacity duration-150"
+                                  className="absolute bottom-full mb-2 pointer-events-none z-30 transition-opacity duration-100"
                                 >
-                                  <div className="relative rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3.5 shadow-2xl min-w-[240px] max-w-[290px] text-xs">
+                                  <div className="relative rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-3 shadow-xl min-w-[240px] max-w-[290px] text-xs">
                                     {/* Header: Date */}
-                                    <div className="font-semibold text-sm text-[var(--foreground)] mb-2">
-                                      {formatTooltipDate(hoveredDay.day.date)}
+                                    <div className="font-semibold text-xs text-[var(--foreground)] mb-1.5 font-mono">
+                                      {formatTooltipDate(hoveredDay.day.date, dateLocale)}
                                     </div>
 
                                     {/* Status card */}
-                                    <div className={`rounded-lg p-2 flex items-center justify-between text-xs font-semibold mb-2.5 ${
+                                    <div className={`rounded-sm p-2 flex items-center justify-between text-xs font-semibold mb-2 ${
                                       hoveredDay.day.status === 'outage'
-                                        ? 'bg-rose-50 text-rose-800 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60'
+                                        ? 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60'
                                         : hoveredDay.day.status === 'degraded'
-                                          ? 'bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60'
+                                          ? 'bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60'
                                           : hoveredDay.day.status === 'no_data'
                                             ? 'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700'
-                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60'
+                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60'
                                     }`}>
                                       <div className="flex items-center gap-1.5">
                                         {hoveredDay.day.status === 'outage' && <XCircle className="w-3.5 h-3.5 text-rose-500" />}
@@ -849,16 +873,16 @@ export default function WebsitesPage() {
                                         {hoveredDay.day.status === 'no_data' && <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />}
                                         
                                         <span>
-                                          {hoveredDay.day.status === 'outage' && 'Major outage'}
-                                          {hoveredDay.day.status === 'degraded' && 'Partial outage'}
-                                          {hoveredDay.day.status === 'operational' && 'Operational'}
-                                          {hoveredDay.day.status === 'no_data' && 'No data'}
+                                          {hoveredDay.day.status === 'outage' && t('Major outage', 'Sự cố nghiêm trọng')}
+                                          {hoveredDay.day.status === 'degraded' && t('Partial outage', 'Gián đoạn một phần')}
+                                          {hoveredDay.day.status === 'operational' && t('Operational', 'Hoạt động')}
+                                          {hoveredDay.day.status === 'no_data' && t('No data', 'Không có dữ liệu')}
                                         </span>
                                       </div>
 
-                                      <span className="font-mono font-medium text-[11px] opacity-90">
+                                      <span className="font-mono tabular-nums text-[11px] opacity-90">
                                         {hoveredDay.day.status === 'outage' || hoveredDay.day.status === 'degraded'
-                                          ? formatOutageDuration(hoveredDay.day.downtime_seconds)
+                                          ? formatOutageDuration(hoveredDay.day.downtime_seconds, isVi)
                                           : hoveredDay.day.avg_latency_ms > 0
                                             ? `${Math.round(hoveredDay.day.avg_latency_ms)}ms avg`
                                             : '100% uptime'
@@ -867,17 +891,17 @@ export default function WebsitesPage() {
                                     </div>
 
                                     {/* RELATED section */}
-                                    <div className="pt-1.5 border-t border-[var(--border-color)]">
+                                    <div className="pt-1.5 border-t border-[var(--border-subtle)]">
                                       <div className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-muted)] mb-0.5">
-                                        RELATED
+                                        {t('RELATED', 'LIÊN QUAN')}
                                       </div>
                                       <div className="text-[11px] text-[var(--foreground)] truncate font-normal">
                                         {hoveredDay.day.incident_title || (
                                           hoveredDay.day.status === 'operational'
-                                            ? 'No downtime recorded'
+                                            ? t('No downtime recorded', 'Không ghi nhận thời gian gián đoạn')
                                             : hoveredDay.day.status === 'no_data'
-                                              ? 'No monitoring data'
-                                              : 'Service probe failures'
+                                              ? t('No monitoring data', 'Không có dữ liệu giám sát')
+                                              : t('Service probe failures', 'Thất bại kiểm tra dịch vụ')
                                         )}
                                       </div>
                                     </div>
@@ -885,7 +909,7 @@ export default function WebsitesPage() {
                                     {/* Downward triangle pointer */}
                                     <div
                                       style={{ left: `calc(50% + ${arrowOffsetPct}%)` }}
-                                      className="absolute -bottom-1.5 -translate-x-1/2 w-3 h-3 bg-[var(--background-card)] border-r border-b border-[var(--border-color)] rotate-45"
+                                      className="absolute -bottom-1.5 -translate-x-1/2 w-3 h-3 bg-[var(--surface-1)] border-r border-b border-[var(--border-default)] rotate-45"
                                     />
                                   </div>
                                 </div>
@@ -894,15 +918,15 @@ export default function WebsitesPage() {
                           )}
 
                           {/* Axis footer underneath the bars */}
-                          <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)] mt-2.5 font-medium select-none">
-                            <span className="shrink-0">90 days ago</span>
+                          <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)] mt-2 font-mono select-none">
+                            <span className="shrink-0">{t('90 days ago', '90 ngày trước')}</span>
                             <div className="relative flex-1 flex items-center justify-center">
-                              <div className="w-full border-t border-[var(--border-color)]" />
-                              <span className="absolute bg-[var(--background-card)] px-2.5 text-[11px] font-semibold text-[var(--color-muted)]">
-                                {item.overall_uptime_pct % 1 === 0 ? `${Math.round(item.overall_uptime_pct)}% uptime` : `${parseFloat(item.overall_uptime_pct.toFixed(2))}% uptime`}
+                              <div className="w-full border-t border-[var(--border-subtle)]" />
+                              <span className="absolute bg-[var(--surface-1)] px-2 text-[11px] font-semibold text-[var(--color-muted)] font-mono tabular-nums">
+                                {item.overall_uptime_pct % 1 === 0 ? `${Math.round(item.overall_uptime_pct)}%` : `${parseFloat(item.overall_uptime_pct.toFixed(2))}%`} {t('uptime', 'hoạt động')}
                               </span>
                             </div>
-                            <span className="shrink-0">{!selectedEndDate ? 'Today' : item.days[item.days.length - 1]?.date || 'Today'}</span>
+                            <span className="shrink-0">{!selectedEndDate ? t('Today', 'Hôm nay') : item.days[item.days.length - 1]?.date || t('Today', 'Hôm nay')}</span>
                           </div>
                         </div>
                       </div>
@@ -914,93 +938,93 @@ export default function WebsitesPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                        <th className="py-3.5 px-4">Endpoint / Website</th>
-                        <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4">Uptime (24h)</th>
-                        <th className="py-3.5 px-4">Latency</th>
-                        <th className="py-3.5 px-4">SSL Certificate</th>
-                        <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
+                      <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                        <th className="py-2.5 px-4">{t('Endpoint / Website', 'Điểm cuối / Website')}</th>
+                        <th className="py-2.5 px-4">{t('Status', 'Trạng thái')}</th>
+                        <th className="py-2.5 px-4">{t('Uptime (24h)', 'Uptime (24h)')}</th>
+                        <th className="py-2.5 px-4">{t('Latency', 'Độ trễ')}</th>
+                        <th className="py-2.5 px-4">{t('SSL Certificate', 'Chứng chỉ SSL')}</th>
+                        <th className="py-2.5 px-4 text-right">{t('Actions', 'Thao tác')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
+                    <tbody className="divide-y divide-[var(--border-subtle)]">
                       {websites.map(w => {
                         const isUp = w.status?.toUpperCase() === 'UP' || w.status?.toLowerCase() === 'online';
                         const daysLeft = w.ssl_days_remaining;
                         const sslStatusClass = daysLeft !== undefined
                           ? daysLeft > 30
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
                             : daysLeft > 15
-                              ? 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
-                              : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
+                              : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
                           : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
 
                         return (
-                          <tr key={w.id} className="hover:bg-[var(--surface-subtle)] transition">
-                            <td className="py-3.5 px-4">
-                              <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl border shrink-0 ${
+                          <tr key={w.id} className="hover:bg-[var(--surface-2)] transition duration-100">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`p-1.5 rounded-sm border shrink-0 ${
                                   isUp
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60'
-                                    : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60'
+                                    : 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
                                 }`}>
-                                  <Globe className="w-4 h-4" />
+                                  <Globe className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="min-w-0">
-                                  <span className="font-bold text-sm text-[var(--foreground)] block truncate">{w.name}</span>
+                                  <span className="font-bold text-xs text-[var(--foreground)] block truncate">{w.name}</span>
                                   <a
                                     href={w.url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 truncate max-w-xs"
+                                    className="text-[11px] font-mono text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 truncate max-w-xs"
                                   >
-                                    {w.url} <ExternalLink className="w-3 h-3 shrink-0" />
+                                    {w.url} <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                                   </a>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3.5 px-4">
+                            <td className="py-3 px-4">
                               {isUp ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 px-2.5 py-1 text-[11px] font-semibold">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> OPERATIONAL
+                                <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 px-2 py-0.5 text-[10px] font-semibold">
+                                  <CheckCircle2 className="w-3 h-3" /> {t('OPERATIONAL', 'HOẠT ĐỘNG')}
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60 px-2.5 py-1 text-[11px] font-semibold">
-                                  <XCircle className="w-3.5 h-3.5" /> DOWN
+                                <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60 px-2 py-0.5 text-[10px] font-semibold">
+                                  <XCircle className="w-3 h-3" /> {t('DOWN', 'GIÁN ĐOẠN')}
                                   {formatDowntime(w.down_started_at) && (
                                     <span className="opacity-80 font-normal">({formatDowntime(w.down_started_at)})</span>
                                   )}
                                 </span>
                               )}
                             </td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-sm text-emerald-700 dark:text-emerald-400">
+                            <td className="py-3 px-4 font-mono tabular-nums font-bold text-xs text-emerald-600 dark:text-emerald-400">
                               {isUp ? '100.0%' : '98.5%'}
                             </td>
-                            <td className="py-3.5 px-4 font-mono text-[var(--foreground)] font-semibold">
+                            <td className="py-3 px-4 font-mono tabular-nums text-xs text-[var(--foreground)] font-semibold">
                               {w.response_time_ms || 45}ms
                             </td>
-                            <td className="py-3.5 px-4">
-                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border text-[11px] font-semibold ${sslStatusClass}`}>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border font-mono text-[10px] font-semibold ${sslStatusClass}`}>
                                 {daysLeft !== undefined && daysLeft > 15 ? (
-                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  <ShieldCheck className="w-3 h-3" />
                                 ) : (
-                                  <ShieldAlert className="w-3.5 h-3.5" />
+                                  <ShieldAlert className="w-3 h-3" />
                                 )}
                                 {daysLeft !== undefined
                                   ? daysLeft > 0
                                     ? `${daysLeft}d left`
-                                    : 'Expired'
-                                  : 'No SSL info'}
+                                    : t('Expired', 'Hết hạn')
+                                  : t('No SSL', 'Không có SSL')}
                               </span>
                             </td>
-                            <td className="py-3.5 px-4 text-right">
-                              <div className="inline-flex items-center gap-1.5">
+                            <td className="py-3 px-4 text-right">
+                              <div className="inline-flex items-center gap-1">
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(w)}
                                   disabled={isViewer}
-                                  className="h-8 w-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition disabled:opacity-50"
-                                  title={isViewer ? 'Requires Operator or Admin role' : 'Cấu hình website'}
+                                  className="h-7 w-7 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition duration-100 disabled:opacity-50"
+                                  title={isViewer ? t('Requires Operator or Admin role', 'Yêu cầu quyền Operator hoặc Admin') : t('Configure website', 'Cấu hình website')}
                                 >
                                   <Settings2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1008,10 +1032,10 @@ export default function WebsitesPage() {
                                   type="button"
                                   onClick={() => handleManualCheck(w.id, w.name)}
                                   disabled={checkingId === w.id}
-                                  className="h-8 w-8 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--color-muted)] hover:text-white flex items-center justify-center transition"
-                                  title="Check health now"
+                                  className="h-7 w-7 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] flex items-center justify-center transition duration-100"
+                                  title={t('Check health now', 'Kiểm tra ngay')}
                                 >
-                                  <RefreshCw className={`w-3.5 h-3.5 ${checkingId === w.id ? 'animate-spin text-blue-400' : ''}`} />
+                                  <RefreshCw className={`w-3.5 h-3.5 ${checkingId === w.id ? 'animate-spin text-blue-500' : ''}`} />
                                 </button>
                                 <button
                                   type="button"
@@ -1020,8 +1044,8 @@ export default function WebsitesPage() {
                                     if (isViewer) return;
                                     setPendingDeleteWebsite({ id: w.id, name: w.name });
                                   }}
-                                  className="h-8 w-8 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title={isViewer ? 'Deleting websites requires Operator or Admin role' : 'Delete'}
+                                  className="h-7 w-7 rounded-sm border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 flex items-center justify-center transition duration-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={isViewer ? t('Deleting websites requires Operator or Admin role', 'Xóa website yêu cầu quyền Operator hoặc Admin') : t('Delete', 'Xóa')}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1044,48 +1068,52 @@ export default function WebsitesPage() {
         <>
           {loadingServers ? (
             <div className="flex justify-center p-16">
-              <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+              <div className="w-7 h-7 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
             </div>
           ) : servers.length === 0 ? (
-            <div className="ops-panel p-12 text-center rounded-2xl border border-dashed border-[var(--border-color)]">
-              <Server className="w-12 h-12 text-[var(--color-muted)] mx-auto mb-4 opacity-50" />
-              <h3 className="text-lg font-bold text-[var(--foreground)] mb-2">No servers enrolled yet</h3>
-              <p className="text-[var(--color-muted)] text-sm mb-5">Install the DatrixOps Agent on your servers to track continuous host system uptime, heartbeats, and resources.</p>
+            <div className="p-12 text-center rounded-md border border-dashed border-[var(--border-default)] bg-[var(--surface-1)]">
+              <Server className="w-10 h-10 text-[var(--color-muted)] mx-auto mb-3 opacity-40" />
+              <h3 className="text-base font-bold text-[var(--foreground)] mb-1.5">{t('No servers enrolled yet', 'Chưa có máy chủ nào được kết nối')}</h3>
+              <p className="text-[var(--color-muted)] text-xs mb-4 max-w-md mx-auto">
+                {t('Install the DatrixOps Agent on your servers to track continuous host system uptime, heartbeats, and resources.', 'Cài đặt DatrixOps Agent trên máy chủ để theo dõi thời gian hoạt động liên tục, nhịp tim và tài nguyên.')}
+              </p>
               <Link
                 href="/dashboard/servers"
-                className="h-9 px-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors"
+                className="h-8 px-3.5 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-sm text-xs font-semibold transition duration-100"
               >
-                <Plus className="w-3.5 h-3.5" /> Go to Server Management
+                <Plus className="w-3.5 h-3.5" /> {t('Go to Server Management', 'Đến trang Quản lý máy chủ')}
               </Link>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-sm">
+            <div className="overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
               {/* Server fleet status header */}
-              <div className="p-5 sm:p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-3.5">
-                  <h2 className="text-xl font-bold text-[var(--foreground)] tracking-tight">Server fleet status</h2>
+              <div className="p-4 sm:p-5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-base font-bold text-[var(--foreground)] tracking-tight">
+                    {t('Server fleet status', 'Trạng thái cụm máy chủ')}
+                  </h2>
 
                   {/* Date window navigator */}
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)] text-xs font-semibold text-[var(--foreground)]">
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--foreground)]">
                     <button
                       type="button"
                       onClick={handlePreviousDateRange}
-                      className="p-1 rounded hover:bg-white/10 text-[var(--color-muted)] hover:text-[var(--foreground)] transition"
-                      title="Previous 30 days"
+                      className="p-1 rounded hover:bg-[var(--surface-3)] text-[var(--color-muted)] hover:text-[var(--foreground)] transition duration-100"
+                      title={t('Previous 30 days', '30 ngày trước')}
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-                    <span className="px-1 text-[var(--foreground)] select-none">
-                      {formatMonthYearRange(uptimeSummary?.start_date, uptimeSummary?.end_date)}
+                    <span className="px-1 text-[var(--foreground)] select-none font-mono text-[11px]">
+                      {formatMonthYearRange(uptimeSummary?.start_date, uptimeSummary?.end_date, dateLocale)}
                     </span>
                     <button
                       type="button"
                       onClick={handleNextDateRange}
                       disabled={!selectedEndDate}
-                      className={`p-1 rounded text-[var(--color-muted)] transition ${
-                        !selectedEndDate ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 hover:text-[var(--foreground)]'
+                      className={`p-1 rounded text-[var(--color-muted)] transition duration-100 ${
+                        !selectedEndDate ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[var(--surface-3)] hover:text-[var(--foreground)]'
                       }`}
-                      title="Next 30 days"
+                      title={t('Next 30 days', '30 ngày tiếp theo')}
                     >
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -1095,7 +1123,7 @@ export default function WebsitesPage() {
                         onClick={handleResetDateRange}
                         className="ml-1 text-[11px] text-blue-500 hover:underline font-semibold"
                       >
-                        Today
+                        {t('Today', 'Hôm nay')}
                       </button>
                     )}
                   </div>
@@ -1103,28 +1131,28 @@ export default function WebsitesPage() {
 
                 {/* View Mode Toggle */}
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-subtle)]">
+                  <div className="inline-flex p-0.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)]">
                     <button
                       type="button"
                       onClick={() => setWebsiteViewMode('timeline')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                      className={`px-2.5 py-1 rounded-sm text-xs font-semibold inline-flex items-center gap-1.5 transition duration-100 ${
                         websiteViewMode === 'timeline'
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-blue-600 text-white'
                           : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                       }`}
                     >
-                      <LayoutGrid className="w-3.5 h-3.5" /> Status bars
+                      <LayoutGrid className="w-3.5 h-3.5" /> {t('Status bars', 'Thanh trạng thái')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setWebsiteViewMode('table')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition ${
+                      className={`px-2.5 py-1 rounded-sm text-xs font-semibold inline-flex items-center gap-1.5 transition duration-100 ${
                         websiteViewMode === 'table'
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-blue-600 text-white'
                           : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
                       }`}
                     >
-                      <List className="w-3.5 h-3.5" /> Table view
+                      <List className="w-3.5 h-3.5" /> {t('Table view', 'Dạng bảng')}
                     </button>
                   </div>
                 </div>
@@ -1132,7 +1160,7 @@ export default function WebsitesPage() {
 
               {/* TIMELINE VIEW FOR SERVERS */}
               {websiteViewMode === 'timeline' ? (
-                <div className="divide-y divide-[var(--border-color)]">
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {servers.map((server) => {
                     const isOnline = server.status?.toLowerCase() === 'online';
                     const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
@@ -1180,53 +1208,53 @@ export default function WebsitesPage() {
                     });
 
                     return (
-                      <div key={server.id} className="p-5 sm:p-6 transition hover:bg-[var(--surface-subtle)]/30">
+                      <div key={server.id} className="p-4 sm:p-5 transition hover:bg-[var(--surface-2)]">
                         {/* Server Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3.5">
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <div className={`p-1.5 rounded-lg border shrink-0 ${
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className={`p-1.5 rounded-sm border shrink-0 ${
                               isOnline
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
                             }`}>
                               <Server className="w-3.5 h-3.5" />
                             </div>
-                            <span className="font-bold text-sm text-[var(--foreground)]">{server.name}</span>
+                            <span className="font-bold text-xs text-[var(--foreground)]">{server.name}</span>
                             <span className="text-xs text-[var(--color-muted)] font-mono">
                               {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
                             </span>
                             {snapshot?.inventory?.agent_version && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-white/5 text-[var(--color-muted)] border border-white/5">
+                              <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold bg-[var(--surface-2)] text-[var(--color-muted)] border border-[var(--border-subtle)]">
                                 v{snapshot.inventory.agent_version}
                               </span>
                             )}
                           </div>
 
                           {/* Status and Action Buttons */}
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                          <div className="flex items-center gap-2.5 self-end sm:self-auto">
                             <span className={`text-xs font-semibold flex items-center gap-1.5 ${
-                              isOnline ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+                              isOnline ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                             }`}>
                               <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                              {isOnline ? 'Operational' : 'Host offline'}
+                              {isOnline ? t('Operational', 'Hoạt động') : t('Host offline', 'Máy chủ ngoại tuyến')}
                             </span>
 
-                            <span className="text-xs font-mono text-[var(--color-muted)] pl-2 border-l border-[var(--border-color)]">
+                            <span className="text-xs font-mono tabular-nums text-[var(--color-muted)] pl-2 border-l border-[var(--border-subtle)]">
                               Up: {isOnline ? formattedHostUptime : '—'}
                             </span>
 
                             <Link
                               href={`/dashboard/servers/${server.id}`}
-                              className="h-7 px-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1 transition"
+                              className="h-7 px-2.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1 transition duration-100"
                             >
-                              Details <ArrowRight className="w-3 h-3 text-blue-400" />
+                              {t('Details', 'Chi tiết')} <ArrowRight className="w-3 h-3 text-blue-500" />
                             </Link>
                           </div>
                         </div>
 
                         {/* 90-Day Bars Container */}
-                        <div className="relative pt-2 pb-1">
-                          <div className="grid grid-cols-[repeat(90,minmax(0,1fr))] gap-[2px] sm:gap-[2.5px] h-8 sm:h-9 items-stretch">
+                        <div className="relative pt-1 pb-1">
+                          <div className="grid grid-cols-[repeat(90,minmax(0,1fr))] gap-[2px] h-7 sm:h-8 items-stretch">
                             {serverBars.map((day, dayIdx) => {
                               let bgClass = 'bg-emerald-500 hover:bg-emerald-400 dark:bg-[#10a37f] dark:hover:bg-[#12b990]';
                               if (day.status === 'outage') {
@@ -1234,7 +1262,7 @@ export default function WebsitesPage() {
                               } else if (day.status === 'degraded') {
                                 bgClass = 'bg-amber-500 hover:bg-amber-400 dark:bg-[#f59e0b] dark:hover:bg-[#fbbf24]';
                               } else if (day.status === 'no_data') {
-                                bgClass = 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-700/80';
+                                bgClass = 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700';
                               }
 
                               const isHovered = hoveredDay?.itemId === server.id && hoveredDay?.barIndex === dayIdx;
@@ -1250,12 +1278,12 @@ export default function WebsitesPage() {
                                       uptime_pct: day.status === 'operational' ? 100 : 0,
                                       downtime_seconds: day.downtime_seconds,
                                       avg_latency_ms: 0,
-                                      incident_title: isOnline ? `Host uptime: ${formattedHostUptime}` : 'Agent offline'
+                                      incident_title: isOnline ? `Host uptime: ${formattedHostUptime}` : t('Agent offline', 'Agent ngoại tuyến')
                                     },
                                     barIndex: dayIdx
                                   })}
                                   onMouseLeave={() => setHoveredDay(null)}
-                                  className={`h-full rounded-[2px] cursor-pointer transition-all duration-100 relative ${bgClass} ${
+                                  className={`h-full rounded-[1px] cursor-pointer transition-all duration-100 relative ${bgClass} ${
                                     isHovered ? 'scale-y-115 z-20 ring-1 ring-white/60 brightness-110' : 'opacity-95 hover:opacity-100'
                                   }`}
                                 />
@@ -1276,21 +1304,21 @@ export default function WebsitesPage() {
                                     left: `${clampedBoxLeft}%`,
                                     transform: 'translateX(-50%)',
                                   }}
-                                  className="absolute bottom-full mb-3 pointer-events-none z-30 transition-opacity duration-150"
+                                  className="absolute bottom-full mb-2 pointer-events-none z-30 transition-opacity duration-100"
                                 >
-                                  <div className="relative rounded-xl border border-[var(--border-color)] bg-[var(--background-card)] p-3.5 shadow-2xl min-w-[240px] max-w-[290px] text-xs">
-                                    <div className="font-semibold text-sm text-[var(--foreground)] mb-2">
-                                      {formatTooltipDate(hoveredDay.day.date)}
+                                  <div className="relative rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-3 shadow-xl min-w-[240px] max-w-[290px] text-xs">
+                                    <div className="font-semibold text-xs text-[var(--foreground)] mb-1.5 font-mono">
+                                      {formatTooltipDate(hoveredDay.day.date, dateLocale)}
                                     </div>
 
-                                    <div className={`rounded-lg p-2 flex items-center justify-between text-xs font-semibold mb-2.5 ${
+                                    <div className={`rounded-sm p-2 flex items-center justify-between text-xs font-semibold mb-2 ${
                                       hoveredDay.day.status === 'outage'
-                                        ? 'bg-rose-50 text-rose-800 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60'
+                                        ? 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60'
                                         : hoveredDay.day.status === 'degraded'
-                                          ? 'bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60'
+                                          ? 'bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60'
                                           : hoveredDay.day.status === 'no_data'
                                             ? 'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700'
-                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60'
+                                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60'
                                     }`}>
                                       <div className="flex items-center gap-1.5">
                                         {hoveredDay.day.status === 'outage' && <XCircle className="w-3.5 h-3.5 text-rose-500" />}
@@ -1298,34 +1326,34 @@ export default function WebsitesPage() {
                                         {hoveredDay.day.status === 'operational' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
                                         {hoveredDay.day.status === 'no_data' && <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />}
                                         <span>
-                                          {hoveredDay.day.status === 'outage' && 'Host offline'}
-                                          {hoveredDay.day.status === 'degraded' && 'Partial downtime'}
-                                          {hoveredDay.day.status === 'operational' && 'Operational'}
-                                          {hoveredDay.day.status === 'no_data' && 'Before enrollment'}
+                                          {hoveredDay.day.status === 'outage' && t('Host offline', 'Máy chủ ngoại tuyến')}
+                                          {hoveredDay.day.status === 'degraded' && t('Partial downtime', 'Gián đoạn một phần')}
+                                          {hoveredDay.day.status === 'operational' && t('Operational', 'Hoạt động')}
+                                          {hoveredDay.day.status === 'no_data' && t('Before enrollment', 'Trước khi kết nối')}
                                         </span>
                                       </div>
 
-                                      <span className="font-mono font-medium text-[11px] opacity-90">
-                                        {hoveredDay.day.status === 'operational' ? '100% SLA' : formatOutageDuration(hoveredDay.day.downtime_seconds)}
+                                      <span className="font-mono tabular-nums font-medium text-[11px] opacity-90">
+                                        {hoveredDay.day.status === 'operational' ? '100% SLA' : formatOutageDuration(hoveredDay.day.downtime_seconds, isVi)}
                                       </span>
                                     </div>
 
-                                    <div className="pt-1.5 border-t border-[var(--border-color)]">
+                                    <div className="pt-1.5 border-t border-[var(--border-subtle)]">
                                       <div className="text-[10px] uppercase font-bold tracking-wider text-[var(--color-muted)] mb-0.5">
-                                        RELATED
+                                        {t('RELATED', 'LIÊN QUAN')}
                                       </div>
                                       <div className="text-[11px] text-[var(--foreground)] truncate font-normal">
                                         {hoveredDay.day.status === 'operational'
-                                          ? `Heartbeat active · Continuous uptime: ${formattedHostUptime}`
+                                          ? `${t('Heartbeat active · Continuous uptime:', 'Nhịp tim hoạt động · Thời gian chạy:')} ${formattedHostUptime}`
                                           : hoveredDay.day.status === 'no_data'
-                                            ? 'Host not yet enrolled'
-                                            : 'Agent heartbeat interrupted'}
+                                            ? t('Host not yet enrolled', 'Máy chủ chưa kết nối')
+                                            : t('Agent heartbeat interrupted', 'Mất kết nối nhịp tim Agent')}
                                       </div>
                                     </div>
 
                                     <div
                                       style={{ left: `calc(50% + ${arrowOffsetPct}%)` }}
-                                      className="absolute -bottom-1.5 -translate-x-1/2 w-3 h-3 bg-[var(--background-card)] border-r border-b border-[var(--border-color)] rotate-45"
+                                      className="absolute -bottom-1.5 -translate-x-1/2 w-3 h-3 bg-[var(--surface-1)] border-r border-b border-[var(--border-default)] rotate-45"
                                     />
                                   </div>
                                 </div>
@@ -1334,15 +1362,15 @@ export default function WebsitesPage() {
                           )}
 
                           {/* Axis footer underneath the bars */}
-                          <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)] mt-2.5 font-medium select-none">
-                            <span className="shrink-0">90 days ago</span>
+                          <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)] mt-2 font-mono select-none">
+                            <span className="shrink-0">{t('90 days ago', '90 ngày trước')}</span>
                             <div className="relative flex-1 flex items-center justify-center">
-                              <div className="w-full border-t border-[var(--border-color)]" />
-                              <span className="absolute bg-[var(--background-card)] px-2.5 text-[11px] font-semibold text-[var(--color-muted)]">
-                                {formatPercent(availability)} availability
+                              <div className="w-full border-t border-[var(--border-subtle)]" />
+                              <span className="absolute bg-[var(--surface-1)] px-2 text-[11px] font-semibold text-[var(--color-muted)] font-mono tabular-nums">
+                                {formatPercent(availability)} {t('availability', 'sẵn sàng')}
                               </span>
                             </div>
-                            <span className="shrink-0">{!selectedEndDate ? 'Today' : serverBars[serverBars.length - 1]?.date || 'Today'}</span>
+                            <span className="shrink-0">{!selectedEndDate ? t('Today', 'Hôm nay') : serverBars[serverBars.length - 1]?.date || t('Today', 'Hôm nay')}</span>
                           </div>
                         </div>
                       </div>
@@ -1354,15 +1382,15 @@ export default function WebsitesPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-[var(--border-color)] bg-[var(--surface-subtle)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                        <th className="py-3.5 px-4">Server / Host</th>
-                        <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4">Availability (30d)</th>
-                        <th className="py-3.5 px-4">Host Uptime</th>
-                        <th className="py-3.5 px-4 text-right" style={{ textAlign: 'right' }}>Actions</th>
+                      <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                        <th className="py-2.5 px-4">{t('Server / Host', 'Máy chủ / Host')}</th>
+                        <th className="py-2.5 px-4">{t('Status', 'Trạng thái')}</th>
+                        <th className="py-2.5 px-4">{t('Availability (30d)', 'Độ sẵn sàng (30d)')}</th>
+                        <th className="py-2.5 px-4">{t('Host Uptime', 'Thời gian hoạt động')}</th>
+                        <th className="py-2.5 px-4 text-right">{t('Actions', 'Thao tác')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
+                    <tbody className="divide-y divide-[var(--border-subtle)]">
                       {servers.map(server => {
                         const isOnline = server.status?.toLowerCase() === 'online';
                         const snapshot = parseJSON<ServerSnapshot>(server.snapshot);
@@ -1376,74 +1404,72 @@ export default function WebsitesPage() {
                         const downtimeSecs = server.downtime_seconds_30d ?? 0;
 
                         return (
-                          <tr key={server.id} className="hover:bg-[var(--surface-subtle)] transition">
-                            <td className="py-3.5 px-4">
-                              <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl border shrink-0 ${
+                          <tr key={server.id} className="hover:bg-[var(--surface-2)] transition duration-100">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`p-1.5 rounded-sm border shrink-0 ${
                                   isOnline
-                                    ? 'bg-blue-50 text-blue-600 border-blue-200/80 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
-                                    : 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
+                                    ? 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60'
+                                    : 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60'
                                 }`}>
-                                  <Server className="w-4 h-4" />
+                                  <Server className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="min-w-0">
-                                  <span className="font-bold text-sm text-[var(--foreground)] block truncate">{server.name}</span>
-                                  <span className="text-xs text-[var(--color-muted)] font-mono">
+                                  <span className="font-bold text-xs text-[var(--foreground)] block truncate">{server.name}</span>
+                                  <span className="text-[11px] text-[var(--color-muted)] font-mono">
                                     {server.ip_address || snapshot?.system_info?.public_ip || '127.0.0.1'}
                                   </span>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3.5 px-4">
-                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[10px] font-semibold border ${
                                 isOnline
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
-                                  : 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60'
                               }`}>
-                                {isOnline ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                {isOnline ? 'ONLINE' : 'OFFLINE'}
+                                {isOnline ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                                {isOnline ? t('ONLINE', 'TRỰC TUYẾN') : t('OFFLINE', 'NGOẠI TUYẾN')}
                               </span>
                             </td>
-                            <td className="py-3.5 px-4">
+                            <td className="py-3 px-4">
                               <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`font-mono font-bold text-sm ${
-                                    availability >= 99.0
-                                      ? 'text-emerald-700 dark:text-emerald-400'
-                                      : availability >= 95.0
-                                        ? 'text-amber-700 dark:text-amber-400'
-                                        : 'text-rose-700 dark:text-rose-400'
-                                  }`}>
-                                    {formatPercent(availability)}
-                                  </span>
-                                </div>
+                                <span className={`font-mono tabular-nums font-bold text-xs ${
+                                  availability >= 99.0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : availability >= 95.0
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : 'text-rose-600 dark:text-rose-400'
+                                }`}>
+                                  {formatPercent(availability)}
+                                </span>
                                 <span className="text-[11px] text-[var(--color-muted)]">
                                   {downtimeSecs > 0 ? (
                                     <span className="text-amber-600 dark:text-amber-400 font-medium">{formatDowntimeDuration(downtimeSecs)}</span>
                                   ) : (
-                                    <span>100% SLA target</span>
+                                    <span>100% SLA</span>
                                   )}
                                 </span>
                               </div>
                             </td>
-                            <td className="py-3.5 px-4">
+                            <td className="py-3 px-4">
                               <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-1.5 font-mono text-sm font-semibold text-[var(--foreground)]">
+                                <div className="flex items-center gap-1.5 font-mono tabular-nums text-xs font-semibold text-[var(--foreground)]">
                                   <Clock className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
                                   {isOnline ? formattedHostUptime : '—'}
                                 </div>
                                 <span className="text-[11px] text-[var(--color-muted)]">
-                                  {isOnline ? 'Since last boot' : 'Offline / down'}
+                                  {isOnline ? t('Since last boot', 'Từ lần khởi động cuối') : t('Offline / down', 'Ngoại tuyến / gián đoạn')}
                                 </span>
                               </div>
                             </td>
-                            <td className="py-3.5 px-4 text-right">
+                            <td className="py-3 px-4 text-right">
                               <div className="flex justify-end">
                                 <Link
                                   href={`/dashboard/servers/${server.id}`}
-                                  className="h-8 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-subtle)] hover:bg-[var(--border-color)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                                  className="h-7 px-2.5 rounded-sm border border-[var(--border-default)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] text-xs font-semibold inline-flex items-center gap-1 transition duration-100"
                                 >
-                                  View Details <ArrowRight className="w-3 h-3 text-blue-500 dark:text-blue-400" />
+                                  {t('View Details', 'Xem chi tiết')} <ArrowRight className="w-3 h-3 text-blue-500" />
                                 </Link>
                               </div>
                             </td>
@@ -1459,38 +1485,43 @@ export default function WebsitesPage() {
         </>
       )}
 
-
       {/* Add Website Modal */}
       {isModalOpen && (
-        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl">
-            <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center">
-              <h3 id="website-dialog-title" className="font-bold text-lg text-[var(--foreground)]">Add Monitored Website</h3>
-              <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Close dialog" className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition">
-                <XCircle className="w-5 h-5" />
+        <div className="ops-scrim fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-100">
+          <div role="dialog" aria-modal="true" aria-labelledby="website-dialog-title" className="w-full max-w-md overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] shadow-xl animate-in zoom-in-95 duration-100">
+            <div className="p-4 border-b border-[var(--border-subtle)] flex justify-between items-center bg-[var(--surface-2)]">
+              <h3 id="website-dialog-title" className="font-bold text-sm text-[var(--foreground)]">
+                {t('Add Monitored Website', 'Thêm Website giám sát')}
+              </h3>
+              <button type="button" onClick={() => setIsModalOpen(false)} aria-label="Close dialog" className="h-7 w-7 rounded flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-3)] transition duration-100">
+                <XCircle className="w-4 h-4" />
               </button>
             </div>
-            <form onSubmit={handleAddWebsite} className="p-5 space-y-4">
-              {error && <div className="p-3 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl text-xs">{error}</div>}
+            <form onSubmit={handleAddWebsite} className="p-4 space-y-3.5">
+              {error && <div className="p-2.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-sm text-xs">{error}</div>}
               <div>
-                <label htmlFor="website-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">Display Name</label>
-                <input id="website-name" name="website-name" required type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none" placeholder="e.g. Vietnix Portal, DatrixOps Production" />
+                <label htmlFor="website-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
+                  {t('Display Name', 'Tên hiển thị')}
+                </label>
+                <input id="website-name" name="website-name" required type="text" value={newName} onChange={e => setNewName(e.target.value)} className="w-full rounded-sm border border-[var(--border-default)] bg-transparent p-2 text-xs text-[var(--foreground)] focus:border-blue-500 outline-none" placeholder="e.g. Production Portal, DatrixOps App" />
               </div>
               <div>
-                <label htmlFor="website-url" className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">Target URL (including https://)</label>
-                <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none" placeholder="https://example.com" />
+                <label htmlFor="website-url" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
+                  {t('Target URL (including https://)', 'URL mục tiêu (bao gồm https://)')}
+                </label>
+                <input id="website-url" name="website-url" required type="url" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full rounded-sm border border-[var(--border-default)] bg-transparent p-2 text-xs text-[var(--foreground)] focus:border-blue-500 outline-none font-mono" placeholder="https://example.com" />
               </div>
 
-              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300 leading-relaxed">
-                💡 Để nhận thông báo khi website Down/Recovered, hãy tạo Alert Rule tại trang <strong>Alerts</strong> và chọn metric <strong>Website DOWN</strong>.
+              <div className="p-2.5 rounded-sm bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-600 dark:text-blue-300 leading-relaxed">
+                {t('💡 To receive alerts when a website is Down/Recovered, create an Alert Rule on the Alerts page and choose metric Website DOWN.', '💡 Để nhận thông báo khi website Down/Recovered, hãy tạo Alert Rule tại trang Alerts và chọn metric Website DOWN.')}
               </div>
 
-              <div className="pt-2 flex justify-end gap-2.5">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="h-9 px-4 rounded-xl text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition">
-                  Cancel
+              <div className="pt-2 flex justify-end gap-2 border-t border-[var(--border-subtle)]">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="h-8 px-3 rounded-sm text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)] transition duration-100">
+                  {t('Cancel', 'Hủy')}
                 </button>
-                <button type="submit" disabled={submitting} className="h-9 px-4 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50 shadow-sm shadow-blue-600/20">
-                  {submitting ? 'Saving…' : 'Add Website'}
+                <button type="submit" disabled={submitting} className="h-8 px-3.5 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-sm text-xs font-semibold transition duration-100 disabled:opacity-50">
+                  {submitting ? t('Saving…', 'Đang lưu…') : t('Add Website', 'Thêm Website')}
                 </button>
               </div>
             </form>
@@ -1500,35 +1531,39 @@ export default function WebsitesPage() {
 
       {/* Edit Website Modal */}
       {isEditModalOpen && editingWebsite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border-color)] bg-[var(--background-card)] shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)] bg-[var(--surface-subtle)]">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
-                  <Settings2 className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-100">
+          <div className="w-full max-w-md rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] shadow-xl overflow-hidden animate-in zoom-in-95 duration-100">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] bg-[var(--surface-2)]">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-sm bg-blue-500/10 text-blue-500">
+                  <Settings2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[var(--foreground)]">Cấu hình Website</h3>
-                  <p className="text-xs text-[var(--color-muted)]">Quản lý tên và URL giám sát</p>
+                  <h3 className="text-xs font-bold text-[var(--foreground)]">
+                    {t('Website Configuration', 'Cấu hình Website')}
+                  </h3>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    {t('Manage monitoring name and URL', 'Quản lý tên và URL giám sát')}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => { setIsEditModalOpen(false); setEditingWebsite(null); }}
-                className="text-[var(--color-muted)] hover:text-white p-1 rounded-lg hover:bg-white/5 transition"
+                className="text-[var(--color-muted)] hover:text-[var(--foreground)] p-1 rounded hover:bg-[var(--surface-3)] transition duration-100"
               >
                 ✕
               </button>
             </div>
-            <form onSubmit={handleEditWebsite} className="p-5 space-y-4">
+            <form onSubmit={handleEditWebsite} className="p-4 space-y-3.5">
               {editError && (
-                <div className="p-3 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl text-xs">
+                <div className="p-2.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-sm text-xs">
                   {editError}
                 </div>
               )}
               <div>
-                <label htmlFor="edit-website-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
-                  Tên website
+                <label htmlFor="edit-website-name" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
+                  {t('Website Name', 'Tên website')}
                 </label>
                 <input
                   id="edit-website-name"
@@ -1537,13 +1572,13 @@ export default function WebsitesPage() {
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
-                  placeholder="e.g. Vietnix Portal, DatrixOps Production"
+                  className="w-full rounded-sm border border-[var(--border-default)] bg-transparent p-2 text-xs text-[var(--foreground)] focus:border-blue-500 outline-none"
+                  placeholder="e.g. Production Portal, DatrixOps App"
                 />
               </div>
               <div>
-                <label htmlFor="edit-website-url" className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
-                  Target URL (bao gồm https://)
+                <label htmlFor="edit-website-url" className="block text-xs font-semibold text-[var(--foreground)] mb-1">
+                  {t('Target URL (including https://)', 'URL mục tiêu (bao gồm https://)')}
                 </label>
                 <input
                   id="edit-website-url"
@@ -1552,29 +1587,29 @@ export default function WebsitesPage() {
                   type="url"
                   value={editUrl}
                   onChange={(e) => setEditUrl(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--border-color)] bg-transparent p-2.5 text-sm text-[var(--foreground)] focus:ring-1 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-sm border border-[var(--border-default)] bg-transparent p-2 text-xs text-[var(--foreground)] focus:border-blue-500 outline-none font-mono"
                   placeholder="https://example.com"
                 />
               </div>
 
-              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300 leading-relaxed">
-                💡 Để nhận thông báo khi website Down/Recovered, hãy tạo Alert Rule tại trang <strong>Alerts</strong> và chọn metric <strong>Website DOWN</strong>.
+              <div className="p-2.5 rounded-sm bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-600 dark:text-blue-300 leading-relaxed">
+                {t('💡 To receive alerts when a website is Down/Recovered, create an Alert Rule on the Alerts page and choose metric Website DOWN.', '💡 Để nhận thông báo khi website Down/Recovered, hãy tạo Alert Rule tại trang Alerts và chọn metric Website DOWN.')}
               </div>
 
-              <div className="pt-2 flex justify-end gap-2.5">
+              <div className="pt-2 flex justify-end gap-2 border-t border-[var(--border-subtle)]">
                 <button
                   type="button"
                   onClick={() => { setIsEditModalOpen(false); setEditingWebsite(null); }}
-                  className="h-9 px-4 rounded-xl text-xs font-semibold text-[var(--color-muted)] hover:text-white hover:bg-white/5 transition"
+                  className="h-8 px-3 rounded-sm text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-2)] transition duration-100"
                 >
-                  Hủy
+                  {t('Cancel', 'Hủy')}
                 </button>
                 <button
                   type="submit"
                   disabled={updatingWebsite}
-                  className="h-9 px-4 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50 shadow-sm shadow-blue-600/20"
+                  className="h-8 px-3.5 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-sm text-xs font-semibold transition duration-100 disabled:opacity-50"
                 >
-                  {updatingWebsite ? 'Đang lưu…' : 'Lưu thay đổi'}
+                  {updatingWebsite ? t('Saving…', 'Đang lưu…') : t('Save changes', 'Lưu thay đổi')}
                 </button>
               </div>
             </form>
@@ -1585,9 +1620,13 @@ export default function WebsitesPage() {
       {/* Delete Website Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(pendingDeleteWebsite)}
-        title="Delete Monitored Website"
-        message={`Are you sure you want to remove "${pendingDeleteWebsite?.name}" from monitoring? All uptime and SSL alerts for this website will be stopped.`}
-        confirmText="Delete Website"
+        title={t('Delete Monitored Website', 'Xóa Website giám sát')}
+        message={t(
+          `Are you sure you want to remove "${pendingDeleteWebsite?.name}" from monitoring? All uptime and SSL alerts for this website will be stopped.`,
+          `Bạn có chắc chắn muốn xóa "${pendingDeleteWebsite?.name}" khỏi hệ thống giám sát? Mọi cảnh báo hoạt động và chứng chỉ SSL của website này sẽ dừng lại.`
+        )}
+        confirmText={t('Delete Website', 'Xóa Website')}
+        cancelText={t('Cancel', 'Hủy')}
         variant="danger"
         loading={deletingWebsite}
         onConfirm={() => void confirmDeleteWebsite()}
