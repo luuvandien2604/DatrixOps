@@ -274,17 +274,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         aria-current={active ? 'page' : undefined}
         onClick={() => setMobileOpen(false)}
         className={[
-          'sidebar-nav-item',
-          'font-mono text-xs tracking-wide transition-colors duration-100',
+          'flex items-center gap-2.5 px-3 py-2 mx-2 rounded-md text-[13px] font-medium transition-colors duration-100 font-sans',
           active
-            ? 'is-active font-bold !text-[var(--foreground)] border-l-2 !border-l-blue-500 !bg-blue-500/10 !rounded-none'
-            : '!rounded-none border-l-2 border-l-transparent text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]',
-          collapsed ? 'justify-center !px-2' : '!px-3',
+            ? 'bg-blue-600/15 text-white border-l-2 border-blue-500'
+            : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 border-l-2 border-l-transparent',
+          collapsed ? 'justify-center !mx-1 !px-2' : '',
         ].join(' ')}
       >
         <Icon
-          className={`h-4 w-4 shrink-0 ${
-            active ? 'text-blue-500 dark:text-blue-400' : 'text-[var(--color-muted)]'
+          className={`w-4 h-4 shrink-0 ${
+            active ? 'text-blue-400' : 'text-slate-400'
           }`}
         />
         {!collapsed && <span className="truncate">{item.label}</span>}
@@ -293,13 +292,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    // Mọi màu chữ dùng CSS variable của theme. Không dùng text-white cố định,
-    // vì text-white sẽ bị chìm khi người dùng chuyển sang giao diện sáng.
-    <div className="app-shell min-h-screen text-[var(--foreground)]">
+    <div className="app-shell min-h-screen bg-[#F1F5F9] dark:bg-[#060911] text-[#0F172A] dark:text-[#F8FAFC] font-sans">
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-none p-2.5 lg:hidden border border-[var(--border-subtle)] bg-[var(--surface-1)]"
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-2.5 lg:hidden border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#0B0F19] text-slate-700 dark:text-slate-200 shadow-sm"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
@@ -316,113 +313,104 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside
         aria-label="Dashboard navigation"
-        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''} border-r border-[var(--border-subtle)]`}
+        className={`fixed inset-y-0 left-0 z-50 shrink-0 bg-[#0B0F19] border-r border-[#1E293B] flex flex-col justify-between font-sans select-none transition-all duration-200 ${
+          collapsed ? 'w-[72px]' : 'w-60'
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        <div className="flex h-12 items-center gap-2.5 px-3 border-b border-[var(--border-subtle)]">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-blue-500/40 bg-blue-500/10 text-blue-400">
-              <Command className="h-3.5 w-3.5" />
-            </div>
-
-            {!collapsed && (
-              <div className="min-w-0 flex items-center gap-1.5 font-mono">
-                <p className="truncate text-xs font-bold tracking-wider text-[var(--foreground)]">
-                  DATRIX<span className="text-blue-500">OPS</span>
-                </p>
-                <span className="text-[9px] uppercase tracking-widest text-[var(--color-muted)] border border-[var(--border-subtle)] px-1 py-0.2 rounded-none bg-[var(--surface-2)]">
-                  CP
-                </span>
+        <div className="flex flex-col min-h-0 flex-1">
+          {/* Logo Header */}
+          <div className="h-14 px-4 flex items-center gap-2.5 border-b border-[#1E293B] shrink-0">
+            <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <Command className="w-4 h-4" />
               </div>
-            )}
-          </Link>
-
-          <button
-            type="button"
-            onClick={() => setMobileOpen(false)}
-            className="ml-auto text-[var(--foreground)] lg:hidden"
-            aria-label="Close navigation"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-2 border-b border-[var(--border-subtle)]">
-          <div className={`p-2 border border-[var(--border-subtle)] bg-[var(--surface-2)] font-mono text-xs rounded-none ${collapsed ? 'text-center' : ''}`}>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span
-                  className={`inline-flex h-2 w-2 rounded-none ${
-                    fleetSyncFailed
-                      ? 'bg-amber-500'
-                      : (fleetSummary?.online_servers ?? 0) > 0
-                        ? 'bg-emerald-500 animate-pulse'
-                        : 'bg-slate-500'
-                  }`}
-                />
-              </span>
 
               {!collapsed && (
-                <div className="min-w-0 flex-1 flex items-center justify-between text-[10px]">
-                  <span className="text-[var(--color-muted)] uppercase tracking-wider">{t('AGENTS', 'AGENT')}</span>
-                  <span className="tabular-nums font-bold text-[var(--foreground)]">
-                    {fleetSyncFailed
-                      ? t('OFFLINE', 'MẤT KẾT NỐI')
-                      : fleetSummary
-                        ? `${fleetSummary.online_servers}/${fleetSummary.total_servers} ${t('LIVE', 'KẾT NỐI')}`
-                        : t('SYNC...', 'ĐỒNG BỘ...')}
+                <div className="min-w-0 flex items-center gap-2">
+                  <p className="text-sm font-bold tracking-wide text-white truncate font-sans">
+                    DATRIX<span className="text-blue-400">OPS</span>
+                  </p>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 leading-none">
+                    CP
                   </span>
                 </div>
               )}
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setMobileOpen(false)}
+              className="ml-auto text-slate-400 hover:text-white lg:hidden"
+              aria-label="Close navigation"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Agent Status Box */}
+          <div className="p-3 shrink-0">
+            <div className={`px-3 py-2 rounded-md bg-[#111827] border border-[#1E293B] flex items-center justify-between ${collapsed ? 'justify-center !px-2' : ''}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${fleetSyncFailed ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                {!collapsed && (
+                  <span className="text-xs font-medium text-slate-300 font-sans truncate">
+                    {t('Agent Network', 'Mạng lưới Agent')}
+                  </span>
+                )}
+              </div>
+              {!collapsed && (
+                <span className={`text-xs font-mono tabular-nums shrink-0 font-medium ${fleetSyncFailed ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {fleetSyncFailed
+                    ? t('offline', 'mất kết nối')
+                    : fleetSummary
+                    ? `${fleetSummary.online_servers}/${fleetSummary.total_servers} ${t('online', 'trực tuyến')}`
+                    : t('Syncing...', 'Đang đồng bộ...')}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Navigation Items */}
+          <nav className="custom-scrollbar flex-1 overflow-y-auto py-2">
+            <div className="px-3 pt-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans">
+              {collapsed ? '•' : t('INSTANCE', 'HỆ THỐNG')}
+            </div>
+
+            <div className="space-y-1">
+              {primaryNavItems.map((item) => (
+                <NavItem item={item} key={item.href} />
+              ))}
+            </div>
+
+            {(role === 'admin' || role === 'superadmin') && (
+              <>
+                <div className="px-3 pt-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans">
+                  {collapsed ? '•' : t('ADMIN', 'QUẢN TRỊ')}
+                </div>
+
+                <div className="space-y-1">
+                  {adminNavItems.map((item) => (
+                    <NavItem item={item} key={item.href} />
+                  ))}
+                </div>
+              </>
+            )}
+          </nav>
         </div>
 
-        <nav className="custom-scrollbar flex-1 overflow-y-auto px-2 py-3 space-y-1">
-          <div className="px-2 pb-1 pt-0.5">
-            <p
-              className={`font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] ${
-                collapsed ? 'text-center' : ''
-              }`}
-            >
-              {collapsed ? '•' : t('Instance', 'Hệ thống')}
-            </p>
-          </div>
-
-          <div className="space-y-0.5">
-            {primaryNavItems.map((item) => (
-              <NavItem item={item} key={item.href} />
-            ))}
-          </div>
-
-          {(role === 'admin' || role === 'superadmin') && (
+        {/* Footer */}
+        <div className="p-3 border-t border-[#1E293B] flex items-center justify-between text-xs text-slate-500 font-sans shrink-0">
+          {!collapsed ? (
             <>
-              <div className="pt-3 pb-1 px-2 mt-3 border-t border-[var(--border-subtle)]">
-                <p
-                  className={`font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] ${
-                    collapsed ? 'text-center' : ''
-                  }`}
-                >
-                  {collapsed ? '•' : t('Admin', 'Quản trị')}
-                </p>
-              </div>
-
-              <div className="space-y-0.5">
-                {adminNavItems.map((item) => (
-                  <NavItem item={item} key={item.href} />
-                ))}
-              </div>
-            </>
-          )}
-        </nav>
-
-        <div className="border-t border-[var(--border-subtle)] p-2.5 bg-[var(--surface-2)]">
-          {!collapsed && (
-            <div className="px-1 flex items-center justify-between font-mono text-[10px] text-[var(--color-muted)]">
               <span className="truncate">DatrixOps CE</span>
-              <span className="px-1.5 py-0.2 rounded-none bg-[var(--surface-1)] text-blue-400 border border-[var(--border-subtle)] font-bold tabular-nums">
+              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 tabular-nums">
                 v{systemVersion}
               </span>
-            </div>
+            </>
+          ) : (
+            <span className="font-mono text-[10px] text-slate-400 mx-auto">
+              v{systemVersion}
+            </span>
           )}
         </div>
 
@@ -441,18 +429,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </button>
       </aside>
 
-      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
-        <header className="shell-surface app-header">
-          {/* Breadcrumb tăng độ rõ và weight. */}
-          <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
-            <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
-            <span className="text-[var(--color-muted)]">/</span>
-            <span className="text-[var(--color-muted)]">Production</span>
+      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''} bg-[#F1F5F9] dark:bg-[#060911] text-[#0F172A] dark:text-[#F8FAFC] min-h-screen flex flex-col font-sans`}>
+        <header className="h-14 px-6 bg-white dark:bg-[#0B0F19] border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between sticky top-0 z-30 font-sans shrink-0">
+          {/* Breadcrumb bên trái */}
+          <div className="hidden items-center gap-2 text-[13px] font-sans md:flex">
+            <span className="font-medium text-slate-900 dark:text-slate-200">{editionLabel(workspaceEdition)}</span>
+            <span className="text-slate-400">/</span>
+            <span className="text-slate-500 dark:text-slate-400">Production</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <LanguageToggle />
-            <ThemeToggle />
+            <LanguageToggle className="h-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200" />
+            <ThemeToggle className="h-8 w-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center p-0" />
 
             {(() => {
               const serverUpdateAvailable = Boolean(updateCheck?.update_available);
@@ -475,11 +463,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       setNotificationsOpen((current) => !current);
                       if (!notificationsOpen) void fetchNotifications();
                     }}
-                    className="topbar-icon relative text-[var(--color-muted)] hover:text-[var(--foreground)]"
+                    className="h-8 w-8 !rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center relative transition-colors"
                   >
                     <Bell className="h-4 w-4" />
                     {totalUnreadBadge > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-mono font-extrabold leading-none text-white shadow-sm">
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-mono font-bold leading-none text-white shadow-sm">
                         {totalUnreadBadge > 99 ? '99+' : totalUnreadBadge}
                       </span>
                     )}
@@ -648,7 +636,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 aria-label="User profile menu"
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--foreground)] text-xs font-mono font-bold transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)] focus:outline-none"
+                className="h-8 w-8 rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#111827] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center text-xs font-mono font-bold transition-colors focus:outline-none"
                 title={userEmail || 'User profile'}
               >
                 {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}

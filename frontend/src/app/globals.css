@@ -537,7 +537,7 @@ button:disabled {
    Dashboard shell and application components
    -------------------------------------------------------------------------- */
 .app-shell {
-  --sidebar: 244px;
+  --sidebar: 240px;
   min-height: 100vh;
   background: var(--background-root);
 }

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, ArrowUpRight, Check, ChevronRight, CircleAlert,
+  Activity, ArrowUpRight, ChevronRight, CircleAlert,
   Cpu, Database, Plus, RefreshCw, Server, Wifi,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -173,7 +173,7 @@ export default function OverviewDashboard() {
           <button
             type="button"
             onClick={() => void fetchOverview(true)}
-            className="inline-flex items-center gap-1.5 rounded-none border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-mono font-bold text-[var(--foreground)] hover:bg-[var(--surface-hover)]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#CBD5E1] dark:border-[#1E293B] bg-white dark:bg-[#111827] px-3 py-1.5 text-xs font-sans font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {t('Try again', 'Thử lại')}
@@ -186,331 +186,256 @@ export default function OverviewDashboard() {
   const fleetStatus = getFleetStatus(total, online, incidents.length, t);
 
   return (
-    <div className="space-y-3">
-      {/* 1. Sub-header Control Bar (Exact 48px / h-12) */}
-      <header className="h-12 px-3 sm:px-4 border border-[var(--border-subtle)] bg-[var(--surface-1)] flex items-center justify-between gap-3 rounded-none">
-        {/* Left: Brand / Title / Snapshot */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <h1 className="font-mono text-xs font-bold tracking-wider uppercase text-[var(--foreground)] truncate">
-              INFRASTRUCTURE // OVERVIEW
-            </h1>
-          </div>
-
-          <div className="hidden md:flex items-center gap-2 border-l border-[var(--border-subtle)] pl-3 font-mono text-[11px] text-[var(--color-muted)]">
+    <div className="font-sans">
+      {/* 1. Page Header (Clean, directly on background, no box/border) */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-[#0F172A] dark:text-white font-sans">
+            {t('Infrastructure Overview', 'Tổng quan hạ tầng')}
+          </h1>
+          <div className="flex items-center gap-2 mt-1 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+            <span>{t('Live telemetry', 'Đo đạc trực tiếp')}</span>
+            <span>·</span>
             <span>
-              {t('SNAPSHOT:', 'THỜI ĐIỂM:')}{' '}
-              <strong className="text-[var(--foreground)] tabular-nums">
+              {t('Snapshot:', 'Thời điểm:')}{' '}
+              <span className="font-mono tabular-nums text-[#0F172A] dark:text-slate-200">
                 {formatSnapshotTime(overview?.generated_at)}
-              </strong>
+              </span>
             </span>
             <span>·</span>
             <span>
               {refreshing
-                ? t('RECEIVING DATA…', 'ĐANG ĐỒNG BỘ…')
-                : t('15S AUTO-POLL', 'TỰ ĐỘNG LÀM MỚI (15S)')}
+                ? t('Updating...', 'Đang cập nhật...')
+                : t('Auto-refresh 15s', 'Tự động làm mới 15s')}
             </span>
-            {error && <span className="text-rose-500 font-bold truncate">[{error}]</span>}
+            {error && <span className="text-red-500 font-medium">[{error}]</span>}
           </div>
         </div>
 
-        {/* Right: Range toggles + Refresh + Add server */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Time range selector */}
-          <div className="inline-flex border border-[var(--border-subtle)] bg-[var(--surface-2)] p-0.5 rounded-none">
-            {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
-              <button
-                type="button"
-                key={item}
-                onClick={() => setRange(item)}
-                className={`h-7 px-2 font-mono text-[11px] font-semibold transition-colors duration-100 rounded-none ${
-                  range === item
-                    ? 'bg-[var(--accent-primary)] text-white font-bold'
-                    : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
-                }`}
-                aria-pressed={range === item}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-
-          {/* Refresh button */}
+        {/* 2 Control Buttons Only */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => void fetchOverview(true)}
             disabled={refreshing}
-            title={t('Refresh now', 'Làm mới ngay')}
-            className="h-8 px-2.5 inline-flex items-center gap-1.5 border border-[var(--border-subtle)] bg-[var(--surface-2)] text-xs font-mono font-medium text-[var(--foreground)] hover:bg-[var(--surface-hover)] hover:border-[var(--border-strong)] transition-colors disabled:opacity-50 rounded-none"
+            className="h-8 px-3 rounded-md text-xs font-medium font-sans bg-white dark:bg-[#0F1623] border border-[#CBD5E1] dark:border-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-colors duration-100 disabled:opacity-50"
           >
-            <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin text-[var(--accent-primary)]' : ''}`} />
-            <span className="hidden sm:inline">{t('Refresh', 'Làm mới')}</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{t('Refresh', 'Làm mới')}</span>
           </button>
 
-          {/* Add server button */}
           <Link
             href="/dashboard/servers"
-            className="h-8 px-3 inline-flex items-center gap-1.5 border border-blue-600 bg-blue-600 hover:bg-blue-500 text-xs font-mono font-bold text-white transition-colors rounded-none"
+            className="h-8 px-3.5 rounded-md text-xs font-medium font-sans bg-[#2563EB] hover:bg-[#1D4ED8] dark:hover:bg-[#3B82F6] text-white flex items-center gap-1.5 transition-colors duration-100"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t('Add server', 'Thêm server')}</span>
+            <span>{t('Add server', 'Thêm máy chủ')}</span>
           </Link>
         </div>
-      </header>
+      </div>
 
-      {/* 2. Horizontal Telemetry Ribbon (5-Column Single Continuous Grid) */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-[var(--border-subtle)] border border-[var(--border-subtle)] bg-[var(--surface-1)] rounded-none">
-        {/* Cell 1: AGENTS ONLINE */}
-        <div className="p-3 sm:p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--color-muted)]">
-              {t('Agents online', 'Agent trực tuyến')}
+      {/* 2. 5-Column Metric Cards Grid */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-5 font-sans">
+        {/* Card 1: Agents Online */}
+        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
+              {t('Agents Online', 'Agent trực tuyến')}
             </span>
-            <span className="px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase rounded-none border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-              LIVE
-            </span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-[var(--foreground)]">
-              {online}/{total}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">
-              {total > 0 ? `${health}%` : '0%'}
-            </span>
+          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
+            {online}/{total}
           </div>
-          <div className="h-1.5 w-full bg-[var(--surface-2)] border border-[var(--border-subtle)] mt-2 rounded-none overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all" style={{ width: `${health}%` }} />
+          <div>
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${health}%` }} />
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
+              {total > 0 ? `${health}% ` + t('healthy heartbeats', 'nhịp tim ổn định') : t('No agents', 'Chưa có agent')}
+            </p>
           </div>
-          <span className="mt-1.5 font-mono text-[10px] text-[var(--color-muted)] truncate">
-            {total > 0 ? `${health}% ` + t('healthy heartbeats', 'nhịp tim ổn định') : t('No agents connected', 'Chưa có kết nối')}
-          </span>
         </div>
 
-        {/* Cell 2: FLEET HEALTH */}
-        <div className="p-3 sm:p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--color-muted)]">
-              {t('Fleet health', 'Sức khỏe cụm')}
+        {/* Card 2: Fleet Health */}
+        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
+              {t('Fleet Health', 'Sức khỏe cụm')}
             </span>
-            <span
-              className={`px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase rounded-none border ${
-                fleetStatus.tone === 'good'
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-              }`}
-            >
-              {fleetStatus.label}
-            </span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${fleetStatus.tone === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-[var(--foreground)]">
-              {total > 0 ? `${health}%` : '—'}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">
-              SCORE
-            </span>
+          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
+            {total > 0 ? `${health}%` : '—'}
           </div>
-          <div className="h-1.5 w-full bg-[var(--surface-2)] border border-[var(--border-subtle)] mt-2 rounded-none overflow-hidden">
-            <div
-              className={`h-full transition-all ${fleetStatus.tone === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`}
-              style={{ width: `${health}%` }}
-            />
+          <div>
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
+              <div
+                className={`h-full rounded-full transition-all ${fleetStatus.tone === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                style={{ width: `${health}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
+              {offline} {t('offline', 'ngoại tuyến')} · {warning} {t('alerted', 'cảnh báo')}
+            </p>
           </div>
-          <span className="mt-1.5 font-mono text-[10px] text-[var(--color-muted)] truncate">
-            {offline} {t('offline', 'ngoại tuyến')} · {warning} {t('alerted', 'cảnh báo')}
-          </span>
         </div>
 
-        {/* Cell 3: AVERAGE CPU */}
-        <div className="p-3 sm:p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--color-muted)]">
+        {/* Card 3: Average CPU */}
+        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
               {t('Average CPU', 'CPU trung bình')}
             </span>
-            <span
-              className={`px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase rounded-none border ${
-                (summary?.average_cpu ?? 0) >= 75
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                  : 'border-blue-500/30 bg-blue-500/10 text-blue-400'
-              }`}
-            >
-              {(summary?.average_cpu ?? 0) >= 75 ? 'HIGH' : 'NORMAL'}
-            </span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.average_cpu ?? 0) >= 75 ? 'bg-amber-500' : 'bg-blue-500'}`} />
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-[var(--foreground)]">
-              {hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">
-              LOAD
-            </span>
+          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
+            {hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
           </div>
-          <div className="h-1.5 w-full bg-[var(--surface-2)] border border-[var(--border-subtle)] mt-2 rounded-none overflow-hidden">
-            <div
-              className="h-full bg-blue-500 transition-all"
-              style={{ width: `${Math.min(100, Math.max(0, summary?.average_cpu ?? 0))}%` }}
-            />
+          <div>
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
+              <div
+                className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all"
+                style={{ width: `${Math.min(100, Math.max(0, summary?.average_cpu ?? 0))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
+              {hasLiveMetrics ? t('Cluster load average', 'Tải trung bình cụm') : t('No metrics', 'Chưa có số liệu')}
+            </p>
           </div>
-          <span className="mt-1.5 font-mono text-[10px] text-[var(--color-muted)] truncate">
-            {hasLiveMetrics ? t('Cluster load average', 'Tải TB máy chủ online') : t('No metrics', 'Chưa có số liệu')}
-          </span>
         </div>
 
-        {/* Cell 4: MEMORY USED */}
-        <div className="p-3 sm:p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--color-muted)]">
-              {t('Memory used', 'RAM đã dùng')}
+        {/* Card 4: Memory Used */}
+        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
+              {t('Memory Used', 'RAM đã dùng')}
             </span>
-            <span
-              className={`px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase rounded-none border ${
-                (summary?.average_memory ?? 0) >= 80
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                  : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
-              }`}
-            >
-              {(summary?.average_memory ?? 0) >= 80 ? 'HIGH' : 'NORMAL'}
-            </span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.average_memory ?? 0) >= 80 ? 'bg-amber-500' : 'bg-blue-500'}`} />
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-[var(--foreground)]">
-              {hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">
-              RAM
-            </span>
+          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
+            {hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
           </div>
-          <div className="h-1.5 w-full bg-[var(--surface-2)] border border-[var(--border-subtle)] mt-2 rounded-none overflow-hidden">
-            <div
-              className="h-full bg-cyan-500 transition-all"
-              style={{ width: `${Math.min(100, Math.max(0, summary?.average_memory ?? 0))}%` }}
-            />
+          <div>
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
+              <div
+                className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all"
+                style={{ width: `${Math.min(100, Math.max(0, summary?.average_memory ?? 0))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
+              {hasLiveMemory ? (
+                <>
+                  <span className="font-mono tabular-nums">{formatBytes(summary?.memory_used ?? 0)}</span> /{' '}
+                  <span className="font-mono tabular-nums">{formatBytes(summary?.memory_total ?? 0)}</span>
+                </>
+              ) : (
+                t('No metrics', 'Chưa có số liệu')
+              )}
+            </p>
           </div>
-          <span className="mt-1.5 font-mono text-[10px] text-[var(--color-muted)] truncate">
-            {hasLiveMemory
-              ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}`
-              : t('No metrics', 'Chưa có số liệu')}
-          </span>
         </div>
 
-        {/* Cell 5: OPEN INCIDENTS */}
-        <div className="p-3 sm:p-3.5 flex flex-col justify-between col-span-2 md:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-mono uppercase tracking-wider text-[var(--color-muted)]">
-              {t('Open incidents', 'Sự cố đang mở')}
+        {/* Card 5: Open Incidents */}
+        <div className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none sm:col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-[#64748B] dark:text-[#94A3B8] font-sans">
+              {t('Open Incidents', 'Sự cố đang mở')}
             </span>
-            <span
-              className={`px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase rounded-none border ${
-                (summary?.open_incidents ?? 0) > 0
-                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                  : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-              }`}
-            >
-              {(summary?.open_incidents ?? 0) > 0 ? 'CRITICAL' : 'CLEAR'}
-            </span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${(summary?.open_incidents ?? 0) > 0 ? 'bg-red-500' : 'bg-emerald-500'}`} />
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span
-              className={`font-mono text-xl sm:text-2xl font-bold tabular-nums ${
-                (summary?.open_incidents ?? 0) > 0 ? 'text-rose-500' : 'text-[var(--foreground)]'
-              }`}
-            >
-              {summary?.open_incidents ?? 0}
-            </span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">
-              ALERTS
-            </span>
+          <div className="text-2xl font-bold font-mono tabular-nums text-[#0F172A] dark:text-[#F8FAFC] tracking-tight my-1">
+            {summary?.open_incidents ?? 0}
           </div>
-          <div className="h-1.5 w-full bg-[var(--surface-2)] border border-[var(--border-subtle)] mt-2 rounded-none overflow-hidden">
-            <div
-              className={`h-full transition-all ${
-                (summary?.open_incidents ?? 0) > 0 ? 'bg-rose-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${(summary?.open_incidents ?? 0) > 0 ? 100 : 0}%` }}
-            />
+          <div>
+            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2 mb-1.5">
+              <div
+                className={`h-full rounded-full transition-all ${(summary?.open_incidents ?? 0) > 0 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                style={{ width: `${(summary?.open_incidents ?? 0) > 0 ? 100 : 0}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans truncate">
+              {warning > 0
+                ? `${warning} ` + t('affected servers', 'máy chủ bị ảnh hưởng')
+                : t('All systems operational', 'Toàn bộ ổn định')}
+            </p>
           </div>
-          <span className="mt-1.5 font-mono text-[10px] text-[var(--color-muted)] truncate">
-            {warning > 0
-              ? `${warning} ` + t('affected servers', 'máy chủ bị ảnh hưởng')
-              : t('All systems normal', 'Toàn bộ ổn định')}
-          </span>
         </div>
       </section>
 
-      {/* 3. Split Control Grid (Resource Load 60% + Active Incidents & Fleet Status Matrix 40%) */}
-      <section className="grid gap-3 lg:grid-cols-12">
-        {/* Left: Resource Load Area Chart (60% width -> lg:col-span-7 xl:col-span-8) */}
-        <div className="lg:col-span-7 xl:col-span-8 border border-[var(--border-subtle)] bg-[var(--surface-1)] rounded-none flex flex-col justify-between overflow-hidden">
-          {/* Card Header with Integrated Fleet Counters and Legend */}
-          <div className="p-3 sm:px-4 sm:py-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-2)] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Activity className="h-3.5 w-3.5 text-blue-500" />
-              <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
-                RESOURCE LOAD // TELEMETRY
+      {/* 3. Split Grid (2/3 Resource Load + 1/3 Active Incidents) */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5 items-stretch font-sans">
+        {/* Left: Resource Load Area Chart (lg:col-span-2) */}
+        <div className="lg:col-span-2 bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
+          {/* Card Header on 1 single row */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-[#E2E8F0] dark:border-[#1E293B]">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
+                {t('Resource Load', 'Tải tài nguyên')}
               </h2>
+              <div className="flex items-center gap-3 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-blue-600 shrink-0" />
+                  CPU <strong className="font-mono tabular-nums text-[#0F172A] dark:text-white font-medium">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-xs bg-teal-500 shrink-0" />
+                  RAM <strong className="font-mono tabular-nums text-[#0F172A] dark:text-white font-medium">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
+                </span>
+              </div>
             </div>
 
-            {/* Status Chips + Metric Legend */}
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-mono">
-              <div className="flex items-center gap-1.5">
-                <span className="px-1.5 py-0.5 text-[10px] font-bold border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 rounded-none">
-                  ONLINE: {online}
-                </span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold border border-amber-500/30 bg-amber-500/10 text-amber-400 rounded-none">
-                  WARN: {warning}
-                </span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-400 rounded-none">
-                  OFFLINE: {offline}
-                </span>
-              </div>
-
-              <div className="hidden sm:flex items-center gap-3 border-l border-[var(--border-subtle)] pl-3 text-[11px]">
-                <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
-                  <span className="h-2 w-2 rounded-none bg-blue-500" />
-                  CPU: <strong className="text-[var(--foreground)]">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
-                </span>
-                <span className="flex items-center gap-1.5 text-[var(--color-muted)]">
-                  <span className="h-2 w-2 rounded-none bg-cyan-400" />
-                  RAM: <strong className="text-[var(--foreground)]">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
-                </span>
-              </div>
+            {/* Time range selector (1H 2H 12H 24H) */}
+            <div className="inline-flex p-0.5 rounded-md bg-slate-100 dark:bg-[#090D16] border border-[#E2E8F0] dark:border-[#1E293B]">
+              {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  onClick={() => setRange(item)}
+                  className={`px-2.5 py-1 text-xs font-mono font-medium rounded-xs transition-colors ${
+                    range === item
+                      ? 'bg-[#2563EB] text-white'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-white'
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Area Chart View */}
-          <div className="p-3 sm:p-4 min-h-[290px] flex-1">
+          <div className="min-h-[260px] flex-1">
             {chartData.length > 0 ? (
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                     <defs>
                       <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563EB" stopOpacity={0.25} />
+                        <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
                         <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.2} />
-                        <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#14B8A6" stopOpacity={0.15} />
+                        <stop offset="100%" stopColor="#14B8A6" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis
                       dataKey="t"
-                      stroke="var(--color-muted)"
-                      fontSize={10}
+                      stroke="#94A3B8"
+                      fontSize={11}
+                      fontFamily="monospace"
                       tickLine={false}
-                      axisLine={{ stroke: 'var(--border-subtle)' }}
+                      axisLine={{ stroke: '#E2E8F0', strokeOpacity: 0.5 }}
                     />
                     <Tooltip
                       contentStyle={{
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--border-default)',
-                        borderRadius: 0,
-                        fontSize: 11,
-                        fontFamily: 'monospace',
+                        background: 'var(--surface-1, #0F1623)',
+                        borderColor: 'var(--border-default, #1E293B)',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontFamily: 'Inter, system-ui, sans-serif',
                       }}
                       labelFormatter={(label) => label}
                       formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
@@ -518,8 +443,8 @@ export default function OverviewDashboard() {
                     <Area
                       type="monotone"
                       dataKey="ram"
-                      name="Memory"
-                      stroke="#06B6D4"
+                      name="RAM"
+                      stroke="#14B8A6"
                       strokeWidth={1.5}
                       fill="url(#overviewRamFill)"
                       isAnimationActive={false}
@@ -546,140 +471,132 @@ export default function OverviewDashboard() {
           </div>
         </div>
 
-        {/* Right: Active Incidents + Fleet Status Matrix (40% width -> lg:col-span-5 xl:col-span-4) */}
-        <div className="lg:col-span-5 xl:col-span-4 border border-[var(--border-subtle)] bg-[var(--surface-1)] rounded-none flex flex-col justify-between overflow-hidden">
+        {/* Right: Active Incidents (lg:col-span-1) */}
+        <div className="lg:col-span-1 bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md p-4 flex flex-col justify-between shadow-none">
           <div>
             {/* Header */}
-            <div className="p-3 sm:px-4 sm:py-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CircleAlert className="h-3.5 w-3.5 text-rose-500" />
-                <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
-                  ACTIVE INCIDENTS
-                </h2>
-              </div>
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#E2E8F0] dark:border-[#1E293B]">
+              <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
+                {t('Active Incidents', 'Sự cố đang mở')}
+              </h2>
               <span
-                className={`font-mono text-[10px] font-bold px-1.5 py-0.5 border rounded-none uppercase ${
+                className={`px-2 py-0.5 text-[11px] font-mono font-medium rounded-full ${
                   incidents.length > 0
-                    ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
-                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                 }`}
               >
-                {incidents.length} {t('FIRING', 'CẢNH BÁO')}
+                {incidents.length} {t('firing', 'cảnh báo')}
               </span>
             </div>
 
-            {/* Incidents List or All Clear Terminal View */}
-            <div className="p-3 space-y-2">
-              {incidents.length > 0 ? (
-                incidents.slice(0, 3).map((incident) => (
+            {/* Status box: Flat card, NO nested boxes */}
+            {incidents.length === 0 ? (
+              <div className="p-3.5 rounded-md bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-[#E2E8F0] dark:border-[#1E293B]/80 font-sans">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-sans">
+                  <span>✓</span>
+                  <span>{t('All systems operational', 'Toàn bộ hệ thống ổn định')}</span>
+                </div>
+                <p className="text-xs text-[#64748B] dark:text-[#94A3B8] font-sans mt-1 leading-relaxed">
+                  {t(
+                    'No active alerts firing across monitored agents. Heartbeats are operating within nominal limits.',
+                    'Không có cảnh báo nào đang kích hoạt. Nhịp tim các máy chủ hoạt động bình thường.'
+                  )}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {incidents.slice(0, 3).map((incident) => (
                   <IncidentRow
                     key={`${incident.rule_id}-${incident.server_id}`}
                     incident={incident}
                     isVi={isVi}
                   />
-                ))
-              ) : (
-                <div className="p-3 border border-[var(--border-subtle)] bg-[var(--surface-2)] rounded-none font-mono text-xs space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-400 font-bold">
-                    <Check className="h-3.5 w-3.5" />
-                    <span>[STATUS: ALL CLEAR]</span>
-                  </div>
-                  <p className="text-[var(--color-muted)] text-[11px] leading-relaxed">
-                    {t(
-                      'Zero active alerts firing across the monitored fleet. Heartbeats and threshold evaluations are operating within nominal limits.',
-                      'Không có sự cố nào đang cảnh báo trong toàn cụm. Nhịp tim và ngưỡng đo đạc đang trong hạn mức danh định.'
-                    )}
-                  </p>
-                  <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[10px] text-[var(--color-muted)]">
-                    <span>{t('MONITORED AGENTS:', 'MÁY CHỦ GIÁM SÁT:')} <strong className="text-[var(--foreground)]">{total}</strong></span>
-                    <span>{t('ACTIVE ALERTS:', 'CẢNH BÁO MỞ:')} <strong className="text-emerald-400">0</strong></span>
-                  </div>
-                </div>
-              )}
-
-              {/* Fleet Status Matrix: Quick Agent Node Matrix */}
-              <div className="mt-3 border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5 rounded-none font-mono">
-                <div className="flex items-center justify-between text-[10px] uppercase font-bold text-[var(--color-muted)] mb-2">
-                  <span>{t('FLEET NODE MATRIX', 'MA TRẬN MÁY CHỦ')}</span>
-                  <span className="tabular-nums">{online}/{total} {t('LIVE', 'KẾT NỐI')}</span>
-                </div>
-                {servers.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {servers.slice(0, 6).map((s) => (
-                      <Link
-                        key={s.id}
-                        href={`/dashboard/servers/${s.id}`}
-                        className="flex items-center justify-between p-1.5 border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:bg-[var(--surface-hover)] transition-colors rounded-none text-[10px]"
-                      >
-                        <span className="truncate max-w-[90px] text-[var(--foreground)] font-semibold">{s.name}</span>
-                        <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-none ${
-                            s.status === 'online' ? 'bg-emerald-500' : 'bg-rose-500'
-                          }`}
-                        />
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[10px] text-[var(--color-muted)]">
-                    {t('No agents enrolled in matrix.', 'Chưa có máy chủ trong danh sách.')}
-                  </p>
-                )}
+                ))}
               </div>
+            )}
+
+            {/* Fleet Node Matrix (Compact list, NO outer border box) */}
+            <div className="mt-4">
+              <div className="flex justify-between text-[11px] font-medium text-[#64748B] dark:text-[#94A3B8] mb-2 font-sans">
+                <span>{t('Fleet Nodes', 'Máy chủ cụm')}</span>
+                <span className="font-mono tabular-nums font-normal">
+                  {online}/{total} {t('online', 'trực tuyến')}
+                </span>
+              </div>
+
+              {servers.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {servers.slice(0, 6).map((s) => (
+                    <Link
+                      key={s.id}
+                      href={`/dashboard/servers/${s.id}`}
+                      className="px-2.5 py-1.5 rounded bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:border-slate-400 dark:hover:border-slate-600 transition-colors"
+                    >
+                      <span className="truncate max-w-[90px] font-sans">{s.name}</span>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          s.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'
+                        }`}
+                      />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">
+                  {t('No agents enrolled.', 'Chưa có máy chủ đăng ký.')}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Action Link to Incident Center */}
-          <div className="p-3 pt-0">
-            <Link
-              href="/dashboard/alerts"
-              className="w-full flex items-center justify-center gap-1.5 border border-[var(--border-subtle)] bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] hover:border-[var(--border-default)] py-2 text-xs font-mono font-bold text-[var(--foreground)] rounded-none transition-colors"
-            >
-              <span>{t('OPEN INCIDENT CENTER', 'MỞ TRUNG TÂM SỰ CỐ')}</span>
-              <ArrowUpRight className="h-3.5 w-3.5 text-blue-500" />
-            </Link>
-          </div>
+          {/* Open Incident Center button */}
+          <Link
+            href="/dashboard/alerts"
+            className="w-full h-8 mt-4 rounded-md text-xs font-medium font-sans bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-[#0F172A] dark:text-[#F8FAFC] flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <span>{t('Open Incident Center', 'Mở trung tâm sự cố')}</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          </Link>
         </div>
       </section>
 
-      {/* 4. Full-Width Server Activity Table (100% Width) */}
-      <section className="w-full border border-[var(--border-subtle)] bg-[var(--surface-1)] rounded-none overflow-hidden">
-        {/* Table Header Controls */}
-        <div className="p-3 sm:px-4 sm:py-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-center justify-between font-mono">
+      {/* 4. Server Activity Data Table (NO VERTICAL BORDERS) */}
+      <section className="bg-white dark:bg-[#0F1623] border border-[#E2E8F0] dark:border-[#1E293B] rounded-md overflow-hidden shadow-none font-sans">
+        {/* Table Top Bar */}
+        <div className="px-4 py-3 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between font-sans">
           <div className="flex items-center gap-2">
-            <Server className="h-3.5 w-3.5 text-blue-500" />
-            <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
-              SERVER ACTIVITY // FLEET REGISTRY
+            <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
+              {t('Server Activity', 'Hoạt động máy chủ')}
             </h2>
-            <span className="hidden sm:inline-block font-mono text-[10px] text-[var(--color-muted)] border border-[var(--border-subtle)] px-2 py-0.2 rounded-none bg-[var(--surface-1)]">
-              {servers.length} {t('NODES', 'MÁY CHỦ')}
+            <span className="px-2 py-0.5 text-[11px] font-mono rounded-full bg-slate-100 dark:bg-slate-800 text-[#64748B] dark:text-[#94A3B8]">
+              {servers.length} {t('nodes', 'máy chủ')}
             </span>
           </div>
 
           <Link
             href="/dashboard/servers"
-            className="font-mono text-xs text-[var(--accent-primary)] hover:underline inline-flex items-center gap-1 font-semibold"
+            className="text-xs font-medium text-[#2563EB] dark:text-blue-400 hover:underline font-sans"
           >
-            {t('VIEW ALL NODES', 'XEM TẤT CẢ')}
-            <ChevronRight className="h-3 w-3" />
+            {t('View all nodes →', 'Xem tất cả máy chủ →')}
           </Link>
         </div>
 
-        {/* Structured Table with Crisp Cell Borders */}
+        {/* Clean Modern Data Table */}
         {servers.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] font-mono text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
-                  <th className="px-4 py-2.5 font-bold border-r border-[var(--border-subtle)]">{t('NODE / HOSTNAME', 'MÁY CHỦ / IP')}</th>
-                  <th className="px-4 py-2.5 font-bold border-r border-[var(--border-subtle)]">{t('STATUS', 'TRẠNG THÁI')}</th>
-                  <th className="px-4 py-2.5 font-bold border-r border-[var(--border-subtle)]">{t('CPU LOAD', 'TẢI CPU')}</th>
-                  <th className="px-4 py-2.5 font-bold border-r border-[var(--border-subtle)]">{t('MEMORY LOAD', 'BỘ NHỚ')}</th>
-                  <th className="px-4 py-2.5 font-bold border-r border-[var(--border-subtle)]">{t('HEARTBEAT', 'NHỊP TIM')}</th>
-                  <th className="px-4 py-2.5 font-bold text-right">{t('ACTION', 'THAO TÁC')}</th>
+                <tr className="bg-[#F8FAFC] dark:bg-[#090D16]/60 border-b border-[#E2E8F0] dark:border-[#1E293B] text-[11px] font-semibold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] font-sans">
+                  <th className="py-2.5 px-4">{t('Server', 'Máy chủ')}</th>
+                  <th className="py-2.5 px-4">{t('Status', 'Trạng thái')}</th>
+                  <th className="py-2.5 px-4">{t('CPU Load', 'Tải CPU')}</th>
+                  <th className="py-2.5 px-4">{t('Memory Load', 'Bộ nhớ')}</th>
+                  <th className="py-2.5 px-4">{t('Heartbeat', 'Nhịp tim')}</th>
+                  <th className="py-2.5 px-4 text-right"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--border-subtle)]">
+              <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#1E293B] text-xs">
                 {servers.map((server) => (
                   <ServerRow key={server.id} server={server} isVi={isVi} t={t} />
                 ))}
@@ -714,83 +631,86 @@ function ServerRow({
   const canShowMetrics = online && server.has_metrics;
 
   return (
-    <tr className="hover:bg-[var(--surface-hover)] transition-colors duration-100">
-      <td className="px-4 py-2.5 border-r border-[var(--border-subtle)]">
+    <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+      <td className="py-3 px-4">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none border border-[var(--border-subtle)] bg-[var(--surface-2)]">
-            <Server className="h-3 w-3 text-[var(--color-muted)]" />
+          <span className="w-7 h-7 rounded bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+            <Server className="w-3.5 h-3.5" />
           </span>
           <div className="min-w-0">
-            <p className="font-mono text-xs font-bold text-[var(--foreground)] truncate max-w-[200px] sm:max-w-[280px]">
+            <p className="font-sans font-medium text-[#0F172A] dark:text-[#F8FAFC] truncate max-w-[200px] sm:max-w-[280px]">
               {server.name}
             </p>
-            <p className="font-mono text-[10px] text-[var(--color-muted)] truncate">
+            <p className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] tabular-nums truncate">
               {server.ip_address ?? t('No IP assigned', 'Chưa gán IP')}
             </p>
           </div>
         </div>
       </td>
-      <td className="px-4 py-2.5 border-r border-[var(--border-subtle)] whitespace-nowrap">
+      <td className="py-3 px-4 whitespace-nowrap">
         <span
-          className={`inline-flex items-center gap-1.5 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider border rounded-none ${
+          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium font-sans ${
             online
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-              : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+              : 'bg-red-500/10 text-red-700 dark:text-red-400'
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-none ${online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-          {online ? t('ONLINE', 'TRỰC TUYẾN') : t('OFFLINE', 'NGOẠI TUYẾN')}
+          <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          {online ? t('Online', 'Trực tuyến') : t('Offline', 'Ngoại tuyến')}
         </span>
       </td>
-      <td className="px-4 py-2.5 border-r border-[var(--border-subtle)] whitespace-nowrap">
+      <td className="py-3 px-4 whitespace-nowrap">
         {canShowMetrics ? (
-          <LoadBar value={server.cpu_usage} />
+          <div className="flex items-center gap-2.5">
+            <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-600 dark:bg-blue-500"
+                style={{ width: `${Math.min(100, Math.max(0, server.cpu_usage))}%` }}
+              />
+            </div>
+            <span className="font-mono font-medium text-xs text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+              {roundMetric(server.cpu_usage)}%
+            </span>
+          </div>
         ) : (
-          <span className="font-mono text-[10px] text-[var(--color-muted)]">—</span>
+          <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">—</span>
         )}
       </td>
-      <td className="px-4 py-2.5 border-r border-[var(--border-subtle)] whitespace-nowrap">
+      <td className="py-3 px-4 whitespace-nowrap">
         {canShowMetrics ? (
-          <LoadBar
-            value={memoryPercent}
-            label={server.memory_total > 0 ? `(${formatBytes(server.memory_used)} / ${formatBytes(server.memory_total)})` : undefined}
-          />
+          <div className="flex items-center gap-2.5">
+            <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-600 dark:bg-blue-500"
+                style={{ width: `${Math.min(100, Math.max(0, memoryPercent))}%` }}
+              />
+            </div>
+            <span className="font-mono font-medium text-xs text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+              {roundMetric(memoryPercent)}%
+            </span>
+            {server.memory_total > 0 && (
+              <span className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] tabular-nums hidden sm:inline">
+                ({formatBytes(server.memory_used)} / {formatBytes(server.memory_total)})
+              </span>
+            )}
+          </div>
         ) : (
-          <span className="font-mono text-[10px] text-[var(--color-muted)]">—</span>
+          <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">—</span>
         )}
       </td>
-      <td className="px-4 py-2.5 border-r border-[var(--border-subtle)] font-mono text-[11px] tabular-nums text-[var(--color-muted)] whitespace-nowrap">
+      <td className="py-3 px-4 font-mono text-xs text-[#64748B] dark:text-[#94A3B8] tabular-nums whitespace-nowrap">
         {formatRelativeTime(server.last_seen_at, isVi)}
       </td>
-      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+      <td className="py-3 px-4 text-right whitespace-nowrap">
         <Link
           href={`/dashboard/servers/${server.id}`}
-          className="font-mono text-[11px] text-[var(--accent-primary)] hover:underline inline-flex items-center gap-1 font-semibold"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium font-sans text-[#2563EB] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
         >
-          {t('MANAGE', 'QUẢN LÝ')} <ChevronRight className="h-3 w-3" />
+          {t('Manage', 'Quản lý')}
+          <ChevronRight className="w-3.5 h-3.5" />
         </Link>
       </td>
     </tr>
-  );
-}
-
-function LoadBar({ value, label }: { value: number; label?: string }) {
-  const normalized = Math.max(0, Math.min(value, 100));
-  const isHigh = normalized >= 85;
-  const isMed = normalized >= 70;
-  const barColor = isHigh ? 'bg-rose-500' : isMed ? 'bg-amber-500' : 'bg-blue-500';
-  const textColor = isHigh ? 'text-rose-400' : isMed ? 'text-amber-400' : 'text-blue-400';
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-none bg-[var(--surface-2)] border border-[var(--border-subtle)]">
-        <div className={`h-full rounded-none ${barColor}`} style={{ width: `${normalized}%` }} />
-      </div>
-      <span className={`font-mono tabular-nums text-[11px] font-bold ${textColor}`}>
-        {roundMetric(value)}%
-      </span>
-      {label && <span className="font-mono text-[10px] text-[var(--color-muted)] hidden xl:inline">{label}</span>}
-    </div>
   );
 }
 
@@ -803,21 +723,24 @@ function IncidentRow({
 }) {
   const valueDescription =
     incident.metric === 'status'
-      ? 'HEARTBEAT > 60s'
+      ? 'Heartbeat > 60s'
       : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
 
   return (
-    <div className="flex items-center gap-2.5 rounded-none border border-rose-500/20 bg-rose-500/[0.04] p-2.5">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-rose-500/30 bg-rose-500/10 text-rose-500">
+    <div className="flex items-center gap-2.5 p-2.5 rounded-md bg-[#F8FAFC] dark:bg-[#090D16]/60 border border-red-500/20 font-sans">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-red-500/10 text-red-500">
         {renderIncidentIcon(incident.metric)}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-xs font-bold text-[var(--foreground)]">{incident.rule_name}</p>
-        <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--color-muted)]">
-          <span className="text-slate-300 dark:text-slate-200 font-semibold">{incident.server_name}</span> · {valueDescription} · {formatRelativeTime(incident.last_triggered_at, isVi)}
+        <p className="truncate text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">
+          {incident.rule_name}
+        </p>
+        <p className="mt-0.5 truncate text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">
+          <span className="font-medium text-slate-700 dark:text-slate-300">{incident.server_name}</span> ·{' '}
+          <span className="font-mono tabular-nums">{valueDescription}</span> · {formatRelativeTime(incident.last_triggered_at, isVi)}
         </p>
       </div>
-      <CircleAlert className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+      <CircleAlert className="w-3.5 h-3.5 shrink-0 text-red-500" />
     </div>
   );
 }
@@ -832,11 +755,11 @@ function EmptyPanel({
   description: string;
 }) {
   return (
-    <div className="grid h-full min-h-32 place-items-center rounded-none border border-dashed border-[var(--border-subtle)] bg-[var(--surface-2)] p-4 text-center">
+    <div className="grid h-full min-h-32 place-items-center rounded-md border border-dashed border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#090D16]/60 p-6 text-center font-sans">
       <div>
-        <Icon className="mx-auto h-5 w-5 text-[var(--color-muted)] opacity-60" />
-        <p className="mt-2 font-mono text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">{title}</p>
-        <p className="mt-0.5 font-mono text-[11px] text-[var(--color-muted)]">{description}</p>
+        <Icon className="mx-auto h-5 w-5 text-[#64748B] dark:text-[#94A3B8] opacity-60" />
+        <p className="mt-2 text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">{title}</p>
+        <p className="mt-0.5 text-[11px] text-[#64748B] dark:text-[#94A3B8] font-sans">{description}</p>
       </div>
     </div>
   );
@@ -854,13 +777,13 @@ function DashboardMessage({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-64 items-center justify-center p-8">
-      <div className="max-w-md w-full rounded-none border border-[var(--border-subtle)] bg-[var(--surface-1)] p-6 text-center">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-none border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--accent-primary)]">
+    <div className="flex min-h-64 items-center justify-center p-8 font-sans">
+      <div className="max-w-md w-full rounded-md border border-[#E2E8F0] dark:border-[#1E293B] bg-white dark:bg-[#0F1623] p-6 text-center shadow-none">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400">
           {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <CircleAlert className="h-5 w-5" />}
         </div>
-        <h2 className="font-mono text-sm font-bold uppercase tracking-wider text-[var(--foreground)]">{title}</h2>
-        <p className="mt-1 font-mono text-xs text-[var(--color-muted)]">{description}</p>
+        <h2 className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] font-sans">{title}</h2>
+        <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8] font-sans">{description}</p>
         {action && <div className="mt-4">{action}</div>}
       </div>
     </div>
@@ -880,9 +803,9 @@ function getFleetStatus(
   incidents: number,
   t: (en: string, vi: string) => string
 ): { label: string; tone: 'good' | 'warning' } {
-  if (total === 0) return { label: t('NO DATA', 'CHƯA CÓ DỮ LIỆU'), tone: 'warning' };
-  if (incidents > 0 || online < total) return { label: t('ATTENTION', 'CẦN CHÚ Ý'), tone: 'warning' };
-  return { label: t('OPERATIONAL', 'HOẠT ĐỘNG TỐT'), tone: 'good' };
+  if (total === 0) return { label: t('No data', 'Chưa có dữ liệu'), tone: 'warning' };
+  if (incidents > 0 || online < total) return { label: t('Attention', 'Cần chú ý'), tone: 'warning' };
+  return { label: t('Operational', 'Hoạt động tốt'), tone: 'good' };
 }
 
 function roundMetric(value: number | undefined): number {
@@ -912,9 +835,9 @@ function formatChartTime(value: string, range: DashboardRange): string {
 }
 
 function formatSnapshotTime(value?: string): string {
-  if (!value) return 'NO DATA';
+  if (!value) return 'No data';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'UNKNOWN';
+  if (Number.isNaN(date.getTime())) return 'Unknown';
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
