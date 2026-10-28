@@ -213,7 +213,7 @@ export default function WebTerminal({
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#2a3746] bg-[#0a0d14] shadow-sm">
+    <section className="overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[#0a0d14] shadow-sm">
       <header className="flex flex-col gap-4 border-b border-[#243244] bg-[#101926] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-[#f1f5f9]">

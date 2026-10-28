@@ -190,12 +190,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                   key={item.id}
                   onClick={item.action}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all ${
+                  className={`flex items-center justify-between p-2.5 rounded-md cursor-pointer transition-colors duration-100 ${
                     isSelected ? 'bg-blue-600/20 border border-blue-500/30' : 'hover:bg-white/[0.03]'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-[var(--color-muted)]'}`}>
+                    <div className={`p-1.5 rounded-md ${isSelected ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-[var(--color-muted)]'}`}>
                       <Icon className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
