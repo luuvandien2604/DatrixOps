@@ -275,18 +275,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         onClick={() => setMobileOpen(false)}
         className={[
           'sidebar-nav-item',
-          // Tăng độ rõ cho toàn bộ menu sidebar.
-          'font-medium text-[var(--color-muted)]',
-          active ? 'is-active font-semibold !text-[var(--foreground)]' : '',
-          collapsed ? 'justify-center' : '',
+          'font-mono text-xs tracking-wide transition-colors duration-100',
+          active
+            ? 'is-active font-bold !text-[var(--foreground)] border-l-2 !border-l-blue-500 !bg-blue-500/10 !rounded-none'
+            : '!rounded-none border-l-2 border-l-transparent text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]',
+          collapsed ? 'justify-center !px-2' : '!px-3',
         ].join(' ')}
       >
         <Icon
-          className={`h-[18px] w-[18px] shrink-0 ${
-            active ? 'text-[var(--foreground)]' : 'text-[var(--color-muted)]'
+          className={`h-4 w-4 shrink-0 ${
+            active ? 'text-blue-500 dark:text-blue-400' : 'text-[var(--color-muted)]'
           }`}
         />
-        {!collapsed && <span>{item.label}</span>}
+        {!collapsed && <span className="truncate">{item.label}</span>}
       </Link>
     );
   };
@@ -298,7 +299,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-3 lg:hidden"
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-none p-2.5 lg:hidden border border-[var(--border-subtle)] bg-[var(--surface-1)]"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
@@ -315,26 +316,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <aside
         aria-label="Dashboard navigation"
-        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
+        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''} border-r border-[var(--border-subtle)]`}
       >
-        <div className="flex h-20 items-center gap-3 px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-            <div className="brand-orbit">
-              <Command className="h-4 w-4" />
+        <div className="flex h-12 items-center gap-2.5 px-3 border-b border-[var(--border-subtle)]">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-blue-500/40 bg-blue-500/10 text-blue-400">
+              <Command className="h-3.5 w-3.5" />
             </div>
 
             {!collapsed && (
-              <div className="min-w-0">
-                <div className="flex items-center">
-                  <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
-                    DATRIX<span className="text-[var(--violet)]">OPS</span>
-                  </p>
-                </div>
-
-                {/* Dòng phụ sáng hơn để không bị chìm trên nền tối. */}
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
-                  control plane
+              <div className="min-w-0 flex items-center gap-1.5 font-mono">
+                <p className="truncate text-xs font-bold tracking-wider text-[var(--foreground)]">
+                  DATRIX<span className="text-blue-500">OPS</span>
                 </p>
+                <span className="text-[9px] uppercase tracking-widest text-[var(--color-muted)] border border-[var(--border-subtle)] px-1 py-0.2 rounded-none bg-[var(--surface-2)]">
+                  CP
+                </span>
               </div>
             )}
           </Link>
@@ -345,49 +342,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className="ml-auto text-[var(--foreground)] lg:hidden"
             aria-label="Close navigation"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="px-3">
-          <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span
-                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                  fleetSyncFailed
-                    ? 'bg-[var(--amber)]'
-                    : (fleetSummary?.online_servers ?? 0) > 0
-                      ? 'bg-[var(--mint)]'
-                      : 'bg-[var(--color-muted)]'
-                }`}
-              />
-            </span>
+        <div className="p-2 border-b border-[var(--border-subtle)]">
+          <div className={`p-2 border border-[var(--border-subtle)] bg-[var(--surface-2)] font-mono text-xs rounded-none ${collapsed ? 'text-center' : ''}`}>
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span
+                  className={`inline-flex h-2 w-2 rounded-none ${
+                    fleetSyncFailed
+                      ? 'bg-amber-500'
+                      : (fleetSummary?.online_servers ?? 0) > 0
+                        ? 'bg-emerald-500 animate-pulse'
+                        : 'bg-slate-500'
+                  }`}
+                />
+              </span>
 
-            {!collapsed && (
-              <div>
-                <p className="text-xs font-semibold text-[var(--foreground)]">{t('Agent network', 'Mạng lưới Agent')}</p>
-                <p className="text-[10px] font-medium text-[var(--color-muted)]">
-                  {fleetSyncFailed
-                    ? t('Live data unavailable', 'Mất đồng bộ dữ liệu')
-                    : fleetSummary
-                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} ${t('connected', 'kết nối')}`
-                      : t('Syncing live status…', 'Đang đồng bộ…')}
-                </p>
-              </div>
-            )}
+              {!collapsed && (
+                <div className="min-w-0 flex-1 flex items-center justify-between text-[10px]">
+                  <span className="text-[var(--color-muted)] uppercase tracking-wider">{t('AGENTS', 'AGENT')}</span>
+                  <span className="tabular-nums font-bold text-[var(--foreground)]">
+                    {fleetSyncFailed
+                      ? t('OFFLINE', 'MẤT KẾT NỐI')
+                      : fleetSummary
+                        ? `${fleetSummary.online_servers}/${fleetSummary.total_servers} ${t('LIVE', 'KẾT NỐI')}`
+                        : t('SYNC...', 'ĐỒNG BỘ...')}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-5">
-          <p
-            className={`nav-eyebrow font-semibold text-[var(--color-muted)] ${
-              collapsed ? 'text-center' : ''
-            }`}
-          >
-            {collapsed ? '•' : t('Instance', 'Hệ thống')}
-          </p>
+        <nav className="custom-scrollbar flex-1 overflow-y-auto px-2 py-3 space-y-1">
+          <div className="px-2 pb-1 pt-0.5">
+            <p
+              className={`font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] ${
+                collapsed ? 'text-center' : ''
+              }`}
+            >
+              {collapsed ? '•' : t('Instance', 'Hệ thống')}
+            </p>
+          </div>
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {primaryNavItems.map((item) => (
               <NavItem item={item} key={item.href} />
             ))}
@@ -395,15 +396,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {(role === 'admin' || role === 'superadmin') && (
             <>
-              <p
-                className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
-                  collapsed ? 'text-center' : ''
-                }`}
-              >
-                {collapsed ? '•' : t('Admin', 'Quản trị')}
-              </p>
+              <div className="pt-3 pb-1 px-2 mt-3 border-t border-[var(--border-subtle)]">
+                <p
+                  className={`font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] ${
+                    collapsed ? 'text-center' : ''
+                  }`}
+                >
+                  {collapsed ? '•' : t('Admin', 'Quản trị')}
+                </p>
+              </div>
 
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {adminNavItems.map((item) => (
                   <NavItem item={item} key={item.href} />
                 ))}
@@ -412,11 +415,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </nav>
 
-        <div className="border-t border-[var(--border-color)] p-3">
+        <div className="border-t border-[var(--border-subtle)] p-2.5 bg-[var(--surface-2)]">
           {!collapsed && (
-            <div className="px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
+            <div className="px-1 flex items-center justify-between font-mono text-[10px] text-[var(--color-muted)]">
               <span className="truncate">DatrixOps CE</span>
-              <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-blue-400 border border-white/10 font-bold">
+              <span className="px-1.5 py-0.2 rounded-none bg-[var(--surface-1)] text-blue-400 border border-[var(--border-subtle)] font-bold tabular-nums">
                 v{systemVersion}
               </span>
             </div>
