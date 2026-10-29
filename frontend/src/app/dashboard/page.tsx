@@ -187,32 +187,27 @@ export default function OverviewDashboard() {
   const fleetStatus = getFleetStatus(total, online, incidents.length);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4">
-      {/* 1. MISSION CONTROL COMMAND BAR */}
-      <section className="flex flex-col gap-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-[1600px] space-y-5 pb-8">
+      {/* 1. TOP HEADER & TELEMETRY CONTROLS (Zero clutter) */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-1">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
+            Infrastructure Overview
+          </h1>
+          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                refreshing ? 'bg-[var(--status-warning)] animate-pulse' : 'bg-[var(--status-healthy)]'
+              className={`h-2 w-2 rounded-full ${
+                refreshing ? 'bg-[var(--status-warning)]' : 'bg-[var(--status-healthy)]'
               }`}
               aria-hidden="true"
             />
-            <span className="font-mono text-xs font-bold uppercase tracking-widest text-[var(--text-primary)]">
-              Mission Control Console
+            <span className={fleetStatus.tone === 'good' ? 'text-[var(--status-healthy)] font-medium' : 'text-[var(--status-warning)] font-medium'}>
+              {fleetStatus.label}
             </span>
-          </div>
-
-          <span className="hidden sm:inline text-[var(--border-default)]">|</span>
-
-          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] font-mono">
-            <span>
-              STATUS: <strong className={fleetStatus.tone === 'good' ? 'text-[var(--status-healthy)]' : 'text-[var(--status-warning)]'}>{fleetStatus.label.toUpperCase()}</strong>
-            </span>
-            <span className="text-[var(--border-default)]">·</span>
-            <span>SYNC: <strong className="text-[var(--text-primary)] tabular-nums">{formatSnapshotTime(overview?.generated_at)}</strong></span>
-            <span className="text-[var(--border-default)]">·</span>
-            <span className="text-[var(--text-tertiary)]">POLL: 15s</span>
+            <span>·</span>
+            <span>Sync: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{formatSnapshotTime(overview?.generated_at)}</strong></span>
+            <span>·</span>
+            <span className="text-[var(--text-tertiary)]">Auto-poll 15s</span>
           </div>
         </div>
 
@@ -221,48 +216,41 @@ export default function OverviewDashboard() {
             type="button"
             onClick={() => void fetchOverview(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50"
-            title="Force immediate telemetry poll"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50 shadow-xs"
+            title="Poll latest telemetry"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-[var(--accent-primary)]' : ''}`} />
             <span>Poll Telemetry</span>
           </button>
           <Link
             href="/dashboard/servers"
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-xs"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-xs"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Enroll Agent</span>
           </Link>
         </div>
-      </section>
+      </div>
 
-      {/* 2. UNIFIED TELEMETRY HORIZON RIBBON (Integrated 5-cell command ticker) */}
-      <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] divide-y sm:divide-y-0 sm:divide-x divide-[var(--border-subtle)] grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 overflow-hidden">
-        {/* Cell 1: Fleet Nodes */}
+      {/* 2. UNIFIED TELEMETRY HORIZON RIBBON (Continuous 5-cell metric bar) */}
+      <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] divide-y sm:divide-y-0 sm:divide-x divide-[var(--border-subtle)] grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 overflow-hidden shadow-xs">
+        {/* Cell 1: Fleet Availability */}
         <div className="p-3.5">
-          <div className="flex items-center justify-between text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-            <span className="flex items-center gap-1.5">
-              <Server className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
-              Fleet Availability
-            </span>
+          <div className="text-xs font-medium text-[var(--text-secondary)]">
+            Fleet availability
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
             {online}<span className="text-sm font-normal text-[var(--text-tertiary)]">/{total}</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-xs font-mono text-[var(--status-healthy)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--status-healthy)]" />
-            <span>{total > 0 ? `${health}%` : '0%'} Heartbeat SLA</span>
+          <div className="mt-1 text-xs font-mono text-[var(--status-healthy)]">
+            {total > 0 ? `${health}%` : '0%'} Heartbeat SLA
           </div>
         </div>
 
-        {/* Cell 2: CPU Pressure */}
+        {/* Cell 2: Compute Load */}
         <div className="p-3.5">
-          <div className="flex items-center justify-between text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-            <span className="flex items-center gap-1.5">
-              <Cpu className="h-3.5 w-3.5 text-[var(--accent-primary)]" />
-              Compute Load
-            </span>
+          <div className="text-xs font-medium text-[var(--text-secondary)]">
+            Compute load
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
             {hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
@@ -272,29 +260,23 @@ export default function OverviewDashboard() {
           </div>
         </div>
 
-        {/* Cell 3: Memory Footprint */}
+        {/* Cell 3: RAM Footprint */}
         <div className="p-3.5">
-          <div className="flex items-center justify-between text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-            <span className="flex items-center gap-1.5">
-              <MemoryStick className="h-3.5 w-3.5 text-[var(--status-info)]" />
-              RAM Footprint
-            </span>
+          <div className="text-xs font-medium text-[var(--text-secondary)]">
+            RAM footprint
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
             {hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
           </div>
-          <div className="mt-1 font-mono text-[11px] text-[var(--text-secondary)] tabular-nums truncate">
+          <div className="mt-1 font-mono text-xs text-[var(--text-secondary)] tabular-nums truncate">
             {hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
           </div>
         </div>
 
         {/* Cell 4: Incident State */}
         <div className="p-3.5">
-          <div className="flex items-center justify-between text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-            <span className="flex items-center gap-1.5">
-              <BellRing className={`h-3.5 w-3.5 ${incidents.length > 0 ? 'text-[var(--status-critical)]' : 'text-[var(--status-healthy)]'}`} />
-              Firing Alerts
-            </span>
+          <div className="text-xs font-medium text-[var(--text-secondary)]">
+            Active incidents
           </div>
           <div className={`mt-1.5 font-mono text-2xl font-bold tracking-tight tabular-nums ${incidents.length > 0 ? 'text-[var(--status-critical)]' : 'text-[var(--text-primary)]'}`}>
             {summary?.open_incidents ?? 0}
@@ -306,42 +288,44 @@ export default function OverviewDashboard() {
 
         {/* Cell 5: Telemetry Engine Health */}
         <div className="col-span-2 md:col-span-4 lg:col-span-1 p-3.5 bg-[var(--surface-2)]/30">
-          <div className="text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
-            <Activity className="h-3.5 w-3.5 text-[var(--status-healthy)]" />
-            Telemetry Engine
+          <div className="text-xs font-medium text-[var(--text-secondary)]">
+            Telemetry engine
           </div>
-          <div className="mt-1.5 font-mono text-sm font-bold text-[var(--status-healthy)] flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)] animate-pulse" />
-            OPERATIONAL
+          <div className="mt-1.5 text-sm font-semibold text-[var(--status-healthy)] flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
+            Operational
           </div>
-          <div className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">
+          <div className="mt-1 text-xs text-[var(--text-secondary)] font-mono">
             {servers.length} agents reporting live
           </div>
         </div>
       </section>
 
-      {/* 3. ACTIVE SERVER BLADE MATRIX (Hero component: visual live nodes) */}
-      <section className="space-y-2.5">
-        <div className="flex items-center justify-between px-1">
+      {/* 3. CONNECTED SERVER BLADES (Auto-fit Grid & Flat Blade Cards) */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between px-0.5">
           <div className="flex items-center gap-2">
-            <HardDrive className="h-4 w-4 text-[var(--accent-primary)]" />
-            <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-              Active Server Blade Matrix
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+              Connected server nodes
             </h2>
-            <span className="rounded bg-[var(--surface-3)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
-              {online}/{total} ONLINE
+            <span className="rounded bg-[var(--surface-2)] border border-[var(--border-subtle)] px-2 py-0.5 font-mono text-xs text-[var(--text-secondary)]">
+              {online}/{total} online
             </span>
           </div>
           <Link
             href="/dashboard/servers"
             className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-primary)] hover:underline"
           >
-            Server Inventory <ChevronRight className="h-3.5 w-3.5" />
+            Server inventory <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
 
         {servers.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            className={`grid grid-cols-1 gap-3.5 ${
+              servers.length === 1 ? 'md:grid-cols-1' : servers.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3'
+            }`}
+          >
             {servers.map((server) => {
               const isOnline = server.status === 'online';
               const memPct = server.memory_total > 0 ? (server.memory_used * 100) / server.memory_total : 0;
@@ -351,48 +335,47 @@ export default function OverviewDashboard() {
                 <Link
                   key={server.id}
                   href={`/dashboard/servers/${server.id}`}
-                  className="group rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5 transition-all duration-150 hover:border-[var(--accent-primary)]/60 hover:bg-[var(--surface-2)]/60 shadow-xs block"
+                  className="group rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] shadow-xs block"
                 >
                   {/* Top Blade Header */}
-                  <div className="flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] pb-2.5">
+                  <div className="flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span
                           className={`h-2 w-2 shrink-0 rounded-full ${
-                            isOnline ? 'bg-[var(--status-healthy)] animate-pulse' : 'bg-[var(--status-critical)]'
+                            isOnline ? 'bg-[var(--status-healthy)]' : 'bg-[var(--status-critical)]'
                           }`}
                         />
-                        <span className="font-mono text-sm font-bold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
+                        <span className="text-sm font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
                           {server.name}
                         </span>
                       </div>
-                      <div className="mt-0.5 font-mono text-[11px] text-[var(--text-tertiary)] pl-4">
+                      <div className="mt-0.5 font-mono text-xs text-[var(--text-secondary)] pl-4">
                         {server.ip_address ?? 'No IP assigned'}
                       </div>
                     </div>
 
                     <span
-                      className={`font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                      className={`text-xs font-medium px-2 py-0.5 rounded ${
                         isOnline
                           ? 'bg-[var(--status-healthy)]/10 text-[var(--status-healthy)]'
                           : 'bg-[var(--status-critical)]/10 text-[var(--status-critical)]'
                       }`}
                     >
-                      {isOnline ? 'ONLINE' : 'OFFLINE'}
+                      {isOnline ? 'Online' : 'Offline'}
                     </span>
                   </div>
 
-                  {/* Middle Live Telemetry Gauges */}
-                  <div className="grid grid-cols-2 gap-3 py-3">
-                    {/* CPU Gauge */}
-                    <div className="rounded bg-[var(--surface-2)] p-2 border border-[var(--border-subtle)]">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)]">
-                        <span>CPU LOAD</span>
-                        <strong className="text-[var(--text-primary)] tabular-nums">
+                  {/* Middle Live Telemetry Gauges (FLAT & BREATHABLE) */}
+                  <div className="grid grid-cols-2 gap-4 py-3">
+                    <div>
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="text-[var(--text-secondary)]">CPU</span>
+                        <span className="font-mono font-semibold text-[var(--text-primary)] tabular-nums">
                           {hasMetrics ? `${roundMetric(server.cpu_usage)}%` : '—'}
-                        </strong>
+                        </span>
                       </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-3)]">
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
                         <div
                           className={`h-full transition-all duration-200 ${
                             server.cpu_usage >= 85
@@ -406,17 +389,22 @@ export default function OverviewDashboard() {
                       </div>
                     </div>
 
-                    {/* RAM Gauge */}
-                    <div className="rounded bg-[var(--surface-2)] p-2 border border-[var(--border-subtle)]">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-secondary)]">
-                        <span>RAM ALLOC</span>
-                        <strong className="text-[var(--text-primary)] tabular-nums">
+                    <div>
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="text-[var(--text-secondary)]">Memory</span>
+                        <span className="font-mono font-semibold text-[var(--text-primary)] tabular-nums">
                           {hasMetrics ? `${roundMetric(memPct)}%` : '—'}
-                        </strong>
+                        </span>
                       </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-3)]">
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
                         <div
-                          className="h-full bg-[var(--status-info)] transition-all duration-200"
+                          className={`h-full transition-all duration-200 ${
+                            memPct >= 90
+                              ? 'bg-[var(--status-critical)]'
+                              : memPct >= 80
+                              ? 'bg-[var(--status-warning)]'
+                              : 'bg-[var(--status-healthy)]'
+                          }`}
                           style={{ width: `${Math.max(0, Math.min(memPct, 100))}%` }}
                         />
                       </div>
@@ -424,10 +412,10 @@ export default function OverviewDashboard() {
                   </div>
 
                   {/* Blade Footer Info */}
-                  <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-                    <span>Ping: <strong className="text-[var(--text-secondary)]">{formatRelativeTime(server.last_seen_at)}</strong></span>
-                    <span className="inline-flex items-center gap-1 text-[var(--accent-primary)] group-hover:translate-x-0.5 transition-transform text-xs">
-                      Inspect Telemetry <ArrowUpRight className="h-3 w-3" />
+                  <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5 text-xs text-[var(--text-secondary)]">
+                    <span>Ping: <strong className="font-mono text-[var(--text-primary)]">{formatRelativeTime(server.last_seen_at)}</strong></span>
+                    <span className="inline-flex items-center gap-1 text-[var(--accent-primary)] group-hover:translate-x-0.5 transition-transform text-xs font-medium">
+                      Inspect <ArrowUpRight className="h-3 w-3" />
                     </span>
                   </div>
                 </Link>
@@ -452,23 +440,20 @@ export default function OverviewDashboard() {
       {/* 4. DUAL TELEMETRY STUDIO (Multi-stream Chart 65% + Incident Feed 35%) */}
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-12">
         {/* Resource Load Telemetry Studio (xl:col-span-8) */}
-        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-8">
+        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-8 shadow-xs">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
             <div>
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-[var(--accent-primary)]" />
-                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                  Resource Load Telemetry Studio
-                </h3>
-              </div>
-              <div className="mt-1.5 flex items-center gap-4 text-xs font-mono">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                Resource load telemetry
+              </h3>
+              <div className="mt-1.5 flex items-center gap-4 text-xs">
                 <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
                   <span className="h-2 w-2 rounded-full bg-[var(--accent-primary)]" />
-                  CPU: <strong className="text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
+                  CPU: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
                   <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
-                  RAM: <strong className="text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
+                  RAM: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
                 </span>
               </div>
             </div>
@@ -480,9 +465,9 @@ export default function OverviewDashboard() {
                   type="button"
                   key={item}
                   onClick={() => setRange(item)}
-                  className={`rounded px-2.5 py-1 font-mono text-xs font-bold transition-colors ${
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                     range === item
-                      ? 'bg-[var(--accent-primary)] text-white shadow-xs'
+                      ? 'bg-[var(--surface-1)] text-[var(--text-primary)] shadow-xs font-semibold border border-[var(--border-default)]'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                   aria-pressed={range === item}
@@ -499,25 +484,25 @@ export default function OverviewDashboard() {
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="studioCpuFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stopColor="var(--accent-primary)" stopOpacity="0.25" />
+                      <stop offset="0" stopColor="var(--accent-primary)" stopOpacity="0.10" />
                       <stop offset="1" stopColor="var(--accent-primary)" stopOpacity="0" />
                     </linearGradient>
                     <linearGradient id="studioRamFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stopColor="var(--status-healthy)" stopOpacity="0.2" />
+                      <stop offset="0" stopColor="var(--status-healthy)" stopOpacity="0.06" />
                       <stop offset="1" stopColor="var(--status-healthy)" stopOpacity="0" />
                     </linearGradient>
                   </defs>
                   <XAxis
                     dataKey="t"
                     stroke="var(--border-default)"
-                    tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'monospace' }}
+                    tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace' }}
                     tickLine={false}
                     axisLine={{ stroke: 'var(--border-subtle)' }}
                     interval="preserveStartEnd"
                   />
                   <YAxis
                     stroke="var(--border-default)"
-                    tick={{ fill: 'var(--text-tertiary)', fontSize: 10, fontFamily: 'monospace' }}
+                    tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace' }}
                     tickLine={false}
                     axisLine={false}
                     domain={[0, 100]}
@@ -558,31 +543,28 @@ export default function OverviewDashboard() {
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center">
                 <Activity className="h-6 w-6 text-[var(--text-tertiary)]" />
-                <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">NO TELEMETRY RECORDED IN SELECTED RANGE</p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">No telemetry recorded in selected range</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Live Incident Stream & Fleet Health Breakdown (xl:col-span-4) */}
-        <div className="flex flex-col justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-4">
+        <div className="flex flex-col justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-4 shadow-xs">
           <div>
             <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-              <div className="flex items-center gap-2">
-                <BellRing className="h-4 w-4 text-[var(--accent-primary)]" />
-                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                  Live Incidents Stream
-                </h3>
-              </div>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                Live incidents
+              </h3>
               <Link
                 href="/dashboard/alerts"
-                className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${
+                className={`text-xs font-semibold px-2 py-0.5 rounded ${
                   incidents.length > 0
                     ? 'bg-[var(--status-critical)]/10 text-[var(--status-critical)]'
                     : 'bg-[var(--status-healthy)]/10 text-[var(--status-healthy)]'
                 }`}
               >
-                {incidents.length} OPEN
+                {incidents.length} open
               </Link>
             </div>
 
@@ -616,42 +598,42 @@ export default function OverviewDashboard() {
                 })}
               </div>
             ) : (
-              <div className="my-6 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)]/40 p-4 text-center">
-                <Check className="mx-auto h-6 w-6 text-[var(--status-healthy)]" />
-                <p className="mt-2 font-mono text-xs font-bold text-[var(--text-primary)]">ALL SYSTEMS NOMINAL</p>
-                <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">Zero threshold violations in fleet telemetry.</p>
+              <div className="my-6 rounded bg-[var(--surface-2)]/30 p-4 text-center">
+                <Check className="mx-auto h-5 w-5 text-[var(--status-healthy)]" />
+                <p className="mt-1.5 text-xs font-semibold text-[var(--text-primary)]">All systems nominal</p>
+                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Zero threshold violations in fleet telemetry.</p>
               </div>
             )}
 
             {/* Fleet Status SLA Distribution */}
-            <div className="mt-4 border-t border-[var(--border-subtle)] pt-3 space-y-2 font-mono text-xs">
+            <div className="mt-4 border-t border-[var(--border-subtle)] pt-3 space-y-2 text-xs">
               <div className="flex items-center justify-between text-[var(--text-secondary)]">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
-                  Responsive Nodes
+                  Responsive nodes
                 </span>
-                <strong className="text-[var(--text-primary)] tabular-nums">{online}</strong>
+                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{online}</strong>
               </div>
               <div className="flex items-center justify-between text-[var(--text-secondary)]">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[var(--status-warning)]" />
-                  Alerted / High Load
+                  Alerted / High load
                 </span>
-                <strong className="text-[var(--text-primary)] tabular-nums">{warning}</strong>
+                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{warning}</strong>
               </div>
               <div className="flex items-center justify-between text-[var(--text-secondary)]">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[var(--status-critical)]" />
                   Unreachable
                 </span>
-                <strong className="text-[var(--text-primary)] tabular-nums">{offline}</strong>
+                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{offline}</strong>
               </div>
             </div>
           </div>
 
           <Link
             href="/dashboard/alerts"
-            className="mt-4 flex items-center justify-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-2)] py-2 font-mono text-xs font-bold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+            className="mt-4 flex items-center justify-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-1)] py-2 text-xs font-semibold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] transition-colors"
           >
             Launch Alert Incident Center <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>

@@ -259,6 +259,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="dashboard-stage min-h-screen bg-[var(--background-root)] text-[var(--text-primary)] flex flex-col font-sans">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-1.5 focus:bg-[var(--surface-1)] focus:border focus:border-[var(--accent-primary)] focus:text-[var(--text-primary)] focus:text-xs focus:rounded-md focus:shadow-md"
+      >
+        Skip to main content
+      </a>
+
       {/* 1. TOP COMMAND BAR (Sticky Header) */}
       <header className="sticky top-0 z-40 border-b border-[var(--border-subtle)] bg-[var(--surface-1)]/95 backdrop-blur-md">
         <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
@@ -288,8 +295,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex-1 max-w-md hidden md:block">
             <button
               type="button"
+              aria-haspopup="dialog"
+              aria-label="Search nodes, metrics, rules"
               onClick={() => setCommandPaletteOpen(true)}
-              className="w-full flex items-center justify-between rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-all shadow-xs"
+              className="w-full flex items-center justify-between rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-colors shadow-xs"
             >
               <span className="flex items-center gap-2">
                 <Search className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
@@ -371,7 +380,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                       <div className="max-h-80 overflow-y-auto divide-y divide-[var(--border-subtle)] custom-scrollbar">
                         {serverUpdateAvailable && (
-                          <div className="flex gap-2.5 p-3 bg-blue-500/10">
+                          <div className="flex gap-2.5 p-3 bg-[var(--accent-subtle)]">
                             <Sparkles className="h-4 w-4 text-[var(--accent-primary)] shrink-0 mt-0.5" />
                             <div className="text-xs">
                               <p className="font-semibold text-[var(--text-primary)]">
@@ -385,8 +394,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         )}
 
                         {agentUpdateAvailable && (
-                          <div className="flex gap-2.5 p-3 bg-indigo-500/10">
-                            <Bot className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
+                          <div className="flex gap-2.5 p-3 bg-[var(--surface-3)]">
+                            <Bot className="h-4 w-4 text-[var(--accent-primary)] shrink-0 mt-0.5" />
                             <div className="text-xs">
                               <p className="font-semibold text-[var(--text-primary)]">
                                 Agent Update v{updateCheck?.latest_agent_version}
@@ -542,33 +551,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               onClick={() => setMobileOpen((prev) => !prev)}
               className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] md:hidden"
               aria-label="Toggle navigation menu"
+              aria-expanded={mobileOpen}
             >
               <Menu className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* 2. SUB-NAVIGATION TABS (Horizontal Command Bar) */}
-        <div className="border-t border-[var(--border-subtle)] bg-[var(--surface-1)]/80 backdrop-blur-xs overflow-x-auto custom-scrollbar">
+        {/* 2. SUB-NAVIGATION TABS (Pure Typographic Command Bar) */}
+        <nav
+          aria-label="Dashboard sub-navigation"
+          className="border-t border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-x-auto"
+        >
           <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 h-10">
             {primaryNav.map((item) => {
               const active = isTabActive(item.href);
-              const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative flex items-center gap-2 px-3 h-full text-xs font-medium transition-colors whitespace-nowrap ${
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative flex items-center px-3.5 h-full text-xs transition-colors whitespace-nowrap ${
                     active
-                      ? 'text-[var(--text-primary)] font-bold'
+                      ? 'text-[var(--text-primary)] font-semibold'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  <Icon className={`h-3.5 w-3.5 ${active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`} />
                   <span>{item.label}</span>
-                  {/* 2px active bottom accent line */}
                   {active && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[var(--accent-primary)] rounded-t" />
+                    <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[var(--accent-primary)] rounded-t" />
                   )}
                 </Link>
               );
@@ -576,24 +587,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {(role === 'admin' || role === 'superadmin') && (
               <>
-                <span className="h-3.5 w-px bg-[var(--border-subtle)] mx-1" />
+                <span className="h-3.5 w-px bg-[var(--border-subtle)] mx-2" aria-hidden="true" />
                 {adminNav.map((item) => {
                   const active = isTabActive(item.href);
-                  const Icon = item.icon;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`relative flex items-center gap-2 px-3 h-full text-xs font-medium transition-colors whitespace-nowrap ${
+                      aria-current={active ? 'page' : undefined}
+                      className={`relative flex items-center px-3.5 h-full text-xs transition-colors whitespace-nowrap ${
                         active
-                          ? 'text-[var(--text-primary)] font-bold'
+                          ? 'text-[var(--text-primary)] font-semibold'
                           : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
-                      <Icon className={`h-3.5 w-3.5 ${active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-tertiary)]'}`} />
                       <span>{item.label}</span>
                       {active && (
-                        <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[var(--accent-primary)] rounded-t" />
+                        <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[var(--accent-primary)] rounded-t" />
                       )}
                     </Link>
                   );
@@ -601,12 +611,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </>
             )}
           </div>
-        </div>
+        </nav>
       </header>
 
       {/* Mobile Drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs md:hidden flex flex-col">
+        <div className="fixed inset-0 z-50 bg-[var(--overlay-background)] backdrop-blur-xs md:hidden flex flex-col">
           <div className="bg-[var(--surface-1)] border-b border-[var(--border-subtle)] p-4 flex items-center justify-between">
             <span className="font-mono text-sm font-bold text-[var(--text-primary)]">NAVIGATION</span>
             <button
