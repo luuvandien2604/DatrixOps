@@ -537,27 +537,17 @@ button:disabled {
    Dashboard shell and application components
    -------------------------------------------------------------------------- */
 .app-shell {
-  --sidebar: 244px;
+  --sidebar: 0px;
   min-height: 100vh;
   background: var(--background-root);
 }
 
-.app-sidebar {
-  position: fixed;
-  z-index: 50;
-  inset: 0 auto 0 0;
-  display: flex;
-  width: var(--sidebar);
-  flex-direction: column;
-  border-right: 1px solid var(--border-default);
-  background: var(--background-sidebar);
-  box-shadow: none;
-  transition: width var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out);
+.dashboard-stage,
+.dashboard-stage.is-expanded {
+  margin-left: 0 !important;
+  width: 100%;
+  min-height: 100vh;
 }
-
-.app-sidebar.is-collapsed { width: 72px; }
-.dashboard-stage { margin-left: var(--sidebar); transition: margin var(--duration-normal) var(--ease-out); }
-.dashboard-stage.is-expanded { margin-left: 72px; }
 
 .agent-pulse-card {
   display: flex;
@@ -2242,10 +2232,7 @@ html.light .landing-footer {
 .feature-preview-meta strong { color: rgba(255, 255, 255, .58); font-weight: 600; }
 
 @media (max-width: 1023px) {
-  .app-sidebar { transform: translateX(-102%); }
-  .app-sidebar.is-mobile-open { width: 254px; transform: translateX(0); }
-  .dashboard-stage, .dashboard-stage.is-expanded { margin-left: 0; }
-  .app-header { padding: 0 16px 0 76px; }
+  .dashboard-stage, .dashboard-stage.is-expanded { margin-left: 0 !important; }
   .docs-aside { background: var(--background-sidebar); }
 }
 
