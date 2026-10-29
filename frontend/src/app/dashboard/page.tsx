@@ -4,8 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, ArrowUpRight, BellRing, Check, ChevronRight, CircleAlert,
-  Cpu, Database, HardDrive, MemoryStick, Plus, RefreshCw, Server, Wifi,
+  Activity, ArrowUpRight, Check, ChevronRight, CircleAlert,
+  Cpu, Database, Plus, RefreshCw, Server, Wifi,
 } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
