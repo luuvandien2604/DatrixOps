@@ -2739,11 +2739,11 @@ html.light .docs-content .prose pre code {
 .docs-markdown th, .docs-markdown td { border-bottom: 1px solid var(--border-color); padding: 11px 13px; text-align: left; vertical-align: top; }
 .docs-markdown tr:last-child td { border-bottom: 0; }
 .docs-markdown th { background: var(--surface-subtle); color: var(--foreground); font-weight: 700; }
-.docs-markdown blockquote { position: relative; margin: 24px 0; border: 1px solid color-mix(in srgb, var(--violet) 22%, var(--border-color)); border-left: 3px solid var(--violet); border-radius: var(--radius-md); background: var(--violet-wash); padding: 15px 18px; color: var(--text-strong); }
+.docs-markdown blockquote { position: relative; margin: 24px 0; border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--border-color)); border-radius: var(--radius-md); background: var(--violet-wash); padding: 15px 18px; color: var(--text-strong); }
 .docs-markdown blockquote p { margin: 0; }
-.docs-markdown blockquote.warning { border-color: color-mix(in srgb, var(--amber) 30%, var(--border-color)); border-left-color: var(--amber); background: color-mix(in srgb, var(--amber) 9%, transparent); }
-.docs-markdown blockquote.tip { border-color: color-mix(in srgb, var(--mint) 28%, var(--border-color)); border-left-color: var(--mint); background: var(--mint-wash); }
-.docs-markdown blockquote.important { border-color: color-mix(in srgb, var(--rose) 28%, var(--border-color)); border-left-color: var(--rose); background: color-mix(in srgb, var(--rose) 8%, transparent); }
+.docs-markdown blockquote.warning { border-color: color-mix(in srgb, var(--amber) 30%, var(--border-color)); background: color-mix(in srgb, var(--amber) 9%, transparent); }
+.docs-markdown blockquote.tip { border-color: color-mix(in srgb, var(--mint) 28%, var(--border-color)); background: var(--mint-wash); }
+.docs-markdown blockquote.important { border-color: color-mix(in srgb, var(--rose) 28%, var(--border-color)); background: color-mix(in srgb, var(--rose) 8%, transparent); }
 .docs-code { margin: 22px 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: #050608; box-shadow: var(--shadow-surface); }
 .docs-code > div { display: flex; height: 39px; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); padding: 0 11px 0 15px; color: #8d919b; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
 .docs-code button { display: flex; align-items: center; gap: 6px; border: 0; border-radius: 7px; background: transparent; padding: 6px 8px; color: #b5b8c0; font-size: 10px; text-transform: none; letter-spacing: 0; }

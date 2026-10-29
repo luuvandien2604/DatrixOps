@@ -3224,15 +3224,7 @@ function AlertsPageInner() {
                   return (
                     <div
                       key={item.id}
-                      className={`ops-panel surface-regular relative overflow-hidden transition-all ${
-                        isFiring
-                          ? 'border-l-4 border-l-rose-500'
-                          : isResolved
-                            ? 'border-l-4 border-l-emerald-500'
-                            : isReminder
-                              ? 'border-l-4 border-l-amber-500'
-                              : 'border-l-4 border-l-blue-500'
-                      } p-5 shadow-xs hover:shadow-md`}
+                      className="ops-panel surface-regular relative overflow-hidden transition-all border border-[var(--border-subtle)] hover:border-[var(--border-default)] p-5 shadow-xs hover:shadow-md"
                     >
                       {/* Card Header */}
                       <div className="flex items-start justify-between gap-4">

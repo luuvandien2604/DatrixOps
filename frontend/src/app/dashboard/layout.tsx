@@ -258,7 +258,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div className="min-h-screen bg-[var(--background-root)] text-[var(--text-primary)] flex flex-col font-sans">
+    <div className="dashboard-stage min-h-screen bg-[var(--background-root)] text-[var(--text-primary)] flex flex-col font-sans">
       {/* 1. TOP COMMAND BAR (Sticky Header) */}
       <header className="sticky top-0 z-40 border-b border-[var(--border-subtle)] bg-[var(--surface-1)]/95 backdrop-blur-md">
         <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
