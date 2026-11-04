@@ -4,11 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, ArrowUpRight, Check, ChevronRight, CircleAlert,
-  Cpu, Database, Plus, RefreshCw, Server, Wifi,
+  Activity, ArrowUpRight, BellRing, Check, ChevronRight, CircleAlert, Cloud,
+  Cpu, Database, MemoryStick, Plus, RefreshCw, Server, Wifi,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '@/lib/apiClient';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
 type DashboardRange = '1H' | '2H' | '12H' | '24H';
 
@@ -150,510 +151,273 @@ export default function OverviewDashboard() {
   }, [overview?.metrics, range]);
 
   const latestMetric = chartData.at(-1);
+  const cpuBars = chartData.slice(-7).map((point) => point.cpu);
+  const memoryBars = chartData.slice(-7).map((point) => point.ram);
 
   if (loading && !overview) {
-    return (
-      <div className="flex h-96 items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)]">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <RefreshCw className="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
-          <div className="font-mono text-sm font-semibold tracking-wider text-[var(--text-primary)]">
-            INITIALIZING MISSION CONTROL TELEMETRY...
-          </div>
-          <div className="text-xs text-[var(--text-secondary)]">Connecting to fleet control plane.</div>
-        </div>
-      </div>
-    );
+    return <DashboardMessage title="Syncing live data" description="Fetching the latest heartbeat, metrics, and alert state." loading />;
   }
 
   if (!overview && error) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-md border border-[var(--status-critical)]/40 bg-[var(--surface-1)] p-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <CircleAlert className="h-8 w-8 text-[var(--status-critical)]" />
-          <div className="text-base font-bold text-[var(--text-primary)]">Telemetry Stream Disconnected</div>
-          <div className="max-w-md font-mono text-xs text-[var(--text-secondary)]">{error}</div>
-          <button
-            type="button"
-            onClick={() => void fetchOverview(true)}
-            className="mt-3 inline-flex items-center gap-2 rounded-md bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] border border-[var(--border-default)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Reconnect Telemetry
-          </button>
-        </div>
-      </div>
+      <DashboardMessage
+        title="Unable to load data"
+        description={error}
+        action={<button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary"><RefreshCw className="h-4 w-4" />Try again</button>}
+      />
     );
   }
 
   const fleetStatus = getFleetStatus(total, online, incidents.length);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-5 pb-8">
-      {/* 1. TOP HEADER & TELEMETRY CONTROLS (Zero clutter) */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-1">
+    <div className="mx-auto max-w-[1540px] space-y-6">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
-            Infrastructure Overview
-          </h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                refreshing ? 'bg-[var(--status-warning)]' : 'bg-[var(--status-healthy)]'
-              }`}
-              aria-hidden="true"
-            />
-            <span className={fleetStatus.tone === 'good' ? 'text-[var(--status-healthy)] font-medium' : 'text-[var(--status-warning)] font-medium'}>
-              {fleetStatus.label}
-            </span>
-            <span>·</span>
-            <span>Sync: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{formatSnapshotTime(overview?.generated_at)}</strong></span>
-            <span>·</span>
-            <span className="text-[var(--text-tertiary)]">Auto-poll 15s</span>
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--mint)]">
+            <Activity className="h-3 w-3" />
+            Live telemetry
+            <span className="live-data-dot" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)]">Infrastructure Overview</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40 font-mono" aria-live="polite">
+            <span>Snapshot: {formatSnapshotTime(overview?.generated_at)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{refreshing ? 'Receiving fresh data…' : 'Auto-refresh is on'}</span>
+            {error && <span className="text-[var(--rose)]">Latest refresh failed: {error}</span>}
           </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => void fetchOverview(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50 shadow-xs"
-            title="Poll latest telemetry"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-[var(--accent-primary)]' : ''}`} />
-            <span>Poll Telemetry</span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button type="button" onClick={() => void fetchOverview(true)} className="ops-button secondary" disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh now
           </button>
-          <Link
-            href="/dashboard/servers"
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent-hover)] transition-colors shadow-xs"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Enroll Agent</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* 2. UNIFIED TELEMETRY HORIZON RIBBON (Continuous 5-cell metric bar) */}
-      <section className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] divide-y sm:divide-y-0 sm:divide-x divide-[var(--border-subtle)] grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 overflow-hidden shadow-xs">
-        {/* Cell 1: Fleet Availability */}
-        <div className="p-3.5">
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
-            Fleet availability
-          </div>
-          <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
-            {online}<span className="text-sm font-normal text-[var(--text-tertiary)]">/{total}</span>
-          </div>
-          <div className="mt-1 text-xs font-mono text-[var(--status-healthy)]">
-            {total > 0 ? `${health}%` : '0%'} Heartbeat SLA
-          </div>
-        </div>
-
-        {/* Cell 2: Compute Load */}
-        <div className="p-3.5">
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
-            Compute load
-          </div>
-          <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
-            {hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
-          </div>
-          <div className="mt-1 text-xs text-[var(--text-secondary)] font-mono">
-            Peak: <strong className="text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong> · Nominal
-          </div>
-        </div>
-
-        {/* Cell 3: RAM Footprint */}
-        <div className="p-3.5">
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
-            RAM footprint
-          </div>
-          <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-[var(--text-primary)] tabular-nums">
-            {hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
-          </div>
-          <div className="mt-1 font-mono text-xs text-[var(--text-secondary)] tabular-nums truncate">
-            {hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
-          </div>
-        </div>
-
-        {/* Cell 4: Incident State */}
-        <div className="p-3.5">
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
-            Active incidents
-          </div>
-          <div className={`mt-1.5 font-mono text-2xl font-bold tracking-tight tabular-nums ${incidents.length > 0 ? 'text-[var(--status-critical)]' : 'text-[var(--text-primary)]'}`}>
-            {summary?.open_incidents ?? 0}
-          </div>
-          <div className="mt-1 text-xs text-[var(--text-secondary)] font-mono">
-            {incidents.length > 0 ? `${warning} nodes affected` : 'All rules clear'}
-          </div>
-        </div>
-
-        {/* Cell 5: Telemetry Engine Health */}
-        <div className="col-span-2 md:col-span-4 lg:col-span-1 p-3.5 bg-[var(--surface-2)]/30">
-          <div className="text-xs font-medium text-[var(--text-secondary)]">
-            Telemetry engine
-          </div>
-          <div className="mt-1.5 text-sm font-semibold text-[var(--status-healthy)] flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
-            Operational
-          </div>
-          <div className="mt-1 text-xs text-[var(--text-secondary)] font-mono">
-            {servers.length} agents reporting live
-          </div>
+          <Link href="/dashboard/servers" className="ops-button primary"><Plus className="h-4 w-4" />Add server</Link>
         </div>
       </section>
 
-      {/* 3. CONNECTED SERVER BLADES (Auto-fit Grid & Flat Blade Cards) */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between px-0.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Connected server nodes
-            </h2>
-            <span className="rounded bg-[var(--surface-2)] border border-[var(--border-subtle)] px-2 py-0.5 font-mono text-xs text-[var(--text-secondary)]">
-              {online}/{total} online
-            </span>
-          </div>
-          <Link
-            href="/dashboard/servers"
-            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-primary)] hover:underline"
-          >
-            Server inventory <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-
-        {servers.length > 0 ? (
-          <div
-            className={`grid grid-cols-1 gap-3.5 ${
-              servers.length === 1 ? 'md:grid-cols-1' : servers.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3'
-            }`}
-          >
-            {servers.map((server) => {
-              const isOnline = server.status === 'online';
-              const memPct = server.memory_total > 0 ? (server.memory_used * 100) / server.memory_total : 0;
-              const hasMetrics = isOnline && server.has_metrics;
-
-              return (
-                <Link
-                  key={server.id}
-                  href={`/dashboard/servers/${server.id}`}
-                  className="group rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] shadow-xs block"
-                >
-                  {/* Top Blade Header */}
-                  <div className="flex items-start justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${
-                            isOnline ? 'bg-[var(--status-healthy)]' : 'bg-[var(--status-critical)]'
-                          }`}
-                        />
-                        <span className="text-sm font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
-                          {server.name}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 font-mono text-xs text-[var(--text-secondary)] pl-4">
-                        {server.ip_address ?? 'No IP assigned'}
-                      </div>
-                    </div>
-
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded ${
-                        isOnline
-                          ? 'bg-[var(--status-healthy)]/10 text-[var(--status-healthy)]'
-                          : 'bg-[var(--status-critical)]/10 text-[var(--status-critical)]'
-                      }`}
-                    >
-                      {isOnline ? 'Online' : 'Offline'}
-                    </span>
-                  </div>
-
-                  {/* Middle Live Telemetry Gauges (FLAT & BREATHABLE) */}
-                  <div className="grid grid-cols-2 gap-4 py-3">
-                    <div>
-                      <div className="flex items-baseline justify-between text-xs">
-                        <span className="text-[var(--text-secondary)]">CPU</span>
-                        <span className="font-mono font-semibold text-[var(--text-primary)] tabular-nums">
-                          {hasMetrics ? `${roundMetric(server.cpu_usage)}%` : '—'}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-                        <div
-                          className={`h-full transition-all duration-200 ${
-                            server.cpu_usage >= 85
-                              ? 'bg-[var(--status-critical)]'
-                              : server.cpu_usage >= 70
-                              ? 'bg-[var(--status-warning)]'
-                              : 'bg-[var(--accent-primary)]'
-                          }`}
-                          style={{ width: `${Math.max(0, Math.min(server.cpu_usage, 100))}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-baseline justify-between text-xs">
-                        <span className="text-[var(--text-secondary)]">Memory</span>
-                        <span className="font-mono font-semibold text-[var(--text-primary)] tabular-nums">
-                          {hasMetrics ? `${roundMetric(memPct)}%` : '—'}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
-                        <div
-                          className={`h-full transition-all duration-200 ${
-                            memPct >= 90
-                              ? 'bg-[var(--status-critical)]'
-                              : memPct >= 80
-                              ? 'bg-[var(--status-warning)]'
-                              : 'bg-[var(--status-healthy)]'
-                          }`}
-                          style={{ width: `${Math.max(0, Math.min(memPct, 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Blade Footer Info */}
-                  <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5 text-xs text-[var(--text-secondary)]">
-                    <span>Ping: <strong className="font-mono text-[var(--text-primary)]">{formatRelativeTime(server.last_seen_at)}</strong></span>
-                    <span className="inline-flex items-center gap-1 text-[var(--accent-primary)] group-hover:translate-x-0.5 transition-transform text-xs font-medium">
-                      Inspect <ArrowUpRight className="h-3 w-3" />
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-md border border-dashed border-[var(--border-default)] bg-[var(--surface-1)] p-8 text-center">
-            <Server className="mx-auto h-8 w-8 text-[var(--text-tertiary)] opacity-60" />
-            <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">No Server Blades Enrolled</p>
-            <p className="mt-1 text-xs text-[var(--text-secondary)]">Enroll your first Linux node using the single-binary agent.</p>
-            <Link
-              href="/dashboard/servers"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-primary)] px-3 py-1.5 text-xs font-semibold text-white"
-            >
-              <Plus className="h-3.5 w-3.5" /> Enroll First Node
-            </Link>
-          </div>
-        )}
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          icon={Server}
+          label="Agents online"
+          value={`${online}/${total}`}
+          note={total > 0 ? `${health}% healthy heartbeats` : 'No servers'}
+          color="var(--mint)"
+          bars={[]}
+          tint="healthy"
+          emptyLabel="LIVE"
+        />
+        <MetricCard
+          icon={Cpu}
+          label="Average CPU"
+          value={hasLiveMetrics ? formatPercent(summary?.average_cpu) : '—'}
+          note={hasLiveMetrics ? 'Online server average' : 'No metrics'}
+          color="var(--violet)"
+          bars={cpuBars}
+          tint="info"
+        />
+        <MetricCard
+          icon={MemoryStick}
+          label="Memory used"
+          value={hasLiveMemory ? formatPercent(summary?.average_memory) : '—'}
+          note={hasLiveMemory ? `${formatBytes(summary?.memory_used ?? 0)} / ${formatBytes(summary?.memory_total ?? 0)}` : 'No metrics'}
+          color="var(--sky)"
+          bars={memoryBars}
+          tint="info"
+        />
+        <MetricCard
+          icon={BellRing}
+          label="Open incidents"
+          value={String(summary?.open_incidents ?? 0)}
+          note={warning > 0 ? `${warning} affected servers` : 'No firing alerts'}
+          color="var(--rose)"
+          bars={[]}
+          tint={warning > 0 ? 'critical' : 'healthy'}
+          emptyLabel={warning > 0 ? 'ACTIVE' : 'CLEAR'}
+        />
       </section>
 
-      {/* 4. DUAL TELEMETRY STUDIO (Multi-stream Chart 65% + Incident Feed 35%) */}
-      <section className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-        {/* Resource Load Telemetry Studio (xl:col-span-8) */}
-        <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-8 shadow-xs">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                Resource load telemetry
-              </h3>
-              <div className="mt-1.5 flex items-center gap-4 text-xs">
-                <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
-                  <span className="h-2 w-2 rounded-full bg-[var(--accent-primary)]" />
-                  CPU: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.cpu}%` : '—'}</strong>
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
-                  <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
-                  RAM: <strong className="font-mono text-[var(--text-primary)] tabular-nums">{latestMetric ? `${latestMetric.ram}%` : '—'}</strong>
-                </span>
-              </div>
-            </div>
-
-            {/* Time range picker */}
-            <div className="flex items-center gap-1 rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] p-0.5">
+      <section className="grid gap-4 xl:grid-cols-[1.65fr_.75fr]">
+        <div className="ops-panel min-h-[390px] p-5 sm:p-6">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div><p className="panel-kicker">Fleet telemetry</p><h2 className="panel-title">Resource load</h2></div>
+            <div className="range-picker" aria-label="Chart time range">
               {(['1H', '2H', '12H', '24H'] as DashboardRange[]).map((item) => (
-                <button
-                  type="button"
-                  key={item}
-                  onClick={() => setRange(item)}
-                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                    range === item
-                      ? 'bg-[var(--surface-1)] text-[var(--text-primary)] shadow-xs font-semibold border border-[var(--border-default)]'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                  aria-pressed={range === item}
-                >
+                <button type="button" key={item} onClick={() => setRange(item)} className={range === item ? 'active' : ''} aria-pressed={range === item}>
                   {item}
                 </button>
               ))}
             </div>
           </div>
-
-          <div className="h-[280px] w-full">
+          <div className="mb-4 flex gap-6 text-xs">
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--violet)]" />CPU <b className="font-mono text-white">{latestMetric ? `${latestMetric.cpu}%` : '—'}</b></span>
+            <span className="flex items-center gap-2 text-white/45"><i className="h-2 w-2 rounded-full bg-[var(--mint)]" />Memory <b className="font-mono text-white">{latestMetric ? `${latestMetric.ram}%` : '—'}</b></span>
+          </div>
+          <div className="h-[260px]">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="studioCpuFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stopColor="var(--accent-primary)" stopOpacity="0.10" />
-                      <stop offset="1" stopColor="var(--accent-primary)" stopOpacity="0" />
-                    </linearGradient>
-                    <linearGradient id="studioRamFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0" stopColor="var(--status-healthy)" stopOpacity="0.06" />
-                      <stop offset="1" stopColor="var(--status-healthy)" stopOpacity="0" />
-                    </linearGradient>
+                    <linearGradient id="overviewCpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--violet-strong)" stopOpacity=".16" /><stop offset="1" stopColor="var(--violet-strong)" stopOpacity="0" /></linearGradient>
+                    <linearGradient id="overviewRamFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--mint)" stopOpacity=".12" /><stop offset="1" stopColor="var(--mint)" stopOpacity="0" /></linearGradient>
                   </defs>
-                  <XAxis
-                    dataKey="t"
-                    stroke="var(--border-default)"
-                    tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace' }}
-                    tickLine={false}
-                    axisLine={{ stroke: 'var(--border-subtle)' }}
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    stroke="var(--border-default)"
-                    tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'monospace' }}
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, 100]}
-                    tickFormatter={(v) => `${v}%`}
-                  />
+                  <XAxis dataKey="t" hide />
                   <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface-3)',
-                      border: '1px solid var(--border-default)',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      color: 'var(--text-primary)',
-                      fontFamily: 'monospace',
-                    }}
-                    labelFormatter={(label) => `Timestamp: ${label}`}
-                    formatter={(val: unknown, name: unknown) => [`${val}%`, String(name)]}
+                    contentStyle={{ background: 'var(--tooltip-background)', border: '1px solid var(--border-color)', borderRadius: 12, fontSize: 11 }}
+                    labelFormatter={(label) => label}
+                    formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="ram"
-                    name="RAM"
-                    stroke="var(--status-healthy)"
-                    strokeWidth={1.5}
-                    fill="url(#studioRamFill)"
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="cpu"
-                    name="CPU"
-                    stroke="var(--accent-primary)"
-                    strokeWidth={1.5}
-                    fill="url(#studioCpuFill)"
-                    isAnimationActive={false}
-                  />
+                  <Area type="monotone" dataKey="ram" name="Memory" stroke="var(--mint)" strokeWidth={1.5} fill="url(#overviewRamFill)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="cpu" name="CPU" stroke="var(--violet)" strokeWidth={1.5} fill="url(#overviewCpuFill)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center">
-                <Activity className="h-6 w-6 text-[var(--text-tertiary)]" />
-                <p className="mt-2 text-xs text-[var(--text-secondary)]">No telemetry recorded in selected range</p>
-              </div>
+              <EmptyPanel icon={Activity} title="No telemetry in this range" description="The chart will appear when an agent sends metrics." />
             )}
           </div>
         </div>
 
-        {/* Live Incident Stream & Fleet Health Breakdown (xl:col-span-4) */}
-        <div className="flex flex-col justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4 sm:p-5 xl:col-span-4 shadow-xs">
-          <div>
-            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                Live incidents
-              </h3>
-              <Link
-                href="/dashboard/alerts"
-                className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                  incidents.length > 0
-                    ? 'bg-[var(--status-critical)]/10 text-[var(--status-critical)]'
-                    : 'bg-[var(--status-healthy)]/10 text-[var(--status-healthy)]'
-                }`}
-              >
-                {incidents.length} open
-              </Link>
-            </div>
-
-            {incidents.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {incidents.slice(0, 4).map((incident) => {
-                  const desc =
-                    incident.metric === 'status'
-                      ? 'Heartbeat missing > 60s'
-                      : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
-
-                  return (
-                    <div
-                      key={`${incident.rule_id}-${incident.server_id}`}
-                      className="flex items-center gap-3 rounded border border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5 transition-colors hover:border-[var(--status-critical)]/40"
-                    >
-                      <div className="rounded p-1.5 bg-[var(--status-critical)]/10 text-[var(--status-critical)] shrink-0">
-                        {renderIncidentIcon(incident.metric)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold text-[var(--text-primary)]">
-                          {incident.rule_name}
-                        </div>
-                        <div className="mt-0.5 truncate text-[11px] text-[var(--text-secondary)] font-mono">
-                          <span>{incident.server_name}</span> · {desc}
-                        </div>
-                      </div>
-                      <CircleAlert className="h-4 w-4 shrink-0 text-[var(--status-critical)]" />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="my-6 rounded bg-[var(--surface-2)]/30 p-4 text-center">
-                <Check className="mx-auto h-5 w-5 text-[var(--status-healthy)]" />
-                <p className="mt-1.5 text-xs font-semibold text-[var(--text-primary)]">All systems nominal</p>
-                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">Zero threshold violations in fleet telemetry.</p>
-              </div>
-            )}
-
-            {/* Fleet Status SLA Distribution */}
-            <div className="mt-4 border-t border-[var(--border-subtle)] pt-3 space-y-2 text-xs">
-              <div className="flex items-center justify-between text-[var(--text-secondary)]">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[var(--status-healthy)]" />
-                  Responsive nodes
-                </span>
-                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{online}</strong>
-              </div>
-              <div className="flex items-center justify-between text-[var(--text-secondary)]">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[var(--status-warning)]" />
-                  Alerted / High load
-                </span>
-                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{warning}</strong>
-              </div>
-              <div className="flex items-center justify-between text-[var(--text-secondary)]">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[var(--status-critical)]" />
-                  Unreachable
-                </span>
-                <strong className="font-mono text-[var(--text-primary)] tabular-nums">{offline}</strong>
-              </div>
-            </div>
+        <div className="ops-panel overflow-hidden p-6">
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Global status</p><h2 className="panel-title">Fleet health</h2></div>
+            <span className={`status-pill ${fleetStatus.tone}`}>{fleetStatus.label}</span>
           </div>
+          <div className="relative mx-auto my-7 grid h-44 w-44 place-items-center">
+            <div className="health-ring" style={{ '--health': `${health * 3.6}deg` } as React.CSSProperties} />
+            <div className="text-center"><p className="font-mono text-4xl font-medium">{total > 0 ? `${health}%` : '—'}</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] text-white/35">heartbeat score</p></div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 border-t border-white/[.06] pt-5 text-center">
+            <HealthStat label="Online" value={online} color="text-[var(--mint)]" />
+            <HealthStat label="Alerted" value={warning} color="text-[var(--amber)]" />
+            <HealthStat label="Offline" value={offline} color="text-[var(--rose)]" />
+          </div>
+        </div>
+      </section>
 
-          <Link
-            href="/dashboard/alerts"
-            className="mt-4 flex items-center justify-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-1)] py-2 text-xs font-semibold text-[var(--accent-primary)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            Launch Alert Incident Center <ArrowUpRight className="h-3.5 w-3.5" />
-          </Link>
+      <section className="grid gap-4 xl:grid-cols-[1.45fr_.95fr]">
+        <div className="ops-panel overflow-hidden">
+          <div className="flex items-center justify-between p-6"><div><p className="panel-kicker">Agent network</p><h2 className="panel-title">Server activity</h2></div><Link href="/dashboard/servers" className="text-xs text-white/45 hover:text-white">View all <ChevronRight className="inline h-3 w-3" /></Link></div>
+          {servers.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="server-table">
+                <thead><tr><th>Server</th><th>Status</th><th>CPU</th><th>Memory</th><th>Heartbeat</th><th></th></tr></thead>
+                <tbody>{servers.slice(0, 6).map((server) => <ServerRow key={server.id} server={server} />)}</tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="px-6 pb-6"><EmptyPanel icon={Server} title="No servers" description="Connect your first agent to start receiving live data." /></div>
+          )}
+        </div>
+
+        <div className="ops-panel p-6">
+          <div className="flex items-start justify-between">
+            <div><p className="panel-kicker">Needs attention</p><h2 className="panel-title">Active incidents</h2></div>
+            <Link href="/dashboard/alerts" className={incidents.length > 0 ? 'status-pill warning' : 'status-pill good'}>{incidents.length} open</Link>
+          </div>
+          {incidents.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              {incidents.slice(0, 4).map((incident) => <Incident key={`${incident.rule_id}-${incident.server_id}`} incident={incident} />)}
+            </div>
+          ) : (
+            <div className="mt-5"><EmptyPanel icon={Check} title="No firing incidents" description="The fleet's current alert state is stable." /></div>
+          )}
+          <Link href="/dashboard/alerts" className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-white/[.07] py-3 text-xs text-white/50 transition hover:bg-white/[.04] hover:text-white">Open incident center <ArrowUpRight className="h-3.5 w-3.5" /></Link>
         </div>
       </section>
     </div>
   );
 }
 
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  note,
+  color,
+  bars,
+  tint = 'info',
+  emptyLabel = 'NO DATA',
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  note: string;
+  color: string;
+  bars: number[];
+  tint?: 'info' | 'healthy' | 'warning' | 'critical';
+  emptyLabel?: string;
+}) {
+  return (
+    <div className={`metric-card surface-regular status-tone-${tint}`}>
+      <div className="flex items-start justify-between">
+        <div className="metric-icon" style={{ color }}><Icon className="h-4 w-4" /></div>
+        {bars.length > 0 ? <div className="mini-bars">{bars.map((height, index) => <i key={index} style={{ height: `${Math.max(0, Math.min(height, 100))}%`, background: color }} />)}</div> : <span className="text-[9px] text-[var(--text-tertiary)]">{emptyLabel}</span>}
+      </div>
+      <p className="mt-5 text-[11px] uppercase tracking-[.16em] text-white/35">{label}</p>
+      <div className="mt-1 flex items-end justify-between gap-2"><p className="font-mono text-3xl">{value}</p><p className="mb-1 max-w-[130px] text-right text-[10px]" style={{ color }}>{note}</p></div>
+    </div>
+  );
+}
+
+function HealthStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return <div><p className={`font-mono text-lg ${color}`}>{value}</p><p className="mt-1 text-[9px] uppercase tracking-[.16em] text-white/30">{label}</p></div>;
+}
+
+function ServerRow({ server }: { server: DashboardServer }) {
+  const online = server.status === 'online';
+  const memoryPercent = server.memory_total > 0 ? server.memory_used * 100 / server.memory_total : 0;
+  const canShowMetrics = online && server.has_metrics;
+
+  return (
+    <tr>
+      <td><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.04]"><Cloud className="h-3.5 w-3.5 text-white/50" /></span><div><p className="font-mono text-xs text-white/80">{server.name}</p><p className="mt-1 text-[11px] text-white/55">{server.ip_address ?? 'No IP address'}</p></div></div></td>
+      <td><span className={`status-dot ${online ? 'online' : 'offline'}`} />{online ? 'Online' : 'Offline'}</td>
+      <td>{canShowMetrics ? <LoadBar value={server.cpu_usage} /> : <span className="text-white/25">—</span>}</td>
+      <td>{canShowMetrics ? <LoadBar value={memoryPercent} /> : <span className="text-white/25">—</span>}</td>
+      <td><span className="text-[10px] text-white/38">{formatRelativeTime(server.last_seen_at)}</span></td>
+      <td><Link href={`/dashboard/servers/${server.id}`} aria-label={`Open ${server.name}`}><ChevronRight className="h-4 w-4 text-white/25" /></Link></td>
+    </tr>
+  );
+}
+
+function LoadBar({ value }: { value: number }) {
+  const normalized = Math.max(0, Math.min(value, 100));
+  const pressure = normalized >= 85 ? 'var(--status-critical)' : normalized >= 70 ? 'var(--status-warning)' : 'var(--text-secondary)';
+  return <div className="flex items-center gap-2"><span className="h-1 w-14 overflow-hidden rounded-full bg-white/[.06]"><i className="block h-full rounded-full" style={{ width: `${normalized}%`, background: pressure }} /></span><span className="font-mono text-[10px]" style={{ color: pressure }}>{roundMetric(value)}%</span></div>;
+}
+
+function Incident({ incident }: { incident: DashboardIncident }) {
+  const valueDescription = incident.metric === 'status'
+    ? 'Heartbeat is over 60 seconds old'
+    : `${incident.metric.toUpperCase()} ${incident.operator} ${roundMetric(incident.threshold)}%`;
+
+  return (
+    <div className="incident-row">
+      <span className="incident-icon critical">{renderIncidentIcon(incident.metric)}</span>
+      <div className="min-w-0"><p className="truncate text-xs text-white/80">{incident.rule_name}</p><p className="mt-1 truncate text-[10px] text-white/30">{incident.server_name} · {valueDescription} · {formatRelativeTime(incident.last_triggered_at)}</p></div>
+      <CircleAlert className="ml-auto h-4 w-4 shrink-0 text-[var(--rose)]" />
+    </div>
+  );
+}
+
+function EmptyPanel({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return <div className="grid h-full min-h-36 place-items-center rounded-xl border border-dashed border-white/[.07] bg-white/[.012] p-5 text-center"><div><Icon className="mx-auto h-5 w-5 text-white/25" /><p className="mt-3 text-xs text-white/60">{title}</p><p className="mt-1 text-[10px] text-white/28">{description}</p></div></div>;
+}
+
+function DashboardMessage({ title, description, loading = false, action }: { title: string; description: string; loading?: boolean; action?: React.ReactNode }) {
+  return <div className="feature-preview"><section className="ops-panel"><div className="feature-preview-icon">{loading ? <RefreshCw className="h-6 w-6 animate-spin" /> : <CircleAlert className="h-6 w-6" />}</div><h1>{title}</h1><p>{description}</p>{action && <div className="mt-7">{action}</div>}</section></div>;
+}
+
 function renderIncidentIcon(metric: string): React.ReactNode {
-  if (metric === 'ram') return <Database className="h-3.5 w-3.5" />;
-  if (metric === 'cpu') return <Cpu className="h-3.5 w-3.5" />;
-  if (metric === 'status') return <Wifi className="h-3.5 w-3.5" />;
-  return <CircleAlert className="h-3.5 w-3.5" />;
+  if (metric === 'ram') return <Database className="h-4 w-4" />;
+  if (metric === 'cpu') return <Cpu className="h-4 w-4" />;
+  if (metric === 'status') return <Wifi className="h-4 w-4" />;
+  return <CircleAlert className="h-4 w-4" />;
 }
 
 function getFleetStatus(total: number, online: number, incidents: number): { label: string; tone: 'good' | 'warning' } {
-  if (total === 0) return { label: 'No Nodes', tone: 'warning' };
-  if (incidents > 0 || online < total) return { label: 'Attention Required', tone: 'warning' };
-  return { label: 'All Systems Nominal', tone: 'good' };
+  if (total === 0) return { label: 'No data', tone: 'warning' };
+  if (incidents > 0 || online < total) return { label: 'Attention', tone: 'warning' };
+  return { label: 'Operational', tone: 'good' };
 }
 
 function roundMetric(value: number | undefined): number {

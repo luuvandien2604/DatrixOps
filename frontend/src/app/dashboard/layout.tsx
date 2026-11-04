@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Activity, Bell, BookOpen, Bot, CheckCheck, CircleCheck,
+  Activity, Bell, BookOpen, Bot, CheckCheck, ChevronLeft, ChevronRight, CircleCheck,
   Command, FileText, Gauge, Globe2, KeyRound,
   Loader2, LogOut, Menu, Network, ScrollText, Search, Server,
   ShieldAlert, Sparkles, Users, X, Settings,
@@ -20,6 +20,7 @@ type NavDefinition = {
   label: string;
   href: string;
   icon: LucideIcon;
+  count?: number;
 };
 
 type DashboardNotification = {
@@ -57,18 +58,20 @@ const primaryNav: NavDefinition[] = [
   { label: 'Logs', href: '/dashboard/logs', icon: FileText },
 ];
 
-const adminNav: NavDefinition[] = [
+const manageNav: NavDefinition[] = [
   { label: 'Team', href: '/dashboard/manage/users', icon: Users },
-  { label: 'Audit Trail', href: '/dashboard/manage/audit', icon: ScrollText },
-  { label: 'API Keys', href: '/dashboard/manage/api', icon: KeyRound },
+  { label: 'Audit trail', href: '/dashboard/manage/audit', icon: ScrollText },
+  { label: 'API keys', href: '/dashboard/manage/api', icon: KeyRound },
   { label: 'Settings', href: '/dashboard/manage/settings', icon: Settings },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState('user');
+  const isUserAdmin = role === 'admin' || role === 'superadmin' || role === 'owner';
   const [userEmail, setUserEmail] = useState('');
   const [workspaceEdition, setWorkspaceEdition] = useState('community');
   const [systemVersion, setSystemVersion] = useState<string>(() => getAppVersion());
@@ -95,7 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
+        setCommandPaletteOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -142,7 +145,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           else if (user.email) setUserEmail(user.email);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Fallback to JWT role if /auth/me fails
+      });
   }, []);
 
   useEffect(() => {
@@ -172,28 +177,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, []);
 
+  // fetchNotifications đồng bộ danh sách và unread_count cho chuông thông báo.
   const fetchNotifications = useCallback(async (silent = false) => {
     if (!silent) setNotificationsLoading(true);
     try {
-      const data = (await apiClient('/alerts/notifications?limit=20')) as NotificationResponse;
+      const data = await apiClient('/alerts/notifications?limit=20') as NotificationResponse;
       setNotifications(Array.isArray(data?.items) ? data.items : []);
       setUnreadNotificationCount(Number(data?.unread_count) || 0);
       setNotificationError('');
-    } catch (error) {
-      if (!silent) {
-        setNotificationError(error instanceof Error ? error.message : 'Unable to load notifications');
-      }
+    } catch (err: unknown) {
+      setNotificationError(err instanceof Error ? err.message : 'Unable to load notifications');
+      setNotifications([]);
+      setUnreadNotificationCount(0);
     } finally {
       if (!silent) setNotificationsLoading(false);
     }
   }, []);
 
+  // Poll 30 giây để badge tự cập nhật khi scheduler tạo alert notification mới.
   useEffect(() => {
     void fetchNotifications();
     const interval = window.setInterval(() => void fetchNotifications(true), 30_000);
     return () => window.clearInterval(interval);
   }, [fetchNotifications]);
 
+  // Đóng menu khi click ra ngoài hoặc nhấn Escape.
   useEffect(() => {
     if (!notificationsOpen) return;
 
@@ -214,6 +222,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [notificationsOpen]);
 
+  // Đồng bộ trạng thái thông báo toàn ứng dụng
+  useEffect(() => {
+    const handleNotificationSync = (e: Event) => {
+      const custom = e as CustomEvent<{ unreadCount?: number; readId?: string; allRead?: boolean }>;
+      if (custom.detail?.allRead) {
+        setNotifications((current) =>
+          current.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })),
+        );
+        setUnreadNotificationCount(0);
+      } else if (custom.detail?.readId) {
+        setNotifications((current) =>
+          current.map((item) => (item.id === custom.detail?.readId ? { ...item, read_at: item.read_at || new Date().toISOString() } : item)),
+        );
+        if (typeof custom.detail.unreadCount === 'number') {
+          setUnreadNotificationCount(custom.detail.unreadCount);
+        } else {
+          setUnreadNotificationCount((current) => Math.max(0, current - 1));
+        }
+      } else if (typeof custom.detail?.unreadCount === 'number') {
+        setUnreadNotificationCount(custom.detail.unreadCount);
+      }
+      void fetchNotifications(true);
+    };
+
+    window.addEventListener('datrix:notifications-updated', handleNotificationSync);
+    return () => window.removeEventListener('datrix:notifications-updated', handleNotificationSync);
+  }, [fetchNotifications]);
+
+  // markNotificationRead cập nhật một item và giảm badge ngay sau khi API thành công.
   const markNotificationRead = async (notificationID: string) => {
     const target = notifications.find((item) => item.id === notificationID);
     if (!target || target.read_at) return;
@@ -221,24 +258,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     try {
       await apiClient(`/alerts/notifications/${notificationID}/read`, { method: 'PATCH' });
       const readAt = new Date().toISOString();
-      setNotifications((current) =>
-        current.map((item) => (item.id === notificationID ? { ...item, read_at: readAt } : item)),
-      );
-      setUnreadNotificationCount((current) => Math.max(0, current - 1));
+      setNotifications((current) => current.map((item) =>
+        item.id === notificationID ? { ...item, read_at: readAt } : item,
+      ));
+      setUnreadNotificationCount((current) => {
+        const next = Math.max(0, current - 1);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('datrix:notifications-updated', { detail: { unreadCount: next, readId: notificationID } }));
+        }
+        return next;
+      });
     } catch (error) {
       setNotificationError(error instanceof Error ? error.message : 'Unable to mark notification as read');
     }
   };
 
+  // markAllNotificationsRead đánh dấu toàn bộ item chưa xem và ẩn badge.
   const markAllNotificationsRead = async () => {
     if (unreadNotificationCount === 0) return;
     try {
       await apiClient('/alerts/notifications/read-all', { method: 'POST' });
       const readAt = new Date().toISOString();
-      setNotifications((current) =>
-        current.map((item) => (item.read_at ? item : { ...item, read_at: readAt })),
-      );
+      setNotifications((current) => current.map((item) =>
+        item.read_at ? item : { ...item, read_at: readAt },
+      ));
       setUnreadNotificationCount(0);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('datrix:notifications-updated', { detail: { unreadCount: 0, allRead: true } }));
+      }
     } catch (error) {
       setNotificationError(error instanceof Error ? error.message : 'Unable to mark all notifications as read');
     }
@@ -252,91 +299,189 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
-  const isTabActive = (href: string) => {
-    if (href === '/dashboard') return pathname === href;
-    return pathname.startsWith(href);
+  const NavItem = ({ item }: { item: NavDefinition }) => {
+    const active = item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        href={item.href}
+        title={collapsed ? item.label : undefined}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => setMobileOpen(false)}
+        className={[
+          'sidebar-nav-item',
+          'font-medium text-[var(--color-muted)]',
+          active ? 'is-active font-semibold !text-[var(--foreground)]' : '',
+          collapsed ? 'justify-center' : '',
+        ].join(' ')}
+      >
+        <Icon
+          className={`h-[18px] w-[18px] shrink-0 ${
+            active ? 'text-[var(--foreground)]' : 'text-[var(--color-muted)]'
+          }`}
+        />
+        {!collapsed && <span>{item.label}</span>}
+      </Link>
+    );
   };
 
   return (
-    <div className="dashboard-stage min-h-screen bg-[var(--background-root)] text-[var(--text-primary)] flex flex-col font-sans">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-1.5 focus:bg-[var(--surface-1)] focus:border focus:border-[var(--accent-primary)] focus:text-[var(--text-primary)] focus:text-xs focus:rounded-md focus:shadow-md"
+    <div className="app-shell min-h-screen text-[var(--foreground)]">
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="mobile-nav-trigger fixed left-4 top-4 z-40 rounded-md p-3 lg:hidden"
+        aria-label="Open navigation"
       >
-        Skip to main content
-      </a>
+        <Menu className="h-5 w-5" />
+      </button>
 
-      {/* 1. TOP COMMAND BAR (Sticky Header) */}
-      <header className="sticky top-0 z-40 border-b border-[var(--border-subtle)] bg-[var(--surface-1)]/95 backdrop-blur-md">
-        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
-          {/* Left: Brand Monogram & Environment Context */}
-          <div className="flex items-center gap-3 shrink-0">
-            <Link href="/dashboard" className="flex items-center gap-2.5 group">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-[var(--surface-3)] border border-[var(--border-default)] text-[var(--accent-primary)] group-hover:border-[var(--accent-primary)] transition-colors shadow-xs">
-                <Command className="h-4 w-4" />
+      {mobileOpen && (
+        <button
+          type="button"
+          className="ops-scrim mobile-nav-overlay fixed inset-0 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close navigation"
+        />
+      )}
+
+      <aside
+        aria-label="Dashboard navigation"
+        className={`shell-surface app-sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}
+      >
+        <div className="flex h-20 items-center gap-3 px-4">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
+            <div className="brand-orbit">
+              <Command className="h-4 w-4" />
+            </div>
+
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="flex items-center">
+                  <p className="truncate text-sm font-bold tracking-[0.16em] text-[var(--foreground)]">
+                    DATRIX<span className="text-[var(--violet)]">OPS</span>
+                  </p>
+                </div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  control plane
+                </p>
               </div>
-              <span className="font-mono text-sm font-bold tracking-wider text-[var(--text-primary)]">
-                DATRIX<span className="text-[var(--accent-primary)]">OPS</span>
-              </span>
-            </Link>
+            )}
+          </Link>
 
-            <span className="text-[var(--border-default)] hidden sm:inline">/</span>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="ml-auto text-[var(--foreground)] lg:hidden"
+            aria-label="Close navigation"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-[var(--text-secondary)] font-mono">
-              <span className="font-semibold text-[var(--text-primary)]">{editionLabel(workspaceEdition)}</span>
-              <span>·</span>
-              <span className="text-[10px] rounded bg-[var(--surface-2)] px-1.5 py-0.5 border border-[var(--border-subtle)] font-bold text-[var(--accent-primary)]">
+        <div className="px-3">
+          <div className={`agent-pulse-card ${collapsed ? 'items-center px-2' : ''}`}>
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span
+                className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                  fleetSyncFailed
+                    ? 'bg-[var(--amber)]'
+                    : (fleetSummary?.online_servers ?? 0) > 0
+                      ? 'bg-[var(--mint)]'
+                      : 'bg-[var(--color-muted)]'
+                }`}
+              />
+            </span>
+
+            {!collapsed && (
+              <div>
+                <p className="text-xs font-semibold text-[var(--foreground)]">Agent network</p>
+                <p className="text-[10px] font-medium text-[var(--color-muted)]">
+                  {fleetSyncFailed
+                    ? 'Live data unavailable'
+                    : fleetSummary
+                      ? `${fleetSummary.online_servers} / ${fleetSummary.total_servers} connected`
+                      : 'Syncing live status…'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <nav className="custom-scrollbar flex-1 overflow-y-auto px-3 py-5">
+          <p
+            className={`nav-eyebrow font-semibold text-[var(--color-muted)] ${
+              collapsed ? 'text-center' : ''
+            }`}
+          >
+            {collapsed ? '•' : 'Workspace'}
+          </p>
+
+          <div className="space-y-1">
+            {primaryNav.map((item) => (
+              <NavItem item={item} key={item.href} />
+            ))}
+          </div>
+
+          {isUserAdmin && (
+            <>
+              <p
+                className={`nav-eyebrow mt-7 font-semibold text-[var(--color-muted)] ${
+                  collapsed ? 'text-center' : ''
+                }`}
+              >
+                {collapsed ? '•' : 'Manage'}
+              </p>
+
+              <div className="space-y-1">
+                {manageNav.map((item) => (
+                  <NavItem item={item} key={item.href} />
+                ))}
+              </div>
+            </>
+          )}
+        </nav>
+
+        <div className="border-t border-[var(--border-color)] p-3">
+          {!collapsed && (
+            <div className="px-2 flex items-center justify-between text-[11px] font-mono text-[var(--color-muted)]">
+              <span className="truncate">{editionLabel(workspaceEdition)}</span>
+              <span className="px-1.5 py-0.5 rounded bg-white/[0.05] text-[var(--violet-strong)] border border-white/10 font-bold">
                 v{systemVersion}
               </span>
             </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          className="sidebar-collapse hidden text-[var(--color-muted)] lg:flex"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronLeft className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </aside>
+
+      <div className={`dashboard-stage ${collapsed ? 'is-expanded' : ''}`}>
+        <header className="shell-surface app-header">
+          <div className="hidden items-center gap-2 text-xs font-medium text-[var(--color-muted)] md:flex">
+            <span className="font-semibold text-[var(--foreground)]">{editionLabel(workspaceEdition)}</span>
+            <span className="text-[var(--color-muted)]">/</span>
+            <span className="text-[var(--color-muted)]">Production</span>
           </div>
 
-          {/* Center: Command Palette Search Bar */}
-          <div className="flex-1 max-w-md hidden md:block">
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              aria-label="Search nodes, metrics, rules"
-              onClick={() => setCommandPaletteOpen(true)}
-              className="w-full flex items-center justify-between rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-colors shadow-xs"
-            >
-              <span className="flex items-center gap-2">
-                <Search className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
-                <span>Search nodes, metrics, rules...</span>
-              </span>
-              <kbd className="rounded border border-[var(--border-default)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[var(--text-tertiary)]">
-                ⌘K
-              </kbd>
-            </button>
-          </div>
-
-          {/* Right: Telemetry Health, Notifications, Theme, User */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Fleet Status Badge */}
-            <div
-              className="hidden lg:flex items-center gap-2 rounded px-2.5 py-1 text-xs font-mono border border-[var(--border-subtle)] bg-[var(--surface-2)]"
-              title={fleetSyncFailed ? 'Telemetry Offline' : 'Live Fleet Telemetry'}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  fleetSyncFailed
-                    ? 'bg-[var(--status-warning)]'
-                    : (fleetSummary?.online_servers ?? 0) > 0
-                    ? 'bg-[var(--status-healthy)] animate-pulse'
-                    : 'bg-[var(--text-tertiary)]'
-                }`}
-              />
-              <span className="font-bold text-[var(--text-primary)] tabular-nums">
-                {fleetSummary ? `${fleetSummary.online_servers}/${fleetSummary.total_servers} NODES` : 'SYNCING'}
-              </span>
-            </div>
-
+          <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
 
-            {/* Notifications Menu */}
             {(() => {
-              const serverUpdateAvailable = Boolean(updateCheck?.update_available);
-              const agentUpdateAvailable = Boolean(updateCheck?.agent_update_available);
+              const serverUpdateAvailable = isUserAdmin && Boolean(updateCheck?.update_available);
+              const agentUpdateAvailable = isUserAdmin && Boolean(updateCheck?.agent_update_available);
               const hasUpdateNotification = serverUpdateAvailable || agentUpdateAvailable;
               const updateCount = (serverUpdateAvailable ? 1 : 0) + (agentUpdateAvailable ? 1 : 0);
               const totalUnreadBadge = unreadNotificationCount + updateCount;
@@ -345,100 +490,126 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div ref={notificationMenuRef} className="relative">
                   <button
                     type="button"
-                    aria-label={totalUnreadBadge > 0 ? `Notifications (${totalUnreadBadge} unread)` : 'Notifications'}
+                    aria-label={
+                      totalUnreadBadge > 0
+                        ? `Open notifications, ${totalUnreadBadge} unread`
+                        : 'Open notifications'
+                    }
                     aria-expanded={notificationsOpen}
                     onClick={() => {
-                      setNotificationsOpen((prev) => !prev);
+                      setNotificationsOpen((current) => !current);
                       if (!notificationsOpen) void fetchNotifications();
                     }}
-                    className="relative flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors shadow-xs"
+                    className="topbar-icon relative text-[var(--color-muted)]"
                   >
                     <Bell className="h-4 w-4" />
                     {totalUnreadBadge > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--status-critical)] px-1 font-mono text-[9px] font-bold text-white shadow-xs">
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--rose)] px-1 text-[9px] font-extrabold leading-none text-white shadow-sm">
                         {totalUnreadBadge > 99 ? '99+' : totalUnreadBadge}
                       </span>
                     )}
                   </button>
 
                   {notificationsOpen && (
-                    <div className="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-primary)] shadow-2xl animate-in fade-in slide-in-from-top-2">
-                      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-2.5 bg-[var(--surface-2)]">
+                    <div className="absolute right-0 top-full mt-2.5 z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-[var(--surface-2)]/60">
                         <div>
-                          <p className="text-xs font-bold text-[var(--text-primary)]">System Alerts & Notifications</p>
-                          <p className="text-[11px] text-[var(--text-secondary)] font-mono">{totalUnreadBadge} unread</p>
+                          <p className="text-sm font-bold text-[var(--foreground)]">Notifications</p>
+                          <p className="text-[11px] font-medium text-[var(--color-muted)]">
+                            {totalUnreadBadge} unread
+                          </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void markAllNotificationsRead()}
                           disabled={unreadNotificationCount === 0}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-primary)] hover:underline disabled:opacity-40"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-purple-400 hover:bg-blue-500/10 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          Mark all as read
                         </button>
                       </div>
 
-                      <div className="max-h-80 overflow-y-auto divide-y divide-[var(--border-subtle)] custom-scrollbar">
+                      <div className="custom-scrollbar max-h-[26rem] overflow-y-auto">
+                        {/* Server Update notification */}
                         {serverUpdateAvailable && (
-                          <div className="flex gap-2.5 p-3 bg-[var(--accent-subtle)]">
-                            <Sparkles className="h-4 w-4 text-[var(--accent-primary)] shrink-0 mt-0.5" />
-                            <div className="text-xs">
-                              <p className="font-semibold text-[var(--text-primary)]">
-                                CE Server Update v{updateCheck?.latest_version}
-                              </p>
-                              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
-                                A newer version of DatrixOps Server is available.
+                          <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-blue-500/[0.08]">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-purple-400">
+                              <Sparkles className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Server v{updateCheck?.latest_version}
+                                </p>
+                                <span className="shrink-0 rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-purple-400 uppercase tracking-wide">
+                                  Server
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản DatrixOps Server mới (bản hiện tại v{systemVersion || updateCheck?.current_version}).
                               </p>
                             </div>
                           </div>
                         )}
 
+                        {/* Agent Update notification */}
                         {agentUpdateAvailable && (
-                          <div className="flex gap-2.5 p-3 bg-[var(--surface-3)]">
-                            <Bot className="h-4 w-4 text-[var(--accent-primary)] shrink-0 mt-0.5" />
-                            <div className="text-xs">
-                              <p className="font-semibold text-[var(--text-primary)]">
-                                Agent Update v{updateCheck?.latest_agent_version}
-                              </p>
-                              <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">
-                                Newer monitoring agent binary is available for your nodes.
+                          <div className="flex gap-3 border-b border-[var(--border-color)] px-4 py-3 bg-indigo-500/[0.08]">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400">
+                              <Bot className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="min-w-0 truncate text-sm font-bold text-[var(--foreground)]">
+                                  Bản cập nhật Agent v{updateCheck?.latest_agent_version}
+                                </p>
+                                <span className="shrink-0 rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-extrabold text-indigo-400 uppercase tracking-wide">
+                                  Agent
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-[var(--color-muted)]">
+                                Đã có phiên bản Datrix Agent mới để nâng cấp cho các máy chủ giám sát.
                               </p>
                             </div>
                           </div>
                         )}
 
                         {notificationsLoading ? (
-                          <div className="flex items-center justify-center py-8 text-xs text-[var(--text-secondary)]">
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin text-[var(--accent-primary)]" /> Loading notifications...
+                          <div className="flex items-center justify-center px-4 py-10 text-sm text-[var(--color-muted)]">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading notifications…
                           </div>
                         ) : notificationError && notifications.length === 0 && !hasUpdateNotification ? (
-                          <div className="py-6 text-center text-xs text-[var(--status-critical)]">
+                          <div className="px-4 py-8 text-center text-sm text-[var(--rose)]">
                             Unable to load notifications.
                           </div>
                         ) : notifications.length === 0 && !hasUpdateNotification ? (
-                          <div className="py-8 text-center text-xs text-[var(--text-tertiary)]">
-                            <Bell className="mx-auto mb-2 h-5 w-5 opacity-40" />
-                            No active alerts or events
+                          <div className="px-4 py-10 text-center">
+                            <Bell className="mx-auto mb-3 h-7 w-7 text-[var(--color-muted)] opacity-50" />
+                            <p className="text-sm font-semibold text-[var(--foreground)]">No notifications yet</p>
+                            <p className="mt-1 text-xs text-[var(--color-muted)]">Alert events will appear here.</p>
                           </div>
                         ) : (
                           notifications.map((notification) => {
                             const unread = !notification.read_at;
                             const resolved = notification.severity === 'resolved';
-
                             return (
                               <div
                                 key={notification.id}
-                                className={`flex gap-3 p-3 text-xs transition-colors ${
-                                  unread ? 'bg-[var(--surface-selected)]' : 'hover:bg-[var(--surface-hover)]'
+                                className={`flex gap-3 border-b border-[var(--border-color)] px-4 py-3 last:border-b-0 ${
+                                  unread ? 'bg-[var(--violet-wash)]' : 'bg-transparent'
                                 }`}
                               >
-                                <div className="mt-0.5 shrink-0">
-                                  {resolved ? (
-                                    <CircleCheck className="h-4 w-4 text-[var(--status-healthy)]" />
-                                  ) : (
-                                    <ShieldAlert className="h-4 w-4 text-[var(--status-critical)]" />
-                                  )}
+                                <div
+                                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                                  style={{
+                                    background: resolved ? 'var(--mint-wash)' : 'rgba(194, 62, 89, 0.12)',
+                                    color: resolved ? 'var(--mint)' : 'var(--rose)',
+                                  }}
+                                >
+                                  {resolved ? <CircleCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
                                 </div>
+
                                 <Link
                                   href="/dashboard/alerts"
                                   onClick={() => {
@@ -447,18 +618,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                   }}
                                   className="min-w-0 flex-1"
                                 >
-                                  <div className="flex items-center justify-between">
-                                    <p className={`truncate ${unread ? 'font-bold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+                                  <div className="flex items-start gap-2">
+                                    <p className={`min-w-0 flex-1 truncate text-sm text-[var(--foreground)] ${unread ? 'font-bold' : 'font-semibold'}`}>
                                       {notification.title}
                                     </p>
-                                    <span className="font-mono text-[10px] text-[var(--text-tertiary)] shrink-0">
-                                      {formatNotificationTime(notification.created_at)}
-                                    </span>
+                                    {unread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--violet-strong)]" />}
                                   </div>
-                                  <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--text-secondary)]">
+                                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-muted)]">
                                     {notification.message}
                                   </p>
+                                  <p className="mt-1.5 text-[10px] font-semibold text-[var(--color-muted)]">
+                                    {formatNotificationTime(notification.created_at)}
+                                  </p>
                                 </Link>
+
+                                {unread && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      void markNotificationRead(notification.id);
+                                    }}
+                                    title="Mark as read"
+                                    aria-label={`Mark ${notification.title} as read`}
+                                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-emerald-400"
+                                  >
+                                    <CircleCheck className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             );
                           })
@@ -468,9 +656,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <Link
                         href="/dashboard/alerts"
                         onClick={() => setNotificationsOpen(false)}
-                        className="block border-t border-[var(--border-subtle)] bg-[var(--surface-2)] p-2.5 text-center text-xs font-semibold text-[var(--accent-primary)] hover:underline"
+                        className="block border-t border-[var(--border-color)] px-4 py-3 text-center text-xs font-bold text-[var(--violet-strong)] hover:bg-[var(--surface-hover)]"
                       >
-                        View Alert Incident Center
+                        Open alert settings
                       </Link>
                     </div>
                   )}
@@ -478,209 +666,96 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               );
             })()}
 
-            {/* User Profile */}
-            <div ref={userMenuRef} className="relative">
+            {/* User Profile Avatar with Popover Menu */}
+            <div ref={userMenuRef} className="relative ml-1">
               <button
                 type="button"
                 aria-label="User profile menu"
                 aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen((prev) => !prev)}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-2)] font-mono text-xs font-bold text-[var(--accent-primary)] hover:border-[var(--accent-primary)] transition-all shadow-xs"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold transition-all hover:ring-2 hover:ring-blue-400/50 hover:opacity-95 active:scale-95 shadow-sm focus:outline-none"
                 title={userEmail || 'User profile'}
               >
                 {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 z-50 w-60 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] p-1 text-[var(--text-primary)] shadow-2xl animate-in fade-in slide-in-from-top-2">
-                  <div className="px-3 py-2 border-b border-[var(--border-subtle)]">
-                    <p className="font-mono text-xs font-bold text-[var(--text-primary)] truncate" title={userEmail}>
-                      {userEmail || 'operator'}
-                    </p>
-                    <span className="inline-block rounded bg-[var(--surface-3)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--accent-primary)] uppercase">
-                      {role}
-                    </span>
+                <div className="absolute right-0 top-full mt-2.5 z-50 w-64 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-1)] p-1.5 text-[var(--foreground)] shadow-2xl animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--border-color)] mb-1">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-primary)] text-white text-xs font-bold">
+                      {role === 'admin' || role === 'superadmin' ? 'AD' : role === 'viewer' ? 'VW' : 'OP'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-[var(--foreground)] truncate" title={userEmail}>
+                        {userEmail || (role === 'admin' || role === 'superadmin' ? 'Administrator' : 'Operator')}
+                      </p>
+                      <div className="mt-0.5 flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-[var(--color-muted)] truncate">
+                          {userEmail?.includes('@') ? userEmail.split('@')[0] : (userEmail || 'admin')}
+                        </span>
+                        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-purple-400 capitalize">
+                          {role || 'admin'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="py-1">
-                    <Link
-                      href="/docs"
-                      onClick={() => setUserMenuOpen(false)}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors"
-                    >
-                      <BookOpen className="h-3.5 w-3.5" />
-                      <span>Documentation</span>
-                    </Link>
+                  <Link
+                    href="/docs"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                  >
+                    <BookOpen className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                    <span>Documentation</span>
+                  </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setCommandPaletteOpen(true);
-                      }}
-                      className="flex w-full items-center justify-between rounded px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Search className="h-3.5 w-3.5" />
-                        <span>Command palette</span>
-                      </span>
-                      <kbd className="font-mono text-[9px] text-[var(--text-tertiary)]">⌘K</kbd>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      setCommandPaletteOpen(true);
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Search className="h-4 w-4 shrink-0 text-[var(--color-muted)]" />
+                      <span>Quick search</span>
+                    </div>
+                    <kbd className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white/10 text-[var(--color-muted)] border border-white/10">⌘ K</kbd>
+                  </button>
 
-                  <div className="border-t border-[var(--border-subtle)] pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        logout();
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs font-semibold text-[var(--status-critical)] hover:bg-[var(--status-critical)]/10 transition-colors"
-                    >
-                      <LogOut className="h-3.5 w-3.5" />
-                      <span>Sign out</span>
-                    </button>
-                  </div>
+                  <div className="my-1 border-t border-[var(--border-color)]" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-[var(--rose)] hover:bg-[var(--rose)]/10 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4 shrink-0 text-[var(--rose)]" />
+                    <span>Sign out</span>
+                  </button>
                 </div>
               )}
             </div>
-
-            {/* Mobile menu trigger */}
-            <button
-              type="button"
-              onClick={() => setMobileOpen((prev) => !prev)}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] md:hidden"
-              aria-label="Toggle navigation menu"
-              aria-expanded={mobileOpen}
-            >
-              <Menu className="h-4 w-4" />
-            </button>
           </div>
-        </div>
+        </header>
 
-        {/* 2. SUB-NAVIGATION TABS (Pure Typographic Command Bar) */}
-        <nav
-          aria-label="Dashboard sub-navigation"
-          className="border-t border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-x-auto"
+        <main
+          id="main-content"
+          className="relative min-h-[calc(100vh-72px)] px-4 pb-12 pt-7 sm:px-6 xl:px-10"
         >
-          <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 h-10">
-            {primaryNav.map((item) => {
-              const active = isTabActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={`relative flex items-center px-3.5 h-full text-xs transition-colors whitespace-nowrap ${
-                    active
-                      ? 'text-[var(--text-primary)] font-semibold'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {active && (
-                    <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[var(--accent-primary)] rounded-t" />
-                  )}
-                </Link>
-              );
-            })}
-
-            {(role === 'admin' || role === 'superadmin') && (
-              <>
-                <span className="h-3.5 w-px bg-[var(--border-subtle)] mx-2" aria-hidden="true" />
-                {adminNav.map((item) => {
-                  const active = isTabActive(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={`relative flex items-center px-3.5 h-full text-xs transition-colors whitespace-nowrap ${
-                        active
-                          ? 'text-[var(--text-primary)] font-semibold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                    >
-                      <span>{item.label}</span>
-                      {active && (
-                        <span className="absolute bottom-0 left-2.5 right-2.5 h-[2px] bg-[var(--accent-primary)] rounded-t" />
-                      )}
-                    </Link>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        </nav>
-      </header>
-
-      {/* Mobile Drawer */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 bg-[var(--overlay-background)] backdrop-blur-xs md:hidden flex flex-col">
-          <div className="bg-[var(--surface-1)] border-b border-[var(--border-subtle)] p-4 flex items-center justify-between">
-            <span className="font-mono text-sm font-bold text-[var(--text-primary)]">NAVIGATION</span>
-            <button
-              type="button"
-              onClick={() => setMobileOpen(false)}
-              className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="p-4 space-y-4 overflow-y-auto flex-1 bg-[var(--surface-1)]">
-            <div className="space-y-1">
-              <div className="text-[10px] font-mono font-bold uppercase text-[var(--text-tertiary)] mb-2">Instance</div>
-              {primaryNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded text-xs ${
-                    isTabActive(item.href)
-                      ? 'bg-[var(--surface-selected)] text-[var(--accent-primary)] font-bold'
-                      : 'text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-            </div>
-
-            {(role === 'admin' || role === 'superadmin') && (
-              <div className="space-y-1 pt-2 border-t border-[var(--border-subtle)]">
-                <div className="text-[10px] font-mono font-bold uppercase text-[var(--text-tertiary)] mb-2">Admin</div>
-                {adminNav.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2 rounded text-xs ${
-                      isTabActive(item.href)
-                        ? 'bg-[var(--surface-selected)] text-[var(--accent-primary)] font-bold'
-                        : 'text-[var(--text-secondary)]'
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. FULL-WIDTH VIEWPORT */}
-      <main id="main-content" className="flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
-        {children}
-      </main>
-
+          {children}
+        </main>
+      </div>
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
     </div>
   );
 }
 
+// formatNotificationTime hiển thị thời gian tương đối ngắn trong dropdown.
 function formatNotificationTime(value: string): string {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return '';
