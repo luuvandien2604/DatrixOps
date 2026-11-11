@@ -18,13 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/disk"
-	"github.com/shirou/gopsutil/v4/host"
-	"github.com/shirou/gopsutil/v4/mem"
-	gnet "github.com/shirou/gopsutil/v4/net"
-	"github.com/shirou/gopsutil/v4/process"
 )
 
 type TopProcess struct {
@@ -211,11 +204,20 @@ func CollectSnapshot(agentVersion string, monitoredServices []string) *Snapshot 
 }
 
 func collectSystemInfo() *SystemInfo {
-	info, err := host.Info()
+	info, err := collectPlatformHostInfo()
 	if err != nil {
 		return nil
 	}
 
+	return &SystemInfo{
+		Kernel:         info.KernelVersion,
+		Uptime:         info.Uptime,
+		PublicIP:       fetchPublicIP(),
+		Virtualization: info.Virtualization,
+	}
+}
+
+func fetchPublicIP() string {
 	// Try to get Public IP quickly
 	ip := ""
 	client := http.Client{Timeout: 2 * time.Second}
@@ -232,31 +234,24 @@ func collectSystemInfo() *SystemInfo {
 		}
 		_ = resp.Body.Close()
 	}
-
-	return &SystemInfo{
-		Kernel:         info.KernelVersion,
-		Uptime:         info.Uptime,
-		PublicIP:       ip,
-		Virtualization: info.VirtualizationSystem,
-	}
+	return ip
 }
 
 func collectInventory(agentVersion string) *Inventory {
-	hostInfo, _ := host.Info()
-	cpuInfo, _ := cpu.Info()
-	logicalCores, _ := cpu.Counts(true)
-	physicalCores, _ := cpu.Counts(false)
+	hostInfo, _ := collectPlatformHostInfo()
+	cpuDetails := collectPlatformCPUDetails()
 
 	hostname, _ := os.Hostname()
 	inventory := &Inventory{
 		OSFamily:      currentOSFamily(),
 		Hostname:      hostname,
 		Architecture:  runtime.GOARCH,
-		LogicalCores:  logicalCores,
-		PhysicalCores: physicalCores,
+		CPUModel:      cpuDetails.ModelName,
+		LogicalCores:  cpuDetails.LogicalCores,
+		PhysicalCores: cpuDetails.PhysicalCores,
 		AgentVersion:  agentVersion,
 		PrivateIPs:    make([]string, 0),
-		Disks:         make([]InventoryDisk, 0),
+		Disks:         collectPlatformInventoryDisks(),
 		CollectedAt:   time.Now().UTC(),
 	}
 
@@ -266,18 +261,15 @@ func collectInventory(agentVersion string) *Inventory {
 		inventory.KernelVersion = hostInfo.KernelVersion
 		inventory.BootTime = hostInfo.BootTime
 	}
-	if len(cpuInfo) > 0 {
-		inventory.CPUModel = cpuInfo[0].ModelName
-	}
 	if memory, err := readMemoryTotal(); err == nil {
 		inventory.MemoryTotal = memory
 	}
 
-	if interfaces, err := gnet.Interfaces(); err == nil {
+	if interfaces, err := collectPlatformNetworkInterfaces(); err == nil {
 		seen := make(map[string]struct{})
 		for _, networkInterface := range interfaces {
-			for _, address := range networkInterface.Addrs {
-				ip := strings.Split(address.Addr, "/")[0]
+			for _, addr := range networkInterface.Addrs {
+				ip := strings.Split(addr, "/")[0]
 				parsedIP := net.ParseIP(ip)
 				if parsedIP == nil || !parsedIP.IsPrivate() {
 					continue
@@ -289,21 +281,6 @@ func collectInventory(agentVersion string) *Inventory {
 			}
 		}
 		sort.Strings(inventory.PrivateIPs)
-	}
-
-	if partitions, err := disk.Partitions(false); err == nil {
-		for _, partition := range partitions {
-			usage, err := disk.Usage(partition.Mountpoint)
-			if err != nil {
-				continue
-			}
-			inventory.Disks = append(inventory.Disks, InventoryDisk{
-				Device:     partition.Device,
-				Mountpoint: partition.Mountpoint,
-				FileSystem: partition.Fstype,
-				TotalBytes: usage.Total,
-			})
-		}
 	}
 
 	return inventory
@@ -319,11 +296,7 @@ func currentOSFamily() string {
 func readMemoryTotal() (uint64, error) {
 	// The existing metrics collector is the source of truth for live usage.
 	// Inventory records the installed capacity at snapshot time.
-	memory, err := mem.VirtualMemory()
-	if err != nil {
-		return 0, err
-	}
-	return memory.Total, nil
+	return collectPlatformMemoryTotal()
 }
 
 func collectCronJobs() ([]CronJob, bool) {
@@ -580,52 +553,14 @@ func parseCronField(field string, minValue, maxValue int) (map[int]bool, bool, b
 }
 
 func collectTopProcesses() []TopProcess {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	procs, err := process.ProcessesWithContext(ctx)
-	if err != nil {
-		return nil
-	}
-
-	var results []TopProcess
-	for _, p := range procs {
-		if ctx.Err() != nil {
-			break
-		}
-		name, err := p.NameWithContext(ctx)
-		if err != nil {
-			continue
-		}
-		cpu, _ := p.CPUPercentWithContext(ctx)
-		ram, _ := p.MemoryPercentWithContext(ctx)
-		user, _ := p.UsernameWithContext(ctx)
-
-		// Skip processes with 0 cpu and 0 ram
-		if cpu > 0.1 || ram > 0.1 {
-			results = append(results, TopProcess{
-				PID:  p.Pid,
-				Name: name,
-				CPU:  cpu,
-				RAM:  ram,
-				User: user,
-			})
-		}
-	}
-
-	// Sort by CPU desc
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].CPU > results[j].CPU
-	})
-
-	if len(results) > 20 {
-		results = results[:20]
-	}
-
-	return results
+	return collectPlatformTopProcesses()
 }
 
 func collectPackageUpdate() int {
+	if runtime.GOOS != "linux" {
+		return 0
+	}
+
 	// A naive implementation to count upgradeable packages via apt
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -727,7 +662,13 @@ func findPrimaryUplink() (string, string) {
 
 	// 2. macOS / Darwin: route -n get default
 	if runtime.GOOS == "darwin" {
-		if out, err := exec.Command("route", "-n", "get", "default").Output(); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		routeBin := "route"
+		if _, lookErr := exec.LookPath(routeBin); lookErr != nil {
+			routeBin = "/sbin/route"
+		}
+		if out, err := exec.CommandContext(ctx, routeBin, "-n", "get", "default").Output(); err == nil {
 			var iface, gw string
 			scanner := bufio.NewScanner(strings.NewReader(string(out)))
 			for scanner.Scan() {
@@ -1005,10 +946,10 @@ func collectNetworkTelemetry() ([]NetworkInterfaceInfo, *NetworkDiagnostics) {
 		gwLatency, gwLoss = checkGatewayPing(defaultGateway)
 	}
 
-	rawIfaces, _ := gnet.Interfaces()
-	rawIOs, _ := gnet.IOCounters(true)
+	rawIfaces, _ := collectPlatformNetworkInterfaces()
+	rawIOs, _ := collectPlatformNetIOCounters()
 
-	ioMap := make(map[string]gnet.IOCountersStat)
+	ioMap := make(map[string]platformNetIOCounter)
 	for _, ioStat := range rawIOs {
 		ioMap[ioStat.Name] = ioStat
 	}
@@ -1034,8 +975,8 @@ func collectNetworkTelemetry() ([]NetworkInterfaceInfo, *NetworkDiagnostics) {
 		}
 
 		var ips []string
-		for _, a := range iface.Addrs {
-			ip := strings.Split(a.Addr, "/")[0]
+		for _, addr := range iface.Addrs {
+			ip := strings.Split(addr, "/")[0]
 			if ip != "" {
 				ips = append(ips, ip)
 			}
